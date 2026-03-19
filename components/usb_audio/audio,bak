@@ -1,0 +1,64 @@
+//EXAMPLE IMPLEMENTATIOn
+
+// In your main or a new usb_audio component
+#include "usb_device_uac.h"
+#include "freertos/queue.h"   // if you want to feed from sequencer task
+
+// Your existing sequencer data + a small mixing ring buffer
+#define AUDIO_BUF_SIZE  (48000 / 100 * 4)   // ~10 ms @ 48 kHz stereo 16-bit
+static int16_t audio_ring_buf[AUDIO_BUF_SIZE * 2];  // double buffer or circular
+static size_t audio_write_pos = 0;
+
+// Callback: Host asks for audio → we fill it with your drum mix
+static esp_err_t uac_input_cb(uint8_t *buf, size_t len, size_t *bytes_read, void *cb_ctx)
+{
+    // len is usually ~960–1920 bytes per call (10 ms chunk)
+    size_t to_copy = (len > sizeof(audio_ring_buf) - audio_write_pos) ? 
+                     sizeof(audio_ring_buf) - audio_write_pos : len;
+
+    memcpy(buf, (uint8_t*)audio_ring_buf + audio_write_pos, to_copy);
+    *bytes_read = to_copy;
+    audio_write_pos = (audio_write_pos + to_copy) % sizeof(audio_ring_buf);
+
+    // Optional: if buffer underrun, zero-pad or repeat last sample
+    if (to_copy < len) {
+        memset(buf + to_copy, 0, len - to_copy);
+        *bytes_read = len;
+    }
+    return ESP_OK;
+}
+
+// Simple mute/volume (optional)
+static void uac_set_mute_cb(uint32_t mute, void *ctx) { /* ignore or log */ }
+static void uac_set_volume_cb(uint32_t vol, void *ctx) { /* map to your master volume */ }
+
+void usb_audio_init(void)
+{
+    uac_device_config_t cfg = {
+        .skip_tinyusb_init = false,
+        .output_cb   = NULL,           // we don't need host→ESP playback
+        .input_cb    = uac_input_cb,   // <-- this is what sends your drums to PC
+        .set_mute_cb = uac_set_mute_cb,
+        .set_volume_cb = uac_set_volume_cb,
+        .cb_ctx      = NULL
+    };
+
+    ESP_ERROR_CHECK(uac_device_init(&cfg));
+    ESP_LOGI("USB", "UAC Microphone ready – select 'ESP32-S3 Audio' in your DAW/system audio settings");
+}
+
+  // Trigger events for the current step
+            for (int track = 0; track < SEQ_TRACKS; track++) {
+                if (seq_state.grid[track][seq_state.current_step]) {
+                    amy_event e = amy_default_event();
+                    e.time = amy_sysclock();
+                    e.osc = track; // Map track to osc
+                    e.wave = PCM; // Use PCM samples
+                    e.velocity = 1.0f;
+                    
+                    // Different PCM presets for different tracks
+                    // 0: BD, 1: SD, 2: CH, 3: OH (or similar percussive sounds)
+                    e.preset = track;
+                    
+                    amy_add_event(&e);
+                }

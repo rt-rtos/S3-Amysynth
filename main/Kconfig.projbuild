@@ -1,0 +1,1 @@
+# I2C configuration is and should be managed in the priv_i2c_u8g2 component.

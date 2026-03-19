@@ -1,0 +1,46 @@
+menu "PRIV I2C U8G2 Component"
+
+    config I2C_U8G2_I2C_PORT
+        int "I2C Port Number"
+        default 0
+        help
+            I2C controller index (for example 0 for I2C_NUM_0).
+
+    config I2C_U8G2_SCL_GPIO
+        int "SCL GPIO Number"
+        default 5
+        help
+            GPIO number for I2C clock.
+
+    config I2C_U8G2_SDA_GPIO
+        int "SDA GPIO Number"
+        default 4
+        help
+            GPIO number for I2C data.
+
+    config I2C_U8G2_FREQ_HZ
+        int "I2C Bus Frequency (Hz)"
+        default 400000
+        help
+            I2C bus speed in Hertz.
+
+    config I2C_U8G2_TIMEOUT_MS
+        int "I2C Transaction Timeout (ms)"
+        default 1000
+        help
+            Timeout used for display I2C transactions.
+
+    config I2C_U8G2_DISPLAY_ADDRESS
+        hex "Display I2C Address"
+        range 0x00 0x7F
+        default 0x3C
+        help
+            7-bit I2C address of the display device.
+
+    config I2C_U8G2_INTERNAL_PULLUP
+        bool "Enable internal SDA/SCL pull-ups"
+        default y
+        help
+            Enable internal pull-up resistors for SDA/SCL pins.
+
+endmenu

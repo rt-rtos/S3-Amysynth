@@ -1,0 +1,46 @@
+dependencies:
+  espressif/button:
+    component_hash: fccb18c37f1cfe0797b74a53a44d3f400f5fd01f4993b40052dfb7f401915089
+    dependencies:
+    - name: espressif/cmake_utilities
+      registry_url: https://components.espressif.com
+      require: private
+      version: '*'
+    - name: idf
+      require: private
+      version: '>=4.0'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 4.1.5
+  espressif/cmake_utilities:
+    dependencies: []
+    source:
+      path: /home/fatta/esp-idf/sadb0y-amy-esp32-s3/components/espressif__cmake_utilities
+      type: local
+    version: 1.1.1
+  espressif/tinyusb:
+    dependencies: []
+    source:
+      path: /home/fatta/esp-idf/sadb0y-amy-esp32-s3/components/espressif__tinyusb
+      type: local
+    version: 0.17.0~2
+  espressif/usb_device_uac:
+    dependencies: []
+    source:
+      path: /home/fatta/esp-idf/sadb0y-amy-esp32-s3/components/espressif__usb_device_uac
+      type: local
+    version: 1.2.2
+  idf:
+    source:
+      type: idf
+    version: 6.0.0
+direct_dependencies:
+- espressif/button
+- espressif/cmake_utilities
+- espressif/tinyusb
+- espressif/usb_device_uac
+- idf
+manifest_hash: 7bbd553f7a9df34cc4ba297c2f10d3e34bbc0d39e693a33944a4066bac4eaf22
+target: esp32s3
+version: 2.0.0
