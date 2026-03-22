@@ -92,6 +92,18 @@ memorypcm_preset_t * get_preset_for_preset_number(uint16_t preset_number,
     return rom_local;
 }
 
+const int16_t *pcm_get_sample_ram_for_preset(uint16_t preset_number, uint32_t *length) {
+    memorypcm_preset_t rom_local;
+    memorypcm_preset_t *preset = get_preset_for_preset_number(preset_number, &rom_local);
+    if (length != NULL) {
+        *length = (preset != NULL) ? preset->length : 0;
+    }
+    if (preset == NULL) {
+        return NULL;
+    }
+    return preset->sample_ram;
+}
+
 
 void pcm_init() {
     memorypcm_ll_start = NULL;
@@ -268,7 +280,7 @@ SAMPLE render_pcm(SAMPLE* buf, uint16_t osc) {
                 b = table[base_index];
                 c = (next_index < sample_length) ? table[next_index] : b;
             }
-            SAMPLE sample = L2S(b) + MUL0_SS(L2S(c - b), frac);
+            SAMPLE sample = L2S(b) + MUL4_SS(L2S(c - b), frac);
             synth[osc]->phase = P_WRAPPED_SUM(synth[osc]->phase, step);
             base_index = INT_OF_P(synth[osc]->phase, PCM_INDEX_BITS);
 

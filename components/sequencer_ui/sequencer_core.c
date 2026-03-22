@@ -133,7 +133,7 @@ void sequencer_core_init(void) {
     bpm = sequencer_clamp_bpm(bpm);
     current_step = 0;
     sequencer_push_tempo(bpm);
-    sequencer_force_internal_clock();
+    //sequencer_force_internal_clock(); doesnt exist
     ESP_LOGI(TAG, "AMY sequencer-backed core initialized");
 }
 
@@ -151,7 +151,7 @@ void sequencer_core_set_bpm(uint16_t new_bpm) {
 
 uint8_t sequencer_core_get_current_step(void) {
     if (playing) {
-        sequencer_force_internal_clock();
+        //sequencer_force_internal_clock();
     }
     uint32_t ticks = sequencer_ticks();
     current_step = (uint8_t)((ticks % SEQ_BAR_TICKS) / SEQ_TICKS_PER_STEP);
@@ -163,7 +163,7 @@ void sequencer_core_set_playing(bool p) {
 
     playing = p;
     if (playing) {
-        sequencer_force_internal_clock();
+        //sequencer_force_internal_clock();
         sequencer_resync_all_steps();
     } else {
         sequencer_clear_all_tags();

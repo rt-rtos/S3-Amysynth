@@ -15,6 +15,7 @@
 void convert_midi_bytes_to_messages(uint8_t * data, size_t len, uint8_t usb);
 void amy_process_single_midi_byte(uint8_t byte, uint8_t from_web_or_usb);
 void amy_external_midi_output(uint8_t * data, uint32_t len);
+void amy_external_midi_sync(uint8_t enabled);
 
 
 #define MAX_MIDI_BYTES_TO_PARSE 1024
@@ -22,6 +23,7 @@ void amy_external_midi_output(uint8_t * data, uint32_t len);
 #define MIDI_QUEUE_DEPTH 1024
 #define MAX_SYSEX_BYTES (16384)
 extern uint8_t *sysex_buffer;
+extern char *sysex_message_copy;
 extern uint16_t sysex_len;
 extern void parse_sysex();
 extern uint8_t last_midi[MIDI_QUEUE_DEPTH][MAX_MIDI_BYTES_PER_MESSAGE];

@@ -128,12 +128,6 @@ void sequencer_midi_stop() {
     sequencer_running = false;
 }
 
-void sequencer_force_internal_clock() {
-    sequencer_external_clock = false;
-    sequencer_running = true;
-    amy_global.next_amy_tick_us = (((uint64_t)amy_sysclock()) * 1000L) + (uint64_t)amy_global.us_per_tick;
-}
-
 void sequencer_midi_clock_tick() {
     sequencer_external_clock = true;
     if (!sequencer_running) return;

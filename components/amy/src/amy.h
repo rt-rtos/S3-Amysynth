@@ -29,10 +29,13 @@ typedef struct {
 } pcm_map_t;
 
 
-// These are overriden for you if you include pcm_X.h {tiny, small, large}
+// Built-in PCM data declarations (provided by src/pcm_tiny.h).
 extern const int16_t pcm[];
 extern const pcm_map_t pcm_map[];
 extern const uint16_t pcm_samples;
+extern const uint16_t pcm_wavetable_base;
+extern const uint16_t pcm_wavetable_samples;
+extern const uint32_t pcm_wavetable_len;
 
 #if (defined(ESP_PLATFORM) || defined(PICO_ON_DEVICE) || defined(ARDUINO) || defined(__IMXRT1062__) || defined(ARDUINO_ARCH_RP2040) ||defined(ARDUINO_ARCH_RP2350))
 #define AMY_MCU
@@ -185,9 +188,10 @@ typedef int16_t output_sample_type;
 // Magic value for "0 Hz" in log-scale.
 #define ZERO_HZ_LOG_VAL -99.0
 // Frequency of Midi note 0, used to make logfreq scales.
-// Have 0 be midi 60, C4, 261.63 Hz
-#define ZERO_LOGFREQ_IN_HZ 261.63
-#define ZERO_MIDI_NOTE 60
+// Have 0 be midi 69, A4, 440.0
+#define ZERO_LOGFREQ_IN_HZ 440.0  // 261.63
+#define ZERO_MIDI_NOTE 69  // 60
+#define MIN_FILTER_LOGFREQ -2.75  // -2.0  // LPF cutoff cannot go below w = 0.01 rad/samp in filters.c = 72 Hz, so clip it here at ~65 Hz.
 
 #define NUM_COMBO_COEFS 9  // 9 control-mixing params: const, note, velocity, env1, env2, mod, pitchbend, ext0, ext1
 enum coefs{
@@ -231,8 +235,10 @@ enum coefs{
 #define PCM_LEFT 17
 #define PCM_RIGHT 18
 #define PCM_MIX 7 // same as PCM
-#define CUSTOM 19
-#define WAVE_OFF 20
+#define WAVETABLE 19
+#define CUSTOM 20
+#define WAVE_OFF 21
+
 #define AMY_WAVE_IS_PCM(w) ((w) == PCM || (w) == PCM_LEFT || (w) == PCM_RIGHT)
 
 // synth[].status values
@@ -446,41 +452,41 @@ struct delta {
 
 // API accessible events, are converted to delta types for the synth to play back 
 typedef struct amy_event {
-    uint32_t time;
+    uint32_t time;  // event only
     uint16_t osc;
     uint16_t wave;
     int16_t preset;  // Negative preset is voice count for build-your-own PARTIALS
     float midi_note;
-    uint16_t patch_number;
+    uint16_t patch_number;  // event only
     float amp_coefs[NUM_COMBO_COEFS];
-    float freq_coefs[NUM_COMBO_COEFS];
-    float filter_freq_coefs[NUM_COMBO_COEFS];
+    float freq_coefs[NUM_COMBO_COEFS];  // synth is log
+    float filter_freq_coefs[NUM_COMBO_COEFS];  // synth is log
     float duty_coefs[NUM_COMBO_COEFS];
     float pan_coefs[NUM_COMBO_COEFS];
     float feedback;
     float velocity;
-    float phase;
-    float volume;
-    float pitch_bend;
-    float tempo;
-    uint16_t latency_ms;
-    float ratio;
+    float trigger_phase;
+    float volume;  // event_only
+    float pitch_bend;  // event_only
+    float tempo;  // event_only
+    uint16_t latency_ms;  // event_only
+    float ratio;  // synth is log
     float resonance;
-    uint16_t portamento_ms;
+    uint16_t portamento_ms;  // synth is alpha
     uint16_t chained_osc;
     uint16_t mod_source;
     uint8_t algorithm;
     uint8_t filter_type;
-    float eq_l;
-    float eq_m;
-    float eq_h;
+    float eq_l;  // not in synth
+    float eq_m;  // not in synth
+    float eq_h;  // not in synth
     uint16_t bp_is_set[MAX_BREAKPOINT_SETS];
     // Convert these two at least to vectors of ints, save several hundred bytes
     int16_t algo_source[MAX_ALGO_OPS];
     uint16_t voices[MAX_VOICES_PER_INSTRUMENT];
-    int16_t eg0_times[MAX_BPS];
+    uint32_t eg0_times[MAX_BPS];
     float eg0_values[MAX_BPS];
-    int16_t eg1_times[MAX_BPS];
+    uint32_t eg1_times[MAX_BPS];
     float eg1_values[MAX_BPS];
     uint8_t eg_type[MAX_BREAKPOINT_SETS];
     // Instrument-layer values.
@@ -510,6 +516,7 @@ typedef struct amy_event {
     float reverb_liveness;
     float reverb_damping;
     float reverb_xover_hz;
+    uint8_t oscs_per_voice;  // Used when initializing a synth without a patch.
 } amy_event;
 
 // This is the state of each oscillator, set by the sequencer from deltas
@@ -524,13 +531,13 @@ struct synthinfo {
     float duty_coefs[NUM_COMBO_COEFS];
     float pan_coefs[NUM_COMBO_COEFS];
     float feedback;
-    uint8_t status;
+    uint8_t status;  // not in event
     float velocity;
-    PHASOR trigger_phase;
-    PHASOR phase;
-    float step;
-    float substep;
-    SAMPLE mod_value;  // last value returned by this oscillator when acting as a MOD_SOURCE.
+    float trigger_phase;
+    PHASOR phase;  // not in event
+    float step;  // not in event
+    float substep;  // not in event
+    SAMPLE mod_value;  // last value returned by this oscillator when acting as a MOD_SOURCE, not in event
     float logratio;
     float resonance;
     float portamento_alpha;
@@ -540,13 +547,14 @@ struct synthinfo {
     uint8_t filter_type;
     // algo_source remains int16 because users can add -1 to indicate no osc 
     int16_t algo_source[MAX_ALGO_OPS];
-    uint8_t terminate_on_silence;  // Do we enable the auto-termination of silent oscs?  Usually yes, not for PCM.
-
+    uint8_t terminate_on_silence;  // Do we enable the auto-termination of silent oscs?  Usually yes, not for PCM. not in event.
+    // Rum-time state, not in event
     uint32_t render_clock;
     uint32_t note_on_clock;
     uint32_t note_off_clock;
     uint32_t zero_amp_clock;   // Time amplitude hits zero.
     uint32_t mod_value_clock;  // Only calculate mod_value once per frame (for mod_source).
+    // Back to params
     uint32_t *breakpoint_times[MAX_BREAKPOINT_SETS];  // (in samples) was [MAX_BREAKPOINTS] now dynamically sized.
     float *breakpoint_values[MAX_BREAKPOINT_SETS];  // was [MAX_BREAKPOINTS] now dynamically sized.
     uint8_t eg_type[MAX_BREAKPOINT_SETS];  // one of the ENVELOPE_ values
@@ -557,9 +565,6 @@ struct synthinfo {
     SAMPLE hpf_state[2];
     // Selected lookup table and size.
     const LUT *lut;
-    float eq_l;
-    float eq_m;
-    float eq_h;
     // For ALGO feedback ops
     SAMPLE last_two[2];
     // For filters.  Need 2x because LPF24 uses two instances of filter.
@@ -624,6 +629,15 @@ typedef struct delay_line {
 #define AMY_MIDI_IS_MACOS 0x04
 #define AMY_MIDI_IS_WEBMIDI 0x08
 
+// AMYboard pins
+#define AMYBOARD_LRC 2
+#define AMYBOARD_BCLK 8
+#define AMYBOARD_DOUT 6
+#define AMYBOARD_DIN 9
+#define AMYBOARD_MCLK 3
+#define AMYBOARD_MIDI_OUT_TYPE_A 14
+#define AMYBOARD_MIDI_OUT_TYPE_B 15
+#define AMYBOARD_MIDI_IN 21
 
 typedef struct  {
     struct {
@@ -703,7 +717,7 @@ typedef struct reverb_state {
 
 typedef struct chorus_config {
     SAMPLE level;     // How much of the delayed signal to mix in to the output, typ F2S(0.5).
-    int max_delay;    // Max delay when modulating.  Must be <= DELAY_LINE_LEN
+    int32_t max_delay;    // Max delay when modulating.  Must be <= DELAY_LINE_LEN
     float lfo_freq;
     float depth;
 } chorus_config_t;
@@ -792,6 +806,8 @@ float logfreq_for_midi_note(float midi_note);
 float midi_note_for_logfreq(float logfreq);
 float logfreq_of_freq(float freq);
 float freq_of_logfreq(float logfreq);
+float portamento_ms_to_alpha(uint16_t portamento_ms);
+uint16_t alpha_to_portamento_ms(float alpha);
 int8_t check_init(amy_err_t (*fn)(), char *name);
 void * malloc_caps(uint32_t size, uint32_t flags);
 void config_reverb(float level, float liveness, float damping, float xover_hz);
@@ -860,10 +876,16 @@ void amy_reset_sysclock();
 
 extern int parse_int_list_message32(char *message, int32_t *vals, int max_num_vals, int32_t skipped_val);
 extern int parse_int_list_message16(char *message, int16_t *vals, int max_num_vals, int16_t skipped_val);
+extern void reset_osc_by_pointer(struct synthinfo *psynth, struct mod_synthinfo *pmsynth);
 extern void reset_osc(uint16_t i );
 
 extern int midi_store_control_code(int channel, int code, int is_log, float min_val, float max_val, float offset_val, char *message);
+extern int midi_clear_control_code(int channel, int code);
+extern bool midi_fetch_control_code_command(int channel, int code, char *s, size_t len);
 extern void cc_mapping_debug();
+extern void midi_mappings_init();
+extern void midi_mappings_deinit();
+extern void midi_clear_channel_mappings(int channel);
 
 extern float render_am_lut(float * buf, float step, float skip, float incoming_amp, float ending_amp, const float* lut, int16_t lut_size, float *mod, float bandwidth);
 extern void ks_init();
@@ -884,6 +906,9 @@ SAMPLE render_external_audio_in(SAMPLE *buf, uint16_t osc, uint8_t channel);
 
 extern SAMPLE render_ks(SAMPLE * buf, uint16_t osc); 
 extern SAMPLE render_sine(SAMPLE * buf, uint16_t osc); 
+#ifdef AMY_WAVETABLE
+extern SAMPLE render_wavetable(SAMPLE * buf, uint16_t osc); 
+#endif
 extern SAMPLE render_fm_sine(SAMPLE *buf, uint16_t osc, SAMPLE *mod, SAMPLE feedback_level, uint16_t algo_osc, SAMPLE mod_amp);
 extern SAMPLE render_pulse(SAMPLE * buf, uint16_t osc); 
 extern SAMPLE render_saw_down(SAMPLE * buf, uint16_t osc);
@@ -902,7 +927,11 @@ extern void patches_load_patch(amy_event *e);
 extern void patches_event_has_voices(amy_event *e, struct delta **queue);
 extern void patches_reset_patch(int patch_number);
 extern void patches_reset();
-extern void parse_patch_number_to_events(uint16_t patch_number, struct amy_event **events, uint16_t *event_count);
+extern int sprint_event(amy_event *e, char *s, size_t len, bool wirecode);
+extern void *yield_patch_events(uint16_t patch_number, struct amy_event *event, void *state);
+extern void *yield_synth_events(uint8_t synth, struct amy_event *event, void *state);
+extern void *yield_synth_commands(uint8_t synth, char *s, size_t len, void *state);
+extern int size_of_amy_event(void);
 
 extern struct delta **queue_for_patch_number(int patch_number);
 extern void update_num_oscs_for_patch_number(int patch_number);
@@ -915,15 +944,17 @@ extern void patches_store_patch(amy_event *e, char * message);
 extern void instruments_init(int num_instruments);
 extern void instruments_deinit();
 extern void instruments_reset();
-extern void instrument_add_new(int instrument_number, int num_voices, uint16_t *amy_voices, uint16_t patch_number, uint32_t flags);
+extern void instrument_add_new(int instrument_number, int num_voices, uint16_t *amy_voices, uint16_t patch_number, uint16_t oscs_per_voice, uint32_t flags);
 extern void instrument_release(int instrument_number);
 extern void instrument_change_number(int old_instrument_number, int new_instrument_number);
 #define _INSTRUMENT_NO_VOICE (255)
 extern uint16_t instrument_voice_for_note_event(int instrument_number, int note, bool is_note_off, bool *pstolen);
+extern bool instrument_number_exists(int instrument_number, char *tag);
 extern int instrument_get_num_voices(int instrument_number, uint16_t *amy_voices);
 extern int instrument_all_notes_off(int instrument_number, uint16_t *amy_voices);
 extern int instrument_sustain(int instrument_number, bool sustain, uint16_t *amy_voices);
 extern int instrument_get_patch_number(int instrument_number);
+extern int instrument_get_oscs_per_voice(int instrument_number);
 extern uint32_t instrument_get_flags(int instrument_number);
 extern uint16_t instrument_noteon_delay_ms(int instrument_number);
 extern void instrument_set_noteon_delay_ms(int instrument_number, uint16_t noteon_delay_ms);
@@ -945,6 +976,7 @@ extern SAMPLE compute_mod_pcm(uint16_t osc);
 extern SAMPLE compute_mod_custom(uint16_t osc);
 
 extern void sine_note_on(uint16_t osc, float initial_freq); 
+extern void wavetable_note_on(uint16_t osc, float initial_freq); 
 extern void fm_sine_note_on(uint16_t osc, uint16_t algo_osc); 
 extern void saw_down_note_on(uint16_t osc, float initial_freq); 
 extern void saw_up_note_on(uint16_t osc, float initial_freq); 
@@ -969,6 +1001,7 @@ extern void pulse_mod_trigger(uint16_t osc);
 extern void pcm_mod_trigger(uint16_t osc);
 extern void custom_mod_trigger(uint16_t osc);
 extern int16_t * pcm_load(uint16_t preset_number, uint32_t length, uint32_t samplerate, uint8_t channels, uint8_t midinote, uint32_t loopstart, uint32_t loopend);
+extern const int16_t *pcm_get_sample_ram_for_preset(uint16_t preset_number, uint32_t *length);
 extern int pcm_load_file();
 extern void pcm_unload_preset(uint16_t preset_number);
 extern void pcm_unload_all_presets();
@@ -992,8 +1025,8 @@ extern SAMPLE scan_max(SAMPLE* block, int len);
 #define AMY_RENDER_TASK_PRIORITY (20) 
 #define AMY_FILL_BUFFER_TASK_PRIORITY (20)
 #else
-#define AMY_RENDER_TASK_PRIORITY (ESP_TASK_PRIO_MAX - 1)
-#define AMY_FILL_BUFFER_TASK_PRIORITY (ESP_TASK_PRIO_MAX - 1)
+#define AMY_RENDER_TASK_PRIORITY (ESP_TASK_PRIO_MAX)
+#define AMY_FILL_BUFFER_TASK_PRIORITY (ESP_TASK_PRIO_MAX)
 #endif
 #define AMY_RENDER_TASK_COREID (0)
 #define AMY_FILL_BUFFER_TASK_COREID (1)

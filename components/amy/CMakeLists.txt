@@ -3,6 +3,7 @@ file(GLOB AMY_SRC_FILES LIST_DIRECTORIES OFF "${CMAKE_CURRENT_LIST_DIR}/src/*.c"
 # Exclude standalone examples and non-ESP drivers
 list(FILTER AMY_SRC_FILES EXCLUDE REGEX "amy-example\\.c$")
 list(FILTER AMY_SRC_FILES EXCLUDE REGEX "libminiaudio-audio\\.c$")
+list(FILTER AMY_SRC_FILES EXCLUDE REGEX "usb\\.c$")
 
 if(NOT AMY_SRC_FILES)
     message(FATAL_ERROR "No AMY sources found in ${CMAKE_CURRENT_LIST_DIR}/src. Make sure the `src` directory exists within the component.")
@@ -11,7 +12,7 @@ endif()
 idf_component_register(
     SRCS ${AMY_SRC_FILES}
     INCLUDE_DIRS "src"
-    REQUIRES esp_timer esp_driver_uart esp_driver_i2s esp_driver_i2c esp_driver_gpio
+    REQUIRES esp_timer esp_driver_uart esp_driver_i2s esp_driver_i2c esp_driver_gpio espressif__tinyusb
 )
 
 # Keep the same compile flag for amy.c (relax strict-aliasing warnings)

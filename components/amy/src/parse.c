@@ -1,4 +1,4 @@
-// parse.c 
+// parse.c
 // handle parsing wire strings
 
 #include "amy.h"
@@ -68,20 +68,6 @@ float atoff(const char *s) {
     int16_t:  atoi \
 )
 
-#define PARSE_VAL_TO_SEP(type) \
-    int parse_val_to_sep_##type(char *message, type *val, char sep) {   \
-        int c = 0;                                                      \
-        *val = PARSE_LIST_ATO(*val)(message);                           \
-        c = strspn(message, PARSE_LIST_STRSPN2(*val));                  \
-        if (message[c] == sep) {                                        \
-            return c + 1;                                               \
-        }                                                               \
-        return -1;                                                      \
-    }
-
-PARSE_VAL_TO_SEP(float)
-PARSE_VAL_TO_SEP(int32_t)
-
 #define PARSE_LIST(type) \
     int parse_list_##type(char *message, type *vals, int max_num_vals, type skipped_val) { \
         uint16_t c = 0, last_c; \
@@ -117,6 +103,17 @@ PARSE_LIST(uint16_t)
 PARSE_LIST(int32_t)
 PARSE_LIST(int16_t)
 
+
+#define PARSE_VAL(type) \
+    int parse_val_##type(char *message, type *val) {             \
+        int c = 0;                                                      \
+        *val = PARSE_LIST_ATO(*val)(message);                           \
+        c = strspn(message, PARSE_LIST_STRSPN2(*val));                  \
+        return c; \
+    }
+
+PARSE_VAL(float)
+PARSE_VAL(int32_t)
 
 char *copy_with_trim(char *dest, size_t dest_len, const char *src, size_t src_len) {
     // Copy a string while trimming leading and trailing spaces.
@@ -196,12 +193,12 @@ void copy_param_list_substring(char *dest, const char *src) {
 
 float int_db_to_float_lin(uint32_t db);
 
-static int16_t clamp_bp_time_ms_to_i16(uint32_t t_ms) {
-    if (t_ms >= (uint32_t)SHRT_MAX) return (int16_t)(SHRT_MAX - 1);
-    return (int16_t)t_ms;
-}
+//static int16_t clamp_bp_time_ms_to_i16(uint32_t t_ms) {
+//    if (t_ms >= (uint32_t)SHRT_MAX) return (int16_t)(SHRT_MAX - 1);
+//    return (int16_t)t_ms;
+//}
 
-static int parse_breakpoint_event_core_float_lin(char* message, int16_t *times_ms, float *values) {
+static int parse_breakpoint_event_core_float_lin(char* message, uint32_t *times_ms, float *values) {
     float vals[2 * MAX_BREAKPOINTS];
     int num_vals = parse_list_float(message, vals, 2 * MAX_BREAKPOINTS,
                                     AMY_UNSET_VALUE(vals[0]));
@@ -212,7 +209,7 @@ static int parse_breakpoint_event_core_float_lin(char* message, int16_t *times_m
             if (AMY_IS_SET(vals[i])) {
                 int32_t t_ms = (int32_t)vals[i];
                 if (t_ms < 0) t_ms = 0;
-                times_ms[bp_index] = clamp_bp_time_ms_to_i16((uint32_t)t_ms);
+                times_ms[bp_index] = (uint32_t)t_ms;  // clamp_bp_time_ms_to_i16((uint32_t)t_ms);
             } else {
                 AMY_UNSET(times_ms[bp_index]);
             }
@@ -223,7 +220,7 @@ static int parse_breakpoint_event_core_float_lin(char* message, int16_t *times_m
     return num_vals;
 }
 
-static int parse_breakpoint_event_core_int_db(char* message, int16_t *times_ms, float *values) {
+static int parse_breakpoint_event_core_int_db(char* message, uint32_t *times_ms, float *values) {
     uint32_t vals[2 * MAX_BREAKPOINTS];
     int num_vals = parse_list_uint32_t(message, vals, 2 * MAX_BREAKPOINTS,
                                        AMY_UNSET_VALUE(vals[0]));
@@ -232,7 +229,7 @@ static int parse_breakpoint_event_core_int_db(char* message, int16_t *times_ms, 
         if (bp_index >= MAX_BREAKPOINTS) break;
         if ((i % 2) == 0) {
             if (AMY_IS_SET(vals[i])) {
-                times_ms[bp_index] = clamp_bp_time_ms_to_i16(vals[i]);
+                times_ms[bp_index] = vals[i];  // clamp_bp_time_ms_to_i16(vals[i]);
             } else {
                 AMY_UNSET(times_ms[bp_index]);
             }
@@ -243,7 +240,7 @@ static int parse_breakpoint_event_core_int_db(char* message, int16_t *times_ms, 
     return num_vals;
 }
 
-static void parse_event_breakpoints(char *message, int16_t *times_ms, float *values) {
+static void parse_event_breakpoints(char *message, uint32_t *times_ms, float *values) {
     int num_vals = 0;
     for (int i = 0; i < MAX_BREAKPOINTS; ++i) {
         AMY_UNSET(times_ms[i]);
@@ -310,18 +307,17 @@ extern const mp_obj_fun_builtin_var_t tulip_pcm_load_file_obj;
 #endif
 
 int parse_midi_cc_payload(char *message, int32_t *p_cc_code, int32_t *p_is_log, float *p_min_val, float *p_max_val, float *p_offset_val) {
-    int c;
     char *m = message;
-    if ((c = parse_val_to_sep_int32_t(m, p_cc_code, ',')) < 0)  return -1;
-    m += c;
-    if ((c = parse_val_to_sep_int32_t(m, p_is_log, ',')) < 0)  return -1;
-    m += c;
-    if ((c = parse_val_to_sep_float(m, p_min_val, ',')) < 0)  return -1;
-    m += c;
-    if ((c = parse_val_to_sep_float(m, p_max_val, ',')) < 0)  return -1;
-    m += c;
-    if ((c = parse_val_to_sep_float(m, p_offset_val, ',')) < 0)  return -1;
-    m += c;
+    m += parse_val_int32_t(m, p_cc_code);
+    if (m[0] != ',') goto end; else ++m;
+    m += parse_val_int32_t(m, p_is_log);
+    if (m[0] != ',') goto end; else ++m;
+    m += parse_val_float(m, p_min_val);
+    if (m[0] != ',') goto end; else ++m;
+    m += parse_val_float(m, p_max_val);
+    if (m[0] != ',') goto end; else ++m;
+    m += parse_val_float(m, p_offset_val);
+ end:
     return m - message;
 }
 
@@ -341,16 +337,26 @@ int amy_parse_synth_layer_message(char *message, amy_event *e) {
     else if (cmd == 't')  e->to_synth = atoi(message);
     else if (cmd == 'm')  e->grab_midi_notes = atoi(message);
     else if (cmd == 'd')  e->synth_delay_ms = atoi(message);
+    else if (cmd == 'n')  e->oscs_per_voice = atoi(message);
     else if (cmd == 'c')  {
         // MIDI CC mapping ic<C>,<L>,<N>,<X>,<O>,<CODE>, see https://github.com/shorepine/amy/issues/524
+        // ic255 clears all MIDI CC mappings for this synth (short form, no extra fields needed).
         int32_t cc_code, is_log;
         float min_val, max_val, offset_val;
+        AMY_UNSET(cc_code);
+        AMY_UNSET(is_log);
         skip_chars = parse_midi_cc_payload(message, &cc_code, &is_log, &min_val, &max_val, &offset_val);
-        if (skip_chars < 0) {
-            // payload didn't parse.
-            fprintf(stderr, "synth_layer: midi cc payload didn't parse for %s.\n", message - 1);
-            return 1;  // skip over the 'c'.
+        if (*(message + skip_chars) != ',') {
+            if (AMY_IS_UNSET(cc_code) || AMY_IS_SET(is_log)) {
+                // Either parsing bailed without even a CC code, or it got past the is_log, meaning it wasn't a bare ic<NUM> command.
+                fprintf(stderr, "synth_layer: midi cc payload didn't parse for %s.\n", message - 1);
+                return skip_chars;  // maybe the rest will parse?
+            }
+            // Else we got an incomplete message with a valid CC code - clear it
+            midi_clear_control_code(e->synth, cc_code);  // (handles 255 as special case).
+            return skip_chars;
         }
+        ++skip_chars;  // step over the "," before the wire string template.
         midi_store_control_code(e->synth, cc_code, is_log, min_val, max_val, offset_val, message + skip_chars);
         skip_chars = strlen(message) + 1;
     }
@@ -447,8 +453,8 @@ int amy_parse_message(char * message, int length, amy_event *e) {
     peek_stack("parse_message");
     char cmd = '\0';
     uint16_t pos = 0;
-    
-    // Check if we're in a transfer block, if so, parse it and leave this loop 
+
+    // Check if we're in a transfer block, if so, parse it and leave this loop
     if (amy_global.transfer_flag == AMY_TRANSFER_TYPE_FILE || amy_global.transfer_flag == AMY_TRANSFER_TYPE_AUDIO) {
         parse_transfer_message(message, length);
         e->status = EVENT_TRANSFER_DATA;
@@ -499,7 +505,7 @@ int amy_parse_message(char * message, int length, amy_event *e) {
             case 'I': e->ratio = atoff(arg); break;
             case 'j': e->tempo = atof(arg); break;
             /* j, J available */
-            // chorus.level 
+            // chorus.level
             case 'k': if(AMY_HAS_CHORUS) {
                 float chorus_params[4];
                 parse_list_float(arg, chorus_params, 4, AMY_UNSET_FLOAT);
@@ -528,7 +534,7 @@ int amy_parse_message(char * message, int length, amy_event *e) {
             case 'o': e->algorithm=atoi(arg); break;
             case 'O': parse_algo_source(arg, e->algo_source); break;
             case 'p': e->preset=atoi(arg); break;
-            case 'P': e->phase=atoff(arg); break;
+            case 'P': e->trigger_phase=atoff(arg); break;
             /* q unused */
             case 'Q': parse_coef_message(arg, e->pan_coefs); break;
             case 'r': parse_voices(arg, e->voices); break;
@@ -595,3 +601,4 @@ int amy_parse_message(char * message, int length, amy_event *e) {
     // Return exactly how many characters we used.
     return pos;
 }
+

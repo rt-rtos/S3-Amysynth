@@ -14,33 +14,59 @@ dependencies:
       type: service
     version: 4.1.5
   espressif/cmake_utilities:
-    dependencies: []
+    component_hash: 05165f30922b422b4b90c08845e6d449329b97370fbd06309803d8cb539d79e3
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=4.1'
     source:
-      path: /home/fatta/esp-idf/sadb0y-amy-esp32-s3/components/espressif__cmake_utilities
-      type: local
+      registry_url: https://components.espressif.com
+      type: service
     version: 1.1.1
   espressif/tinyusb:
-    dependencies: []
+    component_hash: 7f73a4159dc95325ceaa4ade5e88734c4e1f5124746a3765cf61dc6157d78798
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=5.0'
     source:
-      path: /home/fatta/esp-idf/sadb0y-amy-esp32-s3/components/espressif__tinyusb
-      type: local
+      registry_url: https://components.espressif.com
+      type: service
+    targets:
+    - esp32s2
+    - esp32s3
+    - esp32p4
     version: 0.17.0~2
   espressif/usb_device_uac:
-    dependencies: []
+    component_hash: 82945e531acffb895e886d4b417d250ce8c0d331204b2a5518e21a7f727e6340
+    dependencies:
+    - name: espressif/cmake_utilities
+      registry_url: https://components.espressif.com
+      require: private
+      version: '*'
+    - name: espressif/tinyusb
+      registry_url: https://components.espressif.com
+      require: private
+      version: ^0.17.0~2
+    - name: idf
+      require: private
+      version: '>=5.0'
     source:
-      path: /home/fatta/esp-idf/sadb0y-amy-esp32-s3/components/espressif__usb_device_uac
-      type: local
-    version: 1.2.2
+      registry_url: https://components.espressif.com/
+      type: service
+    targets:
+    - esp32s2
+    - esp32s3
+    - esp32p4
+    version: 1.2.3
   idf:
     source:
       type: idf
     version: 6.0.0
 direct_dependencies:
 - espressif/button
-- espressif/cmake_utilities
-- espressif/tinyusb
 - espressif/usb_device_uac
 - idf
-manifest_hash: 7bbd553f7a9df34cc4ba297c2f10d3e34bbc0d39e693a33944a4066bac4eaf22
+manifest_hash: b72e9cea80fc59920f0021df00f8ee86b00fb29644532f1dd3002015c378a0fb
 target: esp32s3
-version: 2.0.0
+version: 3.0.0

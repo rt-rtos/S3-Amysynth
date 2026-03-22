@@ -68,10 +68,10 @@ def parse_ctrl_coefs(coefs):
 
     ControlCoefficients determine how amplitude, frequency, filter frequency, PWM duty, and pan
     are calculated from underlying parameters on the fly.  For each control input, they specify
-    seven coefficients which are multiplied by (0) a constant value of 1, (1) the log-frequency from
+    nine coefficients which are multiplied by (0) a constant value of 1, (1) the log-frequency from
     the note-on command, (2) the velocity from the note-on command, (3) Envelope Generator 0's value,
-    (4) Envelope Generator 1's value, (5) the modulating osicllator input, and (6) the global pitch
-    bend value.  The sum of these scaled values is used as the control input. (Amplitude is a special
+    (4) Envelope Generator 1's value, (5) the modulating oscillator input, (6) the global pitch
+    bend value, (7) external input 0, and (8) external input 1.  The sum of these scaled values is used as the control input. (Amplitude is a special
     case where the individual values are *multiplied* rather than added, and values whose coefficients
     are zero are skipped).
 
@@ -84,7 +84,7 @@ def parse_ctrl_coefs(coefs):
      * A scalar numeric value: freq=440
      * A list of values in the format accepted by the wire protocol: freq=',,,,0.01'.
      * A Python list of values, where None can be used to indicate "unspecified": freq=[None, None, None, None, 0.01].  Where the list is shorter than the expected 7 values, the remainder are treated as None (analogous to the wire-protocol string).
-     * A Python dict providing values for some subset of the coefficients.  The only acceptable keys are 'const', 'note', 'vel', 'eg0', 'eg1', 'mod', and 'bend'.
+     * A Python dict providing values for some subset of the coefficients.  The only acceptable keys are 'const', 'note', 'vel', 'eg0', 'eg1', 'mod', 'bend', 'ext0', and 'ext1'.
     """
     # Pass through ready-formed strings, and convert single values to single value strings
     if isinstance(coefs, str):
@@ -92,7 +92,7 @@ def parse_ctrl_coefs(coefs):
     if isinstance(coefs, int) or isinstance(coefs, float):
         return trunc(coefs)
     # Convert a dict into a list of values.
-    dict_fields = ['const', 'note', 'vel', 'eg0', 'eg1', 'mod', 'bend']
+    dict_fields = ['const', 'note', 'vel', 'eg0', 'eg1', 'mod', 'bend', 'ext0', 'ext1']
     if isinstance(coefs, dict):
         coef_list = [None] * len(dict_fields)
         for key, value in coefs.items():
@@ -135,9 +135,11 @@ _KW_MAP_LIST = [   # Order matters because patch_string must come last.
     ('algo_source', 'OL'), ('load_sample', 'zL'), ('transfer_file', 'zTL'), ('disk_sample', 'zFL'), 
     ('algorithm', 'oI'), ('chorus', 'kL'), ('reverb', 'hL'), ('echo', 'ML'), ('patch', 'KI'), ('voices', 'rL'),
     ('external_channel', 'WI'), ('portamento', 'mI'), ('sequence', 'HL'), ('tempo', 'jF'),
-    ('synth', 'iI'), ('pedal', 'ipI'), ('synth_flags', 'ifI'), ('num_voices', 'ivI'), ('to_synth', 'itI'),
-    ('grab_midi_notes', 'imI'),  ('synth_delay', 'idI'), ('preset', 'pI'), ('num_partials', 'pI'), # note aliasing
+    ('synth', 'iI'), ('pedal', 'ipI'), ('synth_flags', 'ifI'), ('num_voices', 'ivI'), ('oscs_per_voice', 'inI'),
+    ('to_synth', 'itI'), ('grab_midi_notes', 'imI'),  ('synth_delay', 'idI'),
+    ('preset', 'pI'), ('num_partials', 'pI'), # note aliasing
     ('start_sample', 'zSL'), ('stop_sample', 'zOI'),
+    ('midi_cc', 'icL'),
     ('patch_string', 'uS'),  # patch_string MUST be last because we can't identify when it ends except by end-of-message.
 ]
 _KW_PRIORITY = {k: i for i, (k, _) in enumerate(_KW_MAP_LIST)}   # Maps each key to its index within _KW_MAP_LIST.
@@ -502,3 +504,37 @@ def echo(level=None, delay_ms=None, max_delay_ms=None, feedback=None, filter_coe
         echo_filter_coef = str(filter_coef)
     echo_arg = '%s,%s,%s,%s,%s' % (echo_level, echo_delay_ms, echo_max_delay_ms, echo_feedback, echo_filter_coef)
     send(echo=echo_arg)
+
+"""
+    Reading back synth configuration
+"""
+def get_synth_commands(synth, patch_num=None, dest_synth=None, num_voices=6, time=None):
+    if patch_num is not None and dest_synth is not None:
+        raise ValueError("At most one of patch_num and dest_synth can be specified")
+    commands = _amy.get_synth_commands(synth)
+
+    def len_digit_prefix(s):
+        len = 0
+        while s[len] in '0123456789':
+            len += 1
+        return len
+
+    # Scan for number of oscs
+    num_oscs = 0
+    for command in commands:
+        if command[0] == 'v':
+            osc_num = int(command[1: 1 + len_digit_prefix(command[1:])])
+            if num_oscs < osc_num + 1:
+                num_oscs = osc_num + 1
+    # Build total command string including prefix depending on use.
+    prefix = "t%d" % time if time is not None else ""
+    prologue = []
+    if patch_num:
+        # Start by resetting the patch.
+        prologue = [prefix + "S%dk%dZ" % (RESET_PATCH, patch_num)]
+        prefix += "K%d" % patch_num
+    if dest_synth:
+        # Prepend command to reset the synth.
+        prologue = [prefix + "i%div0Z" % dest_synth, prefix + "i%div%din%dZ" % (dest_synth, num_voices, num_oscs)]
+        prefix += "i%d" % dest_synth
+    return "\n".join(prologue + [prefix + command for command in commands])

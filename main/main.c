@@ -25,16 +25,11 @@
 #include "sequencer_ui.h"
 #include "usb_audio.h"
 #include "esp_timer.h"
-#include <stdlib.h>
-#include <sys/_intsup.h>
 #include "esp_log.h"
 
 static const char *TAG = "main"; // For ESP_LOG and related logs in this file
 
 #include "driver/i2s_std.h"
-#include "driver/gpio.h"
-#include "rom/ets_sys.h"
-#include "esp_adc/adc_oneshot.h"
 #include "soc/gpio_num.h"
 #include "my_buttons.h"
 /*----------------------------------------------GPIO/MACROS-----------------------------------------------------------*/
@@ -45,10 +40,6 @@ static const char *TAG = "main"; // For ESP_LOG and related logs in this file
 // This can be 32 bit, int32_t -- helpful for digital output to a i2s->USB teensy3 board
 
 
-// Potentiometer ADC channels
-#define CONFIG_POT_ADC_CHANNEL ADC_CHANNEL_5 // GPIO6 on ESP32-S3 (ADC1_CH5)
-// Physical GPIO for the pot (matches ADC_CHANNEL_3 on ESP32-S3)
-#define POT_GPIO_NUM GPIO_NUM_6
 // Rotary encoder pins
 #define ENCODER_PIN_A GPIO_NUM_40
 #define ENCODER_PIN_B GPIO_NUM_41
@@ -56,27 +47,21 @@ static const char *TAG = "main"; // For ESP_LOG and related logs in this file
 
 #define u8g2_task_stack_size (8 * 1024) // 8KB stack for the u8g2 task
 
-#define CHANGE_DELTA_HZ 5.0f // Minimum frequency change in Hz to update the synth parameters, to avoid excessive event scheduling
-
-
-
 typedef int16_t i2s_sample_type;
 
 
 
-adc_oneshot_unit_handle_t pot_adc_handle;
 static i2c_u8g2_handle_t s_display;
 static u8g2_t *s_u8g2 = NULL;
-static volatile int s_last_pot_raw = 0;
-static volatile float s_last_pot_freq_hz = 0.0f;
-// Last frequency that was sent to AMY (used for thresholding)
-static volatile float s_last_sent_pot_freq_hz = 0.0f;
 static volatile long last_count = 0; // For encoder count
 static volatile long count = 0; // For encoder count
 static volatile uint32_t s_last_seq_tick = 0;
 static volatile uint32_t s_seq_tick_hook_count = 0;
 static volatile uint32_t s_render_block_count = 0;
 static volatile uint32_t s_last_render_sysclock_ms = 0;
+// Set true while the BPM-adjust button (MY_BUTTON_1) is held; 
+// encoder turns will adjust BPM instead of moving the sequencer selection.
+static volatile bool s_bpm_mode_held = false;
 
 static QueueHandle_t s_button_queue = NULL;
 
@@ -90,15 +75,7 @@ static void main_sequencer_tick_hook(uint32_t tick_count)
     s_seq_tick_hook_count++;
 }
 
-static void pot_log_task(void *pvParameters)
-{
-    (void)pvParameters;
-    TickType_t last = xTaskGetTickCount();
-    for (;;) {
-        ESP_LOGI(TAG, "ADC: %d, Freq: %.1f Hz", s_last_pot_raw, s_last_pot_freq_hz);
-        vTaskDelayUntil(&last, pdMS_TO_TICKS(500));
-    }
-}
+
 static void amy_usb_render_task(void *arg) {
     (void)arg;
     const uint64_t block_us = ((uint64_t)AMY_BLOCK_SIZE * 1000000ULL) / (uint64_t)AMY_SAMPLE_RATE;
@@ -140,7 +117,6 @@ static void button_handler_task(void *pvParameters)
                 case MY_BUTTON_0:
                     sequencer_ui_toggle_playing();
                     break;
-                case MY_BUTTON_1:
                 case MY_BUTTON_ENC:
                     sequencer_ui_handle_button();
                     break;
@@ -154,6 +130,18 @@ static void button_handler_task(void *pvParameters)
 static void main_button_event_cb(my_button_id_t button_id, const char *event_str, void *user_data)
 {
     (void)user_data;
+
+    // MY_BUTTON_1 is the BPM-adjust hold button — track press/release directly
+    // so the flag is always in sync regardless of queue state.
+    if (button_id == MY_BUTTON_1) {
+        if (strcmp(event_str, "BUTTON_PRESS_DOWN") == 0) {
+            s_bpm_mode_held = true;
+        } else if (strcmp(event_str, "BUTTON_PRESS_UP") == 0) {
+            s_bpm_mode_held = false;
+        }
+        return;
+    }
+
     if (strcmp(event_str, "BUTTON_PRESS_DOWN") != 0) return;
 
     if (s_button_queue != NULL) {
@@ -164,7 +152,6 @@ static void main_button_event_cb(my_button_id_t button_id, const char *event_str
             case MY_BUTTON_0:
                 sequencer_ui_toggle_playing();
                 break;
-            case MY_BUTTON_1:
             case MY_BUTTON_ENC:
                 sequencer_ui_handle_button();
                 break;
@@ -190,7 +177,14 @@ static void encoder_task(void *pvParameters)
             last_count = prev;  // Store the previous count for display
             count = cur;        // Update current count
             prev = cur;
-            sequencer_ui_handle_encoder(delta);
+            if (s_bpm_mode_held) {
+                // BPM-adjust mode: hold MY_BUTTON_1 + turn encoder
+                int new_bpm = (int)seq_state.bpm + (int)delta;
+                if (new_bpm < 40) new_bpm = 40;
+                sequencer_ui_set_bpm((uint16_t)new_bpm);
+            } else {
+                sequencer_ui_handle_encoder(delta);
+            }
         }
 
         vTaskDelay(pdMS_TO_TICKS(20));  // Poll at 50Hz
@@ -231,90 +225,11 @@ extern struct state amy_global;
 
 
 
-static amy_err_t setup_pot_adc(void) {
-    adc_oneshot_unit_init_cfg_t init_cfg = {
-        .unit_id = ADC_UNIT_1,
-        .ulp_mode = ADC_ULP_MODE_DISABLE,
-    };
-    ESP_ERROR_CHECK(adc_oneshot_new_unit(&init_cfg, &pot_adc_handle));
-
-    adc_oneshot_chan_cfg_t chan_cfg = {
-        .atten = ADC_ATTEN_DB_12,
-        .bitwidth = ADC_BITWIDTH_DEFAULT,
-    };
-    ESP_ERROR_CHECK(adc_oneshot_config_channel(pot_adc_handle, CONFIG_POT_ADC_CHANNEL, &chan_cfg));
-    // Configure the GPIO pull to avoid floating inputs when the pot is
-    // physically disconnected. This biases the input to a known state
-    // and prevents unsafe sudden jumps in readings.
-    gpio_set_direction(POT_GPIO_NUM, GPIO_MODE_INPUT);
-    gpio_set_pull_mode(POT_GPIO_NUM, GPIO_PULLDOWN_ONLY);
-    return AMY_OK;
-}
 
 
 
-/* 
-static void update_tone_effect_from_pot(uint32_t now) {
-    // Deprecated: function kept for compatibility but not used when pot_reader_task is active.
-    (void)now;
-}
-*/
 
-// Task: read the potentiometer, compute frequency and only trigger AMY update
-// when the frequency change exceeds CHANGE_DELTA_HZ. This acts as the
-// FreeRTOS "trigger" the user requested.
-static void pot_reader_task(void *pvParameters)
-{
-    (void)pvParameters;
-    for (;;) {
-        int raw = 0;
-        if (adc_oneshot_read(pot_adc_handle, CONFIG_POT_ADC_CHANNEL, &raw) != ESP_OK) {
-            // ADC failed, keep previous readings
-            vTaskDelay(pdMS_TO_TICKS(100));
-            continue;
-        }
 
-        // Quick stability check: take a few fast samples and ensure the
-        // value isn't wildly fluctuating (which indicates a floating/unconnected pot).
-       bool unstable = false;
-        for (int i = 0; i < 2; ++i) {
-            int tmp = 0;
-            if (adc_oneshot_read(pot_adc_handle, CONFIG_POT_ADC_CHANNEL, &tmp) != ESP_OK) {
-                unstable = true;
-                break;
-            }
-            if (abs(tmp - raw) > 50) { // if samples vary more than ~50 counts, treat as unstable
-                unstable = true;
-                break;
-            }
-            raw = tmp;
-        }
-        if (unstable) {
-            // Skip this cycle; keep last known good values to avoid sudden jumps
-            vTaskDelay(pdMS_TO_TICKS(50));
-            continue;
-        }
-
-        float normalized = (float)raw / 4095.0f;
-        uint16_t bpm = 80 + (uint16_t)(normalized * 60.0f);
-
-        // Update last-seen values for logging/UI
-        s_last_pot_raw = raw;
-        s_last_pot_freq_hz = bpm; // Reusing this variable for logging
-
-        // Compare against last sent frequency and only trigger AMY when change
-        // exceeds the configured threshold (CHANGE_DELTA_HZ)
-        if (abs(bpm - (uint16_t)s_last_sent_pot_freq_hz) > 0) {
-            sequencer_ui_set_bpm(bpm);
-
-            // Remember the last value we sent
-            s_last_sent_pot_freq_hz = bpm;
-        }
-
-        // Poll at a modest rate
-        vTaskDelay(pdMS_TO_TICKS(100));
-    }
-}
 
 
     void app_main(void)
@@ -446,37 +361,7 @@ static void pot_reader_task(void *pvParameters)
     xTaskCreate(encoder_init_task, "encoder_init_task", 2048, NULL, 5, NULL);
 
 
-    // Setup ADC for frequency pot
-    ESP_LOGI(TAG, "[startup] before setup_pot_adc");
-    setup_pot_adc();
-    ESP_LOGI(TAG, "[startup] after setup_pot_adc");
-    
-   
-    ESP_LOGI(TAG, "Scheduling test tone on OSC 0...");
-   // start_test_tone(start_time + 200);
-
-    
-
-    xTaskCreate(
-        pot_log_task,
-         "pot_log_task",
-         2048,
-         NULL,
-         4
-         ,
-         NULL);
-
-    // Start pot reader task which will trigger AMY updates only when the
-    // frequency change exceeds CHANGE_DELTA_HZ.
-    xTaskCreate(
-        pot_reader_task,
-        "pot_reader_task",
-        6144,
-        NULL,
-        4,
-        NULL);
-
-    ESP_LOGI(TAG, "Main loop started: pot reader task running");
+    ESP_LOGI(TAG, "Main loop started.");
     // Idle loop; pot_reader_task handles all pot->synth updates.
     while (1) {
         ESP_LOGI(TAG,

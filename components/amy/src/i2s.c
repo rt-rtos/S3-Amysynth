@@ -13,8 +13,6 @@
 
 #ifdef ESP_PLATFORM
 #include <esp_task.h>
-#include <esp_log.h>
-static const char *TAG = "amy_i2s";
 
 ///////////////////////////////////////////////////////////////
 // ESP32, S3, P4 (maybe others)
@@ -25,12 +23,14 @@ TaskHandle_t amy_fill_buffer_handle;
 TaskHandle_t amy_update_handle = NULL;
 
 #include "driver/i2s_std.h"
+#ifdef AMYBOARD_ARDUINO
+#include "driver/i2c.h"
+#endif
 i2s_chan_handle_t tx_handle;
 i2s_chan_handle_t rx_handle;
 
 
-#ifndef AMYBOARD
-// #warning NOT_AMYBOARD
+#if !defined(AMYBOARD) && !defined(AMYBOARD_ARDUINO)
 // default ESP setup i2s
 amy_err_t esp32_setup_i2s(void) {
     i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_AUTO, I2S_ROLE_MASTER);
@@ -41,11 +41,11 @@ amy_err_t esp32_setup_i2s(void) {
     }
 // PCM5101 DAC works at either 32 bit or (default) 16 bit
 // PCM1808 ADC needs I2S_32BIT to work
-//#define I2S_32BIT
+#define I2S_32BIT
 #ifdef I2S_32BIT
     i2s_std_config_t std_cfg = {
         .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(AMY_SAMPLE_RATE),
-        .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_32BIT, I2S_SLOT_MODE_STEREO),
+        .slot_cfg = I2S_STD_MSB_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_32BIT, I2S_SLOT_MODE_STEREO),
         .gpio_cfg = {
             .mclk = (amy_global.config.i2s_mclk == -1)? I2S_GPIO_UNUSED : amy_global.config.i2s_mclk,
             .bclk = amy_global.config.i2s_bclk,
@@ -62,7 +62,7 @@ amy_err_t esp32_setup_i2s(void) {
 #else // 16 bit I2S
     i2s_std_config_t std_cfg = {
         .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(AMY_SAMPLE_RATE),
-        .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO),
+        .slot_cfg = I2S_STD_MSB_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO),
         .gpio_cfg = {
             .mclk = (amy_global.config.i2s_mclk == -1)? I2S_GPIO_UNUSED : amy_global.config.i2s_mclk,
             .bclk = amy_global.config.i2s_bclk,
@@ -84,16 +84,11 @@ amy_err_t esp32_setup_i2s(void) {
     /* Before writing data, start the TX channel first */
     i2s_channel_enable(tx_handle);
     if(AMY_HAS_AUDIO_IN) i2s_channel_enable(rx_handle);
-    
-    ESP_LOGI(TAG, "I2S initialized (32-bit): BCLK=%d, WS=%d, DOUT=%d, DIN=%d", 
-             amy_global.config.i2s_bclk, amy_global.config.i2s_lrc, 
-             amy_global.config.i2s_dout, amy_global.config.i2s_din);
-
     return AMY_OK;
 }
 
 #else
-// AMYBOARD i2s setup, which is weird
+// AMYBOARD or AMYBOARD_ARDUINO i2s setup, which uses two audio codecs, for audio in and SPDIF
 amy_err_t esp32_setup_i2s(void) {
     i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_AUTO, I2S_ROLE_SLAVE);  // ************* I2S_ROLE_SLAVE - needs external I2S clock input.
     i2s_new_channel(&chan_cfg, &tx_handle, &rx_handle);
@@ -138,6 +133,55 @@ amy_err_t esp32_setup_i2s(void) {
     /* Before writing data, start the TX channel first */
     i2s_channel_enable(tx_handle);
     i2s_channel_enable(rx_handle);
+
+#ifdef AMYBOARD_ARDUINO
+    // Initialize PCM9211 SPDIF transceiver via I2C.
+    // On the MicroPython AMYBOARD path this is done in Python (amyboard.py).
+    {
+        #define PCM9211_I2C_ADDR   0x40
+        #define PCM9211_I2C_SDA    17
+        #define PCM9211_I2C_SCL    18
+        #define PCM9211_I2C_FREQ   400000
+
+        i2c_config_t i2c_conf = {
+            .mode = I2C_MODE_MASTER,
+            .sda_io_num = PCM9211_I2C_SDA,
+            .scl_io_num = PCM9211_I2C_SCL,
+            .sda_pullup_en = GPIO_PULLUP_ENABLE,
+            .scl_pullup_en = GPIO_PULLUP_ENABLE,
+            .master.clk_speed = PCM9211_I2C_FREQ,
+        };
+        i2c_param_config(I2C_NUM_0, &i2c_conf);
+        i2c_driver_install(I2C_NUM_0, I2C_MODE_MASTER, 0, 0, 0);
+
+        static const uint8_t pcm9211_regs[][2] = {
+            { 0x40, 0x33 },  // Power down ADC, DIR, DIT, OSC
+            { 0x40, 0xC0 },  // Normal operation for all
+            { 0x34, 0x00 },  // Initialize DIR - biphase amps on, input from RXIN0
+            { 0x26, 0x01 },  // Main Out is DIR/ADC if no DIR sync
+            { 0x6B, 0x00 },  // Main output pins are DIR/ADC AUTO
+            { 0x30, 0x04 },  // PLL sends 512fs as SCK
+            { 0x31, 0x0A },  // XTI SCK as 512fs too
+            { 0x60, 0x44 },  // DIT sends SPDIF from AUXIN1 through MPO0
+            { 0x78, 0x3D },  // MPO0 = TXOUT, MPO1 = VOUT
+            { 0x6F, 0x40 },  // MPIO_A = CLKST / MPIO_B = AUXIN2 / MPIO_C = AUXIN1
+        };
+
+        for (int i = 0; i < sizeof(pcm9211_regs) / sizeof(pcm9211_regs[0]); i++) {
+            uint8_t buf[2] = { pcm9211_regs[i][0], pcm9211_regs[i][1] };
+            esp_err_t ret = i2c_master_write_to_device(
+                I2C_NUM_0, PCM9211_I2C_ADDR, buf, 2, pdMS_TO_TICKS(100));
+            if (ret != ESP_OK) {
+                fprintf(stderr, "PCM9211: reg 0x%02x write 0x%02x failed: %s\n",
+                    buf[0], buf[1], esp_err_to_name(ret));
+            }
+        }
+
+        // Tear down the I2C driver so Arduino Wire can use bus 0 later
+        i2c_driver_delete(I2C_NUM_0);
+    }
+#endif // AMYBOARD_ARDUINO
+
     return AMY_OK;
 }
 
@@ -178,8 +222,11 @@ extern output_sample_type * amy_in_block;
 int16_t *volatile last_audio_buffer = NULL;
 // (see also amy_get_output_buffer, I should choose only one of these)
 
+// External AMY compatibility edit for ESP-IDF 6.0:
+// FreeRTOS task entry points must use the void * parameter form.
 // Make AMY's FABT run forever , as a FreeRTOS task 
-void esp_fill_audio_buffer_task(void *param) {
+void esp_fill_audio_buffer_task(void *pvParameters) {
+    (void)pvParameters;
     while(1) {
         // Wait for update sync.
         if (!AMY_HAS_I2S) {
@@ -220,7 +267,9 @@ void esp_fill_audio_buffer_task(void *param) {
 
         last_audio_buffer = block;
         
-// TODO : dan needs to look at this part again
+// Notify amy_update() that a block is ready (so it can return from amy_render_audio).
+// TULIP & AMYBOARD (MicroPython) don't call amy_update(), so skip the notify.
+// AMYBOARD_ARDUINO needs it because Arduino sketches call amy_update() in loop().
 #if !defined(TULIP) && !defined(AMYBOARD)
         xTaskNotifyGive(amy_update_handle);
 #endif
@@ -234,7 +283,6 @@ void esp_fill_audio_buffer_task(void *param) {
 // init AMY from the esp. wraps some amy funcs in a task to do multicore rendering on the ESP32 
 void amy_platform_init() {
     amy_update_handle = xTaskGetCurrentTaskHandle();
-    ESP_LOGI(TAG, "AMY platform init: starting audio tasks");
     // Start i2s
     if (AMY_HAS_I2S) {
         esp32_setup_i2s();
@@ -283,13 +331,6 @@ void amy_update_tasks() {
 int16_t *amy_render_audio() {
     int16_t *buf = NULL;
     if (amy_global.config.platform.multithread) {
-        TaskHandle_t current_task = xTaskGetCurrentTaskHandle();
-        if (amy_update_handle != current_task) {
-            amy_update_handle = current_task;
-            if (!AMY_HAS_I2S) {
-                xTaskNotifyGive(amy_fill_buffer_handle);
-            }
-        }
         // Wait for esp_fill_audio_buffer_task to indicate a buffer is ready.
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
         buf = last_audio_buffer;
@@ -370,7 +411,7 @@ queue_t results_queue;
 volatile bool core1_running = true;
 // This is the ram allocated for the core1 stack.
 // It's also the flag that core1 task is running, if non-NULL.
-uint32_t * core1_separate_stack_address = NULL;
+uint32_t * my_core1_separate_stack_address = NULL;
 
 extern void on_pico_uart_rx();
 
@@ -462,12 +503,12 @@ void amy_platform_init() {
     }
 #ifdef USE_SECOND_CORE
     if (amy_global.config.platform.multicore) {
-        if (core1_separate_stack_address == NULL) {  // Task is not already running.
-            core1_separate_stack_address = (uint32_t*)malloc(0x2000);
+        if (my_core1_separate_stack_address == NULL) {  // Task is not already running.
+            my_core1_separate_stack_address = (uint32_t*)malloc(0x2000);
             queue_init(&call_queue, sizeof(queue_entry_t), 2);
             queue_init(&results_queue, sizeof(int32_t), 2);
             core1_running = true;
-            multicore_launch_core1_with_stack(core1_main, core1_separate_stack_address, 0x2000);
+            multicore_launch_core1_with_stack(core1_main, my_core1_separate_stack_address, 0x2000);
             sleep_ms(500);
         }
     }
@@ -477,13 +518,13 @@ void amy_platform_init() {
 void amy_platform_deinit() {
 #ifdef USE_SECOND_CORE
     if (amy_global.config.platform.multicore) {
-        if (core1_separate_stack_address) {  // Task is actually running.
+        if (my_core1_separate_stack_address) {  // Task is actually running.
             core1_running = false;  // signal the core1 task to exit.
             sleep_ms(100);  // time for it to exit
             queue_free(&results_queue);
             queue_free(&call_queue);
-            free(core1_separate_stack_address);
-            core1_separate_stack_address = NULL;
+            free(my_core1_separate_stack_address);
+            my_core1_separate_stack_address = NULL;
         }
     }
 #endif
@@ -513,7 +554,7 @@ void amy_platform_deinit() {
 }
 
 void amy_update_tasks() {
-    if(amy_config.global.midi & AMY_MIDI_IS_UART) {
+    if(amy_global.config.midi & AMY_MIDI_IS_UART) {
         // do midi in here
         uint8_t bytes[1];
         int t;
@@ -532,7 +573,7 @@ int16_t *amy_render_audio() {
 }
 
 size_t amy_i2s_write(const uint8_t *buffer, size_t nbytes) {
-    return teensy_i2s_send(buffer, nbytes);
+    return teensy_i2s_write(buffer, nbytes);
 }
 
 #else

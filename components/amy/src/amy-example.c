@@ -19,19 +19,41 @@ uint8_t render(uint16_t osc, SAMPLE * buf, uint16_t len) {
     return 0; // 0 means, ignore this. 1 means, i handled this and don't mix it in with the audio
 }
 
-extern void *event_generator_for_patch_number(uint16_t patch_number, struct amy_event *event, void *state);
-extern void print_event(amy_event *e);
-
 void print_events_for_patch_number(int patch_number) {
     void *state = NULL;
     fprintf(stderr, "start delta_num_free = %d\n", delta_num_free());
+    amy_event event = amy_default_event();
+    char s[MAX_MESSAGE_LEN];
     do {
-        amy_event event = amy_default_event();
-        state = event_generator_for_patch_number(patch_number, &event, state);
-        print_event(&event);
+        state = yield_patch_events(patch_number, &event, state);
+        sprint_event(&event, s, MAX_MESSAGE_LEN, false);
+        fprintf(stderr, "%s\n", s);
     } while (state != NULL);
     fprintf(stderr, "end delta_num_free = %d\n", delta_num_free());
 }
+
+void print_events_for_synth(int synth, bool wirecode) {
+    fprintf(stderr, "synth %d:\n", synth);
+    void * state = NULL;
+    amy_event event = amy_default_event();
+    char s[MAX_MESSAGE_LEN];
+    do {
+        state = yield_synth_events(synth, &event, state);
+        sprint_event(&event, s, MAX_MESSAGE_LEN, wirecode);
+        fprintf(stderr, "%s\n", s);
+    } while(state != NULL);
+}
+
+void print_events_for_synth_2(int synth, bool wirecode) {
+    fprintf(stderr, "pefs2: synth %d:\n", synth);
+    void * state = NULL;
+    char s[MAX_MESSAGE_LEN];
+    do {
+        state = yield_synth_commands(synth, s, MAX_MESSAGE_LEN, state);
+        fprintf(stderr, "%s\n", s);
+    } while(state != NULL);
+}
+
 
 int main(int argc, char ** argv) {
     int8_t playback_device_id = -1;
@@ -81,7 +103,7 @@ int main(int argc, char ** argv) {
         
     //example_fm(0);
     //example_voice_chord(0,0);
-    example_synth_chord(0, /* patch */ 0);
+    example_synth_chord(0, /* patch */ 1);
     //example_sustain_pedal(0, /* patch */ 256);
     //example_sequencer_drums(0);
     //example_patch_from_events();
@@ -91,6 +113,11 @@ int main(int argc, char ** argv) {
     e.patch_number = 25;
     e.osc = 0;
     e.wave = SINE;
+    amy_add_event(&e);
+
+    // Change the global volume.
+    e = amy_default_event();
+    e.volume = 2.0f;
     amy_add_event(&e);
 
     // Reading back a stored patch
@@ -168,14 +195,18 @@ int main(int argc, char ** argv) {
     e.chorus_depth = 0.5f;
     amy_add_event(&e);
 
-    print_events_for_patch_number(patch_number);    
-    
+
+    print_events_for_patch_number(patch_number);
+
     
     // Now just spin for a while
     uint32_t start = amy_sysclock();
     while(amy_sysclock() - start < 5000) {
         usleep(THREAD_USLEEP);
     }
+
+    print_events_for_synth(/* synth */ 0, /* wirecode */ true);
+    print_events_for_synth_2(/* synth */ 0, /* wirecode */ true);
 
     //show_debug(99);
     

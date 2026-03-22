@@ -42,7 +42,7 @@ amy_config_t amy_default_config() {
     c.max_memory_patches = 32;
 
     // caps
-    #if defined(TULIP) || defined(AMYBOARD) // || defined(ESP_PLATFORM)
+    #if defined(TULIP) || defined(AMYBOARD) || defined(AMYBOARD_ARDUINO)
     c.ram_caps_events = MALLOC_CAP_SPIRAM;
     c.ram_caps_synth = MALLOC_CAP_SPIRAM;
     c.ram_caps_block = MALLOC_CAP_DEFAULT;
@@ -73,12 +73,26 @@ amy_config_t amy_default_config() {
     c.midi_in = -1;
     c.midi_uart = -1; 
 
+    #if defined(AMYBOARD_ARDUINO) || defined(AMYBOARD)
+    // Set default pins 
+    c.features.audio_in = 1;
+    c.audio = AMY_AUDIO_IS_I2S;
+    c.midi = AMY_MIDI_IS_UART | AMY_MIDI_IS_USB_GADGET;
+    c.i2s_lrc = AMYBOARD_LRC;
+    c.i2s_bclk = AMYBOARD_BCLK;
+    c.i2s_dout = AMYBOARD_DOUT;
+    c.i2s_din = AMYBOARD_DIN;
+    c.i2s_mclk = AMYBOARD_MCLK;
+    c.midi_out = AMYBOARD_MIDI_OUT_TYPE_A; // TYPE A. User can set type B with 15 
+    c.midi_in = AMYBOARD_MIDI_IN;
+    #endif
+
     #ifdef ESP_PLATFORM
-    c.midi_uart = 1;
+    c.midi_uart = 1; // This is MIDI UART _number_, like index
     #endif
 
     #if (defined ARDUINO_ARCH_RP2040) || (defined ARDUINO_ARCH_RP2350)
-    c.midi_uart = 1;
+    c.midi_uart = 1; // This is MIDI UART _number_, like index
     #endif
 
     return c;
@@ -99,7 +113,7 @@ void amy_clear_event(amy_event *e) {
     AMY_UNSET(e->preset);
     AMY_UNSET(e->wave);
     AMY_UNSET(e->patch_number);
-    AMY_UNSET(e->phase);
+    AMY_UNSET(e->trigger_phase);
     AMY_UNSET(e->feedback);
     AMY_UNSET(e->velocity);
     AMY_UNSET(e->midi_note);
@@ -165,6 +179,7 @@ void amy_clear_event(amy_event *e) {
     AMY_UNSET(e->reverb_liveness);
     AMY_UNSET(e->reverb_damping);
     AMY_UNSET(e->reverb_xover_hz);
+    AMY_UNSET(e->oscs_per_voice);
 }
 
 
@@ -204,10 +219,16 @@ uint32_t amy_sysclock() {
 void amy_add_message(char *message) {
     peek_stack("add_message");
     amy_event e; // = amy_default_event();
-    amy_clear_event(&e);
     // Parse the wire string into an event
-    amy_parse_message(message, strlen(message), &e);
-    amy_add_event(&e);
+    int length = strlen(message);
+    char *remains = message;
+    while(length > 0) {
+        amy_clear_event(&e);
+	int pos = amy_parse_message(remains, length, &e);
+	amy_add_event(&e);
+	remains += pos;
+	length -= pos;
+    }
 }
 
 // given an event play / schedule the event directly (C API)
@@ -327,8 +348,10 @@ void amy_bleep_synth(uint32_t start) {
     amy_add_event(&e);
 }
 
+#ifndef AMY_NO_MINIAUDIO
 extern void miniaudio_start();
 extern void miniaudio_stop();
+#endif
 
 void amy_start(amy_config_t c) {
     global_init(c);
@@ -344,7 +367,7 @@ void amy_start(amy_config_t c) {
         else
             amy_bleep(0);  // bleep using raw oscs.
     }
-#if !defined(ESP_PLATFORM) && !defined(PICO_ON_DEVICE) && !defined(ARDUINO) && !defined(__EMSCRIPTEN__)
+#if !defined(ESP_PLATFORM) && !defined(PICO_ON_DEVICE) && !defined(ARDUINO) && !defined(__EMSCRIPTEN__) && !defined(AMY_NO_MINIAUDIO)
     if (amy_global.config.audio == AMY_AUDIO_IS_MINIAUDIO)
         miniaudio_start();
 #endif
@@ -354,7 +377,7 @@ void amy_start(amy_config_t c) {
 }
 
 void amy_stop() {
-#if !defined(ESP_PLATFORM) && !defined(PICO_ON_DEVICE) && !defined(ARDUINO)
+#if !defined(ESP_PLATFORM) && !defined(PICO_ON_DEVICE) && !defined(ARDUINO) && !defined(AMY_NO_MINIAUDIO)
     if (amy_global.config.audio == AMY_AUDIO_IS_MINIAUDIO)
         miniaudio_stop();
 #endif
