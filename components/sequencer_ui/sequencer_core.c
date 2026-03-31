@@ -150,9 +150,7 @@ void sequencer_core_set_bpm(uint16_t new_bpm) {
 }
 
 uint8_t sequencer_core_get_current_step(void) {
-    if (playing) {
-        //sequencer_force_internal_clock();
-    }
+    if (!playing) return current_step; // Freeze playhead display when paused
     uint32_t ticks = sequencer_ticks();
     current_step = (uint8_t)((ticks % SEQ_BAR_TICKS) / SEQ_TICKS_PER_STEP);
     return current_step;

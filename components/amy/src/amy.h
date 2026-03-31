@@ -58,6 +58,11 @@ extern const uint32_t pcm_wavetable_len;
 #define AMY_SAMPLE_RATE 48000
 #elif defined __EMSCRIPTEN__
 #define AMY_SAMPLE_RATE 48000
+#elif defined ESP_PLATFORM
+// ESP_PLATFORM: match CONFIG_UAC_SAMPLE_RATE (48000) so AMY renders at the
+// same rate the TinyUSB UAC descriptor advertises to the host. Without this,
+// AMY falls into the 44100 #else branch and audio plays ~88 cents flat.
+#define AMY_SAMPLE_RATE 48000
 #else
 #define AMY_SAMPLE_RATE 44100 
 #endif
@@ -1025,8 +1030,10 @@ extern SAMPLE scan_max(SAMPLE* block, int len);
 #define AMY_RENDER_TASK_PRIORITY (20) 
 #define AMY_FILL_BUFFER_TASK_PRIORITY (20)
 #else
-#define AMY_RENDER_TASK_PRIORITY (ESP_TASK_PRIO_MAX)
-#define AMY_FILL_BUFFER_TASK_PRIORITY (ESP_TASK_PRIO_MAX)
+// ESP_TASK_PRIO_MAX == configMAX_PRIORITIES (25) which fails FreeRTOS's
+// strict "< configMAX_PRIORITIES" assert. Use max-1 (24) instead.
+#define AMY_RENDER_TASK_PRIORITY (ESP_TASK_PRIO_MAX - 1)
+#define AMY_FILL_BUFFER_TASK_PRIORITY (ESP_TASK_PRIO_MAX - 1)
 #endif
 #define AMY_RENDER_TASK_COREID (0)
 #define AMY_FILL_BUFFER_TASK_COREID (1)

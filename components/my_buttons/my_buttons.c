@@ -34,10 +34,9 @@ static void button_event_cb(void *button_handle, void *usr_data)
 
     my_button_id_t btn_id = (my_button_id_t)(uintptr_t)usr_data;
     button_event_t event = iot_button_get_event(button_handle);
-    const char *event_str = iot_button_get_event_str(event);
 
-    ESP_LOGI(TAG, "Button %d: %s", btn_id, event_str);
-    s_user_cb(btn_id, event_str, s_user_data);
+    ESP_LOGI(TAG, "Button %d: %s", btn_id, iot_button_get_event_str(event));
+    s_user_cb(btn_id, event, s_user_data);
 }
 
 esp_err_t my_buttons_init(void)

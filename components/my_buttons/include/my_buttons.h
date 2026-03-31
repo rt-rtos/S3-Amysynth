@@ -8,6 +8,7 @@
 
 #include "esp_err.h"
 #include <stdint.h>
+#include "iot_button.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -30,12 +31,12 @@ typedef enum {
 
 /**
  * @brief Button event callback type
- * 
- * @param button_id Which button triggered the event
- * @param event_str Human-readable event string (e.g., "BUTTON_SINGLE_CLICK")
- * @param user_data User data passed during registration
+ *
+ * @param button_id  Which button triggered the event
+ * @param event      The button_event_t enum value (e.g. BUTTON_PRESS_DOWN)
+ * @param user_data  User data passed during registration
  */
-typedef void (*my_button_event_cb_t)(my_button_id_t button_id, const char *event_str, void *user_data);
+typedef void (*my_button_event_cb_t)(my_button_id_t button_id, button_event_t event, void *user_data);
 
 /**
  * @brief Initialize all buttons

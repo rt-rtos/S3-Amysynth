@@ -7,7 +7,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <inttypes.h>
-#include <string.h>
+#include "iot_button.h"
 #include "priv_i2c_u8g2.h"
 #include "u8g2.h"
 #include "sdkconfig.h"
@@ -127,22 +127,22 @@ static void button_handler_task(void *pvParameters)
     }
 }
 
-static void main_button_event_cb(my_button_id_t button_id, const char *event_str, void *user_data)
+static void main_button_event_cb(my_button_id_t button_id, button_event_t event, void *user_data)
 {
     (void)user_data;
 
     // MY_BUTTON_1 is the BPM-adjust hold button — track press/release directly
     // so the flag is always in sync regardless of queue state.
     if (button_id == MY_BUTTON_1) {
-        if (strcmp(event_str, "BUTTON_PRESS_DOWN") == 0) {
+        if (event == BUTTON_PRESS_DOWN) {
             s_bpm_mode_held = true;
-        } else if (strcmp(event_str, "BUTTON_PRESS_UP") == 0) {
+        } else if (event == BUTTON_PRESS_UP) {
             s_bpm_mode_held = false;
         }
         return;
     }
 
-    if (strcmp(event_str, "BUTTON_PRESS_DOWN") != 0) return;
+    if (event != BUTTON_PRESS_DOWN) return;
 
     if (s_button_queue != NULL) {
         button_msg_t msg = { .id = button_id };
@@ -307,7 +307,14 @@ extern struct state amy_global;
 
     // Configure and start AMY
     amy_config_t amy_cfg = amy_default_config();
-    amy_cfg.audio = AMY_AUDIO_IS_NONE; //changed from audio is none
+    amy_cfg.audio = AMY_AUDIO_IS_NONE;
+    // Disable AMY's internal FABT/render tasks: our amy_usb_render_task owns the
+    // render loop entirely (AMY_AUDIO_IS_NONE mode). With multithread=1 (the default),
+    // amy_platform_init spawns esp_fill_audio_buffer_task (FABT) and stores app_main's
+    // task handle as amy_update_handle. FABT then notifies app_main instead of our
+    // render task, causing a permanent deadlock — render_blocks and seq_tick stay 0.
+    amy_cfg.platform.multicore = 0;
+    amy_cfg.platform.multithread = 0;
     amy_cfg.amy_external_sequencer_hook = main_sequencer_tick_hook;
     ESP_LOGI(TAG, "Starting AMY synth engine... (audio=%d, Fs=%d)", amy_cfg.audio, AMY_SAMPLE_RATE);
     ESP_LOGI(TAG, "[startup] before amy_start");
