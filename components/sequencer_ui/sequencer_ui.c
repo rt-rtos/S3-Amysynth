@@ -16,6 +16,8 @@ sequencer_ui_state_t seq_state = {
     .selected_track = 0,
     .selected_step = 0,
     .edit_mode = true,
+    .track_midi_notes = {42, 35, 38, 56}, // CHH, ABD, Snr, CBl — matches core defaults
+    .drum_select_mode = false,
 };
 
 static u8g2_t *s_u8g2 = NULL;
@@ -119,4 +121,17 @@ void sequencer_ui_set_bpm(uint16_t bpm) {
     if (bpm > 300) bpm = 300;
     seq_state.bpm = bpm;
     sequencer_core_set_bpm(bpm);
+}
+
+void sequencer_ui_adjust_track_note(int delta) {
+    uint8_t track = seq_state.selected_track;
+    int new_note = (int)sequencer_core_get_track_midi_note(track) + delta;
+    if (new_note < 27) new_note = 27;
+    if (new_note > 87) new_note = 87;
+    seq_state.track_midi_notes[track] = (uint8_t)new_note;
+    sequencer_core_set_track_midi_note(track, (uint8_t)new_note);
+}
+
+void sequencer_ui_set_drum_select_mode(bool held) {
+    seq_state.drum_select_mode = held;
 }

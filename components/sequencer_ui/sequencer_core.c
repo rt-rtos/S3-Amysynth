@@ -17,9 +17,14 @@ extern uint32_t sequencer_ticks(void);
 #define SEQ_DRUM_SYNTH 10
 #define SEQ_DRUM_PATCH 1025
 #define SEQ_DRUM_VOICES 6
+#define SEQ_MIDI_NOTE_MIN 27    // lowest valid GM percussion note
+#define SEQ_MIDI_NOTE_MAX 87    // highest valid GM percussion note
+// Preview tags live above the on/off tag space (4 tracks * 16 steps * 2 = 128)
+#define SEQ_PREVIEW_TAG_BASE (SEQ_TRACKS * SEQ_STEPS * 2)
+#define SEQ_PREVIEW_DELAY_TICKS 4  // fire ~42 ms ahead at 120 BPM
 
 // GM drum MIDI notes per track: hat, kick, snare, cowbell
-static const uint8_t track_midi_notes[SEQ_TRACKS] = {42, 35, 38, 56};
+static uint8_t track_midi_notes[SEQ_TRACKS] = {42, 35, 38, 56};
 
 static bool playing = true;
 static uint16_t bpm = 120;
@@ -166,4 +171,38 @@ void sequencer_core_set_playing(bool p) {
     } else {
         sequencer_clear_all_tags();
     }
+}
+
+void sequencer_core_set_track_midi_note(uint8_t track, uint8_t midi_note) {
+    if (track >= SEQ_TRACKS) return;
+    if (midi_note < SEQ_MIDI_NOTE_MIN) midi_note = SEQ_MIDI_NOTE_MIN;
+    if (midi_note > SEQ_MIDI_NOTE_MAX) midi_note = SEQ_MIDI_NOTE_MAX;
+    if (track_midi_notes[track] == midi_note) return;
+
+    track_midi_notes[track] = midi_note;
+
+    // Re-schedule all active steps for this track with the new note
+    for (uint8_t step = 0; step < SEQ_STEPS; ++step) {
+        sequencer_emit_step_event(track, step);
+    }
+
+    // One-shot preview: fires SEQ_PREVIEW_DELAY_TICKS ticks from now.
+    // If the user keeps scrolling, each new note overwrites the same tag
+    // slot so only the last selection actually sounds before they stop.
+    uint8_t preview_tag = (uint8_t)(SEQ_PREVIEW_TAG_BASE + track);
+    uint32_t fire_tick = sequencer_ticks() + SEQ_PREVIEW_DELAY_TICKS;
+    amy_event e = amy_default_event();
+    e.synth = SEQ_DRUM_SYNTH;
+    e.midi_note = midi_note;
+    e.velocity = 1.0f;
+    e.sequence[SEQUENCE_TAG] = preview_tag;
+    e.sequence[SEQUENCE_TICK] = fire_tick;
+    e.sequence[SEQUENCE_PERIOD] = 0;  // one-shot
+    amy_add_event(&e);
+    ESP_LOGI(TAG, "Track %d note -> %d (preview @ tick %lu)", track, midi_note, (unsigned long)fire_tick);
+}
+
+uint8_t sequencer_core_get_track_midi_note(uint8_t track) {
+    if (track >= SEQ_TRACKS) return 0;
+    return track_midi_notes[track];
 }

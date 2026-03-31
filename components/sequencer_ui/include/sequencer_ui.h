@@ -16,6 +16,8 @@ void sequencer_ui_handle_encoder(long delta);
 void sequencer_ui_handle_button(void);
 void sequencer_ui_toggle_playing(void);
 void sequencer_ui_set_bpm(uint16_t bpm);
+void sequencer_ui_adjust_track_note(int delta);
+void sequencer_ui_set_drum_select_mode(bool held);
 
 // For priv_u8g2_seq_draw_frame to stay 100% unchanged
 extern sequencer_ui_state_t seq_state;

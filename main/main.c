@@ -62,6 +62,9 @@ static volatile uint32_t s_last_render_sysclock_ms = 0;
 // Set true while the BPM-adjust button (MY_BUTTON_1) is held; 
 // encoder turns will adjust BPM instead of moving the sequencer selection.
 static volatile bool s_bpm_mode_held = false;
+// Set true while the drum-sound-select button (MY_BUTTON_2) is held;
+// encoder turns will step through GM drum notes for the active track.
+static volatile bool s_drum_select_held = false;
 
 static QueueHandle_t s_button_queue = NULL;
 
@@ -142,6 +145,17 @@ static void main_button_event_cb(my_button_id_t button_id, button_event_t event,
         return;
     }
 
+    if (button_id == MY_BUTTON_2) {
+        if (event == BUTTON_PRESS_DOWN) {
+            s_drum_select_held = true;
+            sequencer_ui_set_drum_select_mode(true);
+        } else if (event == BUTTON_PRESS_UP) {
+            s_drum_select_held = false;
+            sequencer_ui_set_drum_select_mode(false);
+        }
+        return;
+    }
+
     if (event != BUTTON_PRESS_DOWN) return;
 
     if (s_button_queue != NULL) {
@@ -182,6 +196,9 @@ static void encoder_task(void *pvParameters)
                 int new_bpm = (int)seq_state.bpm + (int)delta;
                 if (new_bpm < 40) new_bpm = 40;
                 sequencer_ui_set_bpm((uint16_t)new_bpm);
+            } else if (s_drum_select_held) {
+                // Drum-select mode: hold MY_BUTTON_2 + turn encoder
+                sequencer_ui_adjust_track_note((int)delta);
             } else {
                 sequencer_ui_handle_encoder(delta);
             }

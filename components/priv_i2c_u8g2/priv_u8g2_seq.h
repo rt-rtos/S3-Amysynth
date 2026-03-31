@@ -15,11 +15,13 @@ typedef struct {
     bool grid[SEQ_TRACKS][SEQ_STEPS];
     uint16_t bpm;
     uint8_t current_pattern;
-    uint8_t current_step;      // 0-15
+    uint8_t current_step;         // 0-15
     bool playing;
-    uint8_t selected_track;    // 0-3
-    uint8_t selected_step;     // 0-15
-    bool edit_mode;            // true if editing steps, false if navigating
+    uint8_t selected_track;       // 0-3
+    uint8_t selected_step;        // 0-15
+    bool edit_mode;               // true if editing steps, false if navigating
+    uint8_t track_midi_notes[SEQ_TRACKS]; // current MIDI drum note per track
+    bool drum_select_mode;        // true while drum-note-select button is held
 } priv_u8g2_seq_state_t;
 
 /**

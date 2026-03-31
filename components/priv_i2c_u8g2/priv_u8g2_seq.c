@@ -1,7 +1,26 @@
 #include "priv_u8g2_seq.h"
 #include <stdio.h>
 
-static const char* track_labels[SEQ_TRACKS] = {"BD", "SD", "CH", "OH"};
+// GM percussion note names, indexed from note 27 (index 0) to note 87 (index 60)
+static const char *const s_gm_drum_names[] = {
+    /* 27 */ "HiQ",  "Slap", "ScP",  "ScL",  "Stk",  "SqCl", "MtCl", "MtBl",
+    /* 35 */ "ABD",  "BD1",  "Rim",  "Snr",  "Clap", "SN2",
+    /* 41 */ "LFT",  "CHH",  "HFT",  "PHH",  "LoT",  "OHH",
+    /* 47 */ "LMT",  "HMT",  "Cr1",  "HiT",  "Rid",  "Chi",
+    /* 53 */ "RdB",  "Tam",  "Spl",  "CBl",  "Cr2",  "Vib",
+    /* 59 */ "Rd2",  "HBo",  "LBo",  "MHC",  "OHC",  "LCo",
+    /* 65 */ "HTi",  "LTi",  "HAg",  "LAg",  "Cab",  "Mar",
+    /* 71 */ "ShW",  "LgW",  "ShG",  "LgG",  "Clv",  "HWB",
+    /* 77 */ "LWB",  "MCu",  "OCu",  "MTr",  "OTr",  "Shk",
+    /* 83 */ "JBl",  "BTr",  "Cas",  "MSr",  "OSr"
+};
+#define GM_DRUM_NOTE_MIN 27
+#define GM_DRUM_NOTE_MAX 87
+
+static const char *gm_drum_short_name(uint8_t note) {
+    if (note < GM_DRUM_NOTE_MIN || note > GM_DRUM_NOTE_MAX) return "??";
+    return s_gm_drum_names[note - GM_DRUM_NOTE_MIN];
+}
 
 void priv_u8g2_seq_draw_frame(u8g2_t *u8g2, const priv_u8g2_seq_state_t *state) {
     u8g2_ClearBuffer(u8g2);
@@ -36,8 +55,16 @@ void priv_u8g2_seq_draw_frame(u8g2_t *u8g2, const priv_u8g2_seq_state_t *state) 
     for (int t = 0; t < SEQ_TRACKS; t++) {
         int y = grid_top + t * row_h;
 
-        // Track label
-        u8g2_DrawStr(u8g2, 2, y + 6, track_labels[t]);
+        // Track label: show GM drum name; invert when drum_select_mode is active for this row
+        const char *label = gm_drum_short_name(state->track_midi_notes[t]);
+        if (state->drum_select_mode && t == (int)state->selected_track) {
+            u8g2_DrawBox(u8g2, 0, y, 25, row_h - 1);    // filled background
+            u8g2_SetDrawColor(u8g2, 0);                  // black text (inverted)
+            u8g2_DrawStr(u8g2, 1, y + 6, label);
+            u8g2_SetDrawColor(u8g2, 1);                  // restore
+        } else {
+            u8g2_DrawStr(u8g2, 2, y + 6, label);
+        }
 
         // Step cells
         for (int s = 0; s < SEQ_STEPS; s++) {
