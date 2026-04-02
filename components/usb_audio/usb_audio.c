@@ -9,7 +9,7 @@
 static const char *TAG = "usb_audio";
 
 // ~170 ms buffer @ 48 kHz stereo 16-bit → very safe for drum prototyping
-#define RING_BUFFER_SIZE  (16384)   // must be power-of-2 for fast modulo
+#define RING_BUFFER_SIZE  (32768)   // must be power-of-2 for fast modulo
 static int16_t s_ring_buffer[RING_BUFFER_SIZE];
 static volatile size_t s_write_idx = 0;
 static volatile size_t s_read_idx  = 0;

@@ -322,7 +322,13 @@ extern void esp_poll_midi(void);
 void amy_update_tasks() {
     if (!amy_global.config.platform.multithread) {
         amy_execute_deltas();
-        esp_poll_midi();
+        // Only poll the UART MIDI path when AMY was configured to use UART MIDI.
+        // This project runs with AMY_MIDI_IS_NONE by default, so calling into
+        // esp_poll_midi() unconditionally would try to read an uninstalled UART
+        // driver and emit uart_read_bytes() errors at runtime.
+        if (amy_global.config.midi & AMY_MIDI_IS_UART) {
+            esp_poll_midi();
+        }
     } else{
         // Rendering is happening on separate thread, nothing to do.
     }

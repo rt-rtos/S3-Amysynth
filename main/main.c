@@ -180,6 +180,7 @@ static void encoder_task(void *pvParameters)
 {
     rotary_encoder_handle_t enc = (rotary_encoder_handle_t)pvParameters;
     long prev = last_count;
+    static long enc_accum = 0; // sub-step accumulator (2 raw ticks = 1 action)
     for (;;) {
         long cur = rotary_encoder_get_count(enc);
         
@@ -191,19 +192,26 @@ static void encoder_task(void *pvParameters)
             last_count = prev;  // Store the previous count for display
             count = cur;        // Update current count
             prev = cur;
+
+            enc_accum += delta;
+            long steps = enc_accum / 2; // require 2 raw ticks per action
+            enc_accum %= 2;
+            if (steps == 0) goto next_poll;
+
             if (s_bpm_mode_held) {
                 // BPM-adjust mode: hold MY_BUTTON_1 + turn encoder
-                int new_bpm = (int)seq_state.bpm + (int)delta;
+                int new_bpm = (int)seq_state.bpm + (int)steps;
                 if (new_bpm < 40) new_bpm = 40;
                 sequencer_ui_set_bpm((uint16_t)new_bpm);
             } else if (s_drum_select_held) {
                 // Drum-select mode: hold MY_BUTTON_2 + turn encoder
-                sequencer_ui_adjust_track_note((int)delta);
+                sequencer_ui_adjust_track_note((int)steps);
             } else {
-                sequencer_ui_handle_encoder(delta);
+                sequencer_ui_handle_encoder(steps);
             }
         }
 
+next_poll:
         vTaskDelay(pdMS_TO_TICKS(20));  // Poll at 50Hz
     }
 }
@@ -231,23 +239,8 @@ static void encoder_init_task(void *pvParameters)
     vTaskDelete(NULL);
 }
 
-
-
-
-// I2C recover sequence will be performed inline in app_main.
-
-
 // AMY synth states
 extern struct state amy_global;
-
-
-
-
-
-
-
-
-
 
     void app_main(void)
 {
@@ -298,7 +291,7 @@ extern struct state amy_global;
     ESP_LOGI(TAG, "[startup] after i2c_u8g2_init");
 
     /* Print chip information */
-    esp_chip_info_t chip_info;
+/*     esp_chip_info_t chip_info;
     uint32_t flash_size;
     esp_chip_info(&chip_info);
     ESP_LOGI(TAG, "This is %s chip with %d CPU core(s), %s%s%s%s, ",
@@ -321,7 +314,7 @@ extern struct state amy_global;
            (chip_info.features & CHIP_FEATURE_EMB_FLASH) ? "embedded" : "external");
 
     ESP_LOGI(TAG, "Minimum free heap size: %" PRIu32 " bytes", esp_get_minimum_free_heap_size());
-
+ */
     // Configure and start AMY
     amy_config_t amy_cfg = amy_default_config();
     amy_cfg.audio = AMY_AUDIO_IS_NONE;
