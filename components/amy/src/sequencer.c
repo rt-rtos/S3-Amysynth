@@ -5,6 +5,31 @@
 #include <emscripten.h>
 #endif
 
+/* ── Sequence-array lock ──────────────────────────────────────────────────
+ * sequences[] is written by sequencer_add_event() (called from any task)
+ * and read by sequencer_process_tick() (called from the esp_timer task on
+ * ESP, or the sequencer thread on POSIX).  On SMP these run concurrently.
+ * Use a dedicated mutex so we don't conflict with amy_queue_lock, which
+ * guards delta_queue and is re-acquired inside add_delta_to_queue() while
+ * sequencer_process_tick() is still running (non-recursive mutex = deadlock
+ * if we tried to reuse amy_queue_lock here).
+ */
+#ifdef ESP_PLATFORM
+#  include "freertos/FreeRTOS.h"
+#  include "freertos/semphr.h"
+static SemaphoreHandle_t s_seq_lock = NULL;
+#  define SEQ_LOCK()   xSemaphoreTake(s_seq_lock, portMAX_DELAY)
+#  define SEQ_UNLOCK() xSemaphoreGive(s_seq_lock)
+#elif defined(_POSIX_THREADS)
+#  include <pthread.h>
+static pthread_mutex_t s_seq_lock = PTHREAD_MUTEX_INITIALIZER;
+#  define SEQ_LOCK()   pthread_mutex_lock(&s_seq_lock)
+#  define SEQ_UNLOCK() pthread_mutex_unlock(&s_seq_lock)
+#else
+#  define SEQ_LOCK()   do {} while(0)
+#  define SEQ_UNLOCK() do {} while(0)
+#endif
+
 uint32_t sequencer_ticks() { return amy_global.sequencer_tick_count; }
 
 typedef struct sequence_info_t {
@@ -36,6 +61,9 @@ void sequencer_init(int max_sequencer_tags) {
     // We are read to go.
     //sequencer_start();
     sequencer_recompute();
+#ifdef ESP_PLATFORM
+    if (s_seq_lock == NULL) s_seq_lock = xSemaphoreCreateMutex();
+#endif
     _sequencer_start();
 }
 
@@ -77,6 +105,7 @@ void sequencer_recompute() {
 static void sequencer_process_tick(void) {
     amy_global.sequencer_tick_count++;
     // Scan through LL looking for matches
+    SEQ_LOCK();
     for (int32_t tag = 0; tag <= highest_tag; ++tag) {
         if (sequences[tag].deltas != NULL) {
             bool hit = false;
@@ -103,6 +132,7 @@ static void sequencer_process_tick(void) {
             }
         }
     }
+    SEQ_UNLOCK();
     // call the right hook:
 #ifdef __EMSCRIPTEN__
     EM_ASM({
@@ -148,12 +178,13 @@ uint8_t sequencer_add_event(amy_event *e) {
         // ignore
         return 0;
     }
+    SEQ_LOCK();
     // Release any existing deltas for this tag, even if we're just going to rewrite them.
     delta_release_list(sequences[tag].deltas);
     sequences[tag].deltas = NULL;
 
-    if(e->sequence[SEQUENCE_TICK] == 0 && e->sequence[SEQUENCE_PERIOD] == 0) return 0; // Ignore non-schedulable event.
-    if(e->sequence[SEQUENCE_TICK] != 0 && e->sequence[SEQUENCE_PERIOD] == 0 && e->sequence[SEQUENCE_TICK] <= amy_global.sequencer_tick_count) return 0; // don't schedule things in the past.
+    if(e->sequence[SEQUENCE_TICK] == 0 && e->sequence[SEQUENCE_PERIOD] == 0) { SEQ_UNLOCK(); return 0; } // Ignore non-schedulable event.
+    if(e->sequence[SEQUENCE_TICK] != 0 && e->sequence[SEQUENCE_PERIOD] == 0 && e->sequence[SEQUENCE_TICK] <= amy_global.sequencer_tick_count) { SEQ_UNLOCK(); return 0; } // don't schedule things in the past.
 
     // Save the tick & period.
     sequences[tag].tick = e->sequence[SEQUENCE_TICK];
@@ -162,7 +193,7 @@ uint8_t sequencer_add_event(amy_event *e) {
     amy_event_to_deltas_queue(e, 0, &sequences[tag].deltas);
 
     if (tag > highest_tag) highest_tag = tag;  // To limit scanning through tags.
-
+    SEQ_UNLOCK();
     return 1;
 }
 

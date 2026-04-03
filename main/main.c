@@ -70,6 +70,7 @@ static QueueHandle_t s_button_queue = NULL;
 
 typedef struct {
     my_button_id_t id;
+    button_event_t event;
 } button_msg_t;
 
 static void main_sequencer_tick_hook(uint32_t tick_count)
@@ -118,7 +119,11 @@ static void button_handler_task(void *pvParameters)
         if (xQueueReceive(s_button_queue, &msg, portMAX_DELAY) == pdTRUE) {
             switch (msg.id) {
                 case MY_BUTTON_0:
-                    sequencer_ui_toggle_playing();
+                    if (msg.event == BUTTON_SINGLE_CLICK) {
+                        sequencer_ui_cycle_active_layer();
+                    } else if (msg.event == BUTTON_LONG_PRESS_START) {
+                        sequencer_ui_toggle_playing();
+                    }
                     break;
                 case MY_BUTTON_ENC:
                     sequencer_ui_handle_button();
@@ -156,16 +161,28 @@ static void main_button_event_cb(my_button_id_t button_id, button_event_t event,
         return;
     }
 
+    /* MY_BUTTON_0: short press = cycle active layer, long press = play/stop */
+    if (button_id == MY_BUTTON_0) {
+        if (event == BUTTON_SINGLE_CLICK || event == BUTTON_LONG_PRESS_START) {
+            if (s_button_queue != NULL) {
+                button_msg_t msg = { .id = button_id, .event = event };
+                (void)xQueueSend(s_button_queue, &msg, 0);
+            } else {
+                if (event == BUTTON_SINGLE_CLICK)      sequencer_ui_cycle_active_layer();
+                else if (event == BUTTON_LONG_PRESS_START) sequencer_ui_toggle_playing();
+            }
+        }
+        return;
+    }
+
+    /* All other buttons respond to PRESS_DOWN */
     if (event != BUTTON_PRESS_DOWN) return;
 
     if (s_button_queue != NULL) {
-        button_msg_t msg = { .id = button_id };
+        button_msg_t msg = { .id = button_id, .event = event };
         (void)xQueueSend(s_button_queue, &msg, 0);
     } else {
         switch (button_id) {
-            case MY_BUTTON_0:
-                sequencer_ui_toggle_playing();
-                break;
             case MY_BUTTON_ENC:
                 sequencer_ui_handle_button();
                 break;
@@ -326,6 +343,12 @@ extern struct state amy_global;
     amy_cfg.platform.multicore = 0;
     amy_cfg.platform.multithread = 0;
     amy_cfg.amy_external_sequencer_hook = main_sequencer_tick_hook;
+    /* Default is 256, which only covers layer 0 (drum).  Each additional
+     * layer needs SEQ_TRACKS * SEQ_MAX_STEPS * 2 extra tags.  With
+     * MAX_LAYERS=4, SEQ_TRACKS=4, SEQ_MAX_STEPS=32 our highest tag is 1039
+     * (preview slots).  Set to 1100 to stay well clear of the off-by-one
+     * in sequencer_add_event's `tag > max_sequences` guard. */
+    amy_cfg.max_sequencer_tags = 1100;
     ESP_LOGI(TAG, "Starting AMY synth engine... (audio=%d, Fs=%d)", amy_cfg.audio, AMY_SAMPLE_RATE);
     ESP_LOGI(TAG, "[startup] before amy_start");
     amy_start(amy_cfg);
@@ -334,6 +357,8 @@ extern struct state amy_global;
     ESP_ERROR_CHECK(usb_audio_init());
 
     sequencer_ui_init(s_u8g2);
+    /* Add the first melodic layer (DX7, 16 steps). */
+    sequencer_ui_add_layer(SEQ_LAYER_MELODIC, SEQ_STEPS);
     ESP_LOGI(TAG, "[startup] after amy_start");
     
     TaskHandle_t amy_render_task_handle = NULL;
