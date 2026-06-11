@@ -1,9 +1,9 @@
 #include "sequencer_core.h"
 #include "amy.h"
 #include "sequencer.h"
+#include "quantizer.h"
 #include "esp_log.h"
 #include <string.h>
-#include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 
 static const char *TAG = "seq_core";
@@ -39,6 +39,18 @@ static uint8_t     s_num_layers   = 0;
 static uint8_t     s_cached_step[MAX_LAYERS];
 static bool        s_playing      = true;
 static uint16_t    s_bpm          = 120;
+static uint8_t     s_track_source_note[MAX_LAYERS][SEQ_TRACKS];
+static quantizer_state_t s_quantizer = {
+    .root_note  = 60,
+    .scale_index = 0,
+    .enabled    = true,
+};
+
+static void sequencer_refresh_track_note(uint8_t layer_idx, uint8_t track,
+                                        bool preview);
+static void sequencer_emit_step(uint8_t layer_idx, uint8_t track, uint8_t step);
+static inline uint32_t seq_preview_tag(uint8_t layer, uint8_t track);
+static inline uint32_t seq_preview_off_tag(uint8_t layer, uint8_t track);
 
 /* ── Scratch AMY event (module-level, never on any task stack) ───────── */
 /*
@@ -60,6 +72,99 @@ static inline void seq_ev_send(void)
 {
     amy_add_event(&s_ev);
     xSemaphoreGive(s_ev_mutex);
+}
+
+static uint8_t sequencer_clamp_layer_note(const seq_layer_t *layer, uint8_t note)
+{
+    if (layer->type == SEQ_LAYER_DRUM) {
+        if (note < SEQ_MIDI_NOTE_MIN) note = SEQ_MIDI_NOTE_MIN;
+        if (note > SEQ_MIDI_NOTE_MAX) note = SEQ_MIDI_NOTE_MAX;
+    } else {
+        if (note < SEQ_MEL_NOTE_MIN) note = SEQ_MEL_NOTE_MIN;
+        if (note > SEQ_MEL_NOTE_MAX) note = SEQ_MEL_NOTE_MAX;
+    }
+    return note;
+}
+
+static uint8_t sequencer_resolve_track_note(const seq_layer_t *layer,
+                                            uint8_t source_note)
+{
+    if (layer->type != SEQ_LAYER_MELODIC || !s_quantizer.enabled) {
+        return sequencer_clamp_layer_note(layer, source_note);
+    }
+
+    const musical_scale_t *scale = quantizer_get_scale(s_quantizer.scale_index);
+    uint8_t snapped = quantizer_snap_midi_note(source_note, s_quantizer.root_note, scale);
+    return sequencer_clamp_layer_note(layer, snapped);
+}
+
+static void sequencer_refresh_melodic_layers(bool preview)
+{
+    for (uint8_t layer_idx = 0; layer_idx < s_num_layers; layer_idx++) {
+        seq_layer_t *layer = &s_layers[layer_idx];
+        if (layer->type != SEQ_LAYER_MELODIC) {
+            continue;
+        }
+        for (uint8_t track = 0; track < layer->num_tracks; track++) {
+            sequencer_refresh_track_note(layer_idx, track, preview);
+        }
+    }
+}
+
+static void sequencer_refresh_track_note(uint8_t layer_idx, uint8_t track,
+                                        bool preview)
+{
+    if (layer_idx >= s_num_layers) return;
+    seq_layer_t *layer = &s_layers[layer_idx];
+    if (track >= layer->num_tracks) return;
+
+    uint8_t source_note = s_track_source_note[layer_idx][track];
+    uint8_t resolved_note = sequencer_resolve_track_note(layer, source_note);
+
+    if (layer->track_base_note[track] == resolved_note) {
+        if (preview) {
+            /* Keep the preview path active even when the snapped note does not change. */
+        } else {
+            return;
+        }
+    }
+
+    layer->track_base_note[track] = resolved_note;
+    for (uint8_t s = 0; s < layer->num_steps; s++) {
+        layer->step_note[track][s] = resolved_note;
+    }
+
+    for (uint8_t s = 0; s < layer->num_steps; s++) {
+        sequencer_emit_step(layer_idx, track, s);
+    }
+
+    if (!preview) {
+        return;
+    }
+
+    /* One-shot preview: fires a few ticks from now using the same tag slot.
+     * Rapid scrolling overwrites the slot so only the last change is heard. */
+    uint32_t fire_tick = sequencer_ticks() + SEQ_PREVIEW_DELAY_TICKS;
+    seq_ev_begin();
+    s_ev.synth                     = layer->synth_id;
+    s_ev.midi_note                 = resolved_note;
+    s_ev.velocity                  = 1.0f;
+    s_ev.sequence[SEQUENCE_TAG]    = seq_preview_tag(layer_idx, track);
+    s_ev.sequence[SEQUENCE_TICK]   = fire_tick;
+    s_ev.sequence[SEQUENCE_PERIOD] = 0; /* one-shot */
+    seq_ev_send();
+
+    seq_ev_begin();
+    s_ev.synth                     = layer->synth_id;
+    s_ev.midi_note                 = resolved_note;
+    s_ev.velocity                  = 0.0f;
+    s_ev.sequence[SEQUENCE_TAG]    = seq_preview_off_tag(layer_idx, track);
+    s_ev.sequence[SEQUENCE_TICK]   = fire_tick + SEQ_GATE_MELODIC;
+    s_ev.sequence[SEQUENCE_PERIOD] = 0; /* one-shot */
+    seq_ev_send();
+
+    ESP_LOGI(TAG, "layer %d track %d note -> %d (preview @ tick %lu)",
+             layer_idx, track, resolved_note, (unsigned long)fire_tick);
 }
 
 /* ── Tag helpers ─────────────────────────────────────────────────────── */
@@ -217,8 +322,12 @@ void sequencer_core_init(void)
     s_num_layers = 0;
     memset(s_layers, 0, sizeof(s_layers));
     memset(s_cached_step, 0, sizeof(s_cached_step));
+    memset(s_track_source_note, 0, sizeof(s_track_source_note));
     s_playing = true;
     s_bpm     = 120;
+    s_quantizer.enabled = true;
+    s_quantizer.root_note = 60;
+    s_quantizer.scale_index = 0;
     sequencer_push_tempo(s_bpm);
     ESP_LOGI(TAG, "sequencer_core initialized");
 }
@@ -246,6 +355,7 @@ uint8_t sequencer_core_add_layer(seq_layer_type_t type, uint8_t num_steps)
         layer->num_voices  = SEQ_DRUM_VOICES;
         static const uint8_t drum_notes[SEQ_TRACKS] = {42, 35, 38, 56};
         for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
+            s_track_source_note[idx][t] = drum_notes[t];
             layer->track_base_note[t] = drum_notes[t];
             for (uint8_t s = 0; s < SEQ_MAX_STEPS; s++) {
                 layer->step_note[t][s] = drum_notes[t];
@@ -262,6 +372,7 @@ uint8_t sequencer_core_add_layer(seq_layer_type_t type, uint8_t num_steps)
         /* Default: Cmaj7 voicing — C4 E4 G4 B4 */
         static const uint8_t mel_notes[SEQ_TRACKS] = {60, 64, 67, 71};
         for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
+            s_track_source_note[idx][t] = mel_notes[t];
             layer->track_base_note[t] = mel_notes[t];
             for (uint8_t s = 0; s < SEQ_MAX_STEPS; s++) {
                 layer->step_note[t][s] = mel_notes[t];
@@ -340,52 +451,10 @@ void sequencer_core_set_track_midi_note(uint8_t layer_idx, uint8_t track,
     if (layer_idx >= s_num_layers || track >= SEQ_TRACKS) return;
     seq_layer_t *layer = &s_layers[layer_idx];
 
-    /* Clamp to the note range valid for this layer type. */
-    if (layer->type == SEQ_LAYER_DRUM) {
-        if (midi_note < SEQ_MIDI_NOTE_MIN) midi_note = SEQ_MIDI_NOTE_MIN;
-        if (midi_note > SEQ_MIDI_NOTE_MAX) midi_note = SEQ_MIDI_NOTE_MAX;
-    } else {
-        if (midi_note < SEQ_MEL_NOTE_MIN) midi_note = SEQ_MEL_NOTE_MIN;
-        if (midi_note > SEQ_MEL_NOTE_MAX) midi_note = SEQ_MEL_NOTE_MAX;
-    }
-    if (layer->track_base_note[track] == midi_note) return;
+    midi_note = sequencer_clamp_layer_note(layer, midi_note);
 
-    layer->track_base_note[track] = midi_note;
-    for (uint8_t s = 0; s < layer->num_steps; s++) {
-        layer->step_note[track][s] = midi_note;
-    }
-
-    /* Reschedule all active steps for this track. */
-    for (uint8_t s = 0; s < layer->num_steps; s++) {
-        sequencer_emit_step(layer_idx, track, s);
-    }
-
-    /* One-shot preview: fires a few ticks from now using the same tag slot.
-     * Rapid scrolling overwrites the slot so only the last change is heard. */
-    uint32_t fire_tick = sequencer_ticks() + SEQ_PREVIEW_DELAY_TICKS;
-    seq_ev_begin();
-    s_ev.synth                     = layer->synth_id;
-    s_ev.midi_note                 = midi_note;
-    s_ev.velocity                  = 1.0f;
-    s_ev.sequence[SEQUENCE_TAG]    = seq_preview_tag(layer_idx, track);
-    s_ev.sequence[SEQUENCE_TICK]   = fire_tick;
-    s_ev.sequence[SEQUENCE_PERIOD] = 0; /* one-shot */
-    seq_ev_send();
-
-    /* Note-off one-shot: always schedule even for drum layers (harmless there
-     * due to _SYNTH_FLAGS_IGNORE_NOTE_OFFS); essential for melodic so the note
-     * doesn't sustain indefinitely.  Use SEQ_GATE_MELODIC ticks of hold time. */
-    seq_ev_begin();
-    s_ev.synth                     = layer->synth_id;
-    s_ev.midi_note                 = midi_note;
-    s_ev.velocity                  = 0.0f;
-    s_ev.sequence[SEQUENCE_TAG]    = seq_preview_off_tag(layer_idx, track);
-    s_ev.sequence[SEQUENCE_TICK]   = fire_tick + SEQ_GATE_MELODIC;
-    s_ev.sequence[SEQUENCE_PERIOD] = 0; /* one-shot */
-    seq_ev_send();
-
-    ESP_LOGI(TAG, "layer %d track %d note -> %d (preview @ tick %lu)",
-             layer_idx, track, midi_note, (unsigned long)fire_tick);
+    s_track_source_note[layer_idx][track] = midi_note;
+    sequencer_refresh_track_note(layer_idx, track, true);
 }
 
 uint8_t sequencer_core_get_track_midi_note(uint8_t layer_idx, uint8_t track)
@@ -394,20 +463,46 @@ uint8_t sequencer_core_get_track_midi_note(uint8_t layer_idx, uint8_t track)
     return s_layers[layer_idx].track_base_note[track];
 }
 
+uint8_t sequencer_core_get_track_source_note(uint8_t layer_idx, uint8_t track)
+{
+    if (layer_idx >= s_num_layers || track >= SEQ_TRACKS) return 0;
+    return s_track_source_note[layer_idx][track];
+}
 
-#define SEQ_TRACKS 4
-#define SEQ_STEPS 16
-#define SEQ_TICKS_PER_STEP (AMY_SEQUENCER_PPQ / 4)
-#define SEQ_BAR_TICKS (SEQ_STEPS * SEQ_TICKS_PER_STEP)
-#define SEQ_GATE_TICKS (SEQ_TICKS_PER_STEP / 3)
-#define SEQ_MIN_BPM 40
-#define SEQ_MAX_BPM 300
-#define SEQ_DRUM_SYNTH 10
-#define SEQ_DRUM_PATCH 1025
-#define SEQ_DRUM_VOICES 6
-#define SEQ_MIDI_NOTE_MIN 27    // lowest valid GM percussion note
-#define SEQ_MIDI_NOTE_MAX 87    // highest valid GM percussion note
-// Preview tags live above the on/off tag space (4 tracks * 16 steps * 2 = 128)
-#define SEQ_PREVIEW_TAG_BASE (SEQ_TRACKS * SEQ_STEPS * 2)
-#define SEQ_PREVIEW_DELAY_TICKS 4  // fire ~42 ms ahead at 120 BPM
+void sequencer_core_set_quantizer_enabled(bool enabled)
+{
+    if (s_quantizer.enabled == enabled) return;
+    s_quantizer.enabled = enabled;
+    sequencer_refresh_melodic_layers(false);
+    ESP_LOGI(TAG, "quantizer %s", enabled ? "enabled" : "disabled");
+}
+
+void sequencer_core_set_quantizer_root_note(uint8_t root_note)
+{
+    s_quantizer.root_note = root_note;
+    sequencer_refresh_melodic_layers(false);
+    ESP_LOGI(TAG, "quantizer root -> %u", root_note);
+}
+
+void sequencer_core_set_quantizer_scale(uint8_t scale_index)
+{
+    s_quantizer.scale_index = (scale_index >= quantizer_scale_count()) ? 0 : scale_index;
+    sequencer_refresh_melodic_layers(false);
+    ESP_LOGI(TAG, "quantizer scale -> %u", s_quantizer.scale_index);
+}
+
+bool sequencer_core_get_quantizer_enabled(void)
+{
+    return s_quantizer.enabled;
+}
+
+uint8_t sequencer_core_get_quantizer_root_note(void)
+{
+    return s_quantizer.root_note;
+}
+
+uint8_t sequencer_core_get_quantizer_scale(void)
+{
+    return s_quantizer.scale_index;
+}
 

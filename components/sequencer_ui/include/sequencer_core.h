@@ -12,6 +12,12 @@ extern "C" {
 void sequencer_core_init(void);
 void sequencer_core_set_playing(bool playing);
 void sequencer_core_set_bpm(uint16_t bpm);
+void sequencer_core_set_quantizer_enabled(bool enabled);
+void sequencer_core_set_quantizer_root_note(uint8_t root_note);
+void sequencer_core_set_quantizer_scale(uint8_t scale_index);
+bool sequencer_core_get_quantizer_enabled(void);
+uint8_t sequencer_core_get_quantizer_root_note(void);
+uint8_t sequencer_core_get_quantizer_scale(void);
 
 /* Returns the current playhead step for the given layer (0..num_steps-1).
  * When paused the last computed step is returned (display freezes). */
@@ -31,6 +37,7 @@ void    sequencer_core_set_step(uint8_t layer_idx, uint8_t track,
 void    sequencer_core_set_track_midi_note(uint8_t layer_idx, uint8_t track,
                                            uint8_t midi_note);
 uint8_t sequencer_core_get_track_midi_note(uint8_t layer_idx, uint8_t track);
+uint8_t sequencer_core_get_track_source_note(uint8_t layer_idx, uint8_t track);
 
 #ifdef __cplusplus
 }

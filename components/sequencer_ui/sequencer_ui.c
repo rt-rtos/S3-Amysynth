@@ -190,7 +190,7 @@ void sequencer_ui_adjust_track_note(int delta)
 {
     uint8_t li    = seq_state.active_layer_idx;
     uint8_t track = seq_state.selected_track;
-    int new_note  = (int)sequencer_core_get_track_midi_note(li, track) + delta;
+    int new_note  = (int)sequencer_core_get_track_source_note(li, track) + delta;
     if (new_note < 0)   new_note = 0;
     if (new_note > 127) new_note = 127;
     sequencer_core_set_track_midi_note(li, track, (uint8_t)new_note);
