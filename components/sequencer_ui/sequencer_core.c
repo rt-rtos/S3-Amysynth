@@ -2,9 +2,47 @@
 #include "amy.h"
 #include "sequencer.h"
 #include "quantizer.h"
+#include "sdkconfig.h"
 #include "esp_log.h"
 #include <string.h>
 #include "freertos/semphr.h"
+
+#ifndef CONFIG_SEQ_QUANTIZER_DEFAULT_ENABLED
+#define CONFIG_SEQ_QUANTIZER_DEFAULT_ENABLED 1
+#endif
+#ifndef CONFIG_SEQ_QUANTIZER_DEFAULT_ROOT_NOTE
+#define CONFIG_SEQ_QUANTIZER_DEFAULT_ROOT_NOTE 60
+#endif
+#ifndef CONFIG_SEQ_QUANTIZER_DEFAULT_SCALE
+#define CONFIG_SEQ_QUANTIZER_DEFAULT_SCALE 0
+#endif
+#ifndef CONFIG_SEQ_MELODIC_EXPRESSIVE_DEFAULTS
+#define CONFIG_SEQ_MELODIC_EXPRESSIVE_DEFAULTS 1
+#endif
+#ifndef CONFIG_SEQ_MELODIC_GATE_NUMERATOR
+#define CONFIG_SEQ_MELODIC_GATE_NUMERATOR 5
+#endif
+#ifndef CONFIG_SEQ_MELODIC_GATE_DENOMINATOR
+#define CONFIG_SEQ_MELODIC_GATE_DENOMINATOR 6
+#endif
+#ifndef CONFIG_SEQ_MELODIC_ENVELOPE_ENABLED
+#define CONFIG_SEQ_MELODIC_ENVELOPE_ENABLED 1
+#endif
+#ifndef CONFIG_SEQ_MELODIC_ENV_EG0_TYPE
+#define CONFIG_SEQ_MELODIC_ENV_EG0_TYPE 0
+#endif
+#ifndef CONFIG_SEQ_MELODIC_ENV_ATTACK_MS
+#define CONFIG_SEQ_MELODIC_ENV_ATTACK_MS 12
+#endif
+#ifndef CONFIG_SEQ_MELODIC_ENV_DECAY_MS
+#define CONFIG_SEQ_MELODIC_ENV_DECAY_MS 220
+#endif
+#ifndef CONFIG_SEQ_MELODIC_ENV_SUSTAIN_PCT
+#define CONFIG_SEQ_MELODIC_ENV_SUSTAIN_PCT 58
+#endif
+#ifndef CONFIG_SEQ_MELODIC_ENV_RELEASE_MS
+#define CONFIG_SEQ_MELODIC_ENV_RELEASE_MS 280
+#endif
 
 static const char *TAG = "seq_core";
 
@@ -13,7 +51,11 @@ extern uint32_t sequencer_ticks(void);
 /* ── Timing ──────────────────────────────────────────────────────────── */
 #define SEQ_TICKS_PER_STEP    (AMY_SEQUENCER_PPQ / 4)
 #define SEQ_GATE_DRUM         (SEQ_TICKS_PER_STEP / 3)
+#if CONFIG_SEQ_MELODIC_EXPRESSIVE_DEFAULTS
+#define SEQ_GATE_MELODIC      ((SEQ_TICKS_PER_STEP * CONFIG_SEQ_MELODIC_GATE_NUMERATOR) / CONFIG_SEQ_MELODIC_GATE_DENOMINATOR)
+#else
 #define SEQ_GATE_MELODIC      ((SEQ_TICKS_PER_STEP * 2) / 3)
+#endif
 #define SEQ_MIN_BPM           40
 #define SEQ_MAX_BPM           300
 
@@ -41,9 +83,9 @@ static bool        s_playing      = true;
 static uint16_t    s_bpm          = 120;
 static uint8_t     s_track_source_note[MAX_LAYERS][SEQ_TRACKS];
 static quantizer_state_t s_quantizer = {
-    .root_note  = 60,
-    .scale_index = 0,
-    .enabled    = true,
+    .root_note  = CONFIG_SEQ_QUANTIZER_DEFAULT_ROOT_NOTE,
+    .scale_index = CONFIG_SEQ_QUANTIZER_DEFAULT_SCALE,
+    .enabled    = CONFIG_SEQ_QUANTIZER_DEFAULT_ENABLED,
 };
 
 static void sequencer_refresh_track_note(uint8_t layer_idx, uint8_t track,
@@ -51,6 +93,43 @@ static void sequencer_refresh_track_note(uint8_t layer_idx, uint8_t track,
 static void sequencer_emit_step(uint8_t layer_idx, uint8_t track, uint8_t step);
 static inline uint32_t seq_preview_tag(uint8_t layer, uint8_t track);
 static inline uint32_t seq_preview_off_tag(uint8_t layer, uint8_t track);
+
+static float sequencer_step_velocity(const seq_layer_t *layer,
+                                     uint8_t track, uint8_t step)
+{
+    if (layer->type == SEQ_LAYER_DRUM) {
+        return 1.0f;
+    }
+
+#if !CONFIG_SEQ_MELODIC_EXPRESSIVE_DEFAULTS
+    (void)track;
+    (void)step;
+    return 1.0f;
+#else
+
+    /* Melodic defaults: small deterministic accents for groove and movement.
+     * Downbeats are stronger, offbeats slightly lighter, and tracks are
+     * gently staggered so stacked notes do not all hit identically. */
+    float velocity = 0.66f + (0.03f * (float)track);
+
+    if ((step % 4) == 0) {
+        velocity += 0.18f; /* punch on beat 1 of each quarter-note */
+    } else if ((step % 4) == 2) {
+        velocity += 0.08f; /* mild backbeat emphasis */
+    }
+
+    /* Tiny deterministic movement to avoid machine-gun uniformity. */
+    if ((step % 2) == 0) {
+        velocity += 0.03f;
+    } else {
+        velocity -= 0.02f;
+    }
+
+    if (velocity < 0.45f) velocity = 0.45f;
+    if (velocity > 1.0f) velocity = 1.0f;
+    return velocity;
+#endif
+}
 
 /* ── Scratch AMY event (module-level, never on any task stack) ───────── */
 /*
@@ -72,6 +151,28 @@ static inline void seq_ev_send(void)
 {
     amy_add_event(&s_ev);
     xSemaphoreGive(s_ev_mutex);
+}
+
+static void sequencer_configure_melodic_envelope(uint8_t layer_idx)
+{
+#if CONFIG_SEQ_MELODIC_ENVELOPE_ENABLED
+    const seq_layer_t *layer = &s_layers[layer_idx];
+    float sustain = (float)CONFIG_SEQ_MELODIC_ENV_SUSTAIN_PCT / 100.0f;
+
+    seq_ev_begin();
+    s_ev.synth = layer->synth_id;
+    s_ev.bp_is_set[0] = 1;
+    s_ev.eg_type[0] = CONFIG_SEQ_MELODIC_ENV_EG0_TYPE;
+    s_ev.eg0_times[0] = CONFIG_SEQ_MELODIC_ENV_ATTACK_MS;
+    s_ev.eg0_values[0] = 1.0f;
+    s_ev.eg0_times[1] = CONFIG_SEQ_MELODIC_ENV_DECAY_MS;
+    s_ev.eg0_values[1] = sustain;
+    s_ev.eg0_times[2] = CONFIG_SEQ_MELODIC_ENV_RELEASE_MS;
+    s_ev.eg0_values[2] = 0.0f;
+    seq_ev_send();
+#else
+    (void)layer_idx;
+#endif
 }
 
 static uint8_t sequencer_clamp_layer_note(const seq_layer_t *layer, uint8_t note)
@@ -232,6 +333,10 @@ static void sequencer_configure_synth(uint8_t layer_idx)
     s_ev.synth       = layer->synth_id;
     s_ev.synth_flags = layer->synth_flags;
     seq_ev_send();
+
+    if (layer->type == SEQ_LAYER_MELODIC) {
+        sequencer_configure_melodic_envelope(layer_idx);
+    }
 }
 
 /* Emit (or cancel) the ON+OFF repeating events for one step of one layer. */
@@ -245,6 +350,7 @@ static void sequencer_emit_step(uint8_t layer_idx, uint8_t track, uint8_t step)
     uint32_t tag_off    = seq_tag_off(layer_idx, track, step);
     uint32_t tick_on    = (uint32_t)(1 + step * SEQ_TICKS_PER_STEP);
     uint32_t tick_off   = (tick_on + gate) % bar_ticks;
+    float note_velocity = sequencer_step_velocity(layer, track, step);
     if (tick_off == 0) tick_off = 1;
 
     if (!s_playing || !layer->grid[track][step]) {
@@ -256,7 +362,7 @@ static void sequencer_emit_step(uint8_t layer_idx, uint8_t track, uint8_t step)
     seq_ev_begin();
     s_ev.synth                     = layer->synth_id;
     s_ev.midi_note                 = layer->step_note[track][step];
-    s_ev.velocity                  = 1.0f;
+    s_ev.velocity                  = note_velocity;
     s_ev.sequence[SEQUENCE_TAG]    = tag_on;
     s_ev.sequence[SEQUENCE_TICK]   = tick_on;
     s_ev.sequence[SEQUENCE_PERIOD] = bar_ticks;
@@ -325,9 +431,12 @@ void sequencer_core_init(void)
     memset(s_track_source_note, 0, sizeof(s_track_source_note));
     s_playing = true;
     s_bpm     = 120;
-    s_quantizer.enabled = true;
-    s_quantizer.root_note = 60;
-    s_quantizer.scale_index = 0;
+    s_quantizer.enabled = CONFIG_SEQ_QUANTIZER_DEFAULT_ENABLED;
+    s_quantizer.root_note = CONFIG_SEQ_QUANTIZER_DEFAULT_ROOT_NOTE;
+    s_quantizer.scale_index = CONFIG_SEQ_QUANTIZER_DEFAULT_SCALE;
+    if (s_quantizer.scale_index >= quantizer_scale_count()) {
+        s_quantizer.scale_index = 0;
+    }
     sequencer_push_tempo(s_bpm);
     ESP_LOGI(TAG, "sequencer_core initialized");
 }

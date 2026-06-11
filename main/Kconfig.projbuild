@@ -1,1 +1,11 @@
-# I2C configuration is and should be managed in the priv_i2c_u8g2 component.
+menu "Audio Diagnostics"
+
+config USB_AUDIO_DIAGNOSTICS
+	bool "Enable USB audio diagnostics"
+	default n
+	help
+		Compiles in USB audio diagnostic counters and periodic log snapshots.
+		When enabled, the firmware tracks ring-buffer fill level, underrun events,
+		overrun/drop events, and peak written sample magnitude.
+
+endmenu

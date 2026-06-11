@@ -79,6 +79,23 @@ static void main_sequencer_tick_hook(uint32_t tick_count)
     s_seq_tick_hook_count++;
 }
 
+#if CONFIG_USB_AUDIO_DIAGNOSTICS
+static void main_log_audio_diagnostics(void)
+{
+    usb_audio_diag_snapshot_t diag;
+    usb_audio_diag_get_snapshot(&diag);
+    ESP_LOGI(TAG,
+             "audio diag: init=%d fill=%u peak_fill=%u writes=%" PRIu32 " drops=%" PRIu32 " underruns=%" PRIu32 " peak_abs=%d",
+             diag.initialized ? 1 : 0,
+             (unsigned)diag.fill_samples,
+             (unsigned)diag.peak_fill_samples,
+             diag.write_calls,
+             diag.write_drop_events,
+             diag.underrun_events,
+             (int)diag.peak_abs_sample);
+}
+#endif
+
 
 static void amy_usb_render_task(void *arg) {
     (void)arg;
@@ -409,6 +426,9 @@ extern struct state amy_global;
         ESP_LOGI(TAG,
                  "Main loop idle... seq_tick=%" PRIu32 " tick_hook_calls=%" PRIu32 " render_blocks=%" PRIu32 " render_sysclock_ms=%" PRIu32,
                  s_last_seq_tick, s_seq_tick_hook_count, s_render_block_count, s_last_render_sysclock_ms);
+#if CONFIG_USB_AUDIO_DIAGNOSTICS
+        main_log_audio_diagnostics();
+#endif
         vTaskDelay(pdMS_TO_TICKS(5000));        }
     }
 

@@ -25,3 +25,18 @@ This component provides a minimal, non-blocking 16-step sequencer UI for the AMY
 2. Call `sequencer_ui_init(u8g2)` with the initialized `u8g2_t` pointer.
 3. In your encoder task, call `sequencer_ui_handle_encoder(delta)` when the encoder rotates.
 4. In your button task/interrupt, call `sequencer_ui_handle_button()` when the encoder button is pressed.
+
+
+## Scale Table
+
+| Index | Scale                   | Notes relative to root (e.g., C) | Character                                                        |
+| ----- | ----------------------- | -------------------------------- | ---------------------------------------------------------------- |
+| 0     | Chromatic               | C C# D D# E F F# G G# A A# B     | All 12 notes available; no scale restriction.                    |
+| 1     | Major (Ionian)          | C D E F G A B                    | Bright, happy, conventional Western major scale.                 |
+| 2     | Natural Minor (Aeolian) | C D D# F G G# A#                 | Darker, sadder, common minor scale.                              |
+| 3     | Dorian                  | C D D# F G A A#                  | Minor feel with a brighter 6th; common in jazz and funk.         |
+| 4     | Phrygian                | C C# D# F G G# A#                | Exotic, Spanish/Middle Eastern flavor due to the flat 2nd.       |
+| 5     | Lydian                  | C D E F# G A B                   | Dreamy, floating sound because of the raised 4th.                |
+| 6     | Mixolydian              | C D E F G A A#                   | Major-like but bluesier due to the flat 7th.                     |
+| 7     | Minor Pentatonic        | C D# F G A#                      | Very common in blues, rock, and solos; hard to make wrong notes. |
+| 8     | Major Pentatonic        | C D E G A                        | Open, melodic, folk/country sound; also very forgiving.          |

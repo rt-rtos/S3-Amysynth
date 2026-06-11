@@ -1,0 +1,81 @@
+menu "Sequencer Defaults"
+
+config SEQ_QUANTIZER_DEFAULT_ENABLED
+	bool "Enable quantizer by default"
+	default y
+	help
+		Initializes the melodic quantizer as enabled at boot.
+
+config SEQ_QUANTIZER_DEFAULT_ROOT_NOTE
+	int "Quantizer default root MIDI note"
+	range 0 127
+	default 60
+	help
+		Default quantizer root note at startup (60 = C4).
+
+config SEQ_QUANTIZER_DEFAULT_SCALE
+	int "Quantizer default scale index"
+	range 0 8
+	default 0
+	help
+		Default quantizer scale index at startup.
+		0=Chromatic, 1=Major, 2=Natural Minor, 3=Dorian,
+		4=Phrygian, 5=Lydian, 6=Mixolydian,
+		7=Minor Pentatonic, 8=Major Pentatonic.
+
+config SEQ_MELODIC_EXPRESSIVE_DEFAULTS
+	bool "Enable expressive melodic defaults"
+	default y
+	help
+		Enables melodic step velocity accents and uses the configured melodic
+		gate ratio. If disabled, melodic velocity defaults to 1.0 and the gate
+		falls back to the original 2/3-step duration.
+
+config SEQ_MELODIC_GATE_NUMERATOR
+	int "Melodic gate ratio numerator"
+	range 1 12
+	default 5
+	help
+		Numerator used to compute melodic note gate duration.
+
+config SEQ_MELODIC_GATE_DENOMINATOR
+	int "Melodic gate ratio denominator"
+	range 1 12
+	default 6
+	help
+		Denominator used to compute melodic note gate duration.
+
+config SEQ_MELODIC_ENVELOPE_ENABLED
+	bool "Apply melodic EG0 envelope defaults"
+	default y
+	help
+		Sends a startup EG0 envelope configuration to melodic synth layers.
+
+config SEQ_MELODIC_ENV_EG0_TYPE
+	int "Melodic EG0 envelope type"
+	range 0 3
+	default 0
+	help
+		0=Normal, 1=Linear, 2=DX7-style, 3=True exponential.
+
+config SEQ_MELODIC_ENV_ATTACK_MS
+	int "Melodic envelope attack (ms)"
+	range 0 5000
+	default 12
+
+config SEQ_MELODIC_ENV_DECAY_MS
+	int "Melodic envelope decay (ms)"
+	range 0 10000
+	default 220
+
+config SEQ_MELODIC_ENV_SUSTAIN_PCT
+	int "Melodic envelope sustain level (%)"
+	range 0 100
+	default 58
+
+config SEQ_MELODIC_ENV_RELEASE_MS
+	int "Melodic envelope release (ms)"
+	range 0 10000
+	default 280
+
+endmenu
