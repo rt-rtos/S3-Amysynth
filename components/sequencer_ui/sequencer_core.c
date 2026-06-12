@@ -2,6 +2,7 @@
 #include "amy.h"
 #include "sequencer.h"
 #include "quantizer.h"
+#include "seq_clamp.h"
 #include "sdkconfig.h"
 #include "esp_log.h"
 #include <string.h>
@@ -62,13 +63,13 @@ extern uint32_t sequencer_ticks(void);
 /* ── Drum synth slot ─────────────────────────────────────────────────── */
 #define SEQ_DRUM_SYNTH        10
 #define SEQ_DRUM_PATCH        1025
-#define SEQ_DRUM_VOICES       6
+#define SEQ_DRUM_VOICES       16 /*these voice defines control how many notes can ring at once before AMY steals/reuses a voice. More voices usually means fewer chopped notes, at the cost of more CPU.*/
 #define SEQ_MIDI_NOTE_MIN     27
 #define SEQ_MIDI_NOTE_MAX     87
 
 /* ── Melodic synth defaults ──────────────────────────────────────────── */
 #define SEQ_MEL_PATCH         128   /* DX7 preset 0 — "E Piano 1" */
-#define SEQ_MEL_VOICES        4
+#define SEQ_MEL_VOICES        16
 #define SEQ_MEL_NOTE_MIN      24    /* C1 */
 #define SEQ_MEL_NOTE_MAX      96    /* C7 */
 
@@ -107,26 +108,25 @@ static float sequencer_step_velocity(const seq_layer_t *layer,
     return 1.0f;
 #else
 
-    /* Melodic defaults: small deterministic accents for groove and movement.
-     * Downbeats are stronger, offbeats slightly lighter, and tracks are
-     * gently staggered so stacked notes do not all hit identically. */
-    float velocity = 0.66f + (0.03f * (float)track);
+    /* Keep melodic loop tone close to preview tone while preserving accents.
+     * Many FM patches are highly velocity-sensitive; too-low velocities can
+     * sound dull/honky compared with preview notes sent at velocity=1.0. */
+    float velocity = 0.88f + (0.015f * (float)track);
 
     if ((step % 4) == 0) {
-        velocity += 0.18f; /* punch on beat 1 of each quarter-note */
+        velocity += 0.08f; /* punch on beat 1 of each quarter-note */
     } else if ((step % 4) == 2) {
-        velocity += 0.08f; /* mild backbeat emphasis */
+        velocity += 0.04f; /* mild backbeat emphasis */
     }
 
     /* Tiny deterministic movement to avoid machine-gun uniformity. */
     if ((step % 2) == 0) {
-        velocity += 0.03f;
+        velocity += 0.02f;
     } else {
-        velocity -= 0.02f;
+        velocity -= 0.01f;
     }
 
-    if (velocity < 0.45f) velocity = 0.45f;
-    if (velocity > 1.0f) velocity = 1.0f;
+    velocity = SEQ_CLAMP_F32(velocity, 0.82f, 1.0f);
     return velocity;
 #endif
 }
@@ -178,13 +178,10 @@ static void sequencer_configure_melodic_envelope(uint8_t layer_idx)
 static uint8_t sequencer_clamp_layer_note(const seq_layer_t *layer, uint8_t note)
 {
     if (layer->type == SEQ_LAYER_DRUM) {
-        if (note < SEQ_MIDI_NOTE_MIN) note = SEQ_MIDI_NOTE_MIN;
-        if (note > SEQ_MIDI_NOTE_MAX) note = SEQ_MIDI_NOTE_MAX;
+        return SEQ_CLAMP_U8(note, SEQ_MIDI_NOTE_MIN, SEQ_MIDI_NOTE_MAX);
     } else {
-        if (note < SEQ_MEL_NOTE_MIN) note = SEQ_MEL_NOTE_MIN;
-        if (note > SEQ_MEL_NOTE_MAX) note = SEQ_MEL_NOTE_MAX;
+        return SEQ_CLAMP_U8(note, SEQ_MEL_NOTE_MIN, SEQ_MEL_NOTE_MAX);
     }
-    return note;
 }
 
 static uint8_t sequencer_resolve_track_note(const seq_layer_t *layer,
@@ -405,9 +402,7 @@ static void sequencer_clear_layer_tags(uint8_t layer_idx)
 
 static uint16_t sequencer_clamp_bpm(uint16_t b)
 {
-    if (b < SEQ_MIN_BPM) return SEQ_MIN_BPM;
-    if (b > SEQ_MAX_BPM) return SEQ_MAX_BPM;
-    return b;
+    return SEQ_CLAMP_U16(b, SEQ_MIN_BPM, SEQ_MAX_BPM);
 }
 
 static void sequencer_push_tempo(uint16_t b)

@@ -9,3 +9,18 @@ config USB_AUDIO_DIAGNOSTICS
 		overrun/drop events, and peak written sample magnitude.
 
 endmenu
+
+menu "USB Audio Behavior"
+
+config USB_AUDIO_BLOCKING_WRITE
+    bool "Block render task when USB buffer is full"
+    default n
+    help
+        If enabled, the AMY render task will wait (retry with backoff) until 
+        the USB ring buffer has space, effectively slave-clocking the synth
+        to the PC's consumption rate. 
+        If disabled (default), the task will drop overflowed blocks to 
+        maintain real-time AMY clock alignment regardless of USB health,
+        which can result in 'honky' percussive artifacts if transport is poor.
+
+endmenu

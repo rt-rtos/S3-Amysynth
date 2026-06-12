@@ -1,5 +1,6 @@
 #include "sequencer_ui.h"
 #include "priv_u8g2_seq.h"
+#include "seq_clamp.h"
 #include "sequencer_core.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -180,8 +181,7 @@ void sequencer_ui_toggle_playing(void)
 
 void sequencer_ui_set_bpm(uint16_t bpm)
 {
-    if (bpm < 40)  bpm = 40;
-    if (bpm > 300) bpm = 300;
+    bpm = SEQ_CLAMP_U16(bpm, 40, 300);
     seq_state.bpm = bpm;
     sequencer_core_set_bpm(bpm);
 }
@@ -190,11 +190,10 @@ void sequencer_ui_adjust_track_note(int delta)
 {
     uint8_t li    = seq_state.active_layer_idx;
     uint8_t track = seq_state.selected_track;
-    int new_note  = (int)sequencer_core_get_track_source_note(li, track) + delta;
-    if (new_note < 0)   new_note = 0;
-    if (new_note > 127) new_note = 127;
-    sequencer_core_set_track_midi_note(li, track, (uint8_t)new_note);
-    /* Mirror clamped value back to display state */
+    uint8_t note  = sequencer_core_get_track_source_note(li, track);
+    uint8_t new_note = SEQ_CLAMP_U8(note + delta, 0, 127);
+    sequencer_core_set_track_midi_note(li, track, new_note);
+    /* Keep display in sync with resolved note after core clamp/quantize. */
     seq_state.layers[li].track_base_note[track] =
         sequencer_core_get_track_midi_note(li, track);
 }

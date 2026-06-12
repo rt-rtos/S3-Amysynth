@@ -7,6 +7,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <inttypes.h>
+#include "freertos/idf_additions.h"
 #include "iot_button.h"
 #include "priv_i2c_u8g2.h"
 #include "u8g2.h"
@@ -23,6 +24,7 @@
 #include "esp_err.h"
 #include "rotary_encoder.h"
 #include "sequencer_ui.h"
+#include "seq_clamp.h"
 #include "usb_audio.h"
 #include "esp_timer.h"
 #include "esp_log.h"
@@ -118,11 +120,22 @@ static void amy_usb_render_task(void *arg) {
         if (block) {
             s_render_block_count++;
             s_last_render_sysclock_ms = amy_sysclock();
+
+#if CONFIG_USB_AUDIO_BLOCKING_WRITE
+            // Resilient path: retry until the host consumes the data.
+            // This prevents spectral corruption at the cost of slight timing jitter.
+            while (usb_audio_write_stereo(block, AMY_BLOCK_SIZE) == ESP_ERR_NO_MEM) {
+                vTaskDelay(pdMS_TO_TICKS(1));
+            }
+#else
+            // Real-time path: drop if the host is slow.
+            // Maintains AMY phase alignment but causes 'honky' truncation if drops are frequent.
             esp_err_t write_err = usb_audio_write_stereo(block, AMY_BLOCK_SIZE);
             if (write_err == ESP_ERR_NO_MEM) {
                 // USB ring buffer is full; briefly back off and try again.
                 vTaskDelay(pdMS_TO_TICKS(1));
             }
+#endif
         }
         next_deadline_us += block_us;
     }
@@ -234,9 +247,8 @@ static void encoder_task(void *pvParameters)
 
             if (s_bpm_mode_held) {
                 // BPM-adjust mode: hold MY_BUTTON_1 + turn encoder
-                int new_bpm = (int)seq_state.bpm + (int)steps;
-                if (new_bpm < 40) new_bpm = 40;
-                sequencer_ui_set_bpm((uint16_t)new_bpm);
+                uint16_t new_bpm = SEQ_CLAMP_U16(seq_state.bpm + (int)steps, 40, 300);
+                sequencer_ui_set_bpm(new_bpm);
             } else if (s_drum_select_held) {
                 // Drum-select mode: hold MY_BUTTON_2 + turn encoder
                 sequencer_ui_adjust_track_note((int)steps);
@@ -267,7 +279,12 @@ static void encoder_init_task(void *pvParameters)
         // Increase encoder task stack to avoid stack overflow when handling
         // amy_event-heavy operations (sequencer toggles create several
         // amy_event/delta conversions on the stack).
-        xTaskCreate(encoder_task, "encoder_task", 8192, enc, 5, NULL);
+        xTaskCreate(encoder_task,
+             "encoder_task",
+             8192,
+             enc,
+             5,
+              NULL);
     }
 
     vTaskDelete(NULL);
@@ -324,39 +341,15 @@ extern struct state amy_global;
     }
     ESP_LOGI(TAG, "[startup] after i2c_u8g2_init");
 
-    /* Print chip information */
-/*     esp_chip_info_t chip_info;
-    uint32_t flash_size;
-    esp_chip_info(&chip_info);
-    ESP_LOGI(TAG, "This is %s chip with %d CPU core(s), %s%s%s%s, ",
-           CONFIG_IDF_TARGET,
-           chip_info.cores,
-           (chip_info.features & CHIP_FEATURE_WIFI_BGN) ? "WiFi/" : "",
-           (chip_info.features & CHIP_FEATURE_BT) ? "BT" : "",
-           (chip_info.features & CHIP_FEATURE_BLE) ? "BLE" : "",
-           (chip_info.features & CHIP_FEATURE_IEEE802154) ? ", 802.15.4 (Zigbee/Thread)" : "");
-
-    unsigned major_rev = chip_info.revision / 100;
-    unsigned minor_rev = chip_info.revision % 100;
-    ESP_LOGI(TAG, "silicon revision v%d.%d, ", major_rev, minor_rev);
-    if(esp_flash_get_size(NULL, &flash_size) != ESP_OK) {
-        ESP_LOGE(TAG, "Get flash size failed");
-        return;
-    }
-
-    ESP_LOGI(TAG, "%" PRIu32 "MB %s flash", flash_size / (uint32_t)(1024 * 1024),
-           (chip_info.features & CHIP_FEATURE_EMB_FLASH) ? "embedded" : "external");
-
-    ESP_LOGI(TAG, "Minimum free heap size: %" PRIu32 " bytes", esp_get_minimum_free_heap_size());
- */
+  
     // Configure and start AMY
     amy_config_t amy_cfg = amy_default_config();
     amy_cfg.audio = AMY_AUDIO_IS_NONE;
-    // Disable AMY's internal FABT/render tasks: our amy_usb_render_task owns the
+    /* Disable AMY's internal FABT/render tasks: our amy_usb_render_task owns the
     // render loop entirely (AMY_AUDIO_IS_NONE mode). With multithread=1 (the default),
     // amy_platform_init spawns esp_fill_audio_buffer_task (FABT) and stores app_main's
     // task handle as amy_update_handle. FABT then notifies app_main instead of our
-    // render task, causing a permanent deadlock — render_blocks and seq_tick stay 0.
+    // render task, causing a permanent deadlock — render_blocks and seq_tick stay 0.*/
     amy_cfg.platform.multicore = 0;
     amy_cfg.platform.multithread = 0;
     amy_cfg.amy_external_sequencer_hook = main_sequencer_tick_hook;
@@ -381,13 +374,31 @@ extern struct state amy_global;
     TaskHandle_t amy_render_task_handle = NULL;
     BaseType_t render_task_ok;
 #if CONFIG_FREERTOS_UNICORE
-    render_task_ok = xTaskCreatePinnedToCore(amy_usb_render_task, "amy_render", 8192, NULL, 7, &amy_render_task_handle, 0);
+    render_task_ok = xTaskCreatePinnedToCore(amy_usb_render_task,
+         "amy_render",
+         8192,
+         NULL,
+         7,
+         &amy_render_task_handle,
+         0);
 #else
-    render_task_ok = xTaskCreatePinnedToCore(amy_usb_render_task, "amy_render", 8192, NULL, 7, &amy_render_task_handle, 1);
+    render_task_ok = xTaskCreatePinnedToCore(amy_usb_render_task,
+         "amy_render",
+         8192,
+          NULL,
+          7,
+          &amy_render_task_handle,
+          0); 
 #endif
     if (render_task_ok != pdPASS) {
         ESP_LOGW(TAG, "amy_render pinned task create failed (%ld), retrying unpinned", (long)render_task_ok);
-        render_task_ok = xTaskCreate(amy_usb_render_task, "amy_render", 8192, NULL, 7, &amy_render_task_handle);
+        render_task_ok = xTaskCreatePinnedToCore(amy_usb_render_task,
+             "amy_render",
+             8192,
+             NULL,
+             7,
+             &amy_render_task_handle,
+             1);
     }
     if (render_task_ok != pdPASS) {
         ESP_LOGE(TAG, "amy_render task create failed (%ld)", (long)render_task_ok);
@@ -401,7 +412,13 @@ extern struct state amy_global;
     if (s_button_queue == NULL) {
         ESP_LOGW(TAG, "Button queue creation failed; callbacks will run inline");
     } else {
-        if (xTaskCreate(button_handler_task, "button_task", 8192, NULL, 5, NULL) != pdPASS) {
+        if (xTaskCreatePinnedToCore(button_handler_task,
+             "button_task",
+             8192,
+             NULL,
+              5,
+              NULL,
+            0) != pdPASS) {
             ESP_LOGW(TAG, "Button handler task creation failed");
             vQueueDelete(s_button_queue);
             s_button_queue = NULL;
@@ -417,7 +434,13 @@ extern struct state amy_global;
 
         // Setup rotary encoder
     // Defer rotary encoder initialization to a task to avoid early-boot conflicts
-    xTaskCreate(encoder_init_task, "encoder_init_task", 2048, NULL, 5, NULL);
+    xTaskCreatePinnedToCore(encoder_init_task,
+         "encoder_init_task",
+         2048,
+         NULL,
+         5,
+         NULL,
+        0);
 
 
     ESP_LOGI(TAG, "Main loop started.");
