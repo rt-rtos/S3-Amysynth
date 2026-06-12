@@ -9,6 +9,19 @@
 
 static const char *TAG = "sequencer_ui";
 
+/* Runtime patch cycling list is intentionally small and musical.
+ * Values map to AMY built-ins (Juno/DX7/piano). */
+static const uint16_t s_melodic_patch_cycle[] = {
+    138, /* DX7 E.PIANO 1 */
+    135, /* DX7 PIANO 1 */
+    141, /* DX7 SYN-LEAD 1 */
+    151, /* DX7 FLUTE 1 */
+    7,   /* Juno A18 Piano I */
+    104, /* Juno B61 E. Piano with Tremolo */
+    256, /* Built-in piano */
+};
+#define SEQ_RUNTIME_PATCH_COUNT ((int)(sizeof(s_melodic_patch_cycle) / sizeof(s_melodic_patch_cycle[0])))
+
 sequencer_ui_state_t seq_state = {
     /* layers[] is zero-initialized by C99 partial-init rules */
     .num_layers       = 0,
@@ -25,7 +38,9 @@ sequencer_ui_state_t seq_state = {
 
 static u8g2_t *s_u8g2 = NULL;
 
-/* Push any true steps in the UI layer to the audio core. */
+/* Mirror the UI's grid of active steps into the audio core so the core
+ * schedules notes for every step the user has toggled on. Only "on" steps are
+ * pushed; "off" steps are the core's default after a fresh layer add. */
 static void sync_layer_to_core(uint8_t li)
 {
     seq_layer_t *layer = &seq_state.layers[li];
@@ -34,6 +49,26 @@ static void sync_layer_to_core(uint8_t li)
             if (layer->grid[t][s]) {
                 sequencer_core_set_step(li, t, s, true);
             }
+        }
+    }
+}
+
+static int sequencer_patch_cycle_index_for(uint16_t patch)
+{
+    for (int i = 0; i < SEQ_RUNTIME_PATCH_COUNT; i++) {
+        if (s_melodic_patch_cycle[i] == patch) {
+            return i;
+        }
+    }
+    return 0;
+}
+
+static void sequencer_ui_sync_melodic_patch_cache(void)
+{
+    uint16_t patch = sequencer_core_get_melodic_patch();
+    for (uint8_t i = 0; i < seq_state.num_layers; i++) {
+        if (seq_state.layers[i].type == SEQ_LAYER_MELODIC) {
+            seq_state.layers[i].patch = patch;
         }
     }
 }
@@ -91,6 +126,7 @@ uint8_t sequencer_ui_add_layer(seq_layer_type_t type, uint8_t num_steps)
     layer->step_page  = 0;
 
     if (type == SEQ_LAYER_MELODIC) {
+        layer->patch = sequencer_core_get_melodic_patch();
         /* Default: Cmaj7 voicing — C4 E4 G4 B4 */
         static const uint8_t mel_notes[SEQ_TRACKS] = {60, 64, 67, 71};
         for (int t = 0; t < SEQ_TRACKS; t++) {
@@ -129,6 +165,10 @@ void sequencer_ui_cycle_active_layer(void)
              ? "drum" : "melodic");
 }
 
+/* Moves the step cursor by `delta` while in edit mode, or nudges BPM otherwise.
+ * The cursor walks the current track's steps; running off either end wraps to
+ * the adjacent track (and wraps track index too), so a long turn scans the
+ * whole grid track-by-track. */
 void sequencer_ui_handle_encoder(long delta)
 {
     if (delta == 0) return;
@@ -139,17 +179,20 @@ void sequencer_ui_handle_encoder(long delta)
         int new_step      = (int)seq_state.selected_step + (int)delta;
 
         if (new_step < 0) {
+            /* Walked off the start: jump to the last step of the previous track. */
             new_step = (int)num_steps - 1;
             seq_state.selected_track =
                 (uint8_t)((seq_state.selected_track + SEQ_TRACKS - 1) % SEQ_TRACKS);
         } else if (new_step >= (int)num_steps) {
+            /* Walked off the end: jump to the first step of the next track. */
             new_step = 0;
             seq_state.selected_track =
                 (uint8_t)((seq_state.selected_track + 1) % SEQ_TRACKS);
         }
         seq_state.selected_step = (uint8_t)new_step;
 
-        /* Auto-flip page for 32-step layers */
+        /* 32-step layers display 16 steps per page; keep the cursor visible by
+         * selecting the page (0 or 1) that contains the new step. */
         if (num_steps == SEQ_MAX_STEPS) {
             seq_state.layers[li].step_page = (uint8_t)(new_step / 16);
         }
@@ -158,6 +201,8 @@ void sequencer_ui_handle_encoder(long delta)
     }
 }
 
+/* Encoder push: in edit mode toggles the step under the cursor on/off (and
+ * mirrors that to the core); otherwise it acts as a play/pause toggle. */
 void sequencer_ui_handle_button(void)
 {
     if (seq_state.edit_mode) {
@@ -186,6 +231,9 @@ void sequencer_ui_set_bpm(uint16_t bpm)
     sequencer_core_set_bpm(bpm);
 }
 
+/* Transposes the selected track's note by `delta` semitones. We read/write the
+ * *source* note (the user's raw choice) so repeated nudges accumulate cleanly;
+ * the core may quantize it, so we read back the resolved note for display. */
 void sequencer_ui_adjust_track_note(int delta)
 {
     uint8_t li    = seq_state.active_layer_idx;
@@ -201,6 +249,30 @@ void sequencer_ui_adjust_track_note(int delta)
 void sequencer_ui_set_drum_select_mode(bool held)
 {
     seq_state.drum_select_mode = held;
+}
+
+void sequencer_ui_set_patch_select_mode(bool held)
+{
+    seq_state.patch_select_mode = held;
+}
+
+void sequencer_ui_cycle_melodic_patch(int delta)
+{
+    if (delta == 0) return;
+
+    uint8_t li = seq_state.active_layer_idx;
+    if (li >= seq_state.num_layers) return;
+    if (seq_state.layers[li].type != SEQ_LAYER_MELODIC) return;
+
+    uint16_t current = sequencer_core_get_melodic_patch();
+    int idx = sequencer_patch_cycle_index_for(current);
+    int n = SEQ_RUNTIME_PATCH_COUNT;
+    int shift = delta % n;
+    int next = (idx + shift + n) % n;
+
+    sequencer_core_set_melodic_patch(s_melodic_patch_cycle[next]);
+    sequencer_ui_sync_melodic_patch_cache();
+    ESP_LOGI(TAG, "melodic patch cycle -> %u", (unsigned)sequencer_core_get_melodic_patch());
 }
 
 

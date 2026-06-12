@@ -29,7 +29,9 @@ void sequencer_ui_handle_button(void);
 void sequencer_ui_toggle_playing(void);
 void sequencer_ui_set_bpm(uint16_t bpm);
 void sequencer_ui_adjust_track_note(int delta);
+void sequencer_ui_cycle_melodic_patch(int delta);
 void sequencer_ui_set_drum_select_mode(bool held);
+void sequencer_ui_set_patch_select_mode(bool held);
 
 /* Global state (bpm is read directly by encoder_task in main.c) */
 extern sequencer_ui_state_t seq_state;

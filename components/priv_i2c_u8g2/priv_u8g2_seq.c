@@ -61,6 +61,14 @@ void priv_u8g2_seq_draw_frame(u8g2_t *u8g2, const priv_u8g2_seq_state_t *state)
     snprintf(buf, sizeof(buf), "L%d %s", state->active_layer_idx, type_str);
     u8g2_DrawStr(u8g2, 52, 8, buf);
 
+    if (layer->type == SEQ_LAYER_MELODIC) {
+        snprintf(buf, sizeof(buf), "Pt%u", (unsigned)layer->patch);
+        if (state->patch_select_mode) {
+            u8g2_DrawRFrame(u8g2, 78, 0, 26, 10, 1);
+        }
+        u8g2_DrawStr(u8g2, 80, 8, buf);
+    }
+
     /* Play / pause icon */
     if (state->playing) {
         u8g2_DrawTriangle(u8g2, 105, 2, 105, 7, 112, 4);   /* ▶ */
@@ -71,7 +79,7 @@ void priv_u8g2_seq_draw_frame(u8g2_t *u8g2, const priv_u8g2_seq_state_t *state)
 
     /* Page indicator for 32-step layers ("P1" / "P2") */
     if (num_steps == SEQ_MAX_STEPS) {
-        snprintf(buf, sizeof(buf), "P%d", page + 1);
+        snprintf(buf, sizeof(buf), "Pg%d", page + 1);
         u8g2_SetFont(u8g2, u8g2_font_5x7_tr);
         u8g2_DrawStr(u8g2, 120, 8, buf);
         u8g2_SetFont(u8g2, u8g2_font_6x10_tf);

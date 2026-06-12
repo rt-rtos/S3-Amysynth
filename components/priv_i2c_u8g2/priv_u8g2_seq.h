@@ -48,6 +48,7 @@ typedef struct {
     uint8_t     selected_step;      /* 0 .. (active layer num_steps - 1) */
     bool        edit_mode;
     bool        drum_select_mode;   /* true while note-select btn held   */
+    bool        patch_select_mode;  /* true while patch-select btn held  */
 } priv_u8g2_seq_state_t;
 
 /**

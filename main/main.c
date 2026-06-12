@@ -67,6 +67,9 @@ static volatile bool s_bpm_mode_held = false;
 // Set true while the drum-sound-select button (MY_BUTTON_2) is held;
 // encoder turns will step through GM drum notes for the active track.
 static volatile bool s_drum_select_held = false;
+// Set true while the patch-select button (MY_BUTTON_3) is held;
+// encoder turns will cycle through melodic patch presets.
+static volatile bool s_patch_select_held = false;
 
 static QueueHandle_t s_button_queue = NULL;
 
@@ -191,6 +194,17 @@ static void main_button_event_cb(my_button_id_t button_id, button_event_t event,
         return;
     }
 
+    if (button_id == MY_BUTTON_3) {
+        if (event == BUTTON_PRESS_DOWN) {
+            s_patch_select_held = true;
+            sequencer_ui_set_patch_select_mode(true);
+        } else if (event == BUTTON_PRESS_UP) {
+            s_patch_select_held = false;
+            sequencer_ui_set_patch_select_mode(false);
+        }
+        return;
+    }
+
     /* MY_BUTTON_0: short press = cycle active layer, long press = play/stop */
     if (button_id == MY_BUTTON_0) {
         if (event == BUTTON_SINGLE_CLICK || event == BUTTON_LONG_PRESS_START) {
@@ -252,6 +266,9 @@ static void encoder_task(void *pvParameters)
             } else if (s_drum_select_held) {
                 // Drum-select mode: hold MY_BUTTON_2 + turn encoder
                 sequencer_ui_adjust_track_note((int)steps);
+            } else if (s_patch_select_held) {
+                // Patch-select mode: hold MY_BUTTON_3 + turn encoder
+                sequencer_ui_cycle_melodic_patch((int)steps);
             } else {
                 sequencer_ui_handle_encoder(steps);
             }

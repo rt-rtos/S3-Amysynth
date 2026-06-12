@@ -18,6 +18,8 @@ void sequencer_core_set_quantizer_scale(uint8_t scale_index);
 bool sequencer_core_get_quantizer_enabled(void);
 uint8_t sequencer_core_get_quantizer_root_note(void);
 uint8_t sequencer_core_get_quantizer_scale(void);
+void sequencer_core_set_melodic_patch(uint16_t patch_number);
+uint16_t sequencer_core_get_melodic_patch(void);
 
 /* Returns the current playhead step for the given layer (0..num_steps-1).
  * When paused the last computed step is returned (display freezes). */

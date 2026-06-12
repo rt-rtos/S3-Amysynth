@@ -31,17 +31,62 @@ config SEQ_MELODIC_EXPRESSIVE_DEFAULTS
 		gate ratio. If disabled, melodic velocity defaults to 1.0 and the gate
 		falls back to the original 2/3-step duration.
 
+choice SEQ_MELODIC_PATCH_PRESET
+	prompt "Melodic layer AMY patch preset"
+	default SEQ_MELODIC_PATCH_DX7_EPIANO1
+	help
+		Selects which built-in AMY patch number the sequencer uses when
+		creating melodic layers.
+
+config SEQ_MELODIC_PATCH_DX7_EPIANO1
+	bool "DX7 E.PIANO 1 (patch 138)"
+
+config SEQ_MELODIC_PATCH_DX7_PIANO1
+	bool "DX7 PIANO 1 (patch 135)"
+
+config SEQ_MELODIC_PATCH_DX7_SYNLEAD1
+	bool "DX7 SYN-LEAD 1 (patch 141)"
+
+config SEQ_MELODIC_PATCH_DX7_FLUTE1
+	bool "DX7 FLUTE 1 (patch 151)"
+
+config SEQ_MELODIC_PATCH_JUNO_PIANO1
+	bool "Juno A18 Piano I (patch 7)"
+
+config SEQ_MELODIC_PATCH_JUNO_EPIANO_TREM
+	bool "Juno B61 E. Piano with Tremolo (patch 104)"
+
+config SEQ_MELODIC_PATCH_PIANO_BUILTIN
+	bool "AMY built-in piano (patch 256)"
+
+endchoice
+
+config SEQ_MELODIC_PATCH
+	int
+	default 138 if SEQ_MELODIC_PATCH_DX7_EPIANO1
+	default 135 if SEQ_MELODIC_PATCH_DX7_PIANO1
+	default 141 if SEQ_MELODIC_PATCH_DX7_SYNLEAD1
+	default 151 if SEQ_MELODIC_PATCH_DX7_FLUTE1
+	default 7 if SEQ_MELODIC_PATCH_JUNO_PIANO1
+	default 104 if SEQ_MELODIC_PATCH_JUNO_EPIANO_TREM
+	default 256 if SEQ_MELODIC_PATCH_PIANO_BUILTIN
+	help
+		Resolved AMY patch number for melodic layer initialization.
+
 config SEQ_MELODIC_GATE_NUMERATOR
 	int "Melodic gate ratio numerator"
 	range 1 12
-	default 5
+	default 11
 	help
-		Numerator used to compute melodic note gate duration.
+		Numerator used to compute melodic note gate duration. A ratio close
+		to 1 (e.g. 11/12) makes notes near-legato so they connect instead of
+		stabbing; combined with the EG0 release this gives a sustained tail
+		rather than the original short "car horn" staccato.
 
 config SEQ_MELODIC_GATE_DENOMINATOR
 	int "Melodic gate ratio denominator"
 	range 1 12
-	default 6
+	default 12
 	help
 		Denominator used to compute melodic note gate duration.
 
@@ -49,7 +94,9 @@ config SEQ_MELODIC_ENVELOPE_ENABLED
 	bool "Apply melodic EG0 envelope defaults"
 	default y
 	help
-		Sends a startup EG0 envelope configuration to melodic synth layers.
+		Sends a startup EG0 envelope configuration to melodic synth layers so
+		note onsets and tails are shaped (soft attack, audible release) instead
+		of being hard-gated. Disable to fall back to the raw patch envelope.
 
 config SEQ_MELODIC_ENV_EG0_TYPE
 	int "Melodic EG0 envelope type"
@@ -57,25 +104,28 @@ config SEQ_MELODIC_ENV_EG0_TYPE
 	default 0
 	help
 		0=Normal, 1=Linear, 2=DX7-style, 3=True exponential.
+		Use 0 (Normal) for a smooth, musical amplitude envelope. Type 2 (DX7)
+		is meant for DX7-style level tables and sounds wrong when applied to a
+		plain attack/decay/sustain/release breakpoint set.
 
 config SEQ_MELODIC_ENV_ATTACK_MS
 	int "Melodic envelope attack (ms)"
 	range 0 5000
-	default 12
+	default 10
 
 config SEQ_MELODIC_ENV_DECAY_MS
 	int "Melodic envelope decay (ms)"
 	range 0 10000
-	default 220
+	default 200
 
 config SEQ_MELODIC_ENV_SUSTAIN_PCT
 	int "Melodic envelope sustain level (%)"
 	range 0 100
-	default 58
+	default 60
 
 config SEQ_MELODIC_ENV_RELEASE_MS
 	int "Melodic envelope release (ms)"
 	range 0 10000
-	default 280
+	default 320
 
 endmenu
