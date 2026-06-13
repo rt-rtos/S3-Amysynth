@@ -6,6 +6,7 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 #include <inttypes.h>
 #include "freertos/idf_additions.h"
 #include "iot_button.h"
@@ -61,15 +62,22 @@ static volatile uint32_t s_last_seq_tick = 0;
 static volatile uint32_t s_seq_tick_hook_count = 0;
 static volatile uint32_t s_render_block_count = 0;
 static volatile uint32_t s_last_render_sysclock_ms = 0;
-// Set true while the BPM-adjust button (MY_BUTTON_1) is held; 
+// Set true while the BPM-adjust button (MY_BUTTON_1) is held;
 // encoder turns will adjust BPM instead of moving the sequencer selection.
 static volatile bool s_bpm_mode_held = false;
+// esp_timer timestamp (us) captured when MY_BUTTON_1 went down. Used to detect
+// a long (>=3s) hold that latches the button into melodic-patch-select mode.
+static volatile int64_t s_bpm_press_us = 0;
+// Latched true once MY_BUTTON_1 has been held past the patch threshold for the
+// current press; encoder turns then cycle melodic patches instead of BPM.
+// Cleared on release. This temporary overload exists until the next hardware
+// revision adds a dedicated patch control.
+static volatile bool s_bpm_patch_latched = false;
+// Time MY_BUTTON_1 must be held before BPM mode flips to patch-select mode.
+#define BPM_PATCH_HOLD_US (3 * 1000 * 1000)
 // Set true while the drum-sound-select button (MY_BUTTON_2) is held;
 // encoder turns will step through GM drum notes for the active track.
 static volatile bool s_drum_select_held = false;
-// Set true while the patch-select button (MY_BUTTON_3) is held;
-// encoder turns will cycle through melodic patch presets.
-static volatile bool s_patch_select_held = false;
 
 static QueueHandle_t s_button_queue = NULL;
 
@@ -97,7 +105,109 @@ static void main_log_audio_diagnostics(void)
              diag.write_calls,
              diag.write_drop_events,
              diag.underrun_events,
-             (int)diag.peak_abs_sample);
+              (int)diag.peak_abs_sample);
+}
+#endif
+
+#if CONFIG_AMYSYNTH_RTOS_STATS
+#include "esp_heap_caps.h"
+// Periodic RTOS profiling dump. Gated by CONFIG_AMYSYNTH_RTOS_STATS so release
+// builds carry zero overhead. Relies on CONFIG_FREERTOS_USE_TRACE_FACILITY,
+// CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS,
+// CONFIG_FREERTOS_VTASKLIST_INCLUDE_COREID and
+// CONFIG_FREERTOS_RUN_TIME_STATS_USING_ESP_TIMER (all enabled in sdkconfig).
+//
+// This project uses the IDF (non-SMP) dual-core FreeRTOS kernel, so we drive
+// everything off uxTaskGetSystemState(): it fills a TaskStatus_t[] with each
+// task's name, priority, stack high-water mark, cumulative run-time counter,
+// and the core it is pinned to (xCoreID, present because COREID is enabled).
+// From that single snapshot we derive both the per-task breakdown and the
+// per-core busy %, avoiding the SMP-only helpers that aren't declared here.
+static const char *task_state_str(eTaskState st)
+{
+    switch (st) {
+        case eRunning:   return "RUN";
+        case eReady:     return "RDY";
+        case eBlocked:   return "BLK";
+        case eSuspended: return "SUS";
+        case eDeleted:   return "DEL";
+        default:         return "INV";
+    }
+}
+
+static void log_rtos_stats(void)
+{
+    UBaseType_t num_tasks = uxTaskGetNumberOfTasks();
+    TaskStatus_t *tasks = malloc(num_tasks * sizeof(TaskStatus_t));
+    if (tasks == NULL) {
+        ESP_LOGW(TAG, "rtos stats: malloc(%u tasks) failed", (unsigned)num_tasks);
+        return;
+    }
+
+    uint32_t total_runtime = 0;
+    num_tasks = uxTaskGetSystemState(tasks, num_tasks, &total_runtime);
+    if (num_tasks == 0 || total_runtime == 0) {
+        ESP_LOGW(TAG, "rtos stats: snapshot unavailable");
+        free(tasks);
+        return;
+    }
+
+    // Per-task table + accumulate cumulative idle time per core for the
+    // per-core busy % (computed over the interval since the previous dump).
+    uint64_t idle_now[portNUM_PROCESSORS] = {0};
+    ESP_LOGI(TAG, "RTOS tasks: name             core prio stack_hwm cpu%%(cumulative)");
+    for (UBaseType_t i = 0; i < num_tasks; i++) {
+        const TaskStatus_t *t = &tasks[i];
+        uint32_t cpu_pct = (uint32_t)(((uint64_t)t->ulRunTimeCounter * 100ULL) / total_runtime);
+        int core = (int)t->xCoreID; // tskNO_AFFINITY shows as a large value
+        ESP_LOGI(TAG, "  %-16s %4d %4u %9u %3u%%",
+                 t->pcTaskName,
+                 core,
+                 (unsigned)t->uxCurrentPriority,
+                 (unsigned)t->usStackHighWaterMark,
+                 (unsigned)cpu_pct);
+        // The IDLE tasks are named "IDLE0"/"IDLE1" on the IDF kernel.
+        if (strncmp(t->pcTaskName, "IDLE", 4) == 0) {
+            int c = t->pcTaskName[4] - '0';
+            if (c >= 0 && c < portNUM_PROCESSORS) {
+                idle_now[c] = (uint64_t)t->ulRunTimeCounter;
+            }
+        }
+    }
+
+    // Per-core busy %, diffing each core's IDLE-task counter against wall time.
+    // RUN_TIME_STATS_USING_ESP_TIMER=y => counters are in microseconds and
+    // share the esp_timer time base, so the interval == esp_timer delta.
+    static uint64_t s_prev_wall_us = 0;
+    static uint64_t s_prev_idle_us[portNUM_PROCESSORS] = {0};
+    uint64_t now_us = (uint64_t)esp_timer_get_time();
+    uint64_t wall_delta = now_us - s_prev_wall_us;
+    for (int core = 0; core < portNUM_PROCESSORS; core++) {
+        uint64_t idle_delta = idle_now[core] - s_prev_idle_us[core];
+        if (s_prev_wall_us != 0 && wall_delta > 0) {
+            uint32_t idle_pct = (uint32_t)((idle_delta * 100ULL) / wall_delta);
+            if (idle_pct > 100) idle_pct = 100; // clamp sampling skew
+            ESP_LOGI(TAG, "core %d load: busy=%u%% idle=%u%% (interval %u ms)",
+                     core, (unsigned)(100 - idle_pct), (unsigned)idle_pct,
+                     (unsigned)(wall_delta / 1000ULL));
+        } else {
+            ESP_LOGI(TAG, "core %d load: (baseline captured)", core);
+        }
+        s_prev_idle_us[core] = idle_now[core];
+    }
+    s_prev_wall_us = now_us;
+
+    free(tasks);
+
+    // Heap snapshot: internal vs PSRAM free + largest free block.
+    ESP_LOGI(TAG,
+             "heap: free=%u min_free=%u | internal free=%u largest=%u | psram free=%u largest=%u",
+             (unsigned)esp_get_free_heap_size(),
+             (unsigned)esp_get_minimum_free_heap_size(),
+             (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+             (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
+             (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
+             (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM));
 }
 #endif
 
@@ -173,17 +283,32 @@ static void main_button_event_cb(my_button_id_t button_id, button_event_t event,
     (void)user_data;
 
     // MY_BUTTON_1 is the BPM-adjust hold button — track press/release directly
-    // so the flag is always in sync regardless of queue state.
+    // so the flag is always in sync regardless of queue state. A long (>=3s)
+    // hold latches into melodic-patch-select mode; the encoder task reads the
+    // press timestamp to decide which action applies on each turn.
     if (button_id == MY_BUTTON_1) {
         if (event == BUTTON_PRESS_DOWN) {
             s_bpm_mode_held = true;
+            s_bpm_patch_latched = false;
+            s_bpm_press_us = esp_timer_get_time();
         } else if (event == BUTTON_PRESS_UP) {
             s_bpm_mode_held = false;
+            s_bpm_patch_latched = false;
+            sequencer_ui_set_patch_select_mode(false);
         }
         return;
     }
 
+    // MY_BUTTON_2 is normally the drum-sound-select hold button. While the graph
+    // editor is open it is repurposed (gated) as the SHORT<->LONG time-range
+    // toggle so it never touches drum state in that context.
     if (button_id == MY_BUTTON_2) {
+        if (sequencer_ui_graph_is_active()) {
+            if (event == BUTTON_PRESS_DOWN) {
+                sequencer_ui_graph_toggle_range();
+            }
+            return;
+        }
         if (event == BUTTON_PRESS_DOWN) {
             s_drum_select_held = true;
             sequencer_ui_set_drum_select_mode(true);
@@ -194,13 +319,39 @@ static void main_button_event_cb(my_button_id_t button_id, button_event_t event,
         return;
     }
 
+    // MY_BUTTON_3 was the patch-select hold button; patch select has moved to a
+    // 3s hold of MY_BUTTON_1 (BPM). This button is now the graph editor's
+    // vertical<->horizontal axis toggle. It is ONLY consumed while the graph is
+    // open, so it never affects sequencer state in the background.
     if (button_id == MY_BUTTON_3) {
-        if (event == BUTTON_PRESS_DOWN) {
-            s_patch_select_held = true;
-            sequencer_ui_set_patch_select_mode(true);
-        } else if (event == BUTTON_PRESS_UP) {
-            s_patch_select_held = false;
-            sequencer_ui_set_patch_select_mode(false);
+        if (event == BUTTON_PRESS_DOWN && sequencer_ui_graph_is_active()) {
+            sequencer_ui_graph_toggle_axis();
+        }
+        return;
+    }
+
+    /* graph pop-up: encoder push is the editor's select/adjust + open trigger.
+     * - long press (editor closed) opens the envelope editor
+     * - short press (editor open)  toggles select<->adjust, or confirms in VIEW
+     * Remove this block to revert the integration. */
+    if (button_id == MY_BUTTON_ENC) {
+        if (sequencer_ui_graph_is_active()) {
+            if (event == BUTTON_PRESS_DOWN) {
+                sequencer_ui_graph_handle_button(false); /* short press */
+            }
+            return;
+        }
+        if (event == BUTTON_LONG_PRESS_START) {
+            sequencer_ui_graph_open_envelope();
+            return;
+        }
+        /* else fall through to the normal PRESS_DOWN queueing below */
+    }
+
+    /* graph pop-up: MY_BUTTON_0 long press cancels the editor while it is open. */
+    if (button_id == MY_BUTTON_0 && sequencer_ui_graph_is_active()) {
+        if (event == BUTTON_LONG_PRESS_START) {
+            sequencer_ui_graph_handle_button(true); /* long = cancel */
         }
         return;
     }
@@ -259,16 +410,31 @@ static void encoder_task(void *pvParameters)
             enc_accum %= 2;
             if (steps == 0) goto next_poll;
 
+            /* graph pop-up: when open, the encoder drives the curve editor and
+             * normal sequencer routing is skipped. Remove this branch to revert. */
+            if (sequencer_ui_graph_handle_encoder(steps)) {
+                goto next_poll;
+            }
+
             if (s_bpm_mode_held) {
-                // BPM-adjust mode: hold MY_BUTTON_1 + turn encoder
-                uint16_t new_bpm = SEQ_CLAMP_U16(seq_state.bpm + (int)steps, 40, 300);
-                sequencer_ui_set_bpm(new_bpm);
+                // MY_BUTTON_1 hold + encoder. A short hold adjusts BPM (the
+                // common, fast case). Holding past BPM_PATCH_HOLD_US latches the
+                // press into melodic-patch-select for the rest of the hold.
+                if (!s_bpm_patch_latched &&
+                    (esp_timer_get_time() - s_bpm_press_us) >= BPM_PATCH_HOLD_US) {
+                    s_bpm_patch_latched = true;
+                    sequencer_ui_set_patch_select_mode(true);
+                    ESP_LOGI(TAG, "BPM button held >=3s -> patch-select mode");
+                }
+                if (s_bpm_patch_latched) {
+                    sequencer_ui_cycle_melodic_patch((int)steps);
+                } else {
+                    uint16_t new_bpm = SEQ_CLAMP_U16(seq_state.bpm + (int)steps, 40, 300);
+                    sequencer_ui_set_bpm(new_bpm);
+                }
             } else if (s_drum_select_held) {
                 // Drum-select mode: hold MY_BUTTON_2 + turn encoder
                 sequencer_ui_adjust_track_note((int)steps);
-            } else if (s_patch_select_held) {
-                // Patch-select mode: hold MY_BUTTON_3 + turn encoder
-                sequencer_ui_cycle_melodic_patch((int)steps);
             } else {
                 sequencer_ui_handle_encoder(steps);
             }
@@ -296,12 +462,15 @@ static void encoder_init_task(void *pvParameters)
         // Increase encoder task stack to avoid stack overflow when handling
         // amy_event-heavy operations (sequencer toggles create several
         // amy_event/delta conversions on the stack).
-        xTaskCreate(encoder_task,
+        // Pin to Core 0 so the encoder poll never migrates onto Core 1 and
+        // jitters the audio DSP now running there.
+        xTaskCreatePinnedToCore(encoder_task,
              "encoder_task",
              8192,
              enc,
              5,
-              NULL);
+              NULL,
+              0);
     }
 
     vTaskDelete(NULL);
@@ -399,23 +568,27 @@ extern struct state amy_global;
          &amy_render_task_handle,
          0);
 #else
+    // Pin the entire AMY DSP to Core 1. With multicore/multithread=0 AMY spawns
+    // no tasks, so all synthesis runs inside amy_update() in this task. Keeping
+    // it on Core 1 gives the synth a dedicated core away from the USB UAC task
+    // and the esp_timer/sequencer tick, both of which live on Core 0.
     render_task_ok = xTaskCreatePinnedToCore(amy_usb_render_task,
          "amy_render",
          8192,
           NULL,
           7,
           &amy_render_task_handle,
-          0); 
+          1); 
 #endif
     if (render_task_ok != pdPASS) {
-        ESP_LOGW(TAG, "amy_render pinned task create failed (%ld), retrying unpinned", (long)render_task_ok);
+        ESP_LOGW(TAG, "amy_render pinned task create failed (%ld), retrying on core 0", (long)render_task_ok);
         render_task_ok = xTaskCreatePinnedToCore(amy_usb_render_task,
              "amy_render",
              8192,
              NULL,
              7,
              &amy_render_task_handle,
-             1);
+             0);
     }
     if (render_task_ok != pdPASS) {
         ESP_LOGE(TAG, "amy_render task create failed (%ld)", (long)render_task_ok);
@@ -462,6 +635,11 @@ extern struct state amy_global;
 
     ESP_LOGI(TAG, "Main loop started.");
     // Idle loop; pot_reader_task handles all pot->synth updates.
+#if CONFIG_AMYSYNTH_RTOS_STATS
+    const uint32_t idle_loop_ms = CONFIG_AMYSYNTH_RTOS_STATS_PERIOD_MS;
+#else
+    const uint32_t idle_loop_ms = 5000;
+#endif
     while (1) {
         ESP_LOGI(TAG,
                  "Main loop idle... seq_tick=%" PRIu32 " tick_hook_calls=%" PRIu32 " render_blocks=%" PRIu32 " render_sysclock_ms=%" PRIu32,
@@ -469,6 +647,9 @@ extern struct state amy_global;
 #if CONFIG_USB_AUDIO_DIAGNOSTICS
         main_log_audio_diagnostics();
 #endif
-        vTaskDelay(pdMS_TO_TICKS(5000));        }
+#if CONFIG_AMYSYNTH_RTOS_STATS
+        log_rtos_stats();
+#endif
+        vTaskDelay(pdMS_TO_TICKS(idle_loop_ms));
     }
-
+}

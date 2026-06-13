@@ -12,3 +12,11 @@ CONFIG_SPIRAM_MODE_OCT=y
 CONFIG_SPIRAM_TYPE_AUTO=y
 # flash
 CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+#
+# USB Audio (UAC) task core affinity
+#
+# Pin the TinyUSB UAC tasks to Core 0 (was -1 / no affinity). This keeps the
+# USB stack deterministically next to its ISR on Core 0 and away from the AMY
+# DSP render task, which is pinned to Core 1.
+CONFIG_UAC_TINYUSB_TASK_CORE=0
+CONFIG_UAC_MIC_TASK_CORE=0

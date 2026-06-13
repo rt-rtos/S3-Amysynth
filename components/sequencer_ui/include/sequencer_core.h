@@ -21,6 +21,15 @@ uint8_t sequencer_core_get_quantizer_scale(void);
 void sequencer_core_set_melodic_patch(uint16_t patch_number);
 uint16_t sequencer_core_get_melodic_patch(void);
 
+/* ── Per-row melodic ADSR envelope (runtime-editable) ──
+ * Scoped per row (per track) today; see seq_env_t in priv_u8g2_seq.h for the
+ * extension path to per-step. get returns false for non-melodic/out-of-range.
+ * set clamps, stores, marks the row active, and pushes it to the layer synth. */
+bool sequencer_core_get_melodic_envelope(uint8_t layer_idx, uint8_t track,
+                                         seq_env_t *out);
+void sequencer_core_set_melodic_envelope(uint8_t layer_idx, uint8_t track,
+                                         const seq_env_t *env);
+
 /* Returns the current playhead step for the given layer (0..num_steps-1).
  * When paused the last computed step is returned (display freezes). */
 uint8_t sequencer_core_get_current_step(uint8_t layer_idx);

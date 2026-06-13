@@ -20,6 +20,20 @@ typedef enum {
     SEQ_LAYER_MELODIC = 1,
 } seq_layer_type_t;
 
+/* ── ADSR envelope (one AMY EG0 breakpoint set) ──
+ * Stored as concrete ms/percent so it survives patch changes and can be edited
+ * at runtime by the graph UI. Currently scoped PER ROW (per track); the storage
+ * array in seq_layer_t is env[SEQ_TRACKS]. To extend to per-step later, widen
+ * that array to env[SEQ_TRACKS][SEQ_MAX_STEPS] and update the single accessor
+ * seq_layer_env() in sequencer_core.c — no other call site changes. */
+typedef struct {
+    uint32_t attack_ms;
+    uint32_t decay_ms;
+    uint8_t  sustain_pct;   /* 0..100, sustain level as a percentage */
+    uint32_t release_ms;
+    uint8_t  eg_type;       /* AMY ENVELOPE_* (NORMAL/LINEAR/DX7/TRUE_EXP)   */
+} seq_env_t;
+
 /* ── Per-layer data (display + audio shared) ── */
 typedef struct {
     seq_layer_type_t type;
@@ -28,6 +42,7 @@ typedef struct {
     bool     grid[SEQ_TRACKS][SEQ_MAX_STEPS];        /* step on/off state      */
     uint8_t  step_note[SEQ_TRACKS][SEQ_MAX_STEPS];   /* per-step MIDI pitch    */
     uint8_t  track_base_note[SEQ_TRACKS];            /* current base note      */
+    seq_env_t env[SEQ_TRACKS];                       /* per-row ADSR envelope  */
     uint8_t  synth_id;
     uint16_t patch;
     uint32_t synth_flags;

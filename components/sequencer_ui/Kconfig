@@ -73,6 +73,39 @@ config SEQ_MELODIC_PATCH
 	help
 		Resolved AMY patch number for melodic layer initialization.
 
+choice SEQ_PATCH_BROWSE_MODE
+	prompt "Runtime melodic patch browse mode"
+	default SEQ_PATCH_BROWSE_PRESELECTED
+	help
+		Controls what the runtime patch-select control (hold BPM button + turn
+		encoder) cycles through.
+
+config SEQ_PATCH_BROWSE_PRESELECTED
+	bool "Preselected shortlist"
+	help
+		Cycle a small, hand-picked list of musical built-in patches. Fast to
+		reach favourites; does not require the name table.
+
+config SEQ_PATCH_BROWSE_FULL_RANGE
+	bool "Full range (0..256)"
+	help
+		Cycle every AMY built-in patch: Juno 0..127, DX7 128..255, and the
+		built-in piano (256). Enable SEQ_PATCH_SHOW_NAMES to see what each is.
+
+endchoice
+
+config SEQ_PATCH_SHOW_NAMES
+	bool "Show human-readable patch names"
+	default y if SEQ_PATCH_BROWSE_FULL_RANGE
+	default n
+	help
+		Compiles in a table of human-readable patch names (e.g. "DX7 E.Piano 1")
+		and shows them on the OLED instead of the bare patch number. Costs flash
+		(≈257 short strings + a pointer table). Disable to save flash — useful
+		for preselected-only builds, or when browsing the full range under flash
+		pressure (you then see just the patch number). The number is always
+		shown; the name is appended only when this is enabled.
+
 config SEQ_MELODIC_GATE_NUMERATOR
 	int "Melodic gate ratio numerator"
 	range 1 12

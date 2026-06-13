@@ -26,6 +26,13 @@ static inline uint16_t seq_clamp_u16(int value, uint16_t min_value, uint16_t max
     return (uint16_t)value;
 }
 
+static inline uint32_t seq_clamp_u32(int64_t value, uint32_t min_value, uint32_t max_value)
+{
+    if (value < (int64_t)min_value) return min_value;
+    if (value > (int64_t)max_value) return max_value;
+    return (uint32_t)value;
+}
+
 static inline float seq_clamp_f32(float value, float min_value, float max_value)
 {
     if (value < min_value) return min_value;
@@ -46,6 +53,11 @@ static inline float seq_clamp_f32(float value, float min_value, float max_value)
 #ifndef SEQ_CLAMP_U16
 #define SEQ_CLAMP_U16(value, min_value, max_value) \
     seq_clamp_u16((value), (min_value), (max_value))
+#endif
+
+#ifndef SEQ_CLAMP_U32
+#define SEQ_CLAMP_U32(value, min_value, max_value) \
+    seq_clamp_u32((value), (min_value), (max_value))
 #endif
 
 #ifndef SEQ_CLAMP_F32

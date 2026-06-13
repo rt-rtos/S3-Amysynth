@@ -24,3 +24,23 @@ config USB_AUDIO_BLOCKING_WRITE
         which can result in 'honky' percussive artifacts if transport is poor.
 
 endmenu
+
+menu "RTOS Diagnostics"
+
+config AMYSYNTH_RTOS_STATS
+    bool "Enable periodic RTOS runtime-stats diagnostic dump"
+    default n
+    help
+        When enabled, app_main periodically prints the FreeRTOS task list,
+        per-task CPU runtime %, per-core load, and per-task stack high-water
+        marks via ESP_LOGI. Profiling aid; leave off for release builds.
+
+config AMYSYNTH_RTOS_STATS_PERIOD_MS
+    int "RTOS stats dump period (ms)"
+    depends on AMYSYNTH_RTOS_STATS
+    default 5000
+    range 1000 60000
+    help
+        Interval between RTOS runtime-stats dumps emitted by app_main.
+
+endmenu

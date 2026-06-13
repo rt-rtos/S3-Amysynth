@@ -1,4 +1,5 @@
 #include "priv_u8g2_seq.h"
+#include "patch_names.h"
 #include <stdio.h>
 
 /* ── GM percussion note names (index 0 = MIDI note 27, index 60 = note 87) ── */
@@ -62,19 +63,30 @@ void priv_u8g2_seq_draw_frame(u8g2_t *u8g2, const priv_u8g2_seq_state_t *state)
     u8g2_DrawStr(u8g2, 52, 8, buf);
 
     if (layer->type == SEQ_LAYER_MELODIC) {
-        snprintf(buf, sizeof(buf), "Pt%u", (unsigned)layer->patch);
+        /* Patch number, right-aligned to a fixed right edge so a 1-3 digit
+         * value never grows into the play-icon column at x=105. The "Pt"
+         * prefix is dropped and a smaller 5x7 font is used to stay within the
+         * 84..102 budget regardless of digit count. */
+        const uint8_t patch_right = 102;   /* last column the digits may touch */
+        snprintf(buf, sizeof(buf), "%u", (unsigned)layer->patch);
+        u8g2_SetFont(u8g2, u8g2_font_5x7_tr);
+        uint8_t pw = (uint8_t)u8g2_GetStrWidth(u8g2, buf);
+        uint8_t px = (pw < patch_right) ? (uint8_t)(patch_right - pw) : 0;
         if (state->patch_select_mode) {
-            u8g2_DrawRFrame(u8g2, 78, 0, 26, 10, 1);
+            /* Frame sized to the digits, never crossing into the play icon. */
+            u8g2_DrawRFrame(u8g2, (uint8_t)(px - 2), 0,
+                            (uint8_t)(pw + 4), 10, 1);
         }
-        u8g2_DrawStr(u8g2, 80, 8, buf);
+        u8g2_DrawStr(u8g2, px, 8, buf);
+        u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
     }
 
-    /* Play / pause icon */
+    /* Play / pause icon (fixed column at x=106, collision-free) */
     if (state->playing) {
-        u8g2_DrawTriangle(u8g2, 105, 2, 105, 7, 112, 4);   /* ▶ */
+        u8g2_DrawTriangle(u8g2, 106, 2, 106, 7, 113, 4);   /* ▶ */
     } else {
-        u8g2_DrawBox(u8g2, 105, 2, 2, 6);
-        u8g2_DrawBox(u8g2, 110, 2, 2, 6);                  /* ▮▮ */
+        u8g2_DrawBox(u8g2, 106, 2, 2, 6);
+        u8g2_DrawBox(u8g2, 111, 2, 2, 6);                  /* ▮▮ */
     }
 
     /* Page indicator for 32-step layers ("P1" / "P2") */
@@ -151,6 +163,30 @@ void priv_u8g2_seq_draw_frame(u8g2_t *u8g2, const priv_u8g2_seq_state_t *state)
             int sel_y = grid_top + state->selected_track * row_h - 1;
             int sel_x = grid_x + (sel_abs - (int)step_start) * col_w;
             u8g2_DrawRFrame(u8g2, sel_x, sel_y, cell_size + 2, cell_size + 2, 1);
+        }
+    }
+
+    /* === PATCH-SELECT NAME OVERLAY ===
+     * While the user is browsing patches (BPM button held into patch-select),
+     * show the current patch's human name in a centred banner over the grid so
+     * the full-range browser is legible. Only drawn when the name table is
+     * compiled in (CONFIG_SEQ_PATCH_SHOW_NAMES); otherwise the top-bar number
+     * is the only readout. patch_name_for() is a no-op returning NULL when the
+     * table is excluded, so this whole block costs nothing then. */
+    if (state->patch_select_mode && layer->type == SEQ_LAYER_MELODIC) {
+        const char *pname = patch_name_for(layer->patch);
+        if (pname) {
+            u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
+            uint8_t nw = (uint8_t)u8g2_GetStrWidth(u8g2, pname);
+            if (nw > 124) nw = 124;
+            uint8_t bx = (uint8_t)((128 - (nw + 4)) / 2);
+            uint8_t by = 26;            /* banner top, over the grid area */
+            /* Clear a box then frame + centred text for contrast over the grid. */
+            u8g2_SetDrawColor(u8g2, 0);
+            u8g2_DrawBox(u8g2, bx, by, (uint8_t)(nw + 4), 13);
+            u8g2_SetDrawColor(u8g2, 1);
+            u8g2_DrawRFrame(u8g2, bx, by, (uint8_t)(nw + 4), 13, 2);
+            u8g2_DrawStr(u8g2, (uint8_t)(bx + 2), (uint8_t)(by + 9), pname);
         }
     }
 

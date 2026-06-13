@@ -160,26 +160,50 @@ static inline void seq_ev_send(void)
     xSemaphoreGive(s_ev_mutex);
 }
 
-static void sequencer_configure_melodic_envelope(uint8_t layer_idx)
+/* The melodic envelope is stored PER ROW (per track). All four rows of a layer
+ * currently share one AMY synth slot, so AMY can only hold ONE envelope on that
+ * synth at a time: whichever row is "active" defines the live envelope. This
+ * accessor is the single point of truth for "which env applies to (layer,track,
+ * step)". For per-step support later, add a step parameter and index a wider
+ * env[][] array here — callers stay unchanged. */
+static seq_env_t *seq_layer_env(uint8_t layer_idx, uint8_t track)
+{
+    if (layer_idx >= s_num_layers) layer_idx = 0;
+    if (track >= SEQ_TRACKS) track = 0;
+    return &s_layers[layer_idx].env[track];
+}
+
+/* The row whose envelope is currently mirrored onto the shared AMY synth. The
+ * UI sets this when the user selects a row to edit; defaults to row 0. */
+static uint8_t s_active_env_track[MAX_LAYERS] = {0};
+
+/* Push the given row's stored envelope to the layer's AMY synth. */
+static void sequencer_configure_melodic_envelope_track(uint8_t layer_idx, uint8_t track)
 {
 #if CONFIG_SEQ_MELODIC_ENVELOPE_ENABLED
     const seq_layer_t *layer = &s_layers[layer_idx];
-    float sustain = (float)CONFIG_SEQ_MELODIC_ENV_SUSTAIN_PCT / 100.0f;
+    const seq_env_t   *env   = seq_layer_env(layer_idx, track);
+    float sustain = (float)env->sustain_pct / 100.0f;
 
     seq_ev_begin();
     s_ev.synth = layer->synth_id;
     s_ev.bp_is_set[0] = 1;
-    s_ev.eg_type[0] = CONFIG_SEQ_MELODIC_ENV_EG0_TYPE;
-    s_ev.eg0_times[0] = CONFIG_SEQ_MELODIC_ENV_ATTACK_MS;
+    s_ev.eg_type[0] = env->eg_type;
+    s_ev.eg0_times[0] = env->attack_ms;
     s_ev.eg0_values[0] = 1.0f;
-    s_ev.eg0_times[1] = CONFIG_SEQ_MELODIC_ENV_DECAY_MS;
+    s_ev.eg0_times[1] = env->decay_ms;
     s_ev.eg0_values[1] = sustain;
-    s_ev.eg0_times[2] = CONFIG_SEQ_MELODIC_ENV_RELEASE_MS;
+    s_ev.eg0_times[2] = env->release_ms;
     s_ev.eg0_values[2] = 0.0f;
     seq_ev_send();
 #else
-    (void)layer_idx;
+    (void)layer_idx; (void)track;
 #endif
+}
+
+static void sequencer_configure_melodic_envelope(uint8_t layer_idx)
+{
+    sequencer_configure_melodic_envelope_track(layer_idx, s_active_env_track[layer_idx]);
 }
 
 static uint8_t sequencer_clamp_layer_note(const seq_layer_t *layer, uint8_t note)
@@ -512,7 +536,14 @@ uint8_t sequencer_core_add_layer(seq_layer_type_t type, uint8_t num_steps)
             for (uint8_t s = 0; s < SEQ_MAX_STEPS; s++) {
                 layer->step_note[t][s] = mel_notes[t];
             }
+            /* Seed each row's envelope from the compile-time defaults. */
+            layer->env[t].attack_ms   = CONFIG_SEQ_MELODIC_ENV_ATTACK_MS;
+            layer->env[t].decay_ms    = CONFIG_SEQ_MELODIC_ENV_DECAY_MS;
+            layer->env[t].sustain_pct = CONFIG_SEQ_MELODIC_ENV_SUSTAIN_PCT;
+            layer->env[t].release_ms  = CONFIG_SEQ_MELODIC_ENV_RELEASE_MS;
+            layer->env[t].eg_type     = CONFIG_SEQ_MELODIC_ENV_EG0_TYPE;
         }
+        s_active_env_track[idx] = 0;
     }
 
     sequencer_configure_synth(idx);
@@ -546,6 +577,39 @@ void sequencer_core_set_melodic_patch(uint16_t patch_number)
 uint16_t sequencer_core_get_melodic_patch(void)
 {
     return s_melodic_patch;
+}
+
+/* ── Per-row melodic envelope (runtime-editable) ─────────────────────────── */
+
+bool sequencer_core_get_melodic_envelope(uint8_t layer_idx, uint8_t track,
+                                         seq_env_t *out)
+{
+    if (!out || layer_idx >= s_num_layers || track >= SEQ_TRACKS) return false;
+    if (s_layers[layer_idx].type != SEQ_LAYER_MELODIC) return false;
+    *out = *seq_layer_env(layer_idx, track);
+    return true;
+}
+
+void sequencer_core_set_melodic_envelope(uint8_t layer_idx, uint8_t track,
+                                         const seq_env_t *env)
+{
+    if (!env || layer_idx >= s_num_layers || track >= SEQ_TRACKS) return;
+    seq_layer_t *layer = &s_layers[layer_idx];
+    if (layer->type != SEQ_LAYER_MELODIC) return;
+
+    seq_env_t *dst = seq_layer_env(layer_idx, track);
+    dst->attack_ms   = SEQ_CLAMP_U32(env->attack_ms,  0, 60000);
+    dst->decay_ms    = SEQ_CLAMP_U32(env->decay_ms,   0, 60000);
+    dst->sustain_pct = SEQ_CLAMP_U8(env->sustain_pct, 0, 100);
+    dst->release_ms  = SEQ_CLAMP_U32(env->release_ms, 0, 60000);
+    dst->eg_type     = env->eg_type;
+
+    /* This row now owns the shared synth's live envelope. */
+    s_active_env_track[layer_idx] = track;
+    sequencer_configure_melodic_envelope_track(layer_idx, track);
+    ESP_LOGI(TAG, "env L%u row%u -> A%u D%u S%u%% R%u",
+             layer_idx, track, (unsigned)dst->attack_ms, (unsigned)dst->decay_ms,
+             (unsigned)dst->sustain_pct, (unsigned)dst->release_ms);
 }
 
 uint8_t sequencer_core_get_num_layers(void)
