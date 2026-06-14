@@ -2,6 +2,19 @@
 
 
 
+
+
+
+### Prototype
+
+[Prototype](https://github.com/user-attachments/assets/a7d58778-f2d6-4067-9d59-5099f2a55ba3)
+
+---
+
+
+
+
+
 ## Overview
 
 **S3-Amysynth** is an embedded audio project built on the **ESP32-S3** using **ESP-IDF**. It combines firmware development, real-time audio generation, hardware interfacing, and UI design in a custom handheld synthesizer platform.
