@@ -1,0 +1,9 @@
+<map id="synth_ui_lfo_open" name="synth_ui_lfo_open">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,55,145,80"/>
+<area shape="rect" id="Node000002" href="$arp__core_8c.html#a7788a93556771de33c2e6066773a7cb4" title=" " alt="" coords="222,5,317,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="125,52,208,31,209,36,127,57"/>
+<area shape="rect" id="Node000003" href="$drone__std__core_8c.html#a3a7a76d9a482ca115b43c4f5fbcf4f4c" title=" " alt="" coords="200,55,339,80"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="146,65,186,65,186,70,146,70"/>
+<area shape="rect" id="Node000004" href="$seq__core__editors_8c.html#a0b2cac059d6ad4e85a7f2bfbc5cfb3c9" title=" " alt="" coords="193,105,345,145"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="120,78,189,98,187,103,118,83"/>
+</map>

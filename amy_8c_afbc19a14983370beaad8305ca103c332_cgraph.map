@@ -1,0 +1,7 @@
+<map id="amy_reset_sysclock" name="amy_reset_sysclock">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,5,160,31"/>
+<area shape="rect" id="Node000002" href="$sequencer_8c.html#ac81924b36368f0cb19c28c07752a3ef5" title=" " alt="" coords="208,5,375,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="160,15,195,15,195,21,160,21"/>
+<area shape="rect" id="Node000003" href="$api_8c.html#ac70c4b4f0c02030d031fe40b88c7cc3a" title=" " alt="" coords="423,5,537,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="375,15,409,15,409,21,375,21"/>
+</map>

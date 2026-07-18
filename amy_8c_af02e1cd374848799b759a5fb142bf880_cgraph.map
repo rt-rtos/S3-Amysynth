@@ -1,0 +1,13 @@
+<map id="alloc_echo_delay_lines" name="alloc_echo_delay_lines">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,42,177,67"/>
+<area shape="rect" id="Node000002" href="$amy_8c.html#a9365cb65d06f0a26029f5cb467d1336c" title=" " alt="" coords="225,5,376,45"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="178,40,211,35,212,40,178,45"/>
+<area shape="rect" id="Node000004" href="$delay_8c.html#a99d487fb1220f492f2d00b783faa07a4" title=" " alt="" coords="239,70,362,95"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="178,64,226,70,225,75,178,69"/>
+<area shape="rect" id="Node000003" href="$delay_8c.html#a391addf6237837cfe0c70e625cccbf88" title=" " alt="" coords="428,13,551,38"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="376,23,414,23,414,28,376,28"/>
+<area shape="rect" id="Node000005" href="$delay_8c.html#aec9a1e7d8d28bbce3431c6bb8785c3a7" title=" " alt="" coords="424,66,555,91"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="362,79,410,78,410,83,362,84"/>
+<area shape="rect" id="Node000006" href="$amy_8c.html#adf4eb9b209ec33e5816b81031376947e" title=" " alt="" coords="438,115,541,141"/>
+<area shape="poly" id="edge5_Node000004_Node000006" title=" " alt="" coords="355,93,425,110,424,115,354,98"/>
+</map>

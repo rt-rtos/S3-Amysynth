@@ -1,0 +1,21 @@
+<map id="sequencer_core_progression_get_entry" name="sequencer_core_progression_get_entry">
+<area shape="rect" id="Node000001" title=" " alt="" coords="756,47,963,87"/>
+<area shape="rect" id="Node000002" href="$ui__screen__prog_8c.html#ab56399c7205939d6d50c7bbb5d0cf74a" title=" " alt="" coords="562,5,690,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="750,47,686,33,687,28,751,42"/>
+<area shape="rect" id="Node000005" href="$project__snapshot_8c.html#a91c589f88599d4722cec21702db3d9e1" title=" " alt="" coords="587,55,665,80"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="742,70,666,70,666,65,742,65"/>
+<area shape="rect" id="Node000007" href="$ui__screen__prog_8c.html#a623f9ab1c2a6bfb907ca914e6329d797" title=" " alt="" coords="544,105,708,145"/>
+<area shape="poly" id="edge6_Node000001_Node000007" title=" " alt="" coords="765,93,709,107,707,102,763,88"/>
+<area shape="rect" id="Node000003" href="$ui__screen__prog_8c.html#a27848aba9b42798bbef4cc4cda820161" title=" " alt="" coords="332,5,489,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="548,21,490,21,490,15,548,15"/>
+<area shape="rect" id="Node000004" href="$ui__view__resolve_8c.html#adbca8d6e63a8c89ee75fb7dd0e904257" title=" " alt="" coords="170,5,247,31"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="318,21,248,21,248,15,318,15"/>
+<area shape="rect" id="Node000006" href="$project__snapshot_8c.html#a60da0804771ff732a1d5943a36b47a46" title=" " alt="" coords="325,55,496,80"/>
+<area shape="poly" id="edge5_Node000005_Node000006" title=" " alt="" coords="573,70,496,70,496,65,573,65"/>
+<area shape="rect" id="Node000008" href="$main_8c.html#a7c172ae572f9673c6c52bfaca428fc48" title=" " alt="" coords="356,112,465,137"/>
+<area shape="poly" id="edge7_Node000007_Node000008" title=" " alt="" coords="530,127,466,127,466,122,530,122"/>
+<area shape="rect" id="Node000009" href="$main_8c.html#a3284ccb20ad2e72440652c1b1cc6d2ca" title=" " alt="" coords="140,112,277,137"/>
+<area shape="poly" id="edge8_Node000008_Node000009" title=" " alt="" coords="343,127,278,127,278,122,343,122"/>
+<area shape="rect" id="Node000010" href="$main_8c.html#a630544a7f0a2cc40d8a7fefab7e2fe70" title=" " alt="" coords="5,112,92,137"/>
+<area shape="poly" id="edge9_Node000009_Node000010" title=" " alt="" coords="126,127,92,127,92,122,126,122"/>
+</map>

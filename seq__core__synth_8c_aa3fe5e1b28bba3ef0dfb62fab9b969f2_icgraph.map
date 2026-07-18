@@ -1,0 +1,21 @@
+<map id="sequencer_core_reload_layer_synth" name="sequencer_core_reload_layer_synth">
+<area shape="rect" id="Node000001" title=" " alt="" coords="1037,39,1209,79"/>
+<area shape="rect" id="Node000002" href="$ui__editors_8c.html#a9dcf57117b405e25de3f5c21d4716b23" title=" " alt="" coords="827,8,959,48"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="1023,48,959,39,960,34,1024,43"/>
+<area shape="rect" id="Node000008" href="$ui__editors_8c.html#a1f90be3eed3c787888bc52eadd281eea" title=" " alt="" coords="797,74,989,99"/>
+<area shape="poly" id="edge8_Node000001_Node000008" title=" " alt="" coords="1024,73,990,78,989,72,1023,68"/>
+<area shape="rect" id="Node000003" href="$ui__editors_8c.html#a4598579664b8a5392029b9f5168b8dd5" title=" " alt="" coords="581,5,746,45"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="813,30,746,29,746,24,813,24"/>
+<area shape="rect" id="Node000004" href="$main_8c.html#a853991e008217fad3ba1257cf6c2ffd6" title=" " alt="" coords="359,45,529,70"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="567,42,530,48,529,42,566,37"/>
+<area shape="rect" id="Node000005" href="$main_8c.html#a76ad0af96f0bd05b4f5d9de46d8f0844" title=" " alt="" coords="148,19,303,45"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="345,49,303,44,303,38,345,43"/>
+<area shape="rect" id="Node000007" href="$main_8c.html#a078307577c9af84e25489131d173b731" title=" " alt="" coords="140,69,311,94"/>
+<area shape="poly" id="edge6_Node000004_Node000007" title=" " alt="" coords="346,71,311,75,311,69,345,66"/>
+<area shape="rect" id="Node000006" href="$main_8c.html#a630544a7f0a2cc40d8a7fefab7e2fe70" title=" " alt="" coords="5,45,92,70"/>
+<area shape="poly" id="edge5_Node000005_Node000006" title=" " alt="" coords="135,48,93,54,92,49,134,42"/>
+<area shape="poly" id="edge7_Node000007_Node000006" title=" " alt="" coords="126,70,92,66,93,61,126,65"/>
+<area shape="rect" id="Node000009" href="$ui__editors_8c.html#a228ffde9f537e609bf263da23b6d42de" title=" " alt="" coords="577,69,749,109"/>
+<area shape="poly" id="edge9_Node000008_Node000009" title=" " alt="" coords="783,91,750,91,750,86,783,85"/>
+<area shape="poly" id="edge10_Node000009_Node000004" title=" " alt="" coords="563,77,529,72,530,67,564,72"/>
+</map>

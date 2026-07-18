@@ -1,0 +1,9 @@
+<map id="usb_audio_init" name="usb_audio_init">
+<area shape="rect" id="Node000001" title="Initialize USB Audio Class device (UAC Microphone – ESP → Host only)" alt="" coords="5,55,121,80"/>
+<area shape="rect" id="Node000002" href="$usb__audio_8c.html#a90d6705c075c4f6ca8c3fadf63cb543d" title=" " alt="" coords="191,5,298,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="110,52,183,32,185,37,111,57"/>
+<area shape="rect" id="Node000003" href="$usb__audio_8c.html#a5343a6e47993d18de36545805e0affda" title=" " alt="" coords="177,55,312,80"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="122,65,164,65,164,70,122,70"/>
+<area shape="rect" id="Node000004" href="$usb__audio_8c.html#a358c8487cfb85acfbdc7092055ec3c5d" title=" " alt="" coords="169,104,320,129"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="111,77,185,98,183,103,110,83"/>
+</map>

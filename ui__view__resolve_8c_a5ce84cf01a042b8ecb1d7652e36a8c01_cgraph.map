@@ -1,0 +1,15 @@
+<map id="sig_seq" name="sig_seq">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,84,76,109"/>
+<area shape="rect" id="Node000002" href="$synth__ui__state_8c.html#ac3862766735d945553ed4585d260d120" title=" " alt="" coords="124,84,275,109"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="76,94,110,94,110,99,76,99"/>
+<area shape="rect" id="Node000003" href="$synth__ui__internal_8h.html#a202c77d048648108c104376a2bb3d844" title=" " alt="" coords="365,5,468,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="225,81,322,39,351,30,352,36,324,45,227,86"/>
+<area shape="rect" id="Node000004" href="$seq__core__tempo_8c.html#ae92364ccd8a25928ce5a2a394629acfd" title=" " alt="" coords="323,55,511,80"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="275,84,309,79,309,84,276,89"/>
+<area shape="rect" id="Node000005" href="$seq__core__synth_8c.html#add0bb8a1998522a7573f113fec480f2a" title=" " alt="" coords="341,105,493,145"/>
+<area shape="poly" id="edge4_Node000002_Node000005" title=" " alt="" coords="275,104,327,110,327,116,275,109"/>
+<area shape="rect" id="Node000006" href="$seq__core__synth_8c.html#aacd23543a1ee9cf50bbc07e2497f2b0a" title=" " alt="" coords="341,169,493,209"/>
+<area shape="poly" id="edge5_Node000002_Node000006" title=" " alt="" coords="226,107,324,154,342,161,340,166,322,159,223,112"/>
+<area shape="rect" id="Node000007" href="$seq__core__synth_8c.html#adcb7610cd1fa65d35606f0eefc9c8d88" title=" " alt="" coords="559,176,723,201"/>
+<area shape="poly" id="edge6_Node000006_Node000007" title=" " alt="" coords="493,186,545,186,545,191,493,191"/>
+</map>

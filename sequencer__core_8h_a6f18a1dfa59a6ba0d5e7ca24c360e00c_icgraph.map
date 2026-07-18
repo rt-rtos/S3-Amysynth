@@ -1,0 +1,17 @@
+<map id="sequencer_core_get_track_mute" name="sequencer_core_get_track_mute">
+<area shape="rect" id="Node000001" title=" " alt="" coords="768,35,920,75"/>
+<area shape="rect" id="Node000002" href="$ui__screen__trackopts_8c.html#a8099b80c518b09431f4c79bc9f51f80f" title=" " alt="" coords="569,5,713,45"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="754,44,712,38,713,33,755,39"/>
+<area shape="rect" id="Node000006" href="$ui__screen__trackopts_8c.html#ac1d33892e563f7151533516f12bfcb48" title=" " alt="" coords="561,70,720,95"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="755,70,721,74,720,69,754,64"/>
+<area shape="rect" id="Node000003" href="$main_8c.html#a7c172ae572f9673c6c52bfaca428fc48" title=" " alt="" coords="365,13,474,38"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="555,28,474,28,474,23,555,23"/>
+<area shape="rect" id="Node000004" href="$main_8c.html#a3284ccb20ad2e72440652c1b1cc6d2ca" title=" " alt="" coords="140,13,277,38"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="351,28,278,28,278,23,351,23"/>
+<area shape="rect" id="Node000005" href="$main_8c.html#a630544a7f0a2cc40d8a7fefab7e2fe70" title=" " alt="" coords="5,13,92,38"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="126,28,92,28,92,23,126,23"/>
+<area shape="rect" id="Node000007" href="$ui__screen__trackopts_8c.html#ac9fdf83296c073657023105d6641ec21" title=" " alt="" coords="325,70,513,95"/>
+<area shape="poly" id="edge6_Node000006_Node000007" title=" " alt="" coords="547,85,513,85,513,80,547,80"/>
+<area shape="rect" id="Node000008" href="$ui__view__resolve_8c.html#a570ca1f1cea4fc710c3201259d5e2a8b" title=" " alt="" coords="155,70,263,95"/>
+<area shape="poly" id="edge7_Node000007_Node000008" title=" " alt="" coords="311,85,263,85,263,80,311,80"/>
+</map>

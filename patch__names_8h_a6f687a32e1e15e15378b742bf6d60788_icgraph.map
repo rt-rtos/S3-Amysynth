@@ -1,0 +1,15 @@
+<map id="pcm_preset_name_for" name="pcm_preset_name_for">
+<area shape="rect" id="Node000001" title=" " alt="" coords="715,35,881,60"/>
+<area shape="rect" id="Node000002" href="$display__seq_8c.html#a1b1b0298a667f83f5b0e096f81aaf5b4" title="Draw one full sequencer frame from the provided state." alt="" coords="483,5,667,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="701,37,666,33,667,27,702,32"/>
+<area shape="rect" id="Node000004" href="$ui__patch__cycle_8c.html#aee1090f4016f74747e635e2ab155aa55" title=" " alt="" coords="495,55,654,95"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="701,62,655,68,654,63,701,57"/>
+<area shape="rect" id="Node000003" href="$ui__view__resolve_8c.html#a5210128481944b9bc21a982073713c2e" title=" " alt="" coords="338,5,422,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="469,21,422,21,422,15,469,15"/>
+<area shape="rect" id="Node000005" href="$main_8c.html#a7c172ae572f9673c6c52bfaca428fc48" title=" " alt="" coords="325,63,435,88"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="482,78,435,78,435,73,482,73"/>
+<area shape="rect" id="Node000006" href="$main_8c.html#a3284ccb20ad2e72440652c1b1cc6d2ca" title=" " alt="" coords="140,63,277,88"/>
+<area shape="poly" id="edge5_Node000005_Node000006" title=" " alt="" coords="312,78,278,78,278,73,312,73"/>
+<area shape="rect" id="Node000007" href="$main_8c.html#a630544a7f0a2cc40d8a7fefab7e2fe70" title=" " alt="" coords="5,63,92,88"/>
+<area shape="poly" id="edge6_Node000006_Node000007" title=" " alt="" coords="126,78,92,78,92,73,126,73"/>
+</map>

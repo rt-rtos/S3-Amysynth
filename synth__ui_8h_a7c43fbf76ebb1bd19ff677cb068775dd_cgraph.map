@@ -1,0 +1,7 @@
+<map id="synth_ui_trackopts_handle_button" name="synth_ui_trackopts_handle_button">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,37,149,77"/>
+<area shape="rect" id="Node000002" href="$seq__core__state_8c.html#a5246c0162110492f258bd0e14c065cbe" title=" " alt="" coords="197,5,349,45"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="149,43,183,37,184,43,150,48"/>
+<area shape="rect" id="Node000003" href="$ui__screen__trackopts_8c.html#a6e0ccab53115428683709a8cc73a72df" title=" " alt="" coords="201,69,345,109"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="150,66,188,73,187,78,149,72"/>
+</map>

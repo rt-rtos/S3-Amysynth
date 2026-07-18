@@ -1,0 +1,17 @@
+<map id="drone_set_wave" name="drone_set_wave">
+<area shape="rect" id="Node000001" title=" " alt="" coords="873,35,1001,60"/>
+<area shape="rect" id="Node000002" href="$project__snapshot_8c.html#ac955533a232c189cd35e39f7f0ee1cc9" title=" " alt="" coords="713,8,815,33"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="859,38,815,31,816,26,860,33"/>
+<area shape="rect" id="Node000004" href="$ui__screen__drone_8c.html#a1dc22c17796dfb3d28576143bbba316f" title=" " alt="" coords="703,59,825,84"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="860,61,826,65,825,60,859,55"/>
+<area shape="rect" id="Node000003" href="$project__snapshot_8c.html#adc328f05222133bb8129c9d502dc3ff4" title=" " alt="" coords="485,5,653,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="699,22,653,22,653,16,699,17"/>
+<area shape="rect" id="Node000005" href="$ui__screen__drone_8c.html#a5dbc7bb2e871c648cf939be1016c9c3c" title=" " alt="" coords="483,55,655,95"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="689,76,655,76,655,71,688,70"/>
+<area shape="rect" id="Node000006" href="$main_8c.html#a7c172ae572f9673c6c52bfaca428fc48" title=" " alt="" coords="325,63,435,88"/>
+<area shape="poly" id="edge5_Node000005_Node000006" title=" " alt="" coords="469,78,435,78,435,73,469,73"/>
+<area shape="rect" id="Node000007" href="$main_8c.html#a3284ccb20ad2e72440652c1b1cc6d2ca" title=" " alt="" coords="140,63,277,88"/>
+<area shape="poly" id="edge6_Node000006_Node000007" title=" " alt="" coords="312,78,278,78,278,73,312,73"/>
+<area shape="rect" id="Node000008" href="$main_8c.html#a630544a7f0a2cc40d8a7fefab7e2fe70" title=" " alt="" coords="5,63,92,88"/>
+<area shape="poly" id="edge7_Node000007_Node000008" title=" " alt="" coords="126,78,92,78,92,73,126,73"/>
+</map>

@@ -1,0 +1,5 @@
+<map id="sequencer_track_audible" name="sequencer_track_audible">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,5,189,31"/>
+<area shape="rect" id="Node000002" href="$seq__core__engine_8c.html#afbe90f855679999fb3eb429819036d50" title=" " alt="" coords="237,5,431,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="189,15,224,15,224,21,189,21"/>
+</map>

@@ -1,0 +1,27 @@
+var searchData=
+[
+  ['name_0',['name',['../structmusical__scale__t.html#aa3abf9acc4f7e5a1d1b91e61211e168f',1,'musical_scale_t::name'],['../structseq__drum__bank__t.html#a6cda03d832082553af8314e35f3294f2',1,'seq_drum_bank_t::name'],['../structui__view__desc__t.html#a9f0d1d7cb4ad99a593856ee9148f4c90',1,'ui_view_desc_t::name'],['../structvoice__fifo.html#abccebde79457303276b677e9342f8756',1,'voice_fifo::name'],['../structproject__slot__info__t.html#af4be0597eeb338fc4ad1fa1c42eb7c20',1,'project_slot_info_t::name']]],
+  ['next_1',['next',['../structdelta.html#ae3d9cb0b1f9b29ad5f8ddc1bc5d6b95b',1,'delta::next'],['../structsequence__entry__ll__t.html#a546e3bfea149b35f0d55239ed7abcf90',1,'sequence_entry_ll_t::next'],['../structcv__trigger__t.html#a870803cdebdcef4a862e889f095ab2dc',1,'cv_trigger_t::next'],['../structmidi__mapping.html#a538e3e28db9d7f92aeff93e0b7c7178b',1,'midi_mapping::next'],['../structmemorypcm__ll__t.html#ace47d4a3f78f102ac030aa1ee1cad8c5',1,'memorypcm_ll_t::next']]],
+  ['next_5famy_5ftick_5fus_2',['next_amy_tick_us',['../structglobal__state__t.html#a41743d7da1c827ed02dbd792a15bbb98',1,'global_state_t']]],
+  ['next_5fdelta_5fblock_3',['next_delta_block',['../amy_8c.html#ae6e37699d961083d7a8729e7bffb5913',1,'amy.c']]],
+  ['next_5fin_4',['next_in',['../structdelay__line__t.html#adddef655c2069189073eed820df6a8a6',1,'delay_line_t']]],
+  ['next_5fuser_5fpatch_5findex_5',['next_user_patch_index',['../patches_8c.html#a5e0cecb7c24c40eaab9815082ac6a9de',1,'patches.c']]],
+  ['note_5foff_6',['note_off',['../structcustom__oscillator.html#aac30fb81039c5f4fa5481bf75a3d1702',1,'custom_oscillator']]],
+  ['note_5foff_5fclock_7',['note_off_clock',['../structsynthinfo.html#a95046a3cc187db60a1ca909bf8a33732',1,'synthinfo']]],
+  ['note_5fon_8',['note_on',['../structcustom__oscillator.html#aa84eeb2548e06fbe05186e187e4a2982',1,'custom_oscillator']]],
+  ['note_5fon_5fclock_9',['note_on_clock',['../structsynthinfo.html#a1d03dbeead8704853ad2715e5b5b38c8',1,'synthinfo']]],
+  ['note_5fper_5fvoice_10',['note_per_voice',['../structinstrument__info.html#a1ff8ac7f5496d9fb41ee4cb2677186fc',1,'instrument_info']]],
+  ['note_5fsource_5fchannel_11',['note_source_channel',['../structsynthinfo.html#a98376cc5b000d764eaa48586df8e563a',1,'synthinfo::note_source_channel'],['../structamy__event.html#ae1542cc02db573b57028c2b7a137e7de',1,'amy_event::note_source_channel']]],
+  ['noteon_5fdelay_5fms_12',['noteon_delay_ms',['../structinstrument__info.html#a2d94bb5abf933c53ee316e4816139dd9',1,'instrument_info']]],
+  ['num_5fharmonics_13',['num_harmonics',['../structinterp__partials__voice__t.html#ac72a4879a6cf10072eac92e6454fce79',1,'interp_partials_voice_t']]],
+  ['num_5flayers_14',['num_layers',['../structdisplay__seq__state__t.html#a505369d94f773fec362cb14cef98d4a9',1,'display_seq_state_t']]],
+  ['num_5fpartials_15',['num_partials',['../structadditive__voice__t.html#a982c65ee1100dbccc94aedc9f6fe88d7',1,'additive_voice_t']]],
+  ['num_5fpitches_16',['num_pitches',['../structinterp__partials__voice__t.html#a6e08e27ddf58453294b9ecd5f58c3237',1,'interp_partials_voice_t']]],
+  ['num_5fpoints_17',['num_points',['../structgpopup__t.html#a1267ab581f268e8db8a83eb871985d84',1,'gpopup_t']]],
+  ['num_5fsample_5ftimes_5fms_18',['num_sample_times_ms',['../structinterp__partials__voice__t.html#ac6833c776bd254cae2592dbbe5071fc4',1,'interp_partials_voice_t']]],
+  ['num_5fsteps_19',['num_steps',['../structseq__layer__t.html#a59888cfca08f2d0875f110d1b4ce9ccf',1,'seq_layer_t']]],
+  ['num_5fticks_20',['num_ticks',['../structgpopup__t.html#afc78ed4d1a3aa27f986ea0d9959877e4',1,'gpopup_t']]],
+  ['num_5ftracks_21',['num_tracks',['../structseq__layer__t.html#ae415a4929dcd4c29bf9a821985a1b835',1,'seq_layer_t']]],
+  ['num_5fvelocities_22',['num_velocities',['../structinterp__partials__voice__t.html#ac2d21bc5c28a77c49082f2d9ec67f88a',1,'interp_partials_voice_t']]],
+  ['num_5fvoices_23',['num_voices',['../structvoice__wave__cfg__t.html#aec1e7fba89edd66c454c1bf1df601beb',1,'voice_wave_cfg_t::num_voices'],['../structseq__layer__t.html#a7208f23df97b6e8226bb267f014cd806',1,'seq_layer_t::num_voices'],['../structamy__event.html#a587ec8e84faff73d02402108d54b52fc',1,'amy_event::num_voices'],['../structinstrument__info.html#ab5f25cc1ab6dbb8dd8868d5114dd1bce',1,'instrument_info::num_voices']]]
+];

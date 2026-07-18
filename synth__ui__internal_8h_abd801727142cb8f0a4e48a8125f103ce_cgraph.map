@@ -1,0 +1,9 @@
+<map id="notefx_menu_build_items" name="notefx_menu_build_items">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,77,196,102"/>
+<area shape="rect" id="Node000002" href="$ui__screen__notefx_8c.html#a54fbf5481daccdf51c25fe0b10f7bd0e" title=" " alt="" coords="254,5,425,45"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="148,74,250,46,252,52,150,79"/>
+<area shape="rect" id="Node000003" href="$seq__core__engine_8c.html#aa14960eb425b22f248cecb6953429b63" title=" " alt="" coords="263,69,415,109"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="196,87,249,87,249,92,196,92"/>
+<area shape="rect" id="Node000004" href="$seq__core__engine_8c.html#a1d166642edae824665cb0c18f328a04c" title=" " alt="" coords="244,133,435,173"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="150,100,252,127,250,132,148,105"/>
+</map>

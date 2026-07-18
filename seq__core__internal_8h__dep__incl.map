@@ -1,0 +1,19 @@
+<map id="components/synth_core/sequencer_core/seq_core_internal.h" name="components/synth_core/sequencer_core/seq_core_internal.h">
+<area shape="rect" id="Node000001" title=" " alt="" coords="756,5,947,60"/>
+<area shape="rect" id="Node000002" href="$seq__core__editors_8c.html" title=" " alt="" coords="5,108,196,163"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="743,45,497,69,352,88,208,111,197,113,196,107,207,105,351,83,496,64,742,40"/>
+<area shape="rect" id="Node000003" href="$seq__core__engine_8c.html" title=" " alt="" coords="220,108,411,163"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="743,53,591,79,423,111,412,113,411,108,421,105,590,73,742,48"/>
+<area shape="rect" id="Node000004" href="$seq__core__progression_8c.html" title=" " alt="" coords="435,108,625,163"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="755,67,615,110,613,105,754,62"/>
+<area shape="rect" id="Node000005" href="$seq__core__snapshot_8c.html" title=" " alt="" coords="649,108,840,163"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="815,72,774,110,771,106,812,68"/>
+<area shape="rect" id="Node000006" href="$seq__core__state_8c.html" title=" " alt="" coords="864,108,1055,163"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="892,68,933,106,929,110,888,72"/>
+<area shape="rect" id="Node000007" href="$seq__core__synth_8c.html" title=" " alt="" coords="1079,108,1269,163"/>
+<area shape="poly" id="edge6_Node000001_Node000007" title=" " alt="" coords="949,62,1091,105,1089,110,948,67"/>
+<area shape="rect" id="Node000008" href="$seq__core__tempo_8c.html" title=" " alt="" coords="1293,108,1484,163"/>
+<area shape="poly" id="edge7_Node000001_Node000008" title=" " alt="" coords="961,48,1114,73,1283,105,1293,108,1292,113,1281,111,1113,79,960,53"/>
+<area shape="rect" id="Node000009" href="$seq__core__trig_8c.html" title=" " alt="" coords="1508,108,1699,163"/>
+<area shape="poly" id="edge8_Node000001_Node000009" title=" " alt="" coords="961,40,1207,64,1352,83,1497,105,1508,107,1507,113,1496,111,1352,88,1206,69,960,45"/>
+</map>

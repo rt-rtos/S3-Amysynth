@@ -1,0 +1,9 @@
+<map id="usb_audio_write_mono" name="usb_audio_write_mono">
+<area shape="rect" id="Node000001" title="Write mono 16&#45;bit samples (automatically duplicated to L+R)" alt="" coords="5,45,177,70"/>
+<area shape="rect" id="Node000002" href="$usb__audio_8c.html#ae7ede82b686fc7c4bbec18a90651a997" title="Write interleaved stereo 16&#45;bit samples (L, R, L, R, ...)" alt="" coords="225,45,401,70"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="177,55,212,55,212,60,177,60"/>
+<area shape="rect" id="Node000003" href="$usb__audio_8c.html#a9969b166b96a0514e7f18d0bb3fba9aa" title="True iff a USB host has pulled audio within the liveness timeout. Producer&#45;side gate so render output..." alt="" coords="457,5,615,45"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="401,42,443,36,443,41,402,47"/>
+<area shape="rect" id="Node000004" href="$usb__audio_8c.html#a178a01d76d9610220ef0df88f37da693" title=" " alt="" coords="449,69,623,109"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="402,67,436,72,435,78,401,73"/>
+</map>

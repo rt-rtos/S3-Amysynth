@@ -1,0 +1,9 @@
+<map id="compute_mod_noise" name="compute_mod_noise">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,31,163,56"/>
+<area shape="rect" id="Node000002" href="$oscillators_8c.html#a92f60cc43b1539e491d90a18ff2463f9" title=" " alt="" coords="211,5,347,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="163,30,197,26,198,31,163,36"/>
+<area shape="rect" id="Node000004" href="$amy_8c.html#a5991b7f59fbc673336a89244357cd823" title=" " alt="" coords="218,55,339,80"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="163,50,205,56,204,61,163,56"/>
+<area shape="rect" id="Node000003" href="$oscillators_8c.html#a42559ab9bbd0879f761c5cea1a8c65ea" title=" " alt="" coords="395,5,503,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="347,15,381,15,381,21,347,21"/>
+</map>

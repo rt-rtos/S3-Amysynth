@@ -1,0 +1,23 @@
+<map id="sequencer_core_trig_reset_all" name="sequencer_core_trig_reset_all">
+<area shape="rect" id="Node000001" title=" " alt="" coords="892,69,1045,109"/>
+<area shape="rect" id="Node000002" href="$seq__core__state_8c.html#abb7162cdadf25fb5a86cfe8f15da547b" title=" " alt="" coords="679,5,834,45"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="888,68,823,48,824,43,889,63"/>
+<area shape="rect" id="Node000008" href="$seq__core__state_8c.html#af454bdecc93196fddbefe2e65b44ebdf" title=" " alt="" coords="671,133,843,173"/>
+<area shape="poly" id="edge8_Node000001_Node000008" title=" " alt="" coords="889,116,824,136,823,131,888,111"/>
+<area shape="rect" id="Node000009" href="$seq__core__snapshot_8c.html#a57b42ac2a098d43638906442ed5bc66d" title=" " alt="" coords="669,69,844,109"/>
+<area shape="poly" id="edge11_Node000001_Node000009" title=" " alt="" coords="878,92,844,92,844,87,878,87"/>
+<area shape="rect" id="Node000003" href="$project__snapshot_8c.html#adc328f05222133bb8129c9d502dc3ff4" title=" " alt="" coords="453,77,621,102"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="675,52,583,79,581,74,673,47"/>
+<area shape="rect" id="Node000004" href="$synth__ui__task_8c.html#a2d4e121703d1e7cc1ebc896d8393b14e" title=" " alt="" coords="463,21,611,46"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="665,31,612,33,611,28,665,26"/>
+<area shape="rect" id="Node000005" href="$synth__ui__task_8c.html#a41099aa99dac8edebec80153422e646b" title=" " alt="" coords="140,46,245,71"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="450,42,246,57,246,52,449,37"/>
+<area shape="rect" id="Node000007" href="$synth__ui__task_8c.html#a2bb363d79d95e76f7a51edca096e4d88" title=" " alt="" coords="293,71,405,97"/>
+<area shape="poly" id="edge6_Node000004_Node000007" title=" " alt="" coords="477,52,398,74,397,69,476,47"/>
+<area shape="rect" id="Node000006" href="$main_8c.html#a630544a7f0a2cc40d8a7fefab7e2fe70" title=" " alt="" coords="5,46,92,71"/>
+<area shape="poly" id="edge5_Node000005_Node000006" title=" " alt="" coords="126,61,92,61,92,56,126,56"/>
+<area shape="poly" id="edge7_Node000007_Node000005" title=" " alt="" coords="279,75,245,70,246,65,280,70"/>
+<area shape="poly" id="edge9_Node000008_Node000003" title=" " alt="" coords="673,132,581,105,583,100,675,127"/>
+<area shape="poly" id="edge10_Node000008_Node000007" title=" " alt="" coords="656,147,558,134,453,116,390,99,391,94,454,111,558,129,657,141"/>
+<area shape="poly" id="edge12_Node000009_Node000003" title=" " alt="" coords="656,92,621,92,621,87,656,87"/>
+</map>

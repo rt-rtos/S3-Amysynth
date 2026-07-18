@@ -1,0 +1,5 @@
+<map id="usb_audio_diag_get_snapshot" name="usb_audio_diag_get_snapshot">
+<area shape="rect" id="Node000001" title="Get a snapshot of USB audio diagnostic counters and buffer state." alt="" coords="5,5,156,45"/>
+<area shape="rect" id="Node000002" href="$usb__audio_8c.html#a178a01d76d9610220ef0df88f37da693" title=" " alt="" coords="204,5,377,45"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="156,23,190,23,190,28,156,28"/>
+</map>

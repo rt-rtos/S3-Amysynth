@@ -1,0 +1,13 @@
+<map id="instrument_note_off" name="instrument_note_off">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,70,159,95"/>
+<area shape="rect" id="Node000002" href="$instrument_8c.html#afaad94041b8eeb0639d45acf41c643a3" title=" " alt="" coords="225,5,391,45"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="132,67,215,46,216,51,134,73"/>
+<area shape="rect" id="Node000003" href="$instrument_8c.html#a374008ad64c50b369d8d03ca3164eb86" title=" " alt="" coords="207,70,409,95"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="159,80,193,80,193,85,159,85"/>
+<area shape="rect" id="Node000004" href="$instrument_8c.html#af0b76c7a8576cc68d9b12b44bc3cabc0" title=" " alt="" coords="225,119,391,145"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="141,93,236,114,235,119,140,98"/>
+<area shape="rect" id="Node000005" href="$instrument_8c.html#ae91467747990d717baf3679d2e98550e" title=" " alt="" coords="472,94,585,119"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="391,120,458,112,459,117,392,125"/>
+<area shape="rect" id="Node000006" href="$instrument_8c.html#a14a005433b807b702e806649a6a89109" title=" " alt="" coords="457,143,600,169"/>
+<area shape="poly" id="edge5_Node000004_Node000006" title=" " alt="" coords="392,138,444,144,444,149,391,144"/>
+</map>

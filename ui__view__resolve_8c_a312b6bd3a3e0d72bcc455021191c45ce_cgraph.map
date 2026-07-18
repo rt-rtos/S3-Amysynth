@@ -1,0 +1,15 @@
+<map id="sig_stepedit" name="sig_stepedit">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,53,107,78"/>
+<area shape="rect" id="Node000002" href="$ui__screen__stepedit_8c.html#a5b0db9bd52cb908dd71e495c0af8a0a2" title=" " alt="" coords="155,53,336,78"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="107,63,141,63,141,68,107,68"/>
+<area shape="rect" id="Node000003" href="$synth__ui__internal_8h.html#a202c77d048648108c104376a2bb3d844" title=" " alt="" coords="409,27,511,53"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="336,52,395,45,395,50,337,57"/>
+<area shape="rect" id="Node000004" href="$ui__screen__stepedit_8c.html#a467d713f5b0f75a19cc0a078936e6a40" title=" " alt="" coords="384,77,536,102"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="337,73,371,77,370,82,336,78"/>
+<area shape="rect" id="Node000005" href="$seq__core__trig_8c.html#a7c5f34df5490167c28c1ef138989c723" title=" " alt="" coords="584,5,736,45"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="500,74,583,47,585,52,502,79"/>
+<area shape="rect" id="Node000006" href="$seq__core__trig_8c.html#aaa0b3f1409c7a868e81f651f097e7a6c" title=" " alt="" coords="584,69,736,109"/>
+<area shape="poly" id="edge5_Node000004_Node000006" title=" " alt="" coords="536,87,570,87,570,92,536,92"/>
+<area shape="rect" id="Node000007" href="$seq__core__trig_8c.html#ad98afc23f067f10de0153b1ec27b9559" title=" " alt="" coords="584,133,736,173"/>
+<area shape="poly" id="edge6_Node000004_Node000007" title=" " alt="" coords="502,100,585,127,583,132,500,105"/>
+</map>

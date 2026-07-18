@@ -1,0 +1,11 @@
+<map id="sequencer_core_delete_layer" name="sequencer_core_delete_layer">
+<area shape="rect" id="Node000001" title=" " alt="" coords="509,23,681,63"/>
+<area shape="rect" id="Node000002" href="$project__snapshot_8c.html#adc328f05222133bb8129c9d502dc3ff4" title=" " alt="" coords="293,5,461,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="495,34,461,30,462,25,496,29"/>
+<area shape="rect" id="Node000003" href="$synth__ui__task_8c.html#a2bb363d79d95e76f7a51edca096e4d88" title=" " alt="" coords="321,55,433,80"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="495,57,434,64,433,59,495,52"/>
+<area shape="rect" id="Node000004" href="$synth__ui__task_8c.html#a41099aa99dac8edebec80153422e646b" title=" " alt="" coords="140,55,245,80"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="307,70,246,70,246,65,307,65"/>
+<area shape="rect" id="Node000005" href="$main_8c.html#a630544a7f0a2cc40d8a7fefab7e2fe70" title=" " alt="" coords="5,55,92,80"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="126,70,92,70,92,65,126,65"/>
+</map>

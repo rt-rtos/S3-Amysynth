@@ -1,0 +1,11 @@
+<map id="drone_state_t" name="drone_state_t">
+<area shape="rect" id="Node000001" title=" " alt="" coords="110,196,221,221"/>
+<area shape="rect" id="Node000002" href="$structvoice__params__t.html" title=" " alt="" coords="103,108,228,133"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="168,147,168,195,163,195,163,147"/>
+<area shape="rect" id="Node000003" href="$structseq__env__t.html" title=" " alt="" coords="5,5,93,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="75,38,154,106,150,110,72,42"/>
+<area shape="rect" id="Node000004" href="$structseq__filter__t.html" title=" " alt="" coords="118,5,213,31"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="168,45,168,108,163,108,163,45"/>
+<area shape="rect" id="Node000005" href="$structseq__lfo__t.html" title=" " alt="" coords="237,5,318,31"/>
+<area shape="poly" id="edge4_Node000002_Node000005" title=" " alt="" coords="256,42,207,86,180,110,177,106,204,82,253,38"/>
+</map>

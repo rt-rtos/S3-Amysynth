@@ -1,0 +1,13 @@
+<map id="synth_ui_prog_handle_button" name="synth_ui_prog_handle_button">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,69,169,109"/>
+<area shape="rect" id="Node000002" href="$seq__core__progression_8c.html#ad189500dc22c8f2433f0d2f5719535cd" title=" " alt="" coords="217,5,424,45"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="160,67,233,46,235,52,162,72"/>
+<area shape="rect" id="Node000003" href="$seq__core__progression_8c.html#a8a0c680ad7bdabe81d726c8f69a86111" title=" " alt="" coords="217,69,424,109"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="169,87,204,87,204,92,169,92"/>
+<area shape="rect" id="Node000006" href="$ui__screen__prog_8c.html#a86d85eda7d9dc78bbc1881d7c7f692bc" title=" " alt="" coords="231,134,410,159"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="170,107,218,119,255,128,254,133,217,124,169,112"/>
+<area shape="rect" id="Node000004" href="$seq__core__engine_8c.html#ab0f5488fe287e969feaa669f1eabf366" title=" " alt="" coords="472,77,655,102"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="424,87,458,87,458,92,424,92"/>
+<area shape="rect" id="Node000005" href="$sequencer_8c.html#a7624e9bb6769780229bde167ce353b88" title=" " alt="" coords="703,77,829,102"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="655,87,689,87,689,92,655,92"/>
+</map>

@@ -1,0 +1,7 @@
+<map id="sequencer_configure_melodic_lfo" name="sequencer_configure_melodic_lfo">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,27,161,67"/>
+<area shape="rect" id="Node000002" href="$seq__core__tempo_8c.html#aa54f06ff4e383be9df2d0b65c2561bba" title=" " alt="" coords="244,5,359,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="161,34,230,25,231,30,162,39"/>
+<area shape="rect" id="Node000003" href="$sequencer__core_8h.html#a8501381ca8fc695002483d2f012edc76" title=" " alt="" coords="209,55,393,95"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="162,55,196,59,195,64,161,60"/>
+</map>

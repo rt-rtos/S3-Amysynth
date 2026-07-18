@@ -1,0 +1,11 @@
+<map id="chord_type_name" name="chord_type_name">
+<area shape="rect" id="Node000001" title=" " alt="" coords="413,35,552,60"/>
+<area shape="rect" id="Node000002" href="$display__prog_8c.html#acd5200fc86b1d1be24867e7c280a066e" title=" " alt="" coords="175,5,365,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="400,39,362,33,362,28,400,33"/>
+<area shape="rect" id="Node000004" href="$display__trackopts_8c.html#a3359efcbb5299f044a07dbe2e5fd4bf0" title=" " alt="" coords="183,55,357,95"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="400,61,358,66,357,61,399,56"/>
+<area shape="rect" id="Node000003" href="$ui__view__resolve_8c.html#a13f109a38b6dc6d271cce4ad06bd568c" title=" " alt="" coords="21,5,111,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="161,21,112,21,112,15,161,15"/>
+<area shape="rect" id="Node000005" href="$ui__view__resolve_8c.html#a914b19ee6abca7d30d99f2309e125324" title=" " alt="" coords="5,63,127,88"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="169,78,127,78,127,73,169,73"/>
+</map>

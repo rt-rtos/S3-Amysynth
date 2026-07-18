@@ -1,0 +1,13 @@
+<map id="set_event_for_osc" name="set_event_for_osc">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,31,145,56"/>
+<area shape="rect" id="Node000002" href="$amy_8c.html#a059613a8ada5e5f2fc98ae8f401ad269" title=" " alt="" coords="193,5,381,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="145,32,179,28,180,34,146,38"/>
+<area shape="rect" id="Node000003" href="$amy_8c.html#a4b1a26458bbc43572d6133072976737c" title=" " alt="" coords="207,55,367,80"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="146,49,194,54,193,59,145,54"/>
+<area shape="rect" id="Node000004" href="$amy_8c.html#ac87ab0bceffc455f00701e04f969d7d3" title=" " alt="" coords="443,5,556,31"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="342,52,430,31,431,36,343,57"/>
+<area shape="rect" id="Node000005" href="$amy_8c.html#a341dcecea4ec3b2b4f8884afa1affd5c" title=" " alt="" coords="429,55,569,80"/>
+<area shape="poly" id="edge4_Node000003_Node000005" title=" " alt="" coords="368,65,415,65,415,70,368,70"/>
+<area shape="rect" id="Node000006" href="$amy_8c.html#a47d3d1e22b2bc289297d07bdb976f9ca" title=" " alt="" coords="437,104,561,129"/>
+<area shape="poly" id="edge5_Node000003_Node000006" title=" " alt="" coords="343,77,431,98,430,103,342,83"/>
+</map>

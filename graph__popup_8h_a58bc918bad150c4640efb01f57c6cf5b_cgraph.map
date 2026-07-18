@@ -1,0 +1,16 @@
+<map id="graph_popup_handle_encoder" name="graph_popup_handle_encoder">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,99,163,139"/>
+<area shape="rect" id="Node000002" href="$graph__popup_8c.html#af053278234d99df93188fa99da4f094d" title=" " alt="" coords="215,5,387,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="117,97,210,48,246,33,248,38,212,52,119,102"/>
+<area shape="rect" id="Node000003" href="$graph__popup_8c.html#aa61cdb2bc8d7aab121441b5b50f5dc94" title=" " alt="" coords="461,31,544,56"/>
+<area shape="poly" id="edge8_Node000001_Node000003" title=" " alt="" coords="163,103,447,50,448,56,164,108"/>
+<area shape="rect" id="Node000004" href="$graph__popup_8c.html#a2ef5829ff1fc47e054b17b4ce10dc45a" title=" " alt="" coords="211,157,392,183"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="163,135,233,152,232,157,162,140"/>
+<area shape="rect" id="Node000005" href="$graph__popup_8c.html#ac63ecf7abe9a8c43a8bfc0d6b82b91fb" title=" " alt="" coords="440,133,565,159"/>
+<area shape="poly" id="edge6_Node000001_Node000005" title=" " alt="" coords="163,122,426,139,426,144,163,127"/>
+<area shape="rect" id="Node000006" href="$graph__popup_8c.html#a1e757b0a73bd62578739ee85eccafd71" title=" " alt="" coords="440,183,565,208"/>
+<area shape="poly" id="edge7_Node000001_Node000006" title=" " alt="" coords="111,137,156,168,183,182,211,193,266,204,323,208,426,204,427,209,323,213,266,209,210,198,181,187,153,173,108,142"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="388,26,448,34,447,39,387,31"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="392,157,426,152,427,158,392,162"/>
+<area shape="poly" id="edge5_Node000004_Node000006" title=" " alt="" coords="392,179,427,183,426,188,392,184"/>
+</map>

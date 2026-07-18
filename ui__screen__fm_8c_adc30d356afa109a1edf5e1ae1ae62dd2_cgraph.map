@@ -1,0 +1,15 @@
+<map id="synth_ui_fm_handle_encoder" name="synth_ui_fm_handle_encoder">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,97,159,137"/>
+<area shape="rect" id="Node000002" href="$ui__screen__fm_8c.html#a06be2f0fdb010ebba7d26771e6f2ab6c" title=" " alt="" coords="246,5,358,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="110,94,153,66,206,40,232,30,234,35,208,44,156,71,112,99"/>
+<area shape="rect" id="Node000004" href="$ui__screen__fm_8c.html#a13795714ddd405daf239fccac30a1585" title=" " alt="" coords="239,55,365,80"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="158,97,231,80,232,86,159,102"/>
+<area shape="rect" id="Node000005" href="$ui__screen__fm_8c.html#ad51796a167919a93f9552bca4383231d" title=" " alt="" coords="233,104,371,129"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="159,114,219,114,219,119,159,119"/>
+<area shape="rect" id="Node000006" href="$sequencer__core_8h.html#ab73b4248ef6f89aac4b0d339c65907e2" title=" " alt="" coords="207,154,397,194"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="159,134,212,148,211,153,158,139"/>
+<area shape="rect" id="Node000007" href="$ui__screen__fm_8c.html#a7a34f73b8ac9caae99d28d3d8da93cf0" title=" " alt="" coords="219,219,385,244"/>
+<area shape="poly" id="edge6_Node000001_Node000007" title=" " alt="" coords="107,135,152,170,208,204,228,212,226,217,205,208,149,174,104,139"/>
+<area shape="rect" id="Node000003" href="$ui__screen__fm_8c.html#a65f103c978daea6243cdf4c5000e336c" title=" " alt="" coords="445,5,621,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="358,15,432,15,432,21,358,21"/>
+</map>

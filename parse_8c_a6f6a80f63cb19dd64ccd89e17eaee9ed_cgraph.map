@@ -1,0 +1,22 @@
+<map id="midi_mapping_from_message" name="midi_mapping_from_message">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,171,224,197"/>
+<area shape="rect" id="Node000002" href="$midi__mappings_8c.html#a2a890e2811b1b1764007c1ed6b1f9a49" title=" " alt="" coords="274,95,429,121"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="154,169,297,122,299,127,156,174"/>
+<area shape="rect" id="Node000006" href="$midi__mappings_8c.html#a5f70a71708aaace782db94194648b458" title=" " alt="" coords="274,171,429,197"/>
+<area shape="poly" id="edge6_Node000001_Node000006" title=" " alt="" coords="224,181,260,181,260,187,224,187"/>
+<area shape="rect" id="Node000009" href="$parse_8c.html#aaad057523050d783a219c5a0d5a3926f" title=" " alt="" coords="272,221,431,261"/>
+<area shape="poly" id="edge11_Node000001_Node000009" title=" " alt="" coords="169,194,260,216,258,222,167,199"/>
+<area shape="rect" id="Node000003" href="$midi__mappings_8c.html#a699269e4df1b6f9534f58e541bd6dc89" title=" " alt="" coords="479,5,627,45"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="382,93,489,48,491,53,384,98"/>
+<area shape="rect" id="Node000004" href="$midi__mappings_8c.html#ab71d4748117c7f245e059e1913fd2254" title=" " alt="" coords="675,70,823,95"/>
+<area shape="poly" id="edge5_Node000002_Node000004" title=" " alt="" coords="429,100,660,86,661,91,429,106"/>
+<area shape="rect" id="Node000005" href="$midi__mappings_8c.html#a55fad89b2b8e1e1d2d5382d26fb1abc4" title=" " alt="" coords="479,121,626,146"/>
+<area shape="poly" id="edge4_Node000002_Node000005" title=" " alt="" coords="429,115,466,120,465,125,429,120"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="622,43,692,63,690,69,621,48"/>
+<area shape="poly" id="edge8_Node000006_Node000004" title=" " alt="" coords="429,183,524,177,576,168,626,155,677,131,719,102,722,106,679,135,628,160,577,173,525,182,429,188"/>
+<area shape="poly" id="edge7_Node000006_Node000005" title=" " alt="" coords="402,169,488,147,489,152,403,174"/>
+<area shape="rect" id="Node000007" href="$midi__mappings_8c.html#acefb38e85b5a65726d5af82d6172f10d" title=" " alt="" coords="481,222,624,247"/>
+<area shape="poly" id="edge9_Node000006_Node000007" title=" " alt="" coords="403,194,489,216,488,221,402,199"/>
+<area shape="rect" id="Node000008" href="$amy_8c.html#adf4eb9b209ec33e5816b81031376947e" title=" " alt="" coords="697,222,800,247"/>
+<area shape="poly" id="edge10_Node000007_Node000008" title=" " alt="" coords="624,232,684,232,684,237,624,237"/>
+</map>

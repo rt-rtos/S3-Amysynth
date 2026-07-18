@@ -1,0 +1,21 @@
+<map id="components/synth_core/include/sequencer_core.h" name="components/synth_core/include/sequencer_core.h">
+<area shape="rect" id="Node000001" title=" " alt="" coords="115,5,306,45"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="37,167,120,192"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="116,41,67,60,45,76,28,95,23,110,28,126,39,142,53,156,50,160,35,145,23,128,18,110,23,92,42,72,64,56,114,36"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="126,240,197,265"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="116,38,88,46,61,58,37,74,17,95,10,113,9,138,14,165,27,190,45,208,67,222,114,240,112,245,64,227,42,212,23,194,9,167,3,138,5,112,12,92,33,70,58,53,86,41,114,33"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="37,93,133,119"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="182,48,117,88,114,84,179,43"/>
+<area shape="rect" id="Node000005" href="$seq__model_8h.html" title=" " alt="" coords="158,93,263,119"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="213,46,213,79,208,79,208,46"/>
+<area shape="rect" id="Node000006" href="$chord__types_8h.html" title=" " alt="" coords="199,167,313,192"/>
+<area shape="poly" id="edge9_Node000001_Node000006" title=" " alt="" coords="239,44,261,65,278,92,282,108,281,125,272,155,267,153,276,124,277,109,274,94,257,68,236,48"/>
+<area shape="rect" id="Node000007" title=" " alt="" coords="339,93,490,119"/>
+<area shape="poly" id="edge10_Node000001_Node000007" title=" " alt="" coords="260,43,373,86,371,91,259,48"/>
+<area shape="rect" id="Node000008" title=" " alt="" coords="515,93,632,119"/>
+<area shape="poly" id="edge11_Node000001_Node000008" title=" " alt="" coords="298,43,508,88,507,93,297,48"/>
+<area shape="poly" id="edge7_Node000005_Node000002" title=" " alt="" coords="191,121,113,162,111,158,188,116"/>
+<area shape="poly" id="edge8_Node000005_Node000003" title=" " alt="" coords="208,120,190,168,171,227,166,226,185,166,203,118"/>
+<area shape="poly" id="edge5_Node000005_Node000006" title=" " alt="" coords="220,118,244,154,239,157,216,120"/>
+<area shape="poly" id="edge6_Node000006_Node000003" title=" " alt="" coords="242,194,189,234,186,229,239,190"/>
+</map>

@@ -1,0 +1,9 @@
+<map id="synth_ui_prog_add_entry" name="synth_ui_prog_add_entry">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,77,191,102"/>
+<area shape="rect" id="Node000002" href="$seq__core__progression_8c.html#a2d44eb1078dff6789cbe864620d27c17" title=" " alt="" coords="239,5,445,45"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="147,74,251,46,252,52,148,79"/>
+<area shape="rect" id="Node000003" href="$seq__core__progression_8c.html#a56de9ec138a6d7f5e3c7a2016d3fa25c" title=" " alt="" coords="239,69,445,109"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="191,87,225,87,225,92,191,92"/>
+<area shape="rect" id="Node000004" href="$ui__screen__prog_8c.html#a86d85eda7d9dc78bbc1881d7c7f692bc" title=" " alt="" coords="253,134,431,159"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="154,99,275,128,274,133,152,105"/>
+</map>

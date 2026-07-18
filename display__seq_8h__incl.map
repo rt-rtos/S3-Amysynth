@@ -1,0 +1,16 @@
+<map id="components/display/display_seq.h" name="components/display/display_seq.h">
+<area shape="rect" id="Node000001" title=" " alt="" coords="125,5,279,45"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="13,93,79,119"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="166,48,82,89,80,85,163,43"/>
+<area shape="rect" id="Node000003" href="$seq__model_8h.html" title=" " alt="" coords="104,93,209,119"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="193,47,173,83,168,80,189,44"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="121,240,192,265"/>
+<area shape="poly" id="edge8_Node000001_Node000005" title=" " alt="" coords="227,44,257,73,285,110,295,131,300,152,299,173,291,193,274,213,252,228,206,246,204,241,250,223,270,209,286,191,294,172,295,152,290,133,280,113,253,76,223,48"/>
+<area shape="rect" id="Node000006" title=" " alt="" coords="194,167,277,192"/>
+<area shape="poly" id="edge7_Node000001_Node000006" title=" " alt="" coords="211,45,225,93,235,152,230,153,219,94,206,46"/>
+<area shape="rect" id="Node000004" href="$chord__types_8h.html" title=" " alt="" coords="5,167,119,192"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="143,121,90,160,87,156,140,117"/>
+<area shape="poly" id="edge6_Node000003_Node000005" title=" " alt="" coords="159,119,159,226,154,226,154,119"/>
+<area shape="poly" id="edge5_Node000003_Node000006" title=" " alt="" coords="171,117,214,156,211,159,168,121"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="79,190,132,229,129,234,76,194"/>
+</map>

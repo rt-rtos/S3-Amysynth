@@ -1,0 +1,11 @@
+<map id="midi_store_mapping" name="midi_store_mapping">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,55,160,80"/>
+<area shape="rect" id="Node000002" href="$midi__mappings_8c.html#a55fad89b2b8e1e1d2d5382d26fb1abc4" title=" " alt="" coords="209,5,355,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="134,52,216,31,217,37,135,57"/>
+<area shape="rect" id="Node000003" href="$midi__mappings_8c.html#ab71d4748117c7f245e059e1913fd2254" title=" " alt="" coords="208,55,356,80"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="160,65,194,65,194,70,160,70"/>
+<area shape="rect" id="Node000004" href="$midi__mappings_8c.html#acefb38e85b5a65726d5af82d6172f10d" title=" " alt="" coords="211,104,353,129"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="135,77,217,98,216,103,134,83"/>
+<area shape="rect" id="Node000005" href="$amy_8c.html#adf4eb9b209ec33e5816b81031376947e" title=" " alt="" coords="404,104,507,129"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="354,114,390,114,390,119,354,119"/>
+</map>

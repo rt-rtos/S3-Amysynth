@@ -1,0 +1,23 @@
+var searchData=
+[
+  ['b1_0',['b1',['../structui__view__desc__t.html#a9e675852ed2bf4e7178ca3983906f213',1,'ui_view_desc_t']]],
+  ['b1_5ffn_1',['b1_fn',['../structui__view__desc__t.html#ae0a6e4f46cd2aab41537631ea79b1570',1,'ui_view_desc_t']]],
+  ['b2_2',['b2',['../structui__view__desc__t.html#a3ef1df5b6903724c6cca05470a4a67a2',1,'ui_view_desc_t']]],
+  ['b2_5ffn_3',['b2_fn',['../structui__view__desc__t.html#a78eb3abe21115f8784da8bc023ec3e02',1,'ui_view_desc_t']]],
+  ['b3_4',['b3',['../structui__view__desc__t.html#ac0c711bc700318d93d64394fc5c1333c',1,'ui_view_desc_t']]],
+  ['b64_5ftable_5',['b64_table',['../transfer_8h.html#abfb7807bca1894b8f5eda68986aac98d',1,'transfer.h']]],
+  ['bank_5fnumber_6',['bank_number',['../structinstrument__info.html#a8200085bde82251e0b6d2cc8dcd69fd2',1,'instrument_info']]],
+  ['bars_5fin_5fcurrent_7',['bars_in_current',['../structprog__view__t.html#a517002042e4b404b4be36875003fadc1',1,'prog_view_t']]],
+  ['blip_8',['blip',['../structstaged__drone__t.html#af0496ae9ac50eda72109fdd391a339ff',1,'staged_drone_t']]],
+  ['blip_5fdepth_9',['blip_depth',['../structdrone__state__t.html#ae1060ee5a51378dc6d6e0a543db34654',1,'drone_state_t']]],
+  ['block32_10',['block32',['../i2s_8c.html#a7e901a0f0f585eb16b7c4c67bbcd84ef',1,'i2s.c']]],
+  ['bp_5fis_5fset_11',['bp_is_set',['../structamy__event.html#addb93fee2fc3291f33f250e1987a4362',1,'amy_event']]],
+  ['bpm_12',['bpm',['../structstaged__glob__t.html#a03d3f4fcdc6753ebae35c92a9949cb4b',1,'staged_glob_t']]],
+  ['breakpoint_5ftimes_13',['breakpoint_times',['../structsynthinfo.html#a90ba1178265491729d7cde571f4fd699',1,'synthinfo']]],
+  ['breakpoint_5fvalues_14',['breakpoint_values',['../structsynthinfo.html#a5362a57d2cd56fa3bbdfc511ea48c677',1,'synthinfo']]],
+  ['buf_15',['buf',['../structtlv__writer__t.html#aaf121a36bf0c2dac22c5fa4eb7a53332',1,'tlv_writer_t::buf'],['../structtlv__reader__t.html#aecb1c1dc7150221be2cdd104dbd41397',1,'tlv_reader_t::buf'],['../struct__string__ctx.html#ae3939bb3587acbf928349e45529845ed',1,'_string_ctx::buf']]],
+  ['bufc_16',['bufc',['../structb64__buffer__t.html#a28b075b3b25ee79e733a9822fefa490e',1,'b64_buffer_t']]],
+  ['bus_17',['bus',['../structamy__event.html#ac65457971f212c183101e10af875e717',1,'amy_event::bus'],['../structsynthinfo.html#a160a318a91b5a2e9a98551d0548d1fce',1,'synthinfo::bus'],['../structglobal__state__t.html#a0918cc10b02a168227137b5ac03ed3d7',1,'global_state_t::bus'],['../structinstrument__info.html#a909f5c984f44fe4bc55497e91f4fb8ed',1,'instrument_info::bus']]],
+  ['bus_5fgain_18',['bus_gain',['../structglobal__state__t.html#a0a1cc113375640641528a2f423e92358',1,'global_state_t']]],
+  ['bytes_5fsent_19',['bytes_sent',['../struct__zdump__stream.html#a6dec288e9c69e658883822d10de1dfd0',1,'_zdump_stream']]]
+];

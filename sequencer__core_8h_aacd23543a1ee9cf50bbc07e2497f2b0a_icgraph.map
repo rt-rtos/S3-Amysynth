@@ -1,0 +1,17 @@
+<map id="sequencer_core_get_drum_pcm_preset" name="sequencer_core_get_drum_pcm_preset">
+<area shape="rect" id="Node000001" title=" " alt="" coords="901,35,1053,75"/>
+<area shape="rect" id="Node000002" href="$ui__screen__menu_8c.html#abc070311ce39a6aa040b8a20da7b2a19" title=" " alt="" coords="711,15,845,41"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="887,45,845,40,846,34,888,40"/>
+<area shape="rect" id="Node000007" href="$synth__ui__state_8c.html#ac3862766735d945553ed4585d260d120" title=" " alt="" coords="703,66,853,91"/>
+<area shape="poly" id="edge6_Node000001_Node000007" title=" " alt="" coords="888,68,854,72,853,67,887,63"/>
+<area shape="rect" id="Node000003" href="$ui__screen__menu_8c.html#a81b268cb8c01b61a0e232575047ca351" title=" " alt="" coords="483,5,655,45"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="697,30,655,29,655,24,697,24"/>
+<area shape="rect" id="Node000004" href="$main_8c.html#a7c172ae572f9673c6c52bfaca428fc48" title=" " alt="" coords="325,13,435,38"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="469,28,435,28,435,23,469,23"/>
+<area shape="rect" id="Node000005" href="$main_8c.html#a3284ccb20ad2e72440652c1b1cc6d2ca" title=" " alt="" coords="140,13,277,38"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="312,28,278,28,278,23,312,23"/>
+<area shape="rect" id="Node000006" href="$main_8c.html#a630544a7f0a2cc40d8a7fefab7e2fe70" title=" " alt="" coords="5,13,92,38"/>
+<area shape="poly" id="edge5_Node000005_Node000006" title=" " alt="" coords="126,28,92,28,92,23,126,23"/>
+<area shape="rect" id="Node000008" href="$ui__view__resolve_8c.html#a5ce84cf01a042b8ecb1d7652e36a8c01" title=" " alt="" coords="533,70,604,95"/>
+<area shape="poly" id="edge7_Node000007_Node000008" title=" " alt="" coords="689,83,604,85,604,79,689,78"/>
+</map>

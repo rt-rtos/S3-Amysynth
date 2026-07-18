@@ -1,0 +1,9 @@
+<map id="usb_audio_write_stereo" name="usb_audio_write_stereo">
+<area shape="rect" id="Node000001" title="Write interleaved stereo 16&#45;bit samples (L, R, L, R, ...)" alt="" coords="360,31,536,56"/>
+<area shape="rect" id="Node000002" href="$main_8c.html#ad0aa7d130398b8837765e8539c300f7d" title=" " alt="" coords="143,5,309,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="346,34,308,30,309,25,347,29"/>
+<area shape="rect" id="Node000004" href="$usb__audio_8c.html#a57a9b50586a43617f05cb480416078a2" title="Write mono 16&#45;bit samples (automatically duplicated to L+R)" alt="" coords="140,55,312,80"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="347,57,313,61,312,55,346,52"/>
+<area shape="rect" id="Node000003" href="$main_8c.html#a630544a7f0a2cc40d8a7fefab7e2fe70" title=" " alt="" coords="5,5,92,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="129,21,92,21,92,15,129,15"/>
+</map>

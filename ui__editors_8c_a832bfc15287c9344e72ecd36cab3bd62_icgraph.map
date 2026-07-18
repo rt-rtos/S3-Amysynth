@@ -1,0 +1,18 @@
+<map id="graph_amp_live_flush" name="graph_amp_live_flush">
+<area shape="rect" id="Node000001" title=" " alt="" coords="705,45,869,70"/>
+<area shape="rect" id="Node000002" href="$ui__editors_8c.html#a8f295b591386f02634765f490c7a55f7" title=" " alt="" coords="491,5,651,45"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="691,46,651,40,652,35,692,41"/>
+<area shape="rect" id="Node000006" href="$ui__editors_8c.html#a4eb5c4ee129b3958ae8ea35e331afd79" title=" " alt="" coords="485,69,657,109"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="692,74,658,79,657,74,691,69"/>
+<area shape="rect" id="Node000003" href="$synth__ui__task_8c.html#a2bb363d79d95e76f7a51edca096e4d88" title=" " alt="" coords="325,14,437,39"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="478,29,438,29,438,24,477,23"/>
+<area shape="rect" id="Node000004" href="$synth__ui__task_8c.html#a41099aa99dac8edebec80153422e646b" title=" " alt="" coords="156,15,261,41"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="312,30,262,30,262,25,312,25"/>
+<area shape="rect" id="Node000005" href="$main_8c.html#a630544a7f0a2cc40d8a7fefab7e2fe70" title=" " alt="" coords="5,42,92,67"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="143,42,93,50,92,45,142,36"/>
+<area shape="rect" id="Node000007" href="$main_8c.html#a7c172ae572f9673c6c52bfaca428fc48" title=" " alt="" coords="327,70,436,95"/>
+<area shape="poly" id="edge6_Node000006_Node000007" title=" " alt="" coords="471,88,436,87,436,82,471,83"/>
+<area shape="rect" id="Node000008" href="$main_8c.html#a3284ccb20ad2e72440652c1b1cc6d2ca" title=" " alt="" coords="140,66,277,91"/>
+<area shape="poly" id="edge7_Node000007_Node000008" title=" " alt="" coords="312,84,278,83,278,78,313,78"/>
+<area shape="poly" id="edge8_Node000008_Node000005" title=" " alt="" coords="126,69,92,64,93,58,127,64"/>
+</map>

@@ -1,0 +1,17 @@
+<map id="alloc_osc" name="alloc_osc">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,55,88,80"/>
+<area shape="rect" id="Node000002" href="$amy_8c.html#adf4eb9b209ec33e5816b81031376947e" title=" " alt="" coords="136,5,239,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="83,52,136,33,138,38,84,57"/>
+<area shape="rect" id="Node000003" href="$amy_8c.html#a357006d8bc2f6d3ccc1a5eb5d4d4136e" title=" " alt="" coords="139,55,235,80"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="88,65,126,65,126,70,88,70"/>
+<area shape="rect" id="Node000004" href="$amy_8c.html#abbbb901ff57a21c269a9e1e38ca38256" title=" " alt="" coords="145,104,229,129"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="84,78,138,97,136,102,83,83"/>
+<area shape="rect" id="Node000005" href="$amy_8c.html#a4b1a26458bbc43572d6133072976737c" title=" " alt="" coords="287,104,447,129"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="230,114,273,114,273,119,230,119"/>
+<area shape="rect" id="Node000006" href="$amy_8c.html#ac87ab0bceffc455f00701e04f969d7d3" title=" " alt="" coords="508,55,621,80"/>
+<area shape="poly" id="edge5_Node000005_Node000006" title=" " alt="" coords="418,101,499,81,500,86,419,107"/>
+<area shape="rect" id="Node000007" href="$amy_8c.html#a341dcecea4ec3b2b4f8884afa1affd5c" title=" " alt="" coords="495,104,635,129"/>
+<area shape="poly" id="edge6_Node000005_Node000007" title=" " alt="" coords="447,114,481,114,481,119,447,119"/>
+<area shape="rect" id="Node000008" href="$amy_8c.html#a47d3d1e22b2bc289297d07bdb976f9ca" title=" " alt="" coords="503,153,627,179"/>
+<area shape="poly" id="edge7_Node000005_Node000008" title=" " alt="" coords="419,127,500,147,499,153,418,132"/>
+</map>

@@ -1,0 +1,11 @@
+<map id="rotary_encoder_delete" name="rotary_encoder_delete">
+<area shape="rect" id="Node000001" title=" " alt="" coords="545,31,713,56"/>
+<area shape="rect" id="Node000002" href="$rotary__encoder_8c.html#a15ae52b0921c911f13c514c89c4618c7" title=" " alt="" coords="343,23,497,63"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="532,46,498,46,498,41,532,41"/>
+<area shape="rect" id="Node000003" href="$main_8c.html#a3284ccb20ad2e72440652c1b1cc6d2ca" title=" " alt="" coords="149,5,286,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="329,35,286,29,286,24,329,29"/>
+<area shape="rect" id="Node000005" href="$rotary__encoder_8c.html#a8d1a89f5140f32fb618b28af19e72741" title=" " alt="" coords="140,55,295,80"/>
+<area shape="poly" id="edge4_Node000002_Node000005" title=" " alt="" coords="329,57,296,61,295,55,329,51"/>
+<area shape="rect" id="Node000004" href="$main_8c.html#a630544a7f0a2cc40d8a7fefab7e2fe70" title=" " alt="" coords="5,5,92,31"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="135,21,92,21,92,15,135,15"/>
+</map>

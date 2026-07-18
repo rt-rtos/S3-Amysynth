@@ -1,0 +1,7 @@
+<map id="filter_sync_fgraph" name="filter_sync_fgraph">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,31,144,56"/>
+<area shape="rect" id="Node000002" href="$ui__editors_8c.html#a1d53c08a99ce1b08f4e62556c58531ce" title=" " alt="" coords="192,5,327,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="144,31,178,26,179,32,145,36"/>
+<area shape="rect" id="Node000003" href="$ui__editors_8c.html#ad4b6231f9ea67ddd3af1bad625141efd" title=" " alt="" coords="195,55,323,80"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="145,50,182,55,181,60,144,55"/>
+</map>

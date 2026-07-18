@@ -1,0 +1,18 @@
+<map id="components/display/graph_popup.c" name="components/display/graph_popup.c">
+<area shape="rect" id="Node000001" title=" " alt="" coords="175,5,329,45"/>
+<area shape="rect" id="Node000002" href="$graph__popup_8h.html" title=" " alt="" coords="134,93,253,119"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="240,47,213,84,208,80,236,44"/>
+<area shape="rect" id="Node000006" href="$seq__clamp_8h.html" title="Type&#45;safe, double&#45;evaluation&#45;safe boundary clamping utilities." alt="" coords="5,93,109,119"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="206,48,100,91,98,86,204,43"/>
+<area shape="rect" id="Node000007" title=" " alt="" coords="277,93,347,119"/>
+<area shape="poly" id="edge7_Node000001_Node000007" title=" " alt="" coords="269,44,297,81,293,84,264,47"/>
+<area shape="rect" id="Node000008" title=" " alt="" coords="372,93,439,119"/>
+<area shape="poly" id="edge8_Node000001_Node000008" title=" " alt="" coords="290,43,372,85,370,89,288,48"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="39,167,110,192"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="176,121,107,162,105,157,173,116"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="143,167,225,192"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="194,119,190,154,185,153,189,119"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="249,167,316,192"/>
+<area shape="poly" id="edge4_Node000002_Node000005" title=" " alt="" coords="209,117,259,156,256,160,206,121"/>
+<area shape="poly" id="edge6_Node000006_Node000003" title=" " alt="" coords="63,118,71,153,66,154,58,120"/>
+</map>

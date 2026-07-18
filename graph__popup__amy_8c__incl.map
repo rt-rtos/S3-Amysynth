@@ -1,0 +1,12 @@
+<map id="components/synth_core/graph_popup_amy.c" name="components/synth_core/graph_popup_amy.c">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,5,183,45"/>
+<area shape="rect" id="Node000002" href="$graph__popup_8h.html" title=" " alt="" coords="85,93,204,119"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="109,44,132,80,127,83,104,47"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="9,167,80,192"/>
+<area shape="poly" id="edge5_Node000001_Node000003" title=" " alt="" coords="90,47,55,154,50,153,85,45"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="130,121,74,161,71,156,127,117"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="105,167,187,192"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="148,119,148,153,143,153,142,119"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="211,167,278,192"/>
+<area shape="poly" id="edge4_Node000002_Node000005" title=" " alt="" coords="162,117,219,156,216,161,159,121"/>
+</map>

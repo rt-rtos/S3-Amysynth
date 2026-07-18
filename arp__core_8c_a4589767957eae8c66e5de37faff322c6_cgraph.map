@@ -1,0 +1,13 @@
+<map id="arp_snap" name="arp_snap">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,55,87,80"/>
+<area shape="rect" id="Node000002" href="$quantizer_8c.html#ad51c0f86cba0b4cc400b20ffe19f1ba3" title=" " alt="" coords="155,5,307,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="86,54,134,41,168,32,170,37,135,46,88,59"/>
+<area shape="rect" id="Node000004" href="$quantizer_8c.html#af1af59564c1fca81cb98f569fab9b498" title=" " alt="" coords="135,55,328,80"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="87,65,121,65,121,70,87,70"/>
+<area shape="rect" id="Node000006" href="$seq__core__synth_8c.html#a3b21f76a4a99fcace64536aedde8fcb5" title=" " alt="" coords="146,105,317,145"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="88,77,154,98,152,103,86,82"/>
+<area shape="rect" id="Node000003" href="$quantizer_8c.html#a8efdeb78f0c3889a2a571c12bf7edef6" title=" " alt="" coords="376,5,543,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="308,15,362,15,362,21,308,21"/>
+<area shape="rect" id="Node000005" href="$quantizer_8c.html#abdfec7c162a17c76e89cc114c3da7b2a" title=" " alt="" coords="386,55,533,80"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="328,65,372,65,372,70,328,70"/>
+</map>

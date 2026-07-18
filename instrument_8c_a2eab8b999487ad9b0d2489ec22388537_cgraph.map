@@ -1,0 +1,10 @@
+<map id="_instrument_get_voice" name="_instrument_get_voice">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,70,176,95"/>
+<area shape="rect" id="Node000002" href="$instrument_8c.html#a755fca4a6d9b6ef5550431c70f2917eb" title=" " alt="" coords="224,5,399,45"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="140,67,220,46,222,51,141,73"/>
+<area shape="rect" id="Node000003" href="$instrument_8c.html#a819e69090be033da488f9e0e0a1d95f7" title=" " alt="" coords="447,95,581,121"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="176,85,433,101,433,106,176,90"/>
+<area shape="rect" id="Node000004" href="$instrument_8c.html#ad8ff07006ebd1bce7254cce844fc5d65" title=" " alt="" coords="255,121,368,146"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="148,93,243,115,242,120,146,98"/>
+<area shape="poly" id="edge4_Node000004_Node000003" title=" " alt="" coords="368,124,433,115,434,121,369,129"/>
+</map>

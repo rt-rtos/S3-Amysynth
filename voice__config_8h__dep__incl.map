@@ -1,0 +1,19 @@
+<map id="components/synth_core/include/voice_config.h" name="components/synth_core/include/voice_config.h">
+<area shape="rect" id="Node000001" title=" " alt="" coords="729,5,907,45"/>
+<area shape="rect" id="Node000002" href="$arp__core_8c.html" title=" " alt="" coords="5,101,183,141"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="716,36,477,57,335,74,194,96,161,103,160,98,194,91,334,68,476,51,715,30"/>
+<area shape="rect" id="Node000003" href="$drone__core_8c.html" title=" " alt="" coords="207,93,384,148"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="716,43,565,65,396,96,385,98,384,93,395,91,564,60,715,37"/>
+<area shape="rect" id="Node000004" href="$drone__std__core_8c.html" title=" " alt="" coords="408,93,585,148"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="741,52,586,96,585,91,739,47"/>
+<area shape="rect" id="Node000005" href="$project__snapshot_8c.html" title=" " alt="" coords="610,101,807,141"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="787,56,732,103,729,99,784,52"/>
+<area shape="rect" id="Node000006" href="$seq__core__editors_8c.html" title=" " alt="" coords="832,93,1023,148"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="852,52,898,91,895,95,849,56"/>
+<area shape="rect" id="Node000007" href="$seq__core__state_8c.html" title=" " alt="" coords="1047,93,1237,148"/>
+<area shape="poly" id="edge6_Node000001_Node000007" title=" " alt="" coords="898,47,1051,91,1050,96,896,52"/>
+<area shape="rect" id="Node000008" href="$seq__core__synth_8c.html" title=" " alt="" coords="1261,93,1452,148"/>
+<area shape="poly" id="edge7_Node000001_Node000008" title=" " alt="" coords="921,37,1077,60,1250,91,1261,93,1260,98,1250,96,1076,65,920,43"/>
+<area shape="rect" id="Node000009" href="$voice__config_8c.html" title=" " alt="" coords="1476,101,1653,141"/>
+<area shape="poly" id="edge8_Node000001_Node000009" title=" " alt="" coords="921,30,1170,50,1318,68,1465,91,1499,98,1498,103,1464,96,1317,73,1169,56,920,35"/>
+</map>

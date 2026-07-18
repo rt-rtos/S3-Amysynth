@@ -1,0 +1,9 @@
+<map id="synth_ui_menu_rename_save" name="synth_ui_menu_rename_save">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,45,221,70"/>
+<area shape="rect" id="Node000002" href="$synth__ui__internal_8h.html#ab9f2f26f7fdbfdc0e282529114a395f0" title=" " alt="" coords="271,5,446,45"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="211,42,257,36,258,41,211,47"/>
+<area shape="rect" id="Node000003" href="$ui__screen__menu_8c.html#ace71e193b7fd867de129b88dfda8713e" title=" " alt="" coords="269,69,448,109"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="211,67,256,73,255,79,211,73"/>
+<area shape="rect" id="Node000004" href="$synth__ui__internal_8h.html#adaae8b648b36232099b56d80342d1021" title=" " alt="" coords="496,77,701,102"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="448,87,482,87,482,92,448,92"/>
+</map>

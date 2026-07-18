@@ -1,0 +1,15 @@
+<map id="sequencer_core_progression_set_entry" name="sequencer_core_progression_set_entry">
+<area shape="rect" id="Node000001" title=" " alt="" coords="753,27,960,67"/>
+<area shape="rect" id="Node000002" href="$project__snapshot_8c.html#af870306ba93bd26d1e9a6c87a74d402a" title=" " alt="" coords="576,5,671,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="739,35,671,27,671,21,740,30"/>
+<area shape="rect" id="Node000004" href="$ui__screen__prog_8c.html#a623f9ab1c2a6bfb907ca914e6329d797" title=" " alt="" coords="541,55,705,95"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="740,64,706,68,705,63,739,59"/>
+<area shape="rect" id="Node000003" href="$project__snapshot_8c.html#adc328f05222133bb8129c9d502dc3ff4" title=" " alt="" coords="325,5,493,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="562,21,494,21,494,15,562,15"/>
+<area shape="rect" id="Node000005" href="$main_8c.html#a7c172ae572f9673c6c52bfaca428fc48" title=" " alt="" coords="355,63,464,88"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="528,78,464,78,464,73,528,73"/>
+<area shape="rect" id="Node000006" href="$main_8c.html#a3284ccb20ad2e72440652c1b1cc6d2ca" title=" " alt="" coords="140,63,277,88"/>
+<area shape="poly" id="edge5_Node000005_Node000006" title=" " alt="" coords="341,78,277,78,277,73,341,73"/>
+<area shape="rect" id="Node000007" href="$main_8c.html#a630544a7f0a2cc40d8a7fefab7e2fe70" title=" " alt="" coords="5,63,92,88"/>
+<area shape="poly" id="edge6_Node000006_Node000007" title=" " alt="" coords="126,78,92,78,92,73,126,73"/>
+</map>

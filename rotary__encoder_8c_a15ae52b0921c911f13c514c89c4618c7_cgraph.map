@@ -1,0 +1,9 @@
+<map id="rotary_encoder_new_with_config" name="rotary_encoder_new_with_config">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,63,160,103"/>
+<area shape="rect" id="Node000002" href="$rotary__encoder_8c.html#a6d004fe6673b136812eb04631758b356" title=" " alt="" coords="224,5,392,45"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="159,61,215,46,216,51,161,66"/>
+<area shape="rect" id="Node000003" href="$rotary__encoder_8c.html#ac25ca2f9fb90d507402c71facb96c0e8" title=" " alt="" coords="208,70,408,95"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="160,80,194,80,194,85,160,85"/>
+<area shape="rect" id="Node000004" href="$rotary__encoder_8c.html#a2a8e2fd31d91cd904d079bb7735b3670" title=" " alt="" coords="224,119,392,145"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="161,97,237,114,236,119,159,102"/>
+</map>

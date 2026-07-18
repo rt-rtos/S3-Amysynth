@@ -1,0 +1,7 @@
+<map id="render_noise" name="render_noise">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,5,112,31"/>
+<area shape="rect" id="Node000002" href="$oscillators_8c.html#a92f60cc43b1539e491d90a18ff2463f9" title=" " alt="" coords="160,5,296,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="112,15,146,15,146,21,112,21"/>
+<area shape="rect" id="Node000003" href="$oscillators_8c.html#a42559ab9bbd0879f761c5cea1a8c65ea" title=" " alt="" coords="344,5,452,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="296,15,331,15,331,21,296,21"/>
+</map>

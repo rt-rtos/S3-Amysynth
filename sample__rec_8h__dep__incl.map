@@ -1,0 +1,11 @@
+<map id="components/synth_core/include/custompatches/sample_rec.h" name="components/synth_core/include/custompatches/sample_rec.h">
+<area shape="rect" id="Node000001" title=" " alt="" coords="359,5,536,60"/>
+<area shape="rect" id="Node000002" href="$sample__rec_8c.html" title=" " alt="" coords="5,108,220,148"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="346,65,181,111,179,105,345,60"/>
+<area shape="rect" id="Node000003" href="$synth__ui__task_8c.html" title=" " alt="" coords="245,108,431,148"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="408,71,362,110,358,106,404,67"/>
+<area shape="rect" id="Node000004" href="$ui__screen__menu_8c.html" title=" " alt="" coords="455,108,658,148"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="491,67,536,106,533,110,487,71"/>
+<area shape="rect" id="Node000005" href="$main_8c.html" title=" " alt="" coords="683,115,785,141"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="542,62,700,113,698,118,540,67"/>
+</map>

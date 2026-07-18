@@ -1,0 +1,15 @@
+<map id="sequencer_resolve_track_note" name="sequencer_resolve_track_note">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,80,225,105"/>
+<area shape="rect" id="Node000002" href="$quantizer_8c.html#ad51c0f86cba0b4cc400b20ffe19f1ba3" title=" " alt="" coords="303,5,455,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="152,77,273,39,305,31,306,36,274,45,154,82"/>
+<area shape="rect" id="Node000004" href="$quantizer_8c.html#af1af59564c1fca81cb98f569fab9b498" title=" " alt="" coords="283,55,476,80"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="225,79,269,75,269,81,226,85"/>
+<area shape="rect" id="Node000006" href="$quantizer_8c.html#af383cd896bce5f76b40c801d806d3fae" title=" " alt="" coords="287,104,471,129"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="226,100,274,104,273,110,225,105"/>
+<area shape="rect" id="Node000007" href="$seq__core__engine_8c.html#a1363c707ed7897336b2a31fff1290855" title=" " alt="" coords="273,153,485,179"/>
+<area shape="poly" id="edge6_Node000001_Node000007" title=" " alt="" coords="157,103,274,138,310,147,308,153,273,143,155,108"/>
+<area shape="rect" id="Node000003" href="$quantizer_8c.html#a8efdeb78f0c3889a2a571c12bf7edef6" title=" " alt="" coords="533,5,700,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="456,15,519,15,519,21,456,21"/>
+<area shape="rect" id="Node000005" href="$quantizer_8c.html#abdfec7c162a17c76e89cc114c3da7b2a" title=" " alt="" coords="543,55,690,80"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="476,65,529,65,529,70,476,70"/>
+</map>

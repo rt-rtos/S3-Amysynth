@@ -1,0 +1,13 @@
+<map id="release_voice_oscs" name="release_voice_oscs">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,55,153,80"/>
+<area shape="rect" id="Node000002" href="$amy_8c.html#abbbb901ff57a21c269a9e1e38ca38256" title=" " alt="" coords="201,55,285,80"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="154,65,187,65,187,70,154,70"/>
+<area shape="rect" id="Node000003" href="$amy_8c.html#a4b1a26458bbc43572d6133072976737c" title=" " alt="" coords="333,55,493,80"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="286,65,319,65,319,70,286,70"/>
+<area shape="rect" id="Node000004" href="$amy_8c.html#ac87ab0bceffc455f00701e04f969d7d3" title=" " alt="" coords="555,5,668,31"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="464,52,546,31,547,37,466,57"/>
+<area shape="rect" id="Node000005" href="$amy_8c.html#a341dcecea4ec3b2b4f8884afa1affd5c" title=" " alt="" coords="541,55,681,80"/>
+<area shape="poly" id="edge4_Node000003_Node000005" title=" " alt="" coords="494,65,527,65,527,70,494,70"/>
+<area shape="rect" id="Node000006" href="$amy_8c.html#a47d3d1e22b2bc289297d07bdb976f9ca" title=" " alt="" coords="549,104,673,129"/>
+<area shape="poly" id="edge5_Node000003_Node000006" title=" " alt="" coords="466,77,547,98,546,103,464,83"/>
+</map>

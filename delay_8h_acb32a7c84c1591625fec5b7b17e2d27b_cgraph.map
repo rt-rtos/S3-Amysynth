@@ -1,0 +1,13 @@
+<map id="init_stereo_reverb" name="init_stereo_reverb">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,55,145,80"/>
+<area shape="rect" id="Node000002" href="$delay_8c.html#aa98cc923609e22121068c7681d6a9a11" title=" " alt="" coords="193,5,352,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="126,52,207,31,209,37,127,57"/>
+<area shape="rect" id="Node000003" href="$delay_8c.html#a205636d21a6e6414b6389211492f3a0e" title=" " alt="" coords="195,55,351,80"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="146,65,181,65,181,70,146,70"/>
+<area shape="rect" id="Node000004" href="$delay_8c.html#a99d487fb1220f492f2d00b783faa07a4" title=" " alt="" coords="211,104,334,129"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="127,77,209,98,207,103,126,83"/>
+<area shape="rect" id="Node000005" href="$delay_8c.html#aec9a1e7d8d28bbce3431c6bb8785c3a7" title=" " alt="" coords="400,79,531,104"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="334,106,386,99,386,104,334,111"/>
+<area shape="rect" id="Node000006" href="$amy_8c.html#adf4eb9b209ec33e5816b81031376947e" title=" " alt="" coords="414,128,517,153"/>
+<area shape="poly" id="edge5_Node000004_Node000006" title=" " alt="" coords="334,122,401,130,400,135,334,127"/>
+</map>

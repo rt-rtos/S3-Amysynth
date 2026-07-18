@@ -1,0 +1,19 @@
+<map id="sequencer_core_get_layer_patch" name="sequencer_core_get_layer_patch">
+<area shape="rect" id="Node000001" title=" " alt="" coords="711,35,863,75"/>
+<area shape="rect" id="Node000002" href="$synth__ui__task_8c.html#a2d4e121703d1e7cc1ebc896d8393b14e" title=" " alt="" coords="500,13,648,39"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="696,46,648,39,649,34,697,40"/>
+<area shape="rect" id="Node000006" href="$ui__patch__cycle_8c.html#a039b668497229965367d16fafdbf557f" title=" " alt="" coords="485,63,663,103"/>
+<area shape="poly" id="edge6_Node000001_Node000006" title=" " alt="" coords="697,70,663,74,663,69,696,65"/>
+<area shape="rect" id="Node000003" href="$synth__ui__task_8c.html#a41099aa99dac8edebec80153422e646b" title=" " alt="" coords="156,21,261,47"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="486,15,408,9,326,11,257,24,256,19,325,6,408,4,486,10"/>
+<area shape="rect" id="Node000005" href="$synth__ui__task_8c.html#a2bb363d79d95e76f7a51edca096e4d88" title=" " alt="" coords="325,21,437,47"/>
+<area shape="poly" id="edge4_Node000002_Node000005" title=" " alt="" coords="486,32,437,34,437,29,486,27"/>
+<area shape="rect" id="Node000004" href="$main_8c.html#a630544a7f0a2cc40d8a7fefab7e2fe70" title=" " alt="" coords="5,47,92,72"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="143,47,93,55,92,50,142,42"/>
+<area shape="poly" id="edge5_Node000005_Node000003" title=" " alt="" coords="312,37,262,37,262,31,312,31"/>
+<area shape="rect" id="Node000007" href="$main_8c.html#a7c172ae572f9673c6c52bfaca428fc48" title=" " alt="" coords="327,71,436,96"/>
+<area shape="poly" id="edge7_Node000006_Node000007" title=" " alt="" coords="471,86,436,86,436,81,471,81"/>
+<area shape="rect" id="Node000008" href="$main_8c.html#a3284ccb20ad2e72440652c1b1cc6d2ca" title=" " alt="" coords="140,71,277,96"/>
+<area shape="poly" id="edge8_Node000007_Node000008" title=" " alt="" coords="313,86,278,86,278,81,313,81"/>
+<area shape="poly" id="edge9_Node000008_Node000004" title=" " alt="" coords="126,74,92,68,93,63,127,68"/>
+</map>

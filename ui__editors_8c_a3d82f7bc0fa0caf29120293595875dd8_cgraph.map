@@ -1,0 +1,13 @@
+<map id="graph_draw_topbar" name="graph_draw_topbar">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,80,152,105"/>
+<area shape="rect" id="Node000002" href="$ui__editors_8c.html#a8b8cafe2e4a98c2de9279c4d6139ec40" title=" " alt="" coords="209,5,372,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="106,77,199,39,223,32,224,37,201,45,108,82"/>
+<area shape="rect" id="Node000003" href="$graph__popup_8c.html#a194ef673495647b359d3bc86a5b2520b" title=" " alt="" coords="200,55,381,80"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="152,81,186,77,187,82,152,87"/>
+<area shape="rect" id="Node000004" href="$ui__editors_8c.html#a8a87b0bacf07d6f2115ded455f61d2a0" title=" " alt="" coords="201,104,381,129"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="152,98,187,102,187,108,152,104"/>
+<area shape="rect" id="Node000005" href="$ui__editors_8c.html#acec4860aa3da68a2497188c3d5f4a905" title=" " alt="" coords="230,153,351,179"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="110,103,201,138,228,147,227,152,199,143,108,108"/>
+<area shape="rect" id="Node000006" href="$ui__editors_8c.html#a18927d60158a6b9289b3df57ca94e0dc" title=" " alt="" coords="429,153,584,179"/>
+<area shape="poly" id="edge5_Node000005_Node000006" title=" " alt="" coords="351,163,416,163,416,169,351,169"/>
+</map>

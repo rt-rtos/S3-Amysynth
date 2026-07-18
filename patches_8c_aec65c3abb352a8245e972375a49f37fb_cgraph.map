@@ -1,0 +1,17 @@
+<map id="add_deltas_to_queue_with_baseosc" name="add_deltas_to_queue_with_baseosc">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,47,165,87"/>
+<area shape="rect" id="Node000002" href="$amy_8c.html#aa7d88b83ca97e69a528be225d33a95b0" title=" " alt="" coords="213,55,367,80"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="165,65,200,65,200,70,165,70"/>
+<area shape="rect" id="Node000003" href="$amy_8c.html#ad054834a7fb83106117b4598c0babeaf" title=" " alt="" coords="424,5,545,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="340,52,420,32,421,37,341,57"/>
+<area shape="rect" id="Node000004" href="$amy_8c.html#a732c26c53a8c2d5b2c900b17e1158aa8" title=" " alt="" coords="415,55,555,80"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="367,65,401,65,401,70,367,70"/>
+<area shape="rect" id="Node000005" href="$amy_8c.html#a9a80c0ab945c788dd0b777d5717d7f7d" title=" " alt="" coords="443,104,526,129"/>
+<area shape="poly" id="edge4_Node000002_Node000005" title=" " alt="" coords="341,77,431,100,429,106,340,83"/>
+<area shape="rect" id="Node000006" href="$amy_8c.html#ad5f094d1ffcfd597c4ee014b96b2516a" title=" " alt="" coords="603,104,773,129"/>
+<area shape="poly" id="edge5_Node000005_Node000006" title=" " alt="" coords="526,114,589,114,589,119,526,119"/>
+<area shape="rect" id="Node000007" href="$amy_8c.html#abf367c547003cadbd7e675d2efc5bcde" title=" " alt="" coords="821,104,956,129"/>
+<area shape="poly" id="edge6_Node000006_Node000007" title=" " alt="" coords="774,114,808,114,808,119,774,119"/>
+<area shape="rect" id="Node000008" href="$amy_8c.html#adf4eb9b209ec33e5816b81031376947e" title=" " alt="" coords="1004,104,1107,129"/>
+<area shape="poly" id="edge7_Node000007_Node000008" title=" " alt="" coords="956,114,990,114,990,119,956,119"/>
+</map>

@@ -1,0 +1,20 @@
+<map id="trig_transform_note" name="trig_transform_note">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,56,156,81"/>
+<area shape="rect" id="Node000002" href="$seq__core__engine_8c.html#a1363c707ed7897336b2a31fff1290855" title=" " alt="" coords="472,5,684,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="135,53,204,41,335,27,458,19,459,25,336,32,204,46,136,59"/>
+<area shape="rect" id="Node000003" href="$seq__core__engine_8c.html#a854b98ddcf827928e4d63a91fe64ec2e" title=" " alt="" coords="204,56,424,81"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="156,66,190,66,190,71,156,71"/>
+<area shape="rect" id="Node000009" href="$seq__core__trig_8c.html#a12a1c3fee90631dd42fef450cc2b98f1" title=" " alt="" coords="261,105,367,131"/>
+<area shape="poly" id="edge9_Node000001_Node000009" title=" " alt="" coords="142,79,248,101,247,107,141,84"/>
+<area shape="poly" id="edge8_Node000003_Node000002" title=" " alt="" coords="380,53,497,31,498,36,381,59"/>
+<area shape="rect" id="Node000004" href="$quantizer_8c.html#ad51c0f86cba0b4cc400b20ffe19f1ba3" title=" " alt="" coords="502,55,654,80"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="424,65,488,65,488,70,424,71"/>
+<area shape="rect" id="Node000006" href="$quantizer_8c.html#af1af59564c1fca81cb98f569fab9b498" title=" " alt="" coords="481,104,675,129"/>
+<area shape="poly" id="edge5_Node000003_Node000006" title=" " alt="" coords="385,79,495,99,494,104,384,84"/>
+<area shape="rect" id="Node000008" href="$quantizer_8c.html#af383cd896bce5f76b40c801d806d3fae" title=" " alt="" coords="486,153,670,179"/>
+<area shape="poly" id="edge7_Node000003_Node000008" title=" " alt="" coords="395,79,425,92,441,104,450,116,459,129,473,140,487,146,484,151,471,144,455,132,446,120,437,107,423,96,393,84"/>
+<area shape="rect" id="Node000005" href="$quantizer_8c.html#a8efdeb78f0c3889a2a571c12bf7edef6" title=" " alt="" coords="732,55,899,80"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="654,65,718,65,718,70,654,70"/>
+<area shape="rect" id="Node000007" href="$quantizer_8c.html#abdfec7c162a17c76e89cc114c3da7b2a" title=" " alt="" coords="742,104,889,129"/>
+<area shape="poly" id="edge6_Node000006_Node000007" title=" " alt="" coords="675,114,728,114,728,119,675,119"/>
+</map>

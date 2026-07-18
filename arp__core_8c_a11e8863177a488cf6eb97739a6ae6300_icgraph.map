@@ -1,0 +1,17 @@
+<map id="arp_get_root_note" name="arp_get_root_note">
+<area shape="rect" id="Node000001" title=" " alt="" coords="868,42,1008,67"/>
+<area shape="rect" id="Node000002" href="$ui__screen__arp_8c.html#a3c93ce4e5eaa21f0d307ea8c1e3a1c9d" title=" " alt="" coords="701,15,820,41"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="854,45,820,40,821,34,855,39"/>
+<area shape="rect" id="Node000007" href="$project__snapshot_8c.html#aa9bb1d8fb53529839950277f89b47541" title=" " alt="" coords="725,66,796,91"/>
+<area shape="poly" id="edge6_Node000001_Node000007" title=" " alt="" coords="855,69,796,77,796,71,854,63"/>
+<area shape="rect" id="Node000003" href="$ui__screen__arp_8c.html#aef4421ce82d542e203d317f31b61bf96" title=" " alt="" coords="490,5,646,45"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="688,30,646,29,646,24,688,24"/>
+<area shape="rect" id="Node000004" href="$main_8c.html#a7c172ae572f9673c6c52bfaca428fc48" title=" " alt="" coords="325,13,435,38"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="476,28,435,28,435,23,476,23"/>
+<area shape="rect" id="Node000005" href="$main_8c.html#a3284ccb20ad2e72440652c1b1cc6d2ca" title=" " alt="" coords="140,13,277,38"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="312,28,278,28,278,23,312,23"/>
+<area shape="rect" id="Node000006" href="$main_8c.html#a630544a7f0a2cc40d8a7fefab7e2fe70" title=" " alt="" coords="5,13,92,38"/>
+<area shape="poly" id="edge5_Node000005_Node000006" title=" " alt="" coords="126,28,92,28,92,23,126,23"/>
+<area shape="rect" id="Node000008" href="$project__snapshot_8c.html#a60da0804771ff732a1d5943a36b47a46" title=" " alt="" coords="483,70,653,95"/>
+<area shape="poly" id="edge7_Node000007_Node000008" title=" " alt="" coords="712,82,654,84,654,78,711,77"/>
+</map>

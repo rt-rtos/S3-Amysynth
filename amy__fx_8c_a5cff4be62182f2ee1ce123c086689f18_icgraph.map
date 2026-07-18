@@ -1,0 +1,17 @@
+<map id="amy_fx_set_master_volume" name="amy_fx_set_master_volume">
+<area shape="rect" id="Node000001" title=" " alt="" coords="885,35,1092,60"/>
+<area shape="rect" id="Node000002" href="$project__snapshot_8c.html#acaa86d0801a52f3ec199f995ff3c3856" title=" " alt="" coords="723,8,817,33"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="871,36,816,29,817,24,872,30"/>
+<area shape="rect" id="Node000004" href="$ui__screen__menu_8c.html#abc070311ce39a6aa040b8a20da7b2a19" title=" " alt="" coords="703,59,837,84"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="872,63,838,67,837,61,871,58"/>
+<area shape="rect" id="Node000003" href="$project__snapshot_8c.html#adc328f05222133bb8129c9d502dc3ff4" title=" " alt="" coords="485,5,653,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="709,23,653,22,653,16,709,17"/>
+<area shape="rect" id="Node000005" href="$ui__screen__menu_8c.html#a81b268cb8c01b61a0e232575047ca351" title=" " alt="" coords="483,55,655,95"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="689,76,655,76,655,71,689,70"/>
+<area shape="rect" id="Node000006" href="$main_8c.html#a7c172ae572f9673c6c52bfaca428fc48" title=" " alt="" coords="325,63,435,88"/>
+<area shape="poly" id="edge5_Node000005_Node000006" title=" " alt="" coords="469,78,435,78,435,73,469,73"/>
+<area shape="rect" id="Node000007" href="$main_8c.html#a3284ccb20ad2e72440652c1b1cc6d2ca" title=" " alt="" coords="140,63,277,88"/>
+<area shape="poly" id="edge6_Node000006_Node000007" title=" " alt="" coords="312,78,278,78,278,73,312,73"/>
+<area shape="rect" id="Node000008" href="$main_8c.html#a630544a7f0a2cc40d8a7fefab7e2fe70" title=" " alt="" coords="5,63,92,88"/>
+<area shape="poly" id="edge7_Node000007_Node000008" title=" " alt="" coords="126,78,92,78,92,73,126,73"/>
+</map>

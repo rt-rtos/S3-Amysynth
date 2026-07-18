@@ -1,0 +1,11 @@
+<map id="graph_update_ticks" name="graph_update_ticks">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,31,155,56"/>
+<area shape="rect" id="Node000002" href="$ui__editors_8c.html#a220a64fbc64db0e00d58225aaff2339f" title=" " alt="" coords="227,5,349,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="155,32,213,24,214,30,155,37"/>
+<area shape="rect" id="Node000004" href="$graph__popup_8c.html#a4702bb9693b58746da040634f4e340b0" title=" " alt="" coords="203,55,373,80"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="155,49,189,53,189,59,155,55"/>
+<area shape="rect" id="Node000003" href="$ui__editors_8c.html#a18927d60158a6b9289b3df57ca94e0dc" title=" " alt="" coords="421,5,576,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="349,15,407,15,407,21,349,21"/>
+<area shape="rect" id="Node000005" href="$graph__popup_8c.html#aa61cdb2bc8d7aab121441b5b50f5dc94" title=" " alt="" coords="457,55,540,80"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="373,65,444,65,444,70,373,70"/>
+</map>

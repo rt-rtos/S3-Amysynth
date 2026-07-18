@@ -1,0 +1,8 @@
+<map id="algo_init" name="algo_init">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,5,84,31"/>
+<area shape="rect" id="Node000002" href="$amy_8c.html#adf4eb9b209ec33e5816b81031376947e" title=" " alt="" coords="325,5,428,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="84,15,311,15,311,21,84,21"/>
+<area shape="rect" id="Node000003" href="$amy_8c.html#aa61538410496081052a5f2b0028b876e" title=" " alt="" coords="132,31,277,56"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="85,21,119,27,118,32,84,27"/>
+<area shape="poly" id="edge3_Node000003_Node000002" title=" " alt="" coords="277,30,311,25,312,30,278,35"/>
+</map>

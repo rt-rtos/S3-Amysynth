@@ -1,0 +1,5 @@
+<map id="sequencer_core_get_melodic_envelope2" name="sequencer_core_get_melodic_envelope2">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,5,161,45"/>
+<area shape="rect" id="Node000002" href="$seq__core__synth_8c.html#a5aaf607b982a69417b63e76774e165e0" title=" " alt="" coords="209,13,333,38"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="162,23,195,23,195,28,162,28"/>
+</map>

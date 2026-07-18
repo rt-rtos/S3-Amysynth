@@ -1,0 +1,13 @@
+<map id="display_seq_state_t" name="display_seq_state_t">
+<area shape="rect" id="Node000001" title=" " alt="" coords="90,284,241,309"/>
+<area shape="rect" id="Node000002" href="$structseq__layer__t.html" title=" " alt="" coords="117,196,214,221"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="168,235,168,283,163,283,163,235"/>
+<area shape="rect" id="Node000003" href="$structvoice__params__t.html" title=" " alt="" coords="103,108,228,133"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="168,147,168,195,163,195,163,147"/>
+<area shape="rect" id="Node000004" href="$structseq__env__t.html" title=" " alt="" coords="5,5,93,31"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="75,38,154,106,150,110,72,42"/>
+<area shape="rect" id="Node000005" href="$structseq__filter__t.html" title=" " alt="" coords="118,5,213,31"/>
+<area shape="poly" id="edge4_Node000003_Node000005" title=" " alt="" coords="168,45,168,108,163,108,163,45"/>
+<area shape="rect" id="Node000006" href="$structseq__lfo__t.html" title=" " alt="" coords="237,5,318,31"/>
+<area shape="poly" id="edge5_Node000003_Node000006" title=" " alt="" coords="256,42,207,86,180,110,177,106,204,82,253,38"/>
+</map>

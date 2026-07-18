@@ -1,0 +1,21 @@
+<map id="sig_trackopts" name="sig_trackopts">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,149,113,174"/>
+<area shape="rect" id="Node000002" href="$ui__screen__trackopts_8c.html#ac9fdf83296c073657023105d6641ec21" title=" " alt="" coords="161,149,349,174"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="113,159,148,159,148,164,113,164"/>
+<area shape="rect" id="Node000003" href="$synth__ui__internal_8h.html#a202c77d048648108c104376a2bb3d844" title=" " alt="" coords="425,123,528,149"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="349,148,411,141,411,146,350,153"/>
+<area shape="rect" id="Node000004" href="$ui__screen__trackopts_8c.html#ac1d33892e563f7151533516f12bfcb48" title=" " alt="" coords="397,173,556,198"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="350,169,384,173,384,178,349,174"/>
+<area shape="rect" id="Node000005" href="$seq__core__progression_8c.html#a25de95738dab3bdd6167f51ec2f86edb" title=" " alt="" coords="631,5,783,45"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="534,170,554,158,565,146,572,134,577,108,583,82,590,68,602,55,617,45,620,49,606,59,595,71,588,84,583,109,577,135,570,149,558,162,537,175"/>
+<area shape="rect" id="Node000006" href="$seq__core__state_8c.html#a5246c0162110492f258bd0e14c065cbe" title=" " alt="" coords="631,69,783,109"/>
+<area shape="poly" id="edge5_Node000004_Node000006" title=" " alt="" coords="526,170,555,158,578,139,603,119,617,112,620,117,605,124,582,143,557,162,528,175"/>
+<area shape="rect" id="Node000007" href="$seq__core__engine_8c.html#a6f18a1dfa59a6ba0d5e7ca24c360e00c" title=" " alt="" coords="631,133,783,173"/>
+<area shape="poly" id="edge6_Node000004_Node000007" title=" " alt="" coords="556,172,617,163,618,168,557,177"/>
+<area shape="rect" id="Node000008" href="$seq__core__engine_8c.html#ae13b580bf47ef0f51b590ccec0a70b4d" title=" " alt="" coords="631,197,783,237"/>
+<area shape="poly" id="edge7_Node000004_Node000008" title=" " alt="" coords="557,194,618,202,617,208,556,199"/>
+<area shape="rect" id="Node000009" href="$seq__core__engine_8c.html#a6633a5e1184ef3ede2a87be0977c2d58" title=" " alt="" coords="631,261,783,301"/>
+<area shape="poly" id="edge8_Node000004_Node000009" title=" " alt="" coords="501,196,549,221,605,247,624,254,623,259,603,252,546,226,499,200"/>
+<area shape="rect" id="Node000010" href="$seq__core__progression_8c.html#ad189500dc22c8f2433f0d2f5719535cd" title=" " alt="" coords="604,325,811,365"/>
+<area shape="poly" id="edge9_Node000004_Node000010" title=" " alt="" coords="489,197,535,252,568,284,605,311,617,317,614,322,603,316,565,288,531,255,485,200"/>
+</map>

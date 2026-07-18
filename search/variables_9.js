@@ -1,0 +1,21 @@
+var searchData=
+[
+  ['i_0',['i',['../uniondelta_1_1d.html#a43c35eef5b8f6345e9ccdc5e6924c939',1,'delta::d']]],
+  ['i2c_5fbus_5fhandle_1',['i2c_bus_handle',['../structi2c__u8g2__handle__t.html#a14cb4929c02fd1433088e6acf5f90278',1,'i2c_u8g2_handle_t']]],
+  ['i2c_5fport_2',['i2c_port',['../structi2c__u8g2__config__t.html#a09767568805f29fc40ec9694b7f36315',1,'i2c_u8g2_config_t']]],
+  ['i2s_5fbclk_3',['i2s_bclk',['../structamy__config__t.html#a7c7113b641d9fec87ab2037596e50b84',1,'amy_config_t']]],
+  ['i2s_5fdin_4',['i2s_din',['../structamy__config__t.html#a09c2c097a43aa35aa415a821f14e75d0',1,'amy_config_t']]],
+  ['i2s_5fdout_5',['i2s_dout',['../structamy__config__t.html#a66157f0cac66f88eaf95ac991f09e078',1,'amy_config_t']]],
+  ['i2s_5fis_5fin_5fbackground_6',['i2s_is_in_background',['../structglobal__state__t.html#aa78c5eecb5d4796b759a29c27ad1098f',1,'global_state_t']]],
+  ['i2s_5flrc_7',['i2s_lrc',['../structamy__config__t.html#a410d659c184edcbc0ecbdc4ee888e698',1,'amy_config_t']]],
+  ['i2s_5fmclk_8',['i2s_mclk',['../structamy__config__t.html#ac5a6f3fbfcaa424c4dcb6e237ce7ada1',1,'amy_config_t']]],
+  ['i2s_5fmclk_5fmult_9',['i2s_mclk_mult',['../structamy__config__t.html#a60449877d5674136de7e9ff27d2c58ae',1,'amy_config_t']]],
+  ['id_10',['id',['../structbutton__msg__t.html#a0724fe440a415f9bfd1986074ebf313b',1,'button_msg_t::id'],['../structinstrument__info.html#abad73b5867101abefb3a76eeb1d4868b',1,'instrument_info::id']]],
+  ['in_5fsustain_11',['in_sustain',['../structinstrument__info.html#a2b2c60ff03259ebcf8e51fb9fb351a4e',1,'instrument_info']]],
+  ['init_12',['init',['../structcustom__oscillator.html#ae85c25dd97e78d165c6e8014b4e56b9c',1,'custom_oscillator']]],
+  ['initialized_13',['initialized',['../structi2c__u8g2__handle__t.html#af701fb578e6594802740416884bb7d90',1,'i2c_u8g2_handle_t::initialized'],['../structusb__audio__diag__snapshot__t.html#a59ed87890de8e94e725c855dcb6c1781',1,'usb_audio_diag_snapshot_t::initialized']]],
+  ['instruments_14',['instruments',['../instrument_8c.html#a6ce0260a63d2622eeee752ddf649423c',1,'instrument.c']]],
+  ['intervals_15',['intervals',['../structmusical__scale__t.html#a69e39867a581f8cbe619ee8697384def',1,'musical_scale_t']]],
+  ['is_5flog_16',['is_log',['../structmidi__mapping.html#a2ef32c10f03771795474b079090e0953',1,'midi_mapping']]],
+  ['items_17',['items',['../structmenu__view__t.html#a664111cf0837a350fd43b6a2be0dc046',1,'menu_view_t']]]
+];

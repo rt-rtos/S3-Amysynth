@@ -1,0 +1,22 @@
+<map id="sequencer_core_set_playing" name="sequencer_core_set_playing">
+<area shape="rect" id="Node000001" title=" " alt="" coords="805,73,956,113"/>
+<area shape="rect" id="Node000002" href="$project__snapshot_8c.html#adc328f05222133bb8129c9d502dc3ff4" title=" " alt="" coords="583,5,751,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="821,69,756,45,719,33,721,28,758,39,823,65"/>
+<area shape="rect" id="Node000003" href="$synth__ui__task_8c.html#a010d4684bb46ec9522c6a29b7a9394ed" title=" " alt="" coords="579,55,756,80"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="791,85,756,81,757,75,792,79"/>
+<area shape="rect" id="Node000008" href="$synth__ui__task_8c.html#a41099aa99dac8edebec80153422e646b" title=" " alt="" coords="391,155,497,180"/>
+<area shape="poly" id="edge8_Node000001_Node000008" title=" " alt="" coords="825,121,758,143,688,156,617,164,497,170,497,165,617,159,687,151,757,138,824,116"/>
+<area shape="rect" id="Node000009" href="$synth__ui__task_8c.html#a67ccbe8b697d1deb7082e10fdd49bf52" title=" " alt="" coords="577,104,757,129"/>
+<area shape="poly" id="edge10_Node000001_Node000009" title=" " alt="" coords="792,105,758,109,757,104,791,100"/>
+<area shape="rect" id="Node000004" href="$main_8c.html#a853991e008217fad3ba1257cf6c2ffd6" title=" " alt="" coords="359,80,529,105"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="565,82,530,86,529,80,564,76"/>
+<area shape="rect" id="Node000005" href="$main_8c.html#a76ad0af96f0bd05b4f5d9de46d8f0844" title=" " alt="" coords="148,55,303,80"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="345,84,303,79,303,74,345,79"/>
+<area shape="rect" id="Node000007" href="$main_8c.html#a078307577c9af84e25489131d173b731" title=" " alt="" coords="140,104,311,129"/>
+<area shape="poly" id="edge6_Node000004_Node000007" title=" " alt="" coords="346,106,311,110,311,105,345,101"/>
+<area shape="rect" id="Node000006" href="$main_8c.html#a630544a7f0a2cc40d8a7fefab7e2fe70" title=" " alt="" coords="5,104,92,129"/>
+<area shape="poly" id="edge5_Node000005_Node000006" title=" " alt="" coords="167,86,93,107,92,102,165,81"/>
+<area shape="poly" id="edge7_Node000007_Node000006" title=" " alt="" coords="126,119,92,119,92,114,126,114"/>
+<area shape="poly" id="edge9_Node000008_Node000006" title=" " alt="" coords="377,168,266,160,140,143,91,132,92,127,140,138,266,154,378,162"/>
+<area shape="poly" id="edge11_Node000009_Node000004" title=" " alt="" coords="563,108,529,104,530,99,564,103"/>
+</map>

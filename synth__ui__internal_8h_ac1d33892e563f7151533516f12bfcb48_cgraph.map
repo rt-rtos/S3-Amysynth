@@ -1,0 +1,15 @@
+<map id="trackopts_build_view" name="trackopts_build_view">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,173,164,198"/>
+<area shape="rect" id="Node000002" href="$seq__core__progression_8c.html#a25de95738dab3bdd6167f51ec2f86edb" title=" " alt="" coords="239,5,391,45"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="93,171,139,115,173,83,211,55,226,47,228,52,213,60,176,87,143,119,97,174"/>
+<area shape="rect" id="Node000003" href="$seq__core__state_8c.html#a5246c0162110492f258bd0e14c065cbe" title=" " alt="" coords="239,69,391,109"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="107,170,154,145,211,119,231,111,232,116,213,124,157,150,109,175"/>
+<area shape="rect" id="Node000004" href="$seq__core__engine_8c.html#a6f18a1dfa59a6ba0d5e7ca24c360e00c" title=" " alt="" coords="239,133,391,173"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="164,172,225,163,226,168,165,177"/>
+<area shape="rect" id="Node000005" href="$seq__core__engine_8c.html#ae13b580bf47ef0f51b590ccec0a70b4d" title=" " alt="" coords="239,197,391,237"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="165,194,226,202,225,208,164,199"/>
+<area shape="rect" id="Node000006" href="$seq__core__engine_8c.html#a6633a5e1184ef3ede2a87be0977c2d58" title=" " alt="" coords="239,261,391,301"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="109,196,157,221,213,247,232,254,231,259,211,252,154,226,107,200"/>
+<area shape="rect" id="Node000007" href="$seq__core__progression_8c.html#ad189500dc22c8f2433f0d2f5719535cd" title=" " alt="" coords="212,325,419,365"/>
+<area shape="poly" id="edge6_Node000001_Node000007" title=" " alt="" coords="97,197,143,252,176,284,213,311,225,317,222,322,211,316,173,288,139,255,93,200"/>
+</map>

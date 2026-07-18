@@ -1,0 +1,19 @@
+var searchData=
+[
+  ['octaves_0',['octaves',['../structarp__state__t.html#a86df67663aaf608b58d2d2be6580ffea',1,'arp_state_t::octaves'],['../structstaged__arp__t.html#af6b0abc40ac542ecfef66e522a15beb9',1,'staged_arp_t::octaves'],['../structarp__view__t.html#a1b0d27c8a810ee7d6ce86443b68011d5',1,'arp_view_t::octaves']]],
+  ['offset_1',['offset',['../structpcm__map__t.html#afb6ea2af44a65396b3e7a0654690a396',1,'pcm_map_t']]],
+  ['offset_5fval_2',['offset_val',['../structmidi__mapping.html#ae172fd59df845a1a92d6cf4a0239cf5a',1,'midi_mapping']]],
+  ['ok_3',['ok',['../struct__zdump__stream.html#a2ca2708eac2ab4d59c2a11995c23a43b',1,'_zdump_stream']]],
+  ['op_5flevel_4',['op_level',['../structfm__voice__t.html#a9edf807d2bbaa2614c253a323cd6be80',1,'fm_voice_t']]],
+  ['op_5fratio_5',['op_ratio',['../structfm__voice__t.html#ad8799fe0e24ba26e4f2efe6f186ae1aa',1,'fm_voice_t']]],
+  ['ops_6',['ops',['../structFmAlgorithm.html#aab30636f5b8b89b179d4347a315140a1',1,'FmAlgorithm']]],
+  ['osc_7',['osc',['../structsynthinfo.html#a23b546966086dd80ff94c8dfd0bfb0d4',1,'synthinfo::osc'],['../structamy__event.html#a2636324c7943c170e6302ab4acbbd80a',1,'amy_event::osc'],['../structdelta.html#a914d2826577ed30e3e0e657951241aa5',1,'delta::osc']]],
+  ['osc0_5famp_5fconst_8',['osc0_amp_const',['../structvoice__wave__cfg__t.html#a2b49260ff9a62d076d5ad8fce3a1f483',1,'voice_wave_cfg_t']]],
+  ['osc0_5famp_5fvel_9',['osc0_amp_vel',['../structvoice__wave__cfg__t.html#af845302ee93b3f2a86677e09e80f62b5',1,'voice_wave_cfg_t']]],
+  ['osc_5ffor_5fcv_10',['osc_for_cv',['../cv__trigger_8c.html#ada728ce9313a98e12fca2fd50b7408ef',1,'cv_trigger.c']]],
+  ['osc_5fto_5fvoice_11',['osc_to_voice',['../patches_8c.html#a506c620a17624c207909a3f67c4bd2b6',1,'patches.c']]],
+  ['oscs_5fper_5fvoice_12',['oscs_per_voice',['../structvoice__wave__cfg__t.html#a2bf582489bb01d410552282f52f8ad37',1,'voice_wave_cfg_t::oscs_per_voice'],['../structamy__event.html#a1da5d602d4e598920afbdc7467f4eed1',1,'amy_event::oscs_per_voice'],['../structinstrument__info.html#a4ed4a0b849be942b18ddb75a4bc6ce79',1,'instrument_info::oscs_per_voice']]],
+  ['output_5fblock_13',['output_block',['../amy_8c.html#a7e975d01a50715c67768e605ab7ff22f',1,'amy.c']]],
+  ['output_5fblock_5f0_14',['output_block_0',['../amy_8c.html#a3cb4d793a468f6ee0fdf74f66ca1ee32',1,'amy.c']]],
+  ['output_5fblock_5f1_15',['output_block_1',['../amy_8c.html#a162a72a125a51600a8956a86f1c2ac04',1,'amy.c']]]
+];

@@ -1,0 +1,15 @@
+<map id="arp_get_slot_snapped" name="arp_get_slot_snapped">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,55,169,80"/>
+<area shape="rect" id="Node000002" href="$arp__core_8c.html#a4589767957eae8c66e5de37faff322c6" title=" " alt="" coords="217,55,299,80"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="170,65,203,65,203,70,170,70"/>
+<area shape="rect" id="Node000003" href="$quantizer_8c.html#ad51c0f86cba0b4cc400b20ffe19f1ba3" title=" " alt="" coords="367,5,519,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="298,54,346,41,380,32,382,37,347,46,300,59"/>
+<area shape="rect" id="Node000005" href="$quantizer_8c.html#af1af59564c1fca81cb98f569fab9b498" title=" " alt="" coords="347,55,540,80"/>
+<area shape="poly" id="edge4_Node000002_Node000005" title=" " alt="" coords="299,65,333,65,333,70,299,70"/>
+<area shape="rect" id="Node000007" href="$seq__core__synth_8c.html#a3b21f76a4a99fcace64536aedde8fcb5" title=" " alt="" coords="358,105,529,145"/>
+<area shape="poly" id="edge6_Node000002_Node000007" title=" " alt="" coords="300,77,366,98,364,103,298,82"/>
+<area shape="rect" id="Node000004" href="$quantizer_8c.html#a8efdeb78f0c3889a2a571c12bf7edef6" title=" " alt="" coords="588,5,755,31"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="520,15,574,15,574,21,520,21"/>
+<area shape="rect" id="Node000006" href="$quantizer_8c.html#abdfec7c162a17c76e89cc114c3da7b2a" title=" " alt="" coords="598,55,745,80"/>
+<area shape="poly" id="edge5_Node000005_Node000006" title=" " alt="" coords="540,65,584,65,584,70,540,70"/>
+</map>

@@ -1,0 +1,5 @@
+<map id="display_seq_draw_frame" name="display_seq_draw_frame">
+<area shape="rect" id="Node000001" title="Draw one full sequencer frame from the provided state." alt="" coords="137,5,321,31"/>
+<area shape="rect" id="Node000002" href="$ui__view__resolve_8c.html#a5210128481944b9bc21a982073713c2e" title=" " alt="" coords="5,5,89,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="124,21,90,21,90,15,124,15"/>
+</map>

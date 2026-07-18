@@ -1,0 +1,9 @@
+<map id="draw_wave_icon" name="draw_wave_icon">
+<area shape="rect" id="Node000001" title=" " alt="" coords="523,5,653,31"/>
+<area shape="rect" id="Node000002" href="$display__lfo_8c.html#a91ea6959bb4fc02e8e5f0ce6f2459a20" title=" " alt="" coords="359,5,475,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="509,21,475,21,475,15,509,15"/>
+<area shape="rect" id="Node000003" href="$ui__editors_8c.html#ab13a5e280a756aec7101f303496767e2" title=" " alt="" coords="132,5,311,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="345,21,311,21,311,15,345,15"/>
+<area shape="rect" id="Node000004" href="$ui__view__resolve_8c.html#a67e228c5be569cca8ea9bb8c00a0df84" title=" " alt="" coords="5,5,84,31"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="119,21,84,21,84,15,119,15"/>
+</map>

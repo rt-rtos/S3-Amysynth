@@ -1,0 +1,24 @@
+var searchData=
+[
+  ['_5fcase_5ff_0',['_CASE_F',['../patches_8c.html#a0ae18ae9a9b909fd953bc5766e806ae4',1,'patches.c']]],
+  ['_5fcase_5fi_1',['_CASE_I',['../patches_8c.html#a9f6b4adcea95d23ffa18004684d5829d',1,'patches.c']]],
+  ['_5fcase_5flog_2',['_CASE_LOG',['../patches_8c.html#afab8edaa8f5b8d92e05b58cce1be5ff2',1,'patches.c']]],
+  ['_5feprint_5fbp_3',['_EPRINT_BP',['../patches_8c.html#ab3415d7b31cd619925f1516505285ef3',1,'patches.c']]],
+  ['_5feprint_5fcoef_4',['_EPRINT_COEF',['../patches_8c.html#a12683727481c26731a8b3866a35cb11e',1,'patches.c']]],
+  ['_5feprint_5ff_5',['_EPRINT_F',['../patches_8c.html#a801b558304cb90a35fec18435456fed9',1,'patches.c']]],
+  ['_5feprint_5ff_5fseq_6',['_EPRINT_F_SEQ',['../patches_8c.html#a6aef81e910e63abf12e6f7866f685d7c',1,'patches.c']]],
+  ['_5feprint_5fi_7',['_EPRINT_I',['../patches_8c.html#a0f0a388e632712351289222b03228794',1,'patches.c']]],
+  ['_5feprint_5fi_5fseq_8',['_EPRINT_I_SEQ',['../patches_8c.html#a1fb963a7b1388d9adc35e04ddc9b77c2',1,'patches.c']]],
+  ['_5feprint_5fvals_5f5_9',['_EPRINT_VALS_5',['../patches_8c.html#a84616cb463c7f0f5ad101e8b04dd9cfb',1,'patches.c']]],
+  ['_5finstrument_5fno_5fnote_10',['_INSTRUMENT_NO_NOTE',['../instrument_8c.html#ad21bace1df11ca485bae447a6835b1dd',1,'instrument.c']]],
+  ['_5finstrument_5fno_5fvoice_11',['_INSTRUMENT_NO_VOICE',['../amy_8h.html#aa27939e8f9b7d7185563eb0aa5f7eb3b',1,'amy.h']]],
+  ['_5fpatches_5ffirst_5fuser_5fpatch_12',['_PATCHES_FIRST_USER_PATCH',['../patches_8c.html#a83b434e770d7ed35ce2b5d3e556ff79e',1,'patches.c']]],
+  ['_5fpatches_5fnum_5fbuiltin_13',['_PATCHES_NUM_BUILTIN',['../patches_8h.html#ae0736b565282068d16e7b679e315a563',1,'patches.h']]],
+  ['_5fret_5ftrue_5fif_5fset_14',['_RET_TRUE_IF_SET',['../patches_8c.html#ab0f00852aaa5b13402cd15d7f10cf5b9',1,'patches.c']]],
+  ['_5fret_5ftrue_5fif_5fset_5fbp_15',['_RET_TRUE_IF_SET_BP',['../patches_8c.html#a00e24e6a648df34b829cdd00ce3c113f',1,'patches.c']]],
+  ['_5fret_5ftrue_5fif_5fset_5fcoef_16',['_RET_TRUE_IF_SET_COEF',['../patches_8c.html#a10a622fe5c10559546365f4a018aaef7',1,'patches.c']]],
+  ['_5fret_5ftrue_5fif_5fset_5fseq_17',['_RET_TRUE_IF_SET_SEQ',['../patches_8c.html#a2c061441fec0c64081da2d818a365b40',1,'patches.c']]],
+  ['_5ftest_5fcoefs_18',['_TEST_COEFS',['../patches_8c.html#a6dfccc36fde0fbc3e6e2a8af93e73883',1,'patches.c']]],
+  ['_5ftest_5ffreq_5fcoefs_19',['_TEST_FREQ_COEFS',['../patches_8c.html#a29b665f14b66575eac50fe2745195d1c',1,'patches.c']]],
+  ['_5ftrue_5fif_5f5_5ff_5funset_20',['_TRUE_IF_5_F_UNSET',['../patches_8c.html#af23c722ce6ebb1440ce73213b9964ddd',1,'patches.c']]]
+];

@@ -1,0 +1,21 @@
+<map id="arp_snap" name="arp_snap">
+<area shape="rect" id="Node000001" title=" " alt="" coords="883,31,964,56"/>
+<area shape="rect" id="Node000002" href="$arp__core_8c.html#a6c6451fcf75ed298b508c4b4eed93165" title=" " alt="" coords="687,5,818,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="869,38,818,30,819,25,869,33"/>
+<area shape="rect" id="Node000007" href="$arp__core_8c.html#a6b8f2b397c3327e28d04d08a5428c91c" title=" " alt="" coords="671,55,835,80"/>
+<area shape="poly" id="edge6_Node000001_Node000007" title=" " alt="" coords="870,54,835,58,834,53,869,48"/>
+<area shape="rect" id="Node000003" href="$arp__core_8c.html#ab1dd581ff21c440446891c39d193f492" title=" " alt="" coords="491,5,623,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="673,21,623,21,623,15,673,15"/>
+<area shape="rect" id="Node000004" href="$synth__ui__task_8c.html#a2bb363d79d95e76f7a51edca096e4d88" title=" " alt="" coords="312,5,424,31"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="477,21,424,21,424,15,477,15"/>
+<area shape="rect" id="Node000005" href="$synth__ui__task_8c.html#a41099aa99dac8edebec80153422e646b" title=" " alt="" coords="140,5,245,31"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="298,21,246,21,246,15,298,15"/>
+<area shape="rect" id="Node000006" href="$main_8c.html#a630544a7f0a2cc40d8a7fefab7e2fe70" title=" " alt="" coords="5,5,92,31"/>
+<area shape="poly" id="edge5_Node000005_Node000006" title=" " alt="" coords="126,21,92,21,92,15,126,15"/>
+<area shape="rect" id="Node000008" href="$ui__screen__arp_8c.html#adb37eed581ca6da9cade311194a673e2" title=" " alt="" coords="497,55,617,80"/>
+<area shape="poly" id="edge7_Node000007_Node000008" title=" " alt="" coords="657,70,617,70,617,65,657,65"/>
+<area shape="rect" id="Node000009" href="$ui__screen__arp_8c.html#a97fa3fc4f3b990e01d6e8803e34f05c5" title=" " alt="" coords="293,55,443,80"/>
+<area shape="poly" id="edge8_Node000008_Node000009" title=" " alt="" coords="483,70,443,70,443,65,483,65"/>
+<area shape="rect" id="Node000010" href="$ui__view__resolve_8c.html#aa8a1dfd3d2b3e255603420f0e0195c2d" title=" " alt="" coords="158,55,227,80"/>
+<area shape="poly" id="edge9_Node000009_Node000010" title=" " alt="" coords="280,70,228,70,228,65,280,65"/>
+</map>

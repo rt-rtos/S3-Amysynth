@@ -1,0 +1,18 @@
+<map id="alloc_reverb_delay_lines" name="alloc_reverb_delay_lines">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,98,151,138"/>
+<area shape="rect" id="Node000002" href="$delay_8c.html#acb32a7c84c1591625fec5b7b17e2d27b" title=" " alt="" coords="199,80,339,105"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="151,106,185,101,186,106,151,111"/>
+<area shape="rect" id="Node000008" href="$delay_8c.html#a40bfa90de3a50a3b7c82be0a3680b192" title=" " alt="" coords="219,129,318,155"/>
+<area shape="poly" id="edge7_Node000001_Node000008" title=" " alt="" coords="151,124,206,131,205,137,151,130"/>
+<area shape="rect" id="Node000003" href="$delay_8c.html#aa98cc923609e22121068c7681d6a9a11" title=" " alt="" coords="387,5,545,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="296,77,386,40,406,32,408,37,388,44,298,82"/>
+<area shape="rect" id="Node000004" href="$delay_8c.html#a205636d21a6e6414b6389211492f3a0e" title=" " alt="" coords="388,55,544,80"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="339,81,374,76,375,82,340,86"/>
+<area shape="rect" id="Node000005" href="$delay_8c.html#a99d487fb1220f492f2d00b783faa07a4" title=" " alt="" coords="405,104,527,129"/>
+<area shape="poly" id="edge4_Node000002_Node000005" title=" " alt="" coords="340,99,391,105,390,110,339,104"/>
+<area shape="rect" id="Node000006" href="$delay_8c.html#aec9a1e7d8d28bbce3431c6bb8785c3a7" title=" " alt="" coords="593,104,724,129"/>
+<area shape="poly" id="edge5_Node000005_Node000006" title=" " alt="" coords="527,114,579,114,579,119,527,119"/>
+<area shape="rect" id="Node000007" href="$amy_8c.html#adf4eb9b209ec33e5816b81031376947e" title=" " alt="" coords="607,153,710,179"/>
+<area shape="poly" id="edge6_Node000005_Node000007" title=" " alt="" coords="517,127,596,147,594,152,516,132"/>
+<area shape="poly" id="edge8_Node000008_Node000007" title=" " alt="" coords="318,142,594,159,594,165,318,148"/>
+</map>

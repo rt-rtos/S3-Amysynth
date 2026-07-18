@@ -1,0 +1,11 @@
+<map id="render_triangle" name="render_triangle">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,55,127,80"/>
+<area shape="rect" id="Node000002" href="$oscillators_8c.html#a61467a558c1a7a8b4451c08d63f9e4a2" title=" " alt="" coords="175,5,313,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="112,52,183,32,184,37,113,57"/>
+<area shape="rect" id="Node000004" href="$amy_8c.html#a5991b7f59fbc673336a89244357cd823" title=" " alt="" coords="183,55,305,80"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="127,65,169,65,169,70,127,70"/>
+<area shape="rect" id="Node000005" href="$oscillators_8c.html#adc6efcf6b7faeb9aa4f653f67e0ddbe8" title=" " alt="" coords="200,104,288,129"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="113,77,187,98,186,103,112,83"/>
+<area shape="rect" id="Node000003" href="$oscillators_8c.html#a70ff2d6a7d7a4effe12663cbdec9bc8f" title=" " alt="" coords="361,5,512,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="313,15,348,15,348,21,313,21"/>
+</map>

@@ -1,0 +1,13 @@
+<map id="patches_init" name="patches_init">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,31,107,56"/>
+<area shape="rect" id="Node000002" href="$amy_8c.html#adf4eb9b209ec33e5816b81031376947e" title=" " alt="" coords="160,5,263,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="106,32,146,26,147,31,107,38"/>
+<area shape="rect" id="Node000003" href="$patches_8c.html#a420fc51f79a7ea59a7b36c07158f0f60" title=" " alt="" coords="155,55,268,80"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="107,48,141,54,141,59,106,54"/>
+<area shape="rect" id="Node000004" href="$patches_8c.html#a4596b17f848faebca9c405d1b1cdaee8" title=" " alt="" coords="316,55,472,80"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="268,65,302,65,302,70,268,70"/>
+<area shape="rect" id="Node000005" href="$amy_8c.html#ab87c1302abce36cae62a057d808f9a4b" title=" " alt="" coords="520,55,657,80"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="472,65,506,65,506,70,472,70"/>
+<area shape="rect" id="Node000006" href="$amy_8c.html#ad1cd4ab69b2b9241229bc92b0b929b88" title=" " alt="" coords="705,55,816,80"/>
+<area shape="poly" id="edge5_Node000005_Node000006" title=" " alt="" coords="657,65,692,65,692,70,657,70"/>
+</map>

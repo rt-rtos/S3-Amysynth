@@ -1,0 +1,9 @@
+<map id="ks_note_on" name="ks_note_on">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,31,101,56"/>
+<area shape="rect" id="Node000002" href="$oscillators_8c.html#a92f60cc43b1539e491d90a18ff2463f9" title=" " alt="" coords="149,5,285,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="101,33,135,28,136,33,102,39"/>
+<area shape="rect" id="Node000004" href="$amy_8c.html#a5991b7f59fbc673336a89244357cd823" title=" " alt="" coords="157,55,278,80"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="102,48,144,54,143,59,101,53"/>
+<area shape="rect" id="Node000003" href="$oscillators_8c.html#a42559ab9bbd0879f761c5cea1a8c65ea" title=" " alt="" coords="333,5,441,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="286,15,320,15,320,21,286,21"/>
+</map>

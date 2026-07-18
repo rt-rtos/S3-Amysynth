@@ -1,0 +1,13 @@
+<map id="synth_ui_lfo_view_draw" name="synth_ui_lfo_view_draw">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,80,184,105"/>
+<area shape="rect" id="Node000002" href="$display__lfo_8c.html#a91ea6959bb4fc02e8e5f0ce6f2459a20" title=" " alt="" coords="232,80,348,105"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="184,90,218,90,218,95,184,95"/>
+<area shape="rect" id="Node000003" href="$display__lfo_8c.html#af47a216014d426cfc4209be3e346bd32" title=" " alt="" coords="400,5,523,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="315,78,395,40,410,33,412,38,397,44,317,82"/>
+<area shape="rect" id="Node000004" href="$display__lfo_8c.html#a9ce9c0fc92cac709bfc2be1104aa5c3c" title=" " alt="" coords="396,55,527,80"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="348,81,382,76,383,82,349,87"/>
+<area shape="rect" id="Node000005" href="$display__lfo_8c.html#aea1c49108392068acf9920c1719d5764" title=" " alt="" coords="418,104,505,129"/>
+<area shape="poly" id="edge4_Node000002_Node000005" title=" " alt="" coords="349,98,405,106,404,111,348,103"/>
+<area shape="rect" id="Node000006" href="$display__lfo_8c.html#abfd03d54d9af98c9520d2eeef5dd8110" title=" " alt="" coords="409,153,514,179"/>
+<area shape="poly" id="edge5_Node000002_Node000006" title=" " alt="" coords="319,103,397,138,415,146,413,151,395,143,317,108"/>
+</map>
