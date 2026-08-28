@@ -282,10 +282,45 @@ const char *sequencer_core_drum_source_name(uint8_t idx);
 uint8_t     sequencer_core_get_drum_source(void);
 void        sequencer_core_set_drum_source(uint8_t idx);
 
+/* ── Voice-block source selector (melodic layers) ──
+ * Each row reads its env/EG1/filter/LFO/dist from ONE of two stored blocks:
+ * its own (SEQ_VP_SRC_TRACK) or the layer's shared block (SEQ_VP_SRC_LAYER).
+ * Every get/set/preview/authored call below addresses the block the row
+ * currently reads, so an editor opened on a LAYER-source row shows and edits
+ * the layer block, and a commit there reaches every LAYER-source row. The
+ * deselected block keeps its contents; flipping back restores it. amp_trim is
+ * always the row's own. Drum layers are always TRACK (set returns false).
+ *
+ * set re-pushes the row so it sounds like the new block at once: direct
+ * pushes when every group is authored, otherwise a layer reload (brief voice
+ * restart on the whole layer - the patch's own values for the unauthored
+ * groups live only in the patch string). Both blocks keep the deferred-
+ * authority rule: an unauthored group falls through to the patch. UI task
+ * only; never from the render path. */
+seq_vp_src_t sequencer_core_get_melodic_vp_source(uint8_t layer_idx, uint8_t track);
+bool         sequencer_core_set_melodic_vp_source(uint8_t layer_idx, uint8_t track,
+                                                  seq_vp_src_t src);
+/* The rows that read the same block as `track` (always includes `track`;
+ * {track} alone for a TRACK-source row). Returns the count written to peers[].
+ * Editors preview and cancel-restore over this set; commits fan out to it
+ * inside the setters. */
+uint8_t sequencer_core_melodic_vp_peers(uint8_t layer_idx, uint8_t track,
+                                        uint8_t peers[SEQ_TRACKS]);
+/* Per-group authority of the block `track` reads (false = the patch owns it). */
+bool sequencer_core_melodic_group_authored(uint8_t layer_idx, uint8_t track,
+                                           seq_vp_group_t group);
+/* Hand one group back to the patch: clears the authored flag on the block
+ * `track` reads (so every peer follows) and reloads the layer so the patch's
+ * own values sound again. The stored values are kept for a later re-commit.
+ * No-op on drum layers. */
+void sequencer_core_release_melodic_group(uint8_t layer_idx, uint8_t track,
+                                          seq_vp_group_t group);
+
 /* ── Per-row melodic ADSR envelope (runtime-editable) ──
  * Per track; each row has its own AMY synth, so envelopes are independent (see
  * seq_env_t in seq_model.h for the per-step extension path). get returns false
- * for non-melodic/out-of-range; set clamps, stores and pushes to the row. */
+ * for non-melodic/out-of-range; set clamps, stores into the block the row
+ * reads (see the source selector above) and pushes to every row reading it. */
 bool sequencer_core_get_melodic_envelope(uint8_t layer_idx, uint8_t track,
                                          seq_env_t *out);
 void sequencer_core_set_melodic_envelope(uint8_t layer_idx, uint8_t track,

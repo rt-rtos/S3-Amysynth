@@ -121,6 +121,8 @@ uint8_t sequencer_core_add_layer(seq_layer_type_t type, uint8_t num_steps)
     for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
         voice_params_init_defaults(&layer->vp[t]);
     }
+    voice_params_init_defaults(&layer->vp_layer);
+    /* vp_src[] is TRACK (0) from the memset: every row reads its own block. */
 
     layer->type       = type;
     layer->num_steps  = (num_steps == SEQ_MAX_STEPS) ? SEQ_MAX_STEPS : SEQ_STEPS;
@@ -191,6 +193,8 @@ uint8_t sequencer_core_add_layer(seq_layer_type_t type, uint8_t num_steps)
             layer->vp[t].env  = seq_default_melodic_env();
             layer->vp[t].env1 = seq_default_melodic_env1();
         }
+        layer->vp_layer.env  = seq_default_melodic_env();
+        layer->vp_layer.env1 = seq_default_melodic_env1();
     }
 
     /* step_prob (0% silences every step), step_ratchet (0 sub-hits fire

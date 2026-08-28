@@ -187,7 +187,16 @@ A few design decisions worth calling out:
 - **Deferred envelope authority.** A patch's own envelope plays by default; a
   custom envelope only overrides it once committed in the ADSR editor, so
   changing presets doesn't permanently shadow it. The same authored/unauthored
-  rule applies to the filter, LFO and distortion settings.
+  rule applies to the filter, LFO and distortion settings, and a committed tab
+  can be handed back to the patch (`MY_BUTTON_SHIFT` + `MY_BUTTON_2` in the
+  editor).
+- **Two voice blocks per melodic row.** Every row stores its own
+  envelope/filter/LFO/distortion set and the layer stores one shared set; a
+  per-row selector says which one the row reads and the editors write. Flipping
+  the selector never destroys the other set, so a per-track override and the
+  layer sound coexist and are one flip apart. Editor headers show the source:
+  `>T` / `>L` when the committed copy sounds, `PT` / `PL` when the patch still
+  owns that tab.
 - **A shared voice-parameter layer.** The melodic rows, the arp, both drones
   and the BLE live voice all embed one `voice_params_t` block (EG0/EG1
   envelopes, filter, LFO, distortion, amp trim) and share the code that
@@ -486,8 +495,8 @@ the hold-modifier `MY_BUTTON_SHIFT`. Pin assignments are in
 | `MY_BUTTON_ENC` (short) | Confirm / toggle step; enters edit mode on the focused field |
 | `MY_BUTTON_SHOULDER` | Per screen: toggle the step under the cursor (grid), flip EG1 sweep polarity (envelope editor), switch target tab (LFO editor), toggle feedback on the selected operator (FM screen) |
 | `MY_BUTTON_SHIFT` + `MY_BUTTON_1` | Open the voice editors (ADSR first) for the active instrument |
-| `MY_BUTTON_SHIFT` + `MY_BUTTON_2` | Open / close the per-step popup (sequencer screen) |
-| `MY_BUTTON_SHIFT` + `MY_BUTTON_3` | In the envelope / LFO / distortion editors: toggle apply scope (this track vs. the whole layer) |
+| `MY_BUTTON_SHIFT` + `MY_BUTTON_2` | Open / close the per-step popup (sequencer screen); inside a voice editor: release the open tab to the patch |
+| `MY_BUTTON_SHIFT` + `MY_BUTTON_3` | Inside a voice editor (melodic rows): flip the row between its own voice settings and the layer's shared ones |
 | `MY_BUTTON_0` (short) | Cycle active layer (sequencer screen); inside an editor: **commit** and close |
 | `MY_BUTTON_0` (long) | Toggle global playback; inside an editor: **cancel** and close |
 | `MY_BUTTON_1` (hold + encoder) | Cycle patch for the selected track / instrument |
@@ -909,11 +918,18 @@ patch-hold or pitch-hold gesture does not survive the switch.
 Four modal editors - envelope, filter, LFO, distortion - reachable from any
 instrument screen with `MY_BUTTON_SHIFT` + `MY_BUTTON_1` and cycled with
 `MY_BUTTON_3`. They bind to whichever instrument opened them (a melodic row,
-the arp, either drone, the BLE live voice, or an FM operator), audition
-every change live, and commit either to the single track or the whole
-layer (`MY_BUTTON_SHIFT` + `MY_BUTTON_3` toggles the scope; melodic rows
-only). In every editor `MY_BUTTON_0` tap commits and closes, `MY_BUTTON_0`
-long cancels.
+the arp, either drone, the BLE live voice, or an FM operator) and audition
+every change live. On a melodic row the editors read and write either the
+row's own voice settings or the layer's shared set, whichever the row is
+currently following; `MY_BUTTON_SHIFT` + `MY_BUTTON_3` flips the row between
+the two (commits the current tab first, then re-seeds from the other set - a
+row following the layer picks up every layer edit without a visit), and
+`MY_BUTTON_SHIFT` + `MY_BUTTON_2` hands the open tab back to the patch. The
+header badge (`>T`, `>L`, `PT`, `PL`) shows which of track / layer / patch is
+sounding for that tab. A tab only takes over from the patch once you actually
+change something in it; cycling through untouched tabs commits nothing. In
+every editor `MY_BUTTON_0` tap commits and closes, `MY_BUTTON_0` long
+cancels.
 
 ### Envelope (ADSR) editor
 

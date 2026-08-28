@@ -186,6 +186,12 @@ void      sequencer_reconfigure_layer_paused(uint8_t layer_idx);
 void      sequencer_core_push_melodic_portamento(uint8_t layer_idx);
 seq_env_t *seq_layer_env(uint8_t layer_idx, uint8_t track);
 seq_env_t *seq_layer_env1(uint8_t layer_idx, uint8_t track);
+/* The voice block (layer, track) currently reads AND edits: vp_layer when the
+ * row's vp_src is LAYER, else its own vp[track]. Every push, service and
+ * editor path resolves through here; only amp_trim (always the row's own),
+ * the drum bank seeding (drum layers are always TRACK) and the project store
+ * touch the blocks directly. Out-of-range indices clamp to 0. */
+voice_params_t *seq_track_vp(uint8_t layer_idx, uint8_t track);
 
 /* From seq_core_editors.c */
 void sequencer_configure_melodic_envelope_track(uint8_t layer_idx, uint8_t track);

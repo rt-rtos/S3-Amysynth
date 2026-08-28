@@ -395,7 +395,7 @@ static void sequencer_configure_melodic_envelope(uint8_t layer_idx)
      * sustain floor in sequencer_configure_melodic_envelope_track.) */
     bool force_wave = sequencer_core_is_wave_patch(layer->patch);
     for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
-        if (layer->vp[t].env_authored || force_wave) {
+        if (seq_track_vp(layer_idx, t)->env_authored || force_wave) {
             sequencer_configure_melodic_envelope_track(layer_idx, t);
         }
     }
@@ -405,9 +405,8 @@ static void sequencer_configure_melodic_envelope(uint8_t layer_idx)
  * EG0 above: EG1 has no raw-wave fallback role. */
 static void sequencer_configure_melodic_envelope1(uint8_t layer_idx)
 {
-    const seq_layer_t *layer = &s_layers[layer_idx];
     for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
-        if (layer->vp[t].env1_authored) {
+        if (seq_track_vp(layer_idx, t)->env1_authored) {
             sequencer_configure_melodic_envelope1_track(layer_idx, t);
         }
     }
@@ -419,15 +418,14 @@ static void sequencer_configure_melodic_envelope1(uint8_t layer_idx)
  * is set, which strips it so the raw patch tone is heard. */
 static void sequencer_configure_melodic_filter(uint8_t layer_idx)
 {
-    const seq_layer_t *layer = &s_layers[layer_idx];
     for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
-        if (layer->vp[t].filter_authored) {
+        if (seq_track_vp(layer_idx, t)->filter_authored) {
             sequencer_configure_melodic_filter_track(layer_idx, t);
 #if CONFIG_SEQ_MELODIC_DISABLE_DEFAULT_LPF
         } else {
             /* Strip the patch-baked filter from this fresh row. */
             amy_event *e = amy_helpers_event_begin();
-            e->synth       = layer->synth_id[t];
+            e->synth       = s_layers[layer_idx].synth_id[t];
             e->filter_type = FILTER_NONE;
             amy_helpers_event_send(e);
 #endif
@@ -440,30 +438,35 @@ static void sequencer_configure_melodic_filter(uint8_t layer_idx)
  * distortion block, so there is nothing to strip and nothing to restore. */
 static void sequencer_configure_melodic_dist(uint8_t layer_idx)
 {
-    const seq_layer_t *layer = &s_layers[layer_idx];
     for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
-        if (layer->vp[t].dist_authored)
+        if (seq_track_vp(layer_idx, t)->dist_authored)
             sequencer_configure_melodic_dist_track(layer_idx, t);
     }
 }
 
-/* The melodic envelope is stored PER ROW. Each row owns its own AMY synth slot
- * (synth_id[track]), so there is no shared synth and no "active row" to
- * arbitrate. Single point of truth for "which env applies to (layer,track)";
- * per-step support would add a step parameter here, callers unchanged. */
-seq_env_t *seq_layer_env(uint8_t layer_idx, uint8_t track)
+/* Single point of truth for "which voice block applies to (layer, track)":
+ * the layer's shared block when the row follows the layer, else the row's own.
+ * Each row owns its own AMY synth slot (synth_id[track]), so a shared block is
+ * pushed once per follower - there is no shared synth to arbitrate. Per-step
+ * support would add a step parameter here, callers unchanged. */
+voice_params_t *seq_track_vp(uint8_t layer_idx, uint8_t track)
 {
     if (layer_idx >= s_num_layers) layer_idx = 0;
     if (track >= SEQ_TRACKS) track = 0;
-    return &s_layers[layer_idx].vp[track].env;
+    seq_layer_t *layer = &s_layers[layer_idx];
+    return (layer->vp_src[track] == SEQ_VP_SRC_LAYER) ? &layer->vp_layer
+                                                       : &layer->vp[track];
+}
+
+seq_env_t *seq_layer_env(uint8_t layer_idx, uint8_t track)
+{
+    return &seq_track_vp(layer_idx, track)->env;
 }
 
 /* EG1 counterpart of seq_layer_env(). */
 seq_env_t *seq_layer_env1(uint8_t layer_idx, uint8_t track)
 {
-    if (layer_idx >= s_num_layers) layer_idx = 0;
-    if (track >= SEQ_TRACKS) track = 0;
-    return &s_layers[layer_idx].vp[track].env1;
+    return &seq_track_vp(layer_idx, track)->env1;
 }
 
 /* AMY events are emitted through the shared amy_helpers scratch buffer - one
@@ -634,12 +637,13 @@ void sequencer_configure_synth(uint8_t layer_idx)
     for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
         uint8_t voices = seq_track_num_voices(layer, t);
         sequencer_kill_synth_voices(layer->synth_id[t]);
+        const voice_params_t *vp = seq_track_vp(layer_idx, t);
         string_patch |= seq_apply_patch(layer->synth_id[t],
                                         layer->patch,
                                         voices,
                                         layer->synth_flags,
-                                        layer->vp[t].filter_authored,
-                                        layer->vp[t].filter.feedback);
+                                        vp->filter_authored,
+                                        vp->filter.feedback);
         s_voices_applied[layer_idx][t] = voices;
     }
     seq_flush_patch_fx(string_patch);

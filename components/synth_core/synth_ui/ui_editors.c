@@ -185,10 +185,35 @@ static bool  s_graph_env_dirty = false; /* set only when user moves an ADSR poin
 static float s_graph_fenv_edit  = 0.0f;
 static bool  s_graph_fenv_dirty = false;
 
-/* Layer-apply scope: commits write to all SEQ_TRACKS in the active layer
- * instead of only the selected track. Toggled by MY_BUTTON_1 from the ADSR or
- * LFO editor only - the filter editor uses that button for enable/disable. */
-static bool s_editor_apply_all = false;
+/* Voice-block source. Which block a row reads and the editors write - its own
+ * or the layer's shared one - is engine state (persisted per row, resolved by
+ * every get/set/preview call). The editors only query it for the badge, run
+ * previews and cancel-restores over the rows sharing the block, and flip it
+ * via synth_ui_toggle_editor_source(). Commits are single setter calls: the
+ * engine fans a shared block out to its readers. */
+static bool editor_src_is_layer(uint8_t li, uint8_t tr)
+{
+    return sequencer_core_get_melodic_vp_source(li, tr) == SEQ_VP_SRC_LAYER;
+}
+
+/* Header badge for one tab: '>' = our copy of this group sounds and commits
+ * land here; 'P' = the patch still owns it (never committed, or released).
+ * Second letter = the block the row reads, L (layer) or T (own). */
+static void editor_src_badge(uint8_t li, uint8_t tr, seq_vp_group_t group,
+                             char out[4])
+{
+    out[0] = sequencer_core_melodic_group_authored(li, tr, group) ? '>' : 'P';
+    out[1] = editor_src_is_layer(li, tr) ? 'L' : 'T';
+    out[2] = '\0';
+}
+
+/* Per-editor "user changed something" flags: a commit only takes authority
+ * over a group when it was edited. Cycling through the tabs or flipping the
+ * source must not author untouched groups - that would silently replace the
+ * patch's own filter/LFO/dist with the editor's seed values. */
+static bool s_filter_dirty = false;
+static bool s_lfo_dirty    = false;
+static bool s_dist_dirty   = false;
 
 /* Live-preview bookkeeping (see "Live preview while editing" below): which
  * parts of the session pushed scratch state to AMY, plus the amp value and
@@ -483,12 +508,7 @@ static void graph_write_target_env_idx(const seq_env_t *env, uint8_t eg_index)
                 break;                  /* no EG1 on an operator */
             case GRAPH_TGT_MELODIC:
             default:
-                if (s_editor_apply_all) {
-                    for (uint8_t t = 0; t < SEQ_TRACKS; ++t)
-                        sequencer_core_set_melodic_envelope2(s_graph_layer, t, env);
-                } else {
-                    sequencer_core_set_melodic_envelope2(s_graph_layer, s_graph_track, env);
-                }
+                sequencer_core_set_melodic_envelope2(s_graph_layer, s_graph_track, env);
                 break;
         }
         return;
@@ -518,12 +538,7 @@ static void graph_write_target_env_idx(const seq_env_t *env, uint8_t eg_index)
 #endif
         case GRAPH_TGT_MELODIC:
         default:
-            if (s_editor_apply_all) {
-                for (uint8_t t = 0; t < SEQ_TRACKS; ++t)
-                    sequencer_core_set_melodic_envelope(s_graph_layer, t, env);
-            } else {
-                sequencer_core_set_melodic_envelope(s_graph_layer, s_graph_track, env);
-            }
+            sequencer_core_set_melodic_envelope(s_graph_layer, s_graph_track, env);
             break;
     }
 }
@@ -725,14 +740,13 @@ static void graph_live_push_env(void)
 #endif
         case GRAPH_TGT_MELODIC:
         default: {
-            uint8_t t0 = s_editor_apply_all ? 0 : s_graph_track;
-            uint8_t t1 = s_editor_apply_all ? (uint8_t)(SEQ_TRACKS - 1)
-                                            : s_graph_track;
-            for (uint8_t t = t0; t <= t1; ++t) {
+            uint8_t peers[SEQ_TRACKS];
+            uint8_t n = sequencer_core_melodic_vp_peers(s_graph_layer, s_graph_track, peers);
+            for (uint8_t i = 0; i < n; ++i) {
                 if (s_graph_eg_index == 1)
-                    sequencer_core_preview_melodic_envelope2(s_graph_layer, t, &env);
+                    sequencer_core_preview_melodic_envelope2(s_graph_layer, peers[i], &env);
                 else
-                    sequencer_core_preview_melodic_envelope(s_graph_layer, t, &env);
+                    sequencer_core_preview_melodic_envelope(s_graph_layer, peers[i], &env);
             }
             break;
         }
@@ -762,13 +776,13 @@ static void graph_live_push_fenv(void)
     }
 #endif
     if (s_graph_target != GRAPH_TGT_MELODIC) return;
-    uint8_t t0 = s_editor_apply_all ? 0 : s_graph_track;
-    uint8_t t1 = s_editor_apply_all ? (uint8_t)(SEQ_TRACKS - 1) : s_graph_track;
-    for (uint8_t t = t0; t <= t1; ++t) {
+    uint8_t peers[SEQ_TRACKS];
+    uint8_t n = sequencer_core_melodic_vp_peers(s_graph_layer, s_graph_track, peers);
+    for (uint8_t i = 0; i < n; ++i) {
         seq_filter_t f;
-        if (!sequencer_core_get_melodic_filter(s_graph_layer, t, &f)) continue;
+        if (!sequencer_core_get_melodic_filter(s_graph_layer, peers[i], &f)) continue;
         f.filter_env_amount = s_graph_fenv_edit;
-        sequencer_core_preview_melodic_filter(s_graph_layer, t, &f);
+        sequencer_core_preview_melodic_filter(s_graph_layer, peers[i], &f);
     }
     s_graph_live_fenv = true;
 }
@@ -789,14 +803,10 @@ static void graph_amp_live_set(float v)
             break;
 #endif
         case GRAPH_TGT_MELODIC:
-        default: {
-            uint8_t t0 = s_editor_apply_all ? 0 : s_graph_track;
-            uint8_t t1 = s_editor_apply_all ? (uint8_t)(SEQ_TRACKS - 1)
-                                            : s_graph_track;
-            for (uint8_t t = t0; t <= t1; ++t)
-                sequencer_core_set_melodic_amp_scale(s_graph_layer, t, v);
+        default:
+            /* Trim is per row regardless of which voice block the row reads. */
+            sequencer_core_set_melodic_amp_scale(s_graph_layer, s_graph_track, v);
             break;
-        }
     }
 }
 
@@ -833,34 +843,32 @@ static void graph_live_cancel_restore(void)
     if (!s_graph_live_env && !s_graph_live_fenv) return;
 
     if (s_graph_target == GRAPH_TGT_MELODIC) {
-        uint8_t t0 = s_editor_apply_all ? 0 : s_graph_track;
-        uint8_t t1 = s_editor_apply_all ? (uint8_t)(SEQ_TRACKS - 1) : s_graph_track;
-        bool need_reload = false;
-        for (uint8_t t = t0; t <= t1; ++t) {
-            if (s_graph_live_env &&
-                !sequencer_core_melodic_env_authored(s_graph_layer, t, s_graph_eg_index))
-                need_reload = true;
-            if (s_graph_live_fenv &&
-                !sequencer_core_melodic_filter_authored(s_graph_layer, t))
-                need_reload = true;
-        }
+        /* Every peer shares the block, so its authority is one answer. */
+        bool need_reload =
+            (s_graph_live_env &&
+             !sequencer_core_melodic_env_authored(s_graph_layer, s_graph_track,
+                                                  s_graph_eg_index)) ||
+            (s_graph_live_fenv &&
+             !sequencer_core_melodic_filter_authored(s_graph_layer, s_graph_track));
         if (need_reload) {
             sequencer_core_reload_layer_synth(s_graph_layer);
         } else {
+            uint8_t peers[SEQ_TRACKS];
+            uint8_t n = sequencer_core_melodic_vp_peers(s_graph_layer, s_graph_track, peers);
             seq_env_t env;
             if (s_graph_live_env && graph_read_target_env_idx(&env, s_graph_eg_index)) {
-                for (uint8_t t = t0; t <= t1; ++t) {
+                for (uint8_t i = 0; i < n; ++i) {
                     if (s_graph_eg_index == 1)
-                        sequencer_core_preview_melodic_envelope2(s_graph_layer, t, &env);
+                        sequencer_core_preview_melodic_envelope2(s_graph_layer, peers[i], &env);
                     else
-                        sequencer_core_preview_melodic_envelope(s_graph_layer, t, &env);
+                        sequencer_core_preview_melodic_envelope(s_graph_layer, peers[i], &env);
                 }
             }
             if (s_graph_live_fenv) {
-                for (uint8_t t = t0; t <= t1; ++t) {
+                for (uint8_t i = 0; i < n; ++i) {
                     seq_filter_t f;
-                    if (sequencer_core_get_melodic_filter(s_graph_layer, t, &f))
-                        sequencer_core_preview_melodic_filter(s_graph_layer, t, &f);
+                    if (sequencer_core_get_melodic_filter(s_graph_layer, peers[i], &f))
+                        sequencer_core_preview_melodic_filter(s_graph_layer, peers[i], &f);
                 }
             }
         }
@@ -950,13 +958,8 @@ static void graph_commit_to_env(void)
 #endif
         case GRAPH_TGT_MELODIC:
         default:
-            if (s_editor_apply_all) {
-                for (uint8_t t = 0; t < SEQ_TRACKS; ++t)
-                    sequencer_core_set_melodic_amp_scale(s_graph_layer, t, s_graph_amp_edit);
-            } else {
-                sequencer_core_set_melodic_amp_scale(s_graph_layer, s_graph_track,
-                                                     s_graph_amp_edit);
-            }
+            sequencer_core_set_melodic_amp_scale(s_graph_layer, s_graph_track,
+                                                 s_graph_amp_edit);
             break;
     }
     s_graph_amp_mode = false;   /* clear mode so topbar reverts on next open */
@@ -981,13 +984,10 @@ static void graph_commit_to_env(void)
     }
 #endif
     if (s_graph_fenv_dirty && s_graph_target == GRAPH_TGT_MELODIC) {
-        uint8_t t0 = s_editor_apply_all ? 0 : s_graph_track;
-        uint8_t t1 = s_editor_apply_all ? (uint8_t)(SEQ_TRACKS - 1) : s_graph_track;
-        for (uint8_t t = t0; t <= t1; ++t) {
-            seq_filter_t f;
-            if (!sequencer_core_get_melodic_filter(s_graph_layer, t, &f)) continue;
+        seq_filter_t f;
+        if (sequencer_core_get_melodic_filter(s_graph_layer, s_graph_track, &f)) {
             f.filter_env_amount = s_graph_fenv_edit;
-            sequencer_core_set_melodic_filter(s_graph_layer, t, &f);
+            sequencer_core_set_melodic_filter(s_graph_layer, s_graph_track, &f);
         }
         s_graph_fenv_dirty = false;
     }
@@ -1621,9 +1621,10 @@ static void filter_load_from_target(void)
             f.resonance   = 1.0f;
             f.enabled     = false;
         }
+        char badge[4];
+        editor_src_badge(li, tr, SEQ_VP_GROUP_FILTER, badge);
         snprintf(s_fgraph.label, sizeof(s_fgraph.label), "L%u T%u%s",
-                 (unsigned)(li + 1), (unsigned)(tr + 1),
-                 s_editor_apply_all ? ">L" : ">T");
+                 (unsigned)(li + 1), (unsigned)(tr + 1), badge);
     }
     /* The stutter drone's filter is a fixed always-on LPF24, so it hides the
      * type/enable header controls; melodic + arp expose both. */
@@ -1665,13 +1666,10 @@ static void filter_live_push(void)
 #endif
     } else {
         uint8_t li = seq_state.active_layer_idx;
-        if (s_editor_apply_all) {
-            for (uint8_t t = 0; t < SEQ_TRACKS; ++t)
-                sequencer_core_preview_melodic_filter(li, t, &s_filter_edit);
-        } else {
-            sequencer_core_preview_melodic_filter(li, seq_state.selected_track,
-                                                  &s_filter_edit);
-        }
+        uint8_t peers[SEQ_TRACKS];
+        uint8_t n = sequencer_core_melodic_vp_peers(li, seq_state.selected_track, peers);
+        for (uint8_t i = 0; i < n; ++i)
+            sequencer_core_preview_melodic_filter(li, peers[i], &s_filter_edit);
     }
     s_filter_live = true;
 }
@@ -1713,22 +1711,18 @@ static void filter_live_cancel_restore(void)
     }
 #endif
     uint8_t li = seq_state.active_layer_idx;
-    uint8_t t0 = s_editor_apply_all ? 0 : seq_state.selected_track;
-    uint8_t t1 = s_editor_apply_all ? (uint8_t)(SEQ_TRACKS - 1)
-                                    : seq_state.selected_track;
-    bool need_reload = false;
-    for (uint8_t t = t0; t <= t1; ++t) {
-        if (!sequencer_core_melodic_filter_authored(li, t)) need_reload = true;
-    }
-    if (need_reload) {
+    uint8_t tr = seq_state.selected_track;
+    if (!sequencer_core_melodic_filter_authored(li, tr)) {
         sequencer_core_reload_layer_synth(li);
         sequencer_core_preview_melodic_clear();
         return;
     }
-    for (uint8_t t = t0; t <= t1; ++t) {
+    uint8_t peers[SEQ_TRACKS];
+    uint8_t n = sequencer_core_melodic_vp_peers(li, tr, peers);
+    for (uint8_t i = 0; i < n; ++i) {
         seq_filter_t f;
-        if (sequencer_core_get_melodic_filter(li, t, &f))
-            sequencer_core_preview_melodic_filter(li, t, &f);
+        if (sequencer_core_get_melodic_filter(li, peers[i], &f))
+            sequencer_core_preview_melodic_filter(li, peers[i], &f);
     }
     /* The restore above re-armed the slot with stored values; drop it so the
      * LFO service goes back to reading the store directly. */
@@ -1748,7 +1742,8 @@ void synth_ui_filter_open(void)
     /* Drone filter is always LPF24 (type fixed) - skip the type cursor. */
     s_fgraph.enabled = s_filter_edit.enabled;
     filter_sync_fgraph();
-    s_filter_live = false;
+    s_filter_live  = false;
+    s_filter_dirty = false;
     if (filter_tgt_is_drone()) {
         s_fdrone_open_lo  = drone_get_sweep_lo();
         s_fdrone_open_hi  = drone_get_sweep_hi();
@@ -1844,6 +1839,7 @@ bool synth_ui_filter_handle_encoder(long delta)
         }
         default: break;
     }
+    s_filter_dirty = true;
     filter_sync_fgraph();
     filter_live_push();
     s_force_redraw = true;
@@ -1877,6 +1873,7 @@ void synth_ui_filter_toggle_enabled(void)
     if (!s_filter_active) return;
     s_filter_edit.enabled = !s_filter_edit.enabled;
     s_fgraph.enabled      = s_filter_edit.enabled;
+    s_filter_dirty        = true;
     filter_live_push();
     s_force_redraw = true;
     ESP_LOGI(TAG, "filter enabled -> %d", (int)s_filter_edit.enabled);
@@ -1923,14 +1920,15 @@ bool synth_ui_filter_close_commit(void)
         ESP_LOGI(TAG, "filter commit arp: type%u %.0fHz Q%.2f",
                  s_filter_edit.filter_type,
                  (double)s_filter_edit.cutoff_hz, (double)s_filter_edit.resonance);
-    } else {
-        uint8_t li = seq_state.active_layer_idx;
-        if (s_editor_apply_all) {
-            for (uint8_t t = 0; t < SEQ_TRACKS; ++t)
-                sequencer_core_set_melodic_filter(li, t, &s_filter_edit);
-        } else {
-            sequencer_core_set_melodic_filter(li, seq_state.selected_track, &s_filter_edit);
-        }
+    } else if (s_filter_dirty) {
+        /* Untouched: leave the group's authority where it was (the patch's,
+         * or the block's earlier commit). */
+        sequencer_core_set_melodic_filter(seq_state.active_layer_idx,
+                                          seq_state.selected_track, &s_filter_edit);
+    } else if (s_filter_live) {
+        /* A previewed-then-reverted edit (e.g. enable toggled twice) still
+         * pushed scratch state; put the store back. */
+        filter_live_cancel_restore();
     }
     sequencer_core_preview_melodic_clear();
     s_filter_active = false;
@@ -2046,13 +2044,16 @@ void synth_ui_lfo_open(void)
     s_lfo_view.editing      = false;
     s_lfo_view.layer_idx    = li;
     s_lfo_view.track_idx    = tr;
-    s_lfo_view.apply_all    = s_editor_apply_all;
     s_lfo_view.target_label = (seq_state.ui_mode == UI_MODE_ARP)       ? "ARP"
                             : (seq_state.ui_mode == UI_MODE_DRONE_STD) ? "DRONE"
                             : NULL;
 #if CONFIG_SYNTH_WIRELESS
     if (s_lfo_live_target) s_lfo_view.target_label = "LIVE";
 #endif
+    s_lfo_view.src_badge[0] = '\0';
+    if (s_lfo_view.target_label == NULL)
+        editor_src_badge(li, tr, SEQ_VP_GROUP_LFO, s_lfo_view.src_badge);
+    s_lfo_dirty    = false;
     s_lfo_active   = true;
     s_force_redraw = true;
     ESP_LOGI(TAG, "LFO editor open L%u T%u", li + 1u, tr + 1u);
@@ -2060,8 +2061,9 @@ void synth_ui_lfo_open(void)
 
 /* Live audition for the LFO editor - melodic tracks only (arp/drone/live
  * keep their commit-on-close behavior; their setters ARE their appliers and
- * every exit commits). Single-track even in apply-all scope: the selected
- * track is the audition voice, the rest follow at commit. */
+ * every exit commits). Single-track even when the row reads the layer block:
+ * the selected track is the audition voice, the other readers follow at
+ * commit. */
 static void lfo_live_push_preview(void)
 {
 #if CONFIG_SYNTH_WIRELESS
@@ -2173,6 +2175,7 @@ bool synth_ui_lfo_handle_encoder(long delta)
         }
         default: break;
     }
+    s_lfo_dirty = true;
     lfo_live_push_preview();
     s_force_redraw = true;
     return true;
@@ -2193,15 +2196,18 @@ bool synth_ui_lfo_handle_button(bool is_long)
     if (c < LFO_TARGET_COUNT) {
         l->targets ^= LFO_TGT_BIT(c);          /* toggle this target in/out of the set */
         s_lfo_view.editing = false;
+        s_lfo_dirty = true;
         lfo_live_push_preview();
     } else if (c == LFO_FLD_EN) {
         l->enabled = !l->enabled;              /* boolean: toggle directly */
         s_lfo_view.editing = false;
+        s_lfo_dirty = true;
         lfo_live_push_preview();
     } else if (c == LFO_FLD_WOB_MODE) {
         /* 3-way reach cycle: depth+rate -> depth -> rate -> ... */
         l->wob_reach = (uint8_t)((l->wob_reach + 1u) % WOB_REACH_COUNT);
         s_lfo_view.editing = false;
+        s_lfo_dirty = true;
         lfo_live_push_preview();
     } else {
         s_lfo_view.editing = !s_lfo_view.editing;  /* WAVE/RATE/DEPTH/WOB: adjust mode */
@@ -2228,18 +2234,18 @@ bool synth_ui_lfo_close_commit(void)
         arp_set_lfo(&s_lfo_view.lfo);
     } else if (seq_state.ui_mode == UI_MODE_DRONE_STD) {
         drone_std_set_lfo(&s_lfo_view.lfo);
-    } else if (s_editor_apply_all) {
-        for (uint8_t t = 0; t < SEQ_TRACKS; ++t)
-            sequencer_core_set_melodic_lfo(s_lfo_view.layer_idx, t, &s_lfo_view.lfo);
-    } else {
+    } else if (s_lfo_dirty) {
         sequencer_core_set_melodic_lfo(s_lfo_view.layer_idx,
                                        s_lfo_view.track_idx,
                                        &s_lfo_view.lfo);
+    } else {
+        /* Untouched: no authority taken; drop any preview arming. */
+        lfo_preview_cancel_restore();
     }
     sequencer_core_preview_melodic_clear();
     s_lfo_active   = false;
     s_force_redraw = true;
-    ESP_LOGI(TAG, "LFO editor committed (apply_all=%d)", (int)s_editor_apply_all);
+    ESP_LOGI(TAG, "LFO editor committed (dirty=%d)", (int)s_lfo_dirty);
     return true;
 }
 
@@ -2298,13 +2304,16 @@ void synth_ui_dist_open(void)
     s_dist_view.editing      = false;
     s_dist_view.layer_idx    = li;
     s_dist_view.track_idx    = tr;
-    s_dist_view.apply_all    = s_editor_apply_all;
     s_dist_view.target_label = (seq_state.ui_mode == UI_MODE_ARP)       ? "ARP"
                              : (seq_state.ui_mode == UI_MODE_DRONE_STD) ? "DRONE"
                              : NULL;
 #if CONFIG_SYNTH_WIRELESS
     if (s_dist_live_target) s_dist_view.target_label = "LIVE";
 #endif
+    s_dist_view.src_badge[0] = '\0';
+    if (s_dist_view.target_label == NULL)
+        editor_src_badge(li, tr, SEQ_VP_GROUP_DIST, s_dist_view.src_badge);
+    s_dist_dirty   = false;
     s_dist_active  = true;
     s_force_redraw = true;
     ESP_LOGI(TAG, "DIST editor open L%u T%u", li + 1u, tr + 1u);
@@ -2312,8 +2321,8 @@ void synth_ui_dist_open(void)
 
 /* Live audition. Unlike the LFO page every target previews: distortion has no
  * software-stepper path to arbitrate, so a preview is just a push that skips
- * the store. Single-track even in apply-all scope - the selected track is the
- * audition voice, the rest follow at commit. */
+ * the store. Single-track even when the row reads the layer block - the
+ * selected track is the audition voice, the other readers follow at commit. */
 static void dist_live_push_preview(void)
 {
 #if CONFIG_SYNTH_WIRELESS
@@ -2380,6 +2389,7 @@ bool synth_ui_dist_handle_encoder(long delta)
             break;
         default: break;
     }
+    s_dist_dirty = true;
     dist_live_push_preview();
     s_force_redraw = true;
     return true;
@@ -2419,49 +2429,138 @@ bool synth_ui_dist_close_commit(void)
         arp_set_dist(&s_dist_view.dist);
     } else if (seq_state.ui_mode == UI_MODE_DRONE_STD) {
         drone_std_set_dist(&s_dist_view.dist);
-    } else if (s_editor_apply_all) {
-        for (uint8_t t = 0; t < SEQ_TRACKS; ++t)
-            sequencer_core_set_melodic_dist(s_dist_view.layer_idx, t, &s_dist_view.dist);
-    } else {
+    } else if (s_dist_dirty) {
         sequencer_core_set_melodic_dist(s_dist_view.layer_idx,
                                         s_dist_view.track_idx,
                                         &s_dist_view.dist);
+    } else {
+        /* Untouched: no authority taken; undo any preview push. */
+        dist_preview_cancel_restore();
     }
     s_dist_active  = false;
     s_force_redraw = true;
-    ESP_LOGI(TAG, "DIST editor committed (apply_all=%d)", (int)s_editor_apply_all);
+    ESP_LOGI(TAG, "DIST editor committed (dirty=%d)", (int)s_dist_dirty);
     return true;
 }
 
 /* ── Distortion editor: end ──────────────────────────────────────────────── */
 
-/* Toggle layer-wide vs single-track commit scope for the effects editors
- * (MY_BUTTON_1 while the ADSR or LFO editor is open). Returns true if consumed.
- * ARP/DRONE have no "apply to all tracks" concept - no-op there. */
-bool synth_ui_toggle_editor_apply_scope(void)
+/* ── Voice-block source flip / release to patch ─────────────────────────────
+ * Both act on the open editor's melodic row. The pattern is the one
+ * graph_toggle_eg_index() uses for the EG page switch: commit the departing
+ * state through the editor's own close path (dirty-gated, so an untouched
+ * tab takes no authority), change the engine state, then reopen the same
+ * editor so its working copy re-seeds from the block now in effect. The
+ * reopen resets cursors; the LFO/DIST tab and cursor are carried across. */
+
+typedef enum { EDITOR_NONE, EDITOR_GRAPH, EDITOR_FILTER, EDITOR_LFO, EDITOR_DIST } editor_id_t;
+
+static editor_id_t editor_open_melodic(void)
 {
-    /* The live voice has no track scope either, and must be tested before the
+    /* The live voice has no track scope, and must be tested before the
      * ui_mode ladder: its editor runs over the menu overlay, so the mode
-     * underneath would otherwise flip the MELODIC scope instead. */
-    if (synth_ui_wireless_page_is_open()) return false;
+     * underneath would otherwise pass as MELODIC. */
+    if (synth_ui_wireless_page_is_open()) return EDITOR_NONE;
     if (seq_state.ui_mode == UI_MODE_ARP || seq_state.ui_mode == UI_MODE_DRONE ||
         seq_state.ui_mode == UI_MODE_DRONE_STD)
-        return false;
-    bool graph_open = graph_popup_is_active(&s_graph_popup);
-    if (!graph_open && !s_lfo_active && !s_dist_active) return false;
+        return EDITOR_NONE;
+    if (graph_popup_is_active(&s_graph_popup))
+        return (s_graph_target == GRAPH_TGT_MELODIC) ? EDITOR_GRAPH : EDITOR_NONE;
+    if (s_filter_active) return EDITOR_FILTER;
+    if (s_lfo_active)    return EDITOR_LFO;
+    if (s_dist_active)   return EDITOR_DIST;
+    return EDITOR_NONE;
+}
 
-    s_editor_apply_all = !s_editor_apply_all;
-
-    /* Keep the open view in sync so its indicator matches. */
-    if (s_lfo_active) {
-        s_lfo_view.apply_all = s_editor_apply_all;
+/* Commit-and-reopen around an engine-state change on the open editor. */
+static void editor_reseed_around(editor_id_t ed, void (*change)(void))
+{
+    switch (ed) {
+        case EDITOR_GRAPH: {
+            uint8_t eg = s_graph_eg_index;
+            synth_ui_graph_close_commit();
+            change();
+            synth_ui_graph_open_envelope();
+            if (eg == 1) graph_toggle_eg_index();   /* clean reseed: nothing dirty */
+            break;
+        }
+        case EDITOR_FILTER: {
+            uint8_t cursor = s_fgraph.cursor;
+            synth_ui_filter_close_commit();
+            change();
+            synth_ui_filter_open();
+            s_fgraph.cursor = cursor;
+            break;
+        }
+        case EDITOR_LFO: {
+            uint8_t cursor = s_lfo_view.cursor, tab = s_lfo_view.tgt_tab;
+            synth_ui_lfo_close_commit();
+            change();
+            synth_ui_lfo_open();
+            s_lfo_view.tgt_tab = tab;
+            s_lfo_view.cursor  = cursor;
+            break;
+        }
+        case EDITOR_DIST: {
+            uint8_t cursor = s_dist_view.cursor;
+            synth_ui_dist_close_commit();
+            change();
+            synth_ui_dist_open();
+            s_dist_view.cursor = cursor;
+            break;
+        }
+        default: break;
     }
-    if (s_dist_active) {
-        s_dist_view.apply_all = s_editor_apply_all;
-    }
-
     s_force_redraw = true;
-    ESP_LOGI(TAG, "editor scope -> %s", s_editor_apply_all ? "LAYER" : "TRACK");
+}
+
+static void editor_flip_source(void)
+{
+    uint8_t li = seq_state.active_layer_idx;
+    uint8_t tr = seq_state.selected_track;
+    seq_vp_src_t next = editor_src_is_layer(li, tr) ? SEQ_VP_SRC_TRACK
+                                                    : SEQ_VP_SRC_LAYER;
+    sequencer_core_set_melodic_vp_source(li, tr, next);
+}
+
+static seq_vp_group_t s_release_group;   /* set by the release entry point */
+
+static void editor_release_group(void)
+{
+    sequencer_core_release_melodic_group(seq_state.active_layer_idx,
+                                         seq_state.selected_track,
+                                         s_release_group);
+}
+
+bool synth_ui_toggle_editor_source(void)
+{
+    editor_id_t ed = editor_open_melodic();
+    if (ed == EDITOR_NONE) return false;
+    if (sequencer_core_get_layer_type(seq_state.active_layer_idx) != SEQ_LAYER_MELODIC)
+        return false;   /* drum layers have no shared block */
+    editor_reseed_around(ed, editor_flip_source);
+    ESP_LOGI(TAG, "editor source -> %s",
+             editor_src_is_layer(seq_state.active_layer_idx,
+                                 seq_state.selected_track) ? "LAYER" : "TRACK");
+    return true;
+}
+
+bool synth_ui_editor_release_to_patch(void)
+{
+    editor_id_t ed = editor_open_melodic();
+    if (ed == EDITOR_NONE) return false;
+    if (sequencer_core_get_layer_type(seq_state.active_layer_idx) != SEQ_LAYER_MELODIC)
+        return false;
+    switch (ed) {
+        case EDITOR_GRAPH:  s_release_group = (s_graph_eg_index == 1) ? SEQ_VP_GROUP_ENV1
+                                                                      : SEQ_VP_GROUP_ENV; break;
+        case EDITOR_FILTER: s_release_group = SEQ_VP_GROUP_FILTER; break;
+        case EDITOR_LFO:    s_release_group = SEQ_VP_GROUP_LFO;    break;
+        case EDITOR_DIST:   s_release_group = SEQ_VP_GROUP_DIST;   break;
+        default: return false;
+    }
+    editor_reseed_around(ed, editor_release_group);
+    ESP_LOGI(TAG, "editor tab released to patch (group %d)", (int)s_release_group);
     return true;
 }
 
@@ -2570,9 +2669,12 @@ static void graph_draw_topbar(u8g2_t *u8g2)
                  (unsigned)(FM_NUM_OPS - s_graph_fm_op), eg_tag);
 #endif
     } else {
+        char badge[4];
+        editor_src_badge(s_graph_layer, s_graph_track,
+                         (s_graph_eg_index == 1) ? SEQ_VP_GROUP_ENV1 : SEQ_VP_GROUP_ENV,
+                         badge);
         snprintf(buf, sizeof(buf), "L%u T%u %s%s",
-                 s_graph_layer + 1, s_graph_track + 1, eg_tag,
-                 s_editor_apply_all ? ">L" : ">T");
+                 s_graph_layer + 1, s_graph_track + 1, eg_tag, badge);
     }
     u8g2_DrawStr(u8g2, 2, 8, buf);
 

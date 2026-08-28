@@ -133,7 +133,7 @@ void dist_view_draw(u8g2_t *u8g2, const dist_view_t *v)
         snprintf(hdr, sizeof(hdr), "DIST %s", v->target_label);
     } else {
         snprintf(hdr, sizeof(hdr), "DIST L%u T%u%s",
-                 v->layer_idx + 1u, v->track_idx + 1u, v->apply_all ? ">L" : ">T");
+                 v->layer_idx + 1u, v->track_idx + 1u, v->src_badge);
     }
     u8g2_DrawStr(u8g2, 1, 10, hdr);
     u8g2_DrawHLine(u8g2, 0, 13, 128);

@@ -255,10 +255,11 @@ static inline const char *seq_dist_stage_label(uint8_t mask) {
 }
 
 /* ── Per-voice parameter block (shared voice-config layer) ──
- * Embedded by every engine's state: melodic layers (per track), the arp and the
- * drone. Bundles the runtime-editable env/EG1/filter/LFO with their
- * deferred-authority flags - the patch owns a parameter until the user commits,
- * then our copy wins - plus the output trim. ALWAYS initialise with
+ * Embedded by every engine's state: melodic layers (per track AND one shared
+ * layer block, see seq_layer_t.vp_layer), the arp and the drone. Bundles the
+ * runtime-editable env/EG1/filter/LFO/dist with their deferred-authority
+ * flags - the patch owns a group until the user commits it, then our copy
+ * wins - plus the output trim. ALWAYS initialise with
  * voice_params_init_defaults() (voice_config.h): it is the single place
  * amp_trim gets its unity default, so a memset-zeroed block is a silent
  * voice. */
@@ -275,6 +276,28 @@ typedef struct {
     bool         dist_authored;
     float        amp_trim;        /* output trim 0..1, unity default        */
 } voice_params_t;
+
+/* ── Voice-parameter source selector (melodic layers) ──
+ * Which voice_params_t block a track reads its env/EG1/filter/LFO/dist from:
+ * its own row (vp[track]) or the layer's shared block (vp_layer). The
+ * deselected block keeps its contents, so flipping back restores it exactly.
+ * amp_trim is always per row and never follows the selector. Drum layers are
+ * always TRACK. */
+typedef enum {
+    SEQ_VP_SRC_TRACK = 0,
+    SEQ_VP_SRC_LAYER = 1,
+} seq_vp_src_t;
+
+/* One editable parameter group of a voice_params_t; the granularity of the
+ * authored flags and of "release to patch". */
+typedef enum {
+    SEQ_VP_GROUP_ENV = 0,
+    SEQ_VP_GROUP_ENV1,
+    SEQ_VP_GROUP_FILTER,
+    SEQ_VP_GROUP_LFO,
+    SEQ_VP_GROUP_DIST,
+    SEQ_VP_GROUP_COUNT,
+} seq_vp_group_t;
 
 /* ── Per-layer data (display + audio shared) ── */
 typedef struct {
@@ -293,6 +316,15 @@ typedef struct {
                                             trim). Initialise each row with
                                             voice_params_init_defaults() in
                                             sequencer_core_add_layer.            */
+    voice_params_t vp_layer;             /* the layer's shared voice block: what
+                                            every row with vp_src == LAYER reads
+                                            and what the editors write when that
+                                            row is selected. amp_trim unused.
+                                            Same init as vp[].                   */
+    uint8_t   vp_src[SEQ_TRACKS];        /* seq_vp_src_t per row; memset 0 =
+                                            TRACK (today's behaviour). Resolved
+                                            by seq_track_vp(); never read the
+                                            blocks directly on a push path.      */
     uint8_t   repeat_rate[SEQ_TRACKS];   /* SEQ_REPEAT_*: fires every N bars   */
     bool      mute[SEQ_TRACKS];          /* true = track produces no note-ons */
     bool      solo[SEQ_TRACKS];          /* true = this track stays audible while

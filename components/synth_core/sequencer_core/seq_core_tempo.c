@@ -106,8 +106,9 @@ void sequencer_core_set_bpm(uint16_t new_bpm)
             sequencer_core_lfo_native_layout(s_layers[li].patch, NULL, NULL)) continue;
 #endif
         for (int tr = 0; tr < SEQ_TRACKS; tr++) {
-            if (s_layers[li].vp[tr].lfo_authored && s_layers[li].vp[tr].lfo.enabled)
-                s_lfo_hz[li][tr] = seq_lfo_sw_hz(s_layers[li].vp[tr].lfo.rate, s_bpm);
+            const voice_params_t *vp = seq_track_vp((uint8_t)li, (uint8_t)tr);
+            if (vp->lfo_authored && vp->lfo.enabled)
+                s_lfo_hz[li][tr] = seq_lfo_sw_hz(vp->lfo.rate, s_bpm);
         }
     }
     /* Sync every native LFO carrier to the new BPM (each a no-op when the

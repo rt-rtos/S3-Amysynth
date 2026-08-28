@@ -40,7 +40,8 @@ typedef struct {
                                  cursor                                     */
     uint8_t     layer_idx;
     uint8_t     track_idx;
-    bool        apply_all;    /* true = commit applies to all tracks        */
+    char        src_badge[4]; /* header tag for the row's voice-block source
+                                 and this tab's authority (see lfo_view_t)  */
     const char *target_label; /* "ARP"/"DRONE"/"LIVE" override, or NULL     */
 } dist_view_t;
 

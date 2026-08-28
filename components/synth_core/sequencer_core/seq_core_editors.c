@@ -40,9 +40,10 @@ static void melodic_native_lfo_apply(const seq_layer_t *layer, uint8_t track,
                                 carrier, coupled);
 }
 
-static void melodic_configure_native_lfo_track(const seq_layer_t *layer, uint8_t track)
+static void melodic_configure_native_lfo_track(uint8_t layer_idx, uint8_t track)
 {
-    melodic_native_lfo_apply(layer, track, &layer->vp[track].lfo);
+    melodic_native_lfo_apply(&s_layers[layer_idx], track,
+                             &seq_track_vp(layer_idx, track)->lfo);
 }
 
 #endif /* CONFIG_SEQ_MELODIC_AMY_NATIVE_LFO */
@@ -50,13 +51,15 @@ static void melodic_configure_native_lfo_track(const seq_layer_t *layer, uint8_t
 /* Restore the resting coefficient for every target the LFO was driving, so
  * nothing stays modulated after it is switched off. FILTER restores the
  * track's authored cutoff; the rest push a neutral constant. */
-static void lfo_restore_target_neutrals(const seq_layer_t *layer, uint8_t track,
+static void lfo_restore_target_neutrals(uint8_t layer_idx, uint8_t track,
                                         const seq_lfo_t *lfo)
 {
+    const seq_layer_t *layer = &s_layers[layer_idx];
+    const voice_params_t *vp = seq_track_vp(layer_idx, track);
     for (int t = 0; t < LFO_TARGET_COUNT; t++) {
         if (!(lfo->targets & LFO_TGT_BIT(t))) continue;
         if (t == LFO_TARGET_FILTER)
-            sequencer_core_push_filter(layer->synth_id[track], &layer->vp[track].filter,
+            sequencer_core_push_filter(layer->synth_id[track], &vp->filter,
                                        layer->patch == SEQ_PATCH_KS);
         else if (t == LFO_TARGET_DIST_DRIVE || t == LFO_TARGET_DIST_MIX) {
             /* Neutral = the committed dist block; only this caller has it,
@@ -65,11 +68,46 @@ static void lfo_restore_target_neutrals(const seq_layer_t *layer, uint8_t track,
              * block for the second bit would just cost a redundant event. */
             if (t == LFO_TARGET_DIST_DRIVE ||
                 !LFO_HAS_TGT(lfo, LFO_TARGET_DIST_DRIVE))
-                voice_apply_dist(layer->synth_id[track], &layer->vp[track].dist);
+                voice_apply_dist(layer->synth_id[track], &vp->dist);
         }
         else
             lfo_push_target_neutral(layer->synth_id[track], (lfo_target_t)t);
     }
+}
+
+/* ── Shared-block fan-out ────────────────────────────────────────────────────
+ * A row's voice block is either its own or the layer's (seq_track_vp). Writing
+ * a block must reach every row that reads it, so the committing setters push
+ * through here instead of to `track` alone: the peer set is {track} for an
+ * own-block row and every LAYER-source row otherwise. */
+uint8_t sequencer_core_melodic_vp_peers(uint8_t layer_idx, uint8_t track,
+                                        uint8_t peers[SEQ_TRACKS])
+{
+    if (!peers || layer_idx >= s_num_layers || track >= SEQ_TRACKS) return 0;
+    const seq_layer_t *layer = &s_layers[layer_idx];
+    if (layer->vp_src[track] != SEQ_VP_SRC_LAYER) {
+        peers[0] = track;
+        return 1;
+    }
+    uint8_t n = 0;
+    for (uint8_t t = 0; t < SEQ_TRACKS; ++t)
+        if (layer->vp_src[t] == SEQ_VP_SRC_LAYER) peers[n++] = t;
+    return n;
+}
+
+static void melodic_push_peers(uint8_t layer_idx, uint8_t track,
+                               void (*push)(uint8_t, uint8_t))
+{
+    uint8_t peers[SEQ_TRACKS];
+    uint8_t n = sequencer_core_melodic_vp_peers(layer_idx, track, peers);
+    for (uint8_t i = 0; i < n; ++i) push(layer_idx, peers[i]);
+}
+
+/* Log tag: which block a row's commit landed in. */
+static const char *melodic_vp_where(uint8_t layer_idx, uint8_t track)
+{
+    return (s_layers[layer_idx].vp_src[track] == SEQ_VP_SRC_LAYER) ? "layer"
+                                                                    : "track";
 }
 
 /* ── Per-row melodic envelope (runtime-editable) ─────────────────────────── */
@@ -115,9 +153,9 @@ void sequencer_core_set_melodic_envelope(uint8_t layer_idx, uint8_t track,
                                          const seq_env_t *env)
 {
     if (!env || layer_idx >= s_num_layers || track >= SEQ_TRACKS) return;
-    seq_layer_t *layer = &s_layers[layer_idx];
+    voice_params_t *vp = seq_track_vp(layer_idx, track);
 
-    seq_env_t *dst = seq_layer_env(layer_idx, track);
+    seq_env_t *dst = &vp->env;
     dst->attack_ms   = SEQ_CLAMP_U32(env->attack_ms,
                                      VOICE_ENV_ATTACK_MIN_MS, VOICE_ENV_TIME_MAX_MS);
     dst->decay_ms    = SEQ_CLAMP_U32(env->decay_ms,   0, VOICE_ENV_TIME_MAX_MS);
@@ -126,19 +164,19 @@ void sequencer_core_set_melodic_envelope(uint8_t layer_idx, uint8_t track,
                                      VOICE_ENV_RELEASE_MIN_MS, VOICE_ENV_TIME_MAX_MS);
     dst->eg_type     = env->eg_type;
 
-    /* Committing establishes this row's authority over the patch's own
-     * envelope: later patch changes re-impose it. Each row owns its own synth,
-     * so the push affects only this row. */
-    layer->vp[track].env_authored = true;
-    sequencer_configure_melodic_envelope_track(layer_idx, track);
-    ESP_LOGI(TAG, "env L%u T%u -> A%u D%u S%u%% R%u (authored)",
-             layer_idx + 1u, track + 1u,
+    /* Committing establishes the block's authority over the patch's own
+     * envelope: later patch changes re-impose it. The push reaches every row
+     * reading this block (just this row for an own-block row). */
+    vp->env_authored = true;
+    melodic_push_peers(layer_idx, track, sequencer_configure_melodic_envelope_track);
+    ESP_LOGI(TAG, "env L%u T%u [%s] -> A%u D%u S%u%% R%u (authored)",
+             layer_idx + 1u, track + 1u, melodic_vp_where(layer_idx, track),
              (unsigned)dst->attack_ms, (unsigned)dst->decay_ms,
              (unsigned)dst->sustain_pct, (unsigned)dst->release_ms);
 #if CONFIG_SEQ_ENV_DEBUG_DUMP
     ESP_LOGW(TAG, "ENVDUMP sent to synth %u: eg_type=%u bp0=[%ums,1.0] "
                   "bp1=[%ums,%.3f] bp2=[%ums,0.0]",
-             (unsigned)layer->synth_id[track], (unsigned)dst->eg_type,
+             (unsigned)s_layers[layer_idx].synth_id[track], (unsigned)dst->eg_type,
              (unsigned)dst->attack_ms,
              (unsigned)dst->decay_ms, (double)dst->sustain_pct / 100.0,
              (unsigned)dst->release_ms);
@@ -168,9 +206,9 @@ void sequencer_core_set_melodic_envelope2(uint8_t layer_idx, uint8_t track,
                                           const seq_env_t *env)
 {
     if (!env || layer_idx >= s_num_layers || track >= SEQ_TRACKS) return;
-    seq_layer_t *layer = &s_layers[layer_idx];
+    voice_params_t *vp = seq_track_vp(layer_idx, track);
 
-    seq_env_t *dst = seq_layer_env1(layer_idx, track);
+    seq_env_t *dst = &vp->env1;
     dst->attack_ms   = SEQ_CLAMP_U32(env->attack_ms,
                                      VOICE_ENV_ATTACK_MIN_MS, VOICE_ENV_TIME_MAX_MS);
     dst->decay_ms    = SEQ_CLAMP_U32(env->decay_ms,   0, VOICE_ENV_TIME_MAX_MS);
@@ -179,10 +217,10 @@ void sequencer_core_set_melodic_envelope2(uint8_t layer_idx, uint8_t track,
                                      VOICE_ENV_RELEASE_MIN_MS, VOICE_ENV_TIME_MAX_MS);
     dst->eg_type     = env->eg_type;
 
-    layer->vp[track].env1_authored = true;
-    sequencer_configure_melodic_envelope1_track(layer_idx, track);
-    ESP_LOGI(TAG, "env1 L%u T%u -> A%u D%u S%u%% R%u (authored)",
-             layer_idx + 1u, track + 1u,
+    vp->env1_authored = true;
+    melodic_push_peers(layer_idx, track, sequencer_configure_melodic_envelope1_track);
+    ESP_LOGI(TAG, "env1 L%u T%u [%s] -> A%u D%u S%u%% R%u (authored)",
+             layer_idx + 1u, track + 1u, melodic_vp_where(layer_idx, track),
              (unsigned)dst->attack_ms, (unsigned)dst->decay_ms,
              (unsigned)dst->sustain_pct, (unsigned)dst->release_ms);
 }
@@ -241,14 +279,14 @@ static void melodic_filter_apply(uint8_t layer_idx, uint8_t track,
 
 void sequencer_configure_melodic_filter_track(uint8_t layer_idx, uint8_t track)
 {
-    melodic_filter_apply(layer_idx, track, &s_layers[layer_idx].vp[track].filter);
+    melodic_filter_apply(layer_idx, track, &seq_track_vp(layer_idx, track)->filter);
 }
 
 bool sequencer_core_get_melodic_filter(uint8_t layer_idx, uint8_t track,
                                        seq_filter_t *out)
 {
     if (!out || layer_idx >= s_num_layers || track >= SEQ_TRACKS) return false;
-    *out = s_layers[layer_idx].vp[track].filter;
+    *out = seq_track_vp(layer_idx, track)->filter;
     return true;
 }
 
@@ -256,9 +294,9 @@ void sequencer_core_set_melodic_filter(uint8_t layer_idx, uint8_t track,
                                        const seq_filter_t *f)
 {
     if (!f || layer_idx >= s_num_layers || track >= SEQ_TRACKS) return;
-    seq_layer_t *layer = &s_layers[layer_idx];
+    voice_params_t *vp = seq_track_vp(layer_idx, track);
 
-    seq_filter_t *dst = &layer->vp[track].filter;
+    seq_filter_t *dst = &vp->filter;
     dst->filter_type = (f->filter_type < SEQ_FILTER_COUNT) ? f->filter_type : FILTER_NONE;
     dst->cutoff_hz   = SEQ_CLAMP_F32(f->cutoff_hz,  65.0f, 8000.0f);
     dst->resonance   = SEQ_CLAMP_F32(f->resonance,  0.51f, 8.0f);
@@ -266,11 +304,11 @@ void sequencer_core_set_melodic_filter(uint8_t layer_idx, uint8_t track,
     dst->filter_env_amount = SEQ_CLAMP_F32(f->filter_env_amount, -8.0f, 8.0f);
     dst->feedback    = SEQ_CLAMP_F32(f->feedback, 0.0f, 1.0f);
 
-    layer->vp[track].filter_authored = true;
-    sequencer_configure_melodic_filter_track(layer_idx, track);
-    ESP_LOGI(TAG, "filter L%u T%u -> type%u %.0fHz Q%.2f (authored)",
-             layer_idx + 1u, track + 1u, dst->filter_type,
-             (double)dst->cutoff_hz, (double)dst->resonance);
+    vp->filter_authored = true;
+    melodic_push_peers(layer_idx, track, sequencer_configure_melodic_filter_track);
+    ESP_LOGI(TAG, "filter L%u T%u [%s] -> type%u %.0fHz Q%.2f (authored)",
+             layer_idx + 1u, track + 1u, melodic_vp_where(layer_idx, track),
+             dst->filter_type, (double)dst->cutoff_hz, (double)dst->resonance);
 }
 
 /* ── Per-row melodic distortion ──────────────────────────────────────────
@@ -283,7 +321,7 @@ bool sequencer_core_get_melodic_dist(uint8_t layer_idx, uint8_t track,
                                      seq_dist_t *out)
 {
     if (!out || layer_idx >= s_num_layers || track >= SEQ_TRACKS) return false;
-    *out = s_layers[layer_idx].vp[track].dist;
+    *out = seq_track_vp(layer_idx, track)->dist;
     return true;
 }
 
@@ -291,16 +329,16 @@ void sequencer_core_set_melodic_dist(uint8_t layer_idx, uint8_t track,
                                      const seq_dist_t *d)
 {
     if (!d || layer_idx >= s_num_layers || track >= SEQ_TRACKS) return;
-    seq_layer_t *layer = &s_layers[layer_idx];
+    voice_params_t *vp = seq_track_vp(layer_idx, track);
 
-    layer->vp[track].dist = *d;
-    voice_dist_clamp(&layer->vp[track].dist);
-    layer->vp[track].dist_authored = true;
-    voice_apply_dist(layer->synth_id[track], &layer->vp[track].dist);
-    ESP_LOGI(TAG, "dist L%u T%u -> type%u drv%u bit%u rte%u mix%u (authored)",
-             layer_idx + 1u, track + 1u, layer->vp[track].dist.type,
-             layer->vp[track].dist.drive, layer->vp[track].dist.bits,
-             layer->vp[track].dist.rate, layer->vp[track].dist.mix);
+    vp->dist = *d;
+    voice_dist_clamp(&vp->dist);
+    vp->dist_authored = true;
+    melodic_push_peers(layer_idx, track, sequencer_configure_melodic_dist_track);
+    ESP_LOGI(TAG, "dist L%u T%u [%s] -> type%u drv%u bit%u rte%u mix%u (authored)",
+             layer_idx + 1u, track + 1u, melodic_vp_where(layer_idx, track),
+             vp->dist.type, vp->dist.drive, vp->dist.bits, vp->dist.rate,
+             vp->dist.mix);
 }
 
 void sequencer_core_preview_melodic_dist(uint8_t layer_idx, uint8_t track,
@@ -314,7 +352,7 @@ void sequencer_core_reapply_melodic_dist(uint8_t layer_idx, uint8_t track)
 {
     if (layer_idx >= s_num_layers || track >= SEQ_TRACKS) return;
     voice_apply_dist(s_layers[layer_idx].synth_id[track],
-                     &s_layers[layer_idx].vp[track].dist);
+                     &seq_track_vp(layer_idx, track)->dist);
 }
 
 /* Re-assert a row's stored distortion after anything that rebuilds its voice
@@ -410,7 +448,7 @@ static void melodic_lfo_apply_runtime(uint8_t layer_idx, uint8_t track,
         /* Restore the static target value when disabled: native clears COEF_MOD
          * but does not push the neutral coef. */
         if (!lfo->enabled || !is_native_lfo_track(lfo)) {
-            lfo_restore_target_neutrals(layer, track, lfo);
+            lfo_restore_target_neutrals(layer_idx, track, lfo);
         }
         /* s_lfo_hz = 0 makes the software service loop skip native tracks.
          * Distortion drive/mix now have COEF_MOD rails (dist_*_coefs), driven
@@ -423,43 +461,62 @@ static void melodic_lfo_apply_runtime(uint8_t layer_idx, uint8_t track,
 #endif
     /* Software path: patches without a carrier pair, or native LFO compiled out. */
     if (!lfo->enabled) {
-        lfo_restore_target_neutrals(layer, track, lfo);
+        lfo_restore_target_neutrals(layer_idx, track, lfo);
         s_lfo_hz[layer_idx][track] = 0.0f;
     } else {
         s_lfo_hz[layer_idx][track] = seq_lfo_sw_hz(lfo->rate, s_bpm);
     }
 }
 
+/* The LFO a block actually runs: its stored one while authored, otherwise a
+ * disabled copy. A released block keeps its values (so re-authoring restores
+ * them) but must not modulate anything meanwhile. */
+static seq_lfo_t melodic_effective_lfo(const voice_params_t *vp)
+{
+    seq_lfo_t l = vp->lfo;
+    if (!vp->lfo_authored) l.enabled = false;
+    return l;
+}
+
+/* Runtime re-push of one row's stored LFO; the push callback shape the
+ * fan-out helper takes. */
+static void melodic_reapply_lfo_track(uint8_t layer_idx, uint8_t track)
+{
+    seq_lfo_t l = melodic_effective_lfo(seq_track_vp(layer_idx, track));
+    melodic_lfo_apply_runtime(layer_idx, track, &l);
+}
+
 void sequencer_core_set_melodic_lfo(uint8_t layer_idx, uint8_t track,
                                     const seq_lfo_t *lfo)
 {
     if (!lfo || layer_idx >= s_num_layers || track >= SEQ_TRACKS) return;
-    seq_layer_t *layer = &s_layers[layer_idx];
+    voice_params_t *vp = seq_track_vp(layer_idx, track);
 
-    layer->vp[track].lfo = *lfo;
-    if (layer->vp[track].lfo.depth > 100) layer->vp[track].lfo.depth = 100;
-    layer->vp[track].lfo_authored = true;
+    vp->lfo = *lfo;
+    if (vp->lfo.depth > 100) vp->lfo.depth = 100;
+    vp->lfo_authored = true;
 
-    melodic_lfo_apply_runtime(layer_idx, track, &layer->vp[track].lfo);
-    ESP_LOGI(TAG, "LFO L%u T%u %s %.2f Hz d=%u tgt=0x%02x",
-             layer_idx + 1u, track + 1u, lfo->enabled ? "ON" : "OFF",
+    melodic_push_peers(layer_idx, track, melodic_reapply_lfo_track);
+    ESP_LOGI(TAG, "LFO L%u T%u [%s] %s %.2f Hz d=%u tgt=0x%02x",
+             layer_idx + 1u, track + 1u, melodic_vp_where(layer_idx, track),
+             lfo->enabled ? "ON" : "OFF",
              (double)s_lfo_hz[layer_idx][track], lfo->depth, lfo->targets);
 }
 
 /* Cancel-restore for the LFO live preview: re-push the stored (committed)
- * state. Safe on a never-authored row - the zeroed default is disabled with
+ * state. Safe on a never-authored row - the effective LFO is disabled with
  * an empty target set, so the restore is a no-op push. */
 void sequencer_core_reapply_melodic_lfo(uint8_t layer_idx, uint8_t track)
 {
     if (layer_idx >= s_num_layers || track >= SEQ_TRACKS) return;
-    melodic_lfo_apply_runtime(layer_idx, track, &s_layers[layer_idx].vp[track].lfo);
+    melodic_reapply_lfo_track(layer_idx, track);
 }
 
 bool sequencer_core_get_melodic_lfo(uint8_t layer_idx, uint8_t track,
                                     seq_lfo_t *out)
 {
     if (!out || layer_idx >= s_num_layers || track >= SEQ_TRACKS) return false;
-    *out = s_layers[layer_idx].vp[track].lfo;
+    *out = seq_track_vp(layer_idx, track)->lfo;
     return true;
 }
 
@@ -477,9 +534,9 @@ void __attribute__((optimize("O3", "unroll-loops", "fast-math"))) sequencer_core
                              prev.li == (uint8_t)li &&
                              prev.tr == (uint8_t)tr;
             bool lfo_previewed = prev_here && prev.lfo_valid;
-            if (!lfo_previewed && !s_layers[li].vp[tr].lfo_authored) continue;
-            const seq_lfo_t *lfo = lfo_previewed ? &prev.lfo
-                                                 : &s_layers[li].vp[tr].lfo;
+            const voice_params_t *vp = seq_track_vp((uint8_t)li, (uint8_t)tr);
+            if (!lfo_previewed && !vp->lfo_authored) continue;
+            const seq_lfo_t *lfo = lfo_previewed ? &prev.lfo : &vp->lfo;
             if (!lfo->enabled) continue;
             float hz = s_lfo_hz[li][tr];
             if (hz <= 0.0f) continue;
@@ -532,7 +589,7 @@ void __attribute__((optimize("O3", "unroll-loops", "fast-math"))) sequencer_core
             if (LFO_HAS_TGT(lfo, LFO_TARGET_FILTER)) {
                 const seq_filter_t *fb = (prev_here && prev.filter_valid)
                                          ? &prev.filter
-                                         : &s_layers[li].vp[tr].filter;
+                                         : &vp->filter;
                 float base = (fb->enabled && fb->cutoff_hz > 0.0f)
                              ? fb->cutoff_hz : 1000.0f;
                 e->filter_freq_coefs[COEF_CONST] =
@@ -551,7 +608,7 @@ void __attribute__((optimize("O3", "unroll-loops", "fast-math"))) sequencer_core
              * COEF_MOD instead, so they are excluded like every other target.
              * Inert while the shaper is OFF. */
             if (!native_track && (lfo->targets & LFO_TGT_DIST_MASK))
-                voice_push_dist_lfo(syn, &s_layers[li].vp[tr].dist, lfo, val);
+                voice_push_dist_lfo(syn, &vp->dist, lfo, val);
 
             if (!native_track && LFO_HAS_TGT(lfo, LFO_TARGET_PITCH)) {
                 /* freq COEF_CONST is an ABSOLUTE frequency in Hz - AMY maps it
@@ -590,8 +647,8 @@ void sequencer_configure_melodic_lfo(uint8_t layer_idx)
     const seq_layer_t *layer = &s_layers[layer_idx];
     if (!sequencer_core_lfo_native_layout(layer->patch, NULL, NULL)) return;
     for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
-        if (!layer->vp[t].lfo_authored) continue;
-        melodic_configure_native_lfo_track(layer, t);
+        if (!seq_track_vp(layer_idx, t)->lfo_authored) continue;
+        melodic_configure_native_lfo_track(layer_idx, t);
         /* Keep s_lfo_hz in sync so the service loop skips native tracks. DIST
          * rides the carrier now too (COEF_MOD), so nothing keeps the stepper
          * armed on a native track (mirrors melodic_lfo_apply_runtime). */
@@ -617,8 +674,9 @@ void melodic_lfo_refresh_native_freq(void)
         if (!sequencer_core_lfo_native_layout(layer->patch, &carrier, NULL))
             continue;
         for (int tr = 0; tr < SEQ_TRACKS; tr++) {
-            if (!layer->vp[tr].lfo_authored) continue;
-            const seq_lfo_t *lfo = &layer->vp[tr].lfo;
+            const voice_params_t *vp = seq_track_vp((uint8_t)li, (uint8_t)tr);
+            if (!vp->lfo_authored) continue;
+            const seq_lfo_t *lfo = &vp->lfo;
             if (!is_native_lfo_track(lfo)) continue;
             amy_event *e = amy_helpers_event_begin();
             e->synth                  = layer->synth_id[tr];
@@ -746,13 +804,112 @@ void sequencer_core_preview_melodic_lfo(uint8_t layer_idx, uint8_t track,
 bool sequencer_core_melodic_env_authored(uint8_t layer_idx, uint8_t track,
                                          uint8_t eg_index)
 {
-    if (layer_idx >= s_num_layers || track >= SEQ_TRACKS) return false;
-    const voice_params_t *vp = &s_layers[layer_idx].vp[track];
-    return (eg_index == 1) ? vp->env1_authored : vp->env_authored;
+    return sequencer_core_melodic_group_authored(
+        layer_idx, track, (eg_index == 1) ? SEQ_VP_GROUP_ENV1 : SEQ_VP_GROUP_ENV);
 }
 
 bool sequencer_core_melodic_filter_authored(uint8_t layer_idx, uint8_t track)
 {
+    return sequencer_core_melodic_group_authored(layer_idx, track, SEQ_VP_GROUP_FILTER);
+}
+
+bool sequencer_core_melodic_group_authored(uint8_t layer_idx, uint8_t track,
+                                           seq_vp_group_t group)
+{
     if (layer_idx >= s_num_layers || track >= SEQ_TRACKS) return false;
-    return s_layers[layer_idx].vp[track].filter_authored;
+    const voice_params_t *vp = seq_track_vp(layer_idx, track);
+    switch (group) {
+        case SEQ_VP_GROUP_ENV:    return vp->env_authored;
+        case SEQ_VP_GROUP_ENV1:   return vp->env1_authored;
+        case SEQ_VP_GROUP_FILTER: return vp->filter_authored;
+        case SEQ_VP_GROUP_LFO:    return vp->lfo_authored;
+        case SEQ_VP_GROUP_DIST:   return vp->dist_authored;
+        default:                  return false;
+    }
+}
+
+/* ── Voice-block source selector ──────────────────────────────────────────
+ * Contract in sequencer_core.h. The audible state of a row must be a function
+ * of stored data alone (project load, layer switch and patch change all
+ * re-push from the store), so the selector is the row's persisted vp_src and
+ * every push path resolves through seq_track_vp(). */
+
+seq_vp_src_t sequencer_core_get_melodic_vp_source(uint8_t layer_idx, uint8_t track)
+{
+    if (layer_idx >= s_num_layers || track >= SEQ_TRACKS) return SEQ_VP_SRC_TRACK;
+    return (seq_vp_src_t)s_layers[layer_idx].vp_src[track];
+}
+
+/* Make one row's synth sound like its currently selected block. Direct pushes
+ * when every group is authored; otherwise a layer reload, the only way to get
+ * the patch's own values back for the unauthored groups (it re-pushes every
+ * authored group of the whole layer through the resolver). The LFO runtime
+ * (software pacing, native carrier) is re-armed first either way: the reload
+ * path only covers native tracks, and its neutral restores must land before
+ * the block's filter/dist pushes, not after. */
+static void melodic_repush_track(uint8_t layer_idx, uint8_t track)
+{
+    const voice_params_t *vp = seq_track_vp(layer_idx, track);
+    melodic_reapply_lfo_track(layer_idx, track);
+    bool all_authored = vp->env_authored && vp->env1_authored &&
+                        vp->filter_authored && vp->dist_authored;
+    if (!all_authored) {
+        sequencer_reconfigure_layer_paused(layer_idx);
+        return;
+    }
+    sequencer_configure_melodic_envelope_track(layer_idx, track);
+    sequencer_configure_melodic_envelope1_track(layer_idx, track);
+    sequencer_configure_melodic_filter_track(layer_idx, track);
+    sequencer_configure_melodic_dist_track(layer_idx, track);
+}
+
+bool sequencer_core_set_melodic_vp_source(uint8_t layer_idx, uint8_t track,
+                                          seq_vp_src_t src)
+{
+    if (layer_idx >= s_num_layers || track >= SEQ_TRACKS) return false;
+    seq_layer_t *layer = &s_layers[layer_idx];
+    if (layer->type != SEQ_LAYER_MELODIC) return false;
+    if (layer->vp_src[track] == (uint8_t)src) return true;
+
+    /* Park the departing block's LFO while it is still the resolved one: the
+     * stepper only restores the rails of the lfo it is handed, so a target
+     * the new block does not modulate would otherwise stay at its last swept
+     * value. */
+    seq_lfo_t off = melodic_effective_lfo(seq_track_vp(layer_idx, track));
+    off.enabled = false;
+    melodic_lfo_apply_runtime(layer_idx, track, &off);
+
+    layer->vp_src[track] = (uint8_t)src;
+    melodic_repush_track(layer_idx, track);
+    ESP_LOGI(TAG, "L%u T%u voice source -> %s", layer_idx + 1u, track + 1u,
+             melodic_vp_where(layer_idx, track));
+    return true;
+}
+
+void sequencer_core_release_melodic_group(uint8_t layer_idx, uint8_t track,
+                                          seq_vp_group_t group)
+{
+    if (layer_idx >= s_num_layers || track >= SEQ_TRACKS) return;
+    if (s_layers[layer_idx].type != SEQ_LAYER_MELODIC) return;
+    voice_params_t *vp = seq_track_vp(layer_idx, track);
+    switch (group) {
+        case SEQ_VP_GROUP_ENV:    vp->env_authored    = false; break;
+        case SEQ_VP_GROUP_ENV1:   vp->env1_authored   = false; break;
+        case SEQ_VP_GROUP_FILTER: vp->filter_authored = false; break;
+        case SEQ_VP_GROUP_LFO:
+            vp->lfo_authored = false;
+            /* Every row reading this block loses its modulator now, not on
+             * the next tempo change: disarm the stepper / native carrier and
+             * restore the rails before the reload re-imposes the patch. */
+            melodic_push_peers(layer_idx, track, melodic_reapply_lfo_track);
+            break;
+        case SEQ_VP_GROUP_DIST:   vp->dist_authored   = false; break;
+        default: return;
+    }
+    /* The patch's own values for the released group live only in the patch
+     * string: a reload is the one way to hear them again. It re-pushes every
+     * still-authored group of every row through the resolver. */
+    sequencer_reconfigure_layer_paused(layer_idx);
+    ESP_LOGI(TAG, "L%u T%u [%s] group %d released to patch", layer_idx + 1u,
+             track + 1u, melodic_vp_where(layer_idx, track), (int)group);
 }

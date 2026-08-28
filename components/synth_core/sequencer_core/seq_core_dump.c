@@ -86,7 +86,12 @@ void sequencer_core_dump_state(void)
                    (unsigned)L->mute[t], (unsigned)L->solo[t]);
             }
 
+            /* The row's OWN block, whichever one it currently reads; the
+             * shared layer block follows the track lines. */
             const voice_params_t *vp = &L->vp[t];
+            if (L->vp_src[t] == SEQ_VP_SRC_LAYER) {
+                DP("  T%u src=LAYER", t + 1u);
+            }
             if (vp->env_authored) {
                 DP("  T%u eg0 a=%lu d=%lu s=%u r=%lu type=%u",
                    t + 1u, (unsigned long)vp->env.attack_ms,
@@ -153,6 +158,17 @@ void sequencer_core_dump_state(void)
                 #undef AP
                 DP("%s", line);
             }
+        }
+
+        /* The layer's shared voice block: which groups it has authority over
+         * (rows with src=LAYER read these; unauthored groups fall through to
+         * the patch). */
+        if (!drum) {
+            const voice_params_t *lv = &L->vp_layer;
+            DP("  LAYER-BLK eg0=%u eg1=%u flt=%u lfo=%u dist=%u",
+               (unsigned)lv->env_authored, (unsigned)lv->env1_authored,
+               (unsigned)lv->filter_authored, (unsigned)lv->lfo_authored,
+               (unsigned)lv->dist_authored);
         }
     }
 

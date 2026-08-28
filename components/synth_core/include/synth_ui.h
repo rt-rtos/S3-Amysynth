@@ -230,10 +230,20 @@ bool synth_ui_dist_handle_encoder(long delta);
 bool synth_ui_dist_handle_button(bool is_long);
 bool synth_ui_dist_close_commit(void);
 
-/* Toggle whether effect-editor commits apply to the selected track (false) or
- * all tracks in the active layer (true). MY_BUTTON_1 while the ADSR or LFO
- * editor is open. Returns true when an editor was active. */
-bool synth_ui_toggle_editor_apply_scope(void);
+/* Flip the selected row between its own voice block and the layer's shared
+ * one (SHIFT+3 while the ADSR, filter, LFO or DIST editor is open). The open
+ * editor commits its pending edits to the departing block, the engine
+ * re-pushes the row, and the editor re-seeds from the block now selected - so
+ * both blocks keep independent state and the flip is the only "which one
+ * sounds" control. Returns true when an editor over a melodic row was active;
+ * ARP/DRONE/LIVE have no track scope and drum layers no layer block. */
+bool synth_ui_toggle_editor_source(void);
+
+/* Hand the open editor's tab (EG0 or EG1 page, filter, LFO, DIST) back to the
+ * patch (SHIFT+2 while it is open): the group's authored flag is cleared on
+ * the block the row reads, the layer reloads so the patch's own values sound,
+ * and the editor re-seeds showing the P badge. Same gating as the flip. */
+bool synth_ui_editor_release_to_patch(void);
 
 /* Cycle between the ADSR, Filter and LFO editors (MY_BUTTON_3 while any is
  * open). Commits the departing editor and opens the next. */

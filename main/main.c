@@ -278,8 +278,10 @@ static void dispatch_button_event(my_button_id_t button_id, button_event_t event
 
     /* SHIFT chords, fired on the digit's PRESS_DOWN:
      *   SHIFT+1 -> open the ADSR/graph editor, or close+commit an open one
-     *   SHIFT+2 -> toggle the step probability/trig editor
-     *   SHIFT+3 -> apply-to-whole-layer scope toggle inside envelope/LFO
+     *   SHIFT+2 -> toggle the step probability/trig editor; inside an
+     *              effects editor: release the open tab to the patch
+     *   SHIFT+3 -> inside an effects editor: flip the row between its own
+     *              voice block and the layer's shared one
      * The chord latches the button until its next PRESS_DOWN, swallowing the
      * rest of the press so the button's normal gesture never runs. */
     if (s_shift_chord_latched[button_id]) {
@@ -316,15 +318,26 @@ static void dispatch_button_event(my_button_id_t button_id, button_event_t event
                 synth_ui_filter_close_commit();
             }
         } else if (button_id == MY_BUTTON_2) {
-            /* stepedit has no discard path, so close == commit.
-             * synth_ui_stepedit_open() self-gates to the sequencer screen. */
-            if (synth_ui_stepedit_is_active())   synth_ui_stepedit_close();
-            else if (!synth_ui_menu_is_active()) synth_ui_stepedit_open();
+            bool editor_open = (sv == UI_VIEW_GRAPH || sv == UI_VIEW_LFO ||
+                                sv == UI_VIEW_DIST  || sv == UI_VIEW_FILTER);
+            if (editor_open) {
+                /* Inside an editor the chord hands the open tab back to the
+                 * patch - chorded, like the source flip, so a stray press
+                 * cannot drop an authored group. */
+                synth_ui_editor_release_to_patch();
+            } else if (synth_ui_stepedit_is_active()) {
+                /* stepedit has no discard path, so close == commit.
+                 * synth_ui_stepedit_open() self-gates to the sequencer screen. */
+                synth_ui_stepedit_close();
+            } else if (!synth_ui_menu_is_active()) {
+                synth_ui_stepedit_open();
+            }
         } else { /* MY_BUTTON_3 */
-            /* Chorded so an accidental bare press can't overwrite the whole
-             * layer's config. */
-            if (sv == UI_VIEW_GRAPH || sv == UI_VIEW_LFO || sv == UI_VIEW_DIST) {
-                synth_ui_toggle_editor_apply_scope();
+            /* Chorded so an accidental bare press can't flip which voice
+             * block the row reads. */
+            if (sv == UI_VIEW_GRAPH || sv == UI_VIEW_LFO || sv == UI_VIEW_DIST ||
+                sv == UI_VIEW_FILTER) {
+                synth_ui_toggle_editor_source();
             }
         }
         return;
@@ -343,7 +356,7 @@ static void dispatch_button_event(my_button_id_t button_id, button_event_t event
     }
 
     // MY_BUTTON_1, per editor: filter = enabled toggle, envelope = cycle EG
-    // curve type, LFO = unused (apply-scope is SHIFT+3). Otherwise it is the
+    // curve type, LFO = unused (source flip is SHIFT+3). Otherwise it is the
     // patch-select hold.
     if (button_id == MY_BUTTON_1) {
         if (synth_ui_filter_is_active()) {
@@ -359,7 +372,7 @@ static void dispatch_button_event(my_button_id_t button_id, button_event_t event
             return;
         }
         if (synth_ui_lfo_is_active() || synth_ui_dist_is_active()) {
-            return;   /* bare press is a no-op; scope is SHIFT+3 */
+            return;   /* bare press is a no-op; source flip is SHIFT+3 */
         }
         /* PROG screen: delete the entry at the cursor. */
         if (synth_ui_prog_is_active()) {

@@ -48,7 +48,9 @@ typedef struct {
                                  checkbox or EN toggle fields)             */
     uint8_t     layer_idx;
     uint8_t     track_idx;
-    bool        apply_all;    /* true = commit applies to all tracks        */
+    char        src_badge[4]; /* header tag for the row's voice-block source
+                                 and this tab's authority (">L", ">T", "PL",
+                                 "PT"; "" for non-track targets)            */
     const char *target_label; /* "ARP"/"DRONE" label override, or NULL      */
     bool        wob_native;   /* target runs the native LFO carrier; false =
                                  software stepper, where the WOBBLE rows are

@@ -23,6 +23,7 @@
 #include "amy.h"               /* amy_num_algorithms - fm_algo_override clamp */
 #include "quantizer.h"
 #include "voice_config.h"
+#include "seq_defaults.h"       /* melodic env defaults for the v14 layer block */
 #include "synth_ui/synth_ui_internal.h"   /* synth_ui_reload_mirror_from_core() */
 
 #include "esp_heap_caps.h"
@@ -383,7 +384,7 @@ static void apply_glob(const staged_glob_t *g)
 
 static void ser_layer(tlv_writer_t *w, const seq_layer_t *L)
 {
-    size_t h = tlv_begin_section(w, TAG_LAYR, 13); /* v2: LFO target bitmask;
+    size_t h = tlv_begin_section(w, TAG_LAYR, 14); /* v2: LFO target bitmask;
                                                     * v3: +gate_pct, +portamento_ms;
                                                     * v4: +groove_pct;
                                                     * v5: LFO +wob_rate/+wob_depth;
@@ -396,7 +397,8 @@ static void ser_layer(tlv_writer_t *w, const seq_layer_t *L)
                                                     * v10: +track_pcm_mode;
                                                     * v11: +step_pitch_ofs;
                                                     * v12: vp +dist/+dist_authored;
-                                                    * v13: +fm_algo_override */
+                                                    * v13: +fm_algo_override;
+                                                    * v14: +vp_src[], +vp_layer */
     tlv_put_u8(w, (uint8_t)L->type);
     tlv_put_u8(w, L->num_steps);
     tlv_put_u16(w, L->patch);
@@ -436,6 +438,9 @@ static void ser_layer(tlv_writer_t *w, const seq_layer_t *L)
     tlv_put_u8(w, L->groove_pct);
     /* v13: live FM algorithm override (Shift+Turn), same tail-append. */
     tlv_put_u8(w, L->fm_algo_override);
+    /* v14: voice-block source selector per row + the layer's shared block. */
+    for (int t = 0; t < SEQ_TRACKS; t++) tlv_put_u8(w, L->vp_src[t]);
+    ser_vp(w, &L->vp_layer);
     tlv_end_section(w, h);
 }
 
@@ -586,6 +591,26 @@ static bool parse_layer(tlv_reader_t *b, seq_layer_t *L, uint8_t ver)
     if (L->fm_algo_override != SEQ_FM_ALGO_NONE &&
         L->fm_algo_override >= amy_num_algorithms)
         L->fm_algo_override = SEQ_FM_ALGO_NONE;
+
+    /* v14: per-row voice-block source + the layer's shared block. Pre-v14:
+     * every row reads its own block (the only behaviour those files had). The
+     * layer block is only meaningful on melodic layers; drum rows are forced
+     * to TRACK so the bank seeding never resolves onto the shared block. */
+    voice_params_init_defaults(&L->vp_layer);
+    if (ver >= 14) {
+        for (int t = 0; t < SEQ_TRACKS; t++) {
+            if (!tlv_get_u8(b, &L->vp_src[t])) return false;
+            if (L->vp_src[t] > SEQ_VP_SRC_LAYER || L->type != SEQ_LAYER_MELODIC)
+                L->vp_src[t] = SEQ_VP_SRC_TRACK;
+        }
+        if (!de_vp(b, &L->vp_layer, ver)) return false;
+    } else {
+        memset(L->vp_src, 0, sizeof L->vp_src);
+        if (L->type == SEQ_LAYER_MELODIC) {
+            L->vp_layer.env  = seq_default_melodic_env();
+            L->vp_layer.env1 = seq_default_melodic_env1();
+        }
+    }
 
     return true;
 }
