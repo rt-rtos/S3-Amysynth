@@ -144,7 +144,7 @@ uint16_t voice_lfo_wave_to_amy(lfo_wave_t wave);
 typedef struct {
     uint8_t  synth;
     uint8_t  num_voices;
-    uint8_t  oscs_per_voice;       /* 2 when osc1 is reserved as a carrier */
+    uint8_t  oscs_per_voice;       /* 3 when oscs 1-2 are reserved as the LFO pair */
     uint16_t wave;                 /* AMY wave constant for osc0           */
     float    osc0_amp_const;       /* arp/melodic 1.0; drone const_sent    */
     float    osc0_amp_vel;         /* arp/melodic 1.0; drone 0.0           */
@@ -231,7 +231,7 @@ void voice_lfo_note_pool_shape(uint8_t synth, uint8_t num_voices,
                                uint8_t oscs_per_voice);
 
 /* Apply the AMY-native mod-source LFO routing for one synth built by
- * voice_build_wave() with oscs_per_voice=2: osc0 gets mod_source=1 plus the
+ * voice_build_wave() with oscs_per_voice=3: osc0 gets mod_source=1 plus the
  * selected target's COEF_MOD depth, osc1 becomes the LFO carrier at the
  * BPM-synced rate. Pass lfo=NULL (or a disabled lfo) to deactivate: the mod
  * coupling is cleared and the carrier silenced.

@@ -11,6 +11,11 @@
  * logfreq-delta weights in octaves (COEF_EG1 = 4.06 sweeps 120 Hz -> ~2000 Hz
  * at EG1 peak).
  *
+ * freq_coefs[COEF_CONST] is also Hz, stored by AMY as log2(f/ZERO_LOGFREQ_IN_HZ)
+ * and added to the note term - so ZERO_LOGFREQ_IN_HZ * r is a note-tracking
+ * pitch offset of log2(r) octaves. `ratio` is not that: AMY reads logratio
+ * only in render_fm_sine, so on a non-ALGO osc it is a no-op.
+ *
  * BASS_1/BASS_2 route the filter sweep through EG1, separate from the amp
  * envelope (EG0): plucky amp decay over a slower-settling filter tail. Each
  * EG1 breakpoint set is pushed in the SAME event as the coef reading it - an
@@ -40,7 +45,7 @@ void bass_preset_configure_track(uint8_t synth_id, uint16_t patch,
 
     if (patch == SEQ_PATCH_BASS_1) {
         /* ─── Preset 264: Classic Sub-Heavy Detune Bass ─────────────────
-         * PULSE carrier + SAW_DOWN sub detuned ~8.6 cents for thickness,
+         * PULSE carrier + SAW_DOWN detuned ~8.6 cents for thickness,
          * LPF24 on the carrier swept by EG1 (120 Hz -> ~2000 Hz at peak),
          * settling slower than the EG0 amp decay. */
 
@@ -68,13 +73,13 @@ void bass_preset_configure_track(uint8_t synth_id, uint16_t patch,
         e->eg1_times[2]  = 200;  e->eg1_values[2] = 0.0f;   /* rel 200ms, closes fully */
         amy_helpers_event_send(e);
 
-        /* osc 1: SAW_DOWN, slightly detuned (+1.005 ratio ≈ 8.6 cents) */
+        /* osc 1: SAW_DOWN, detuned +0.5% (~8.6 cents), tracking the note */
         e = amy_helpers_event_begin();
-        e->synth                 = synth_id;
-        e->osc                   = 1;
-        e->wave                  = SAW_DOWN;
-        e->freq_coefs[COEF_NOTE] = 1.0f;
-        e->ratio                 = 1.005f;   /* log2(1.005) => logratio => +0.7% pitch */
+        e->synth                  = synth_id;
+        e->osc                    = 1;
+        e->wave                   = SAW_DOWN;
+        e->freq_coefs[COEF_NOTE]  = 1.0f;
+        e->freq_coefs[COEF_CONST] = ZERO_LOGFREQ_IN_HZ * 1.005f;
         e->amp_coefs[COEF_CONST] = 0.8f;    /* slightly quieter than carrier */
         e->amp_coefs[COEF_VEL]   = 1.0f;
         e->amp_coefs[COEF_EG0]   = 1.0f;
@@ -134,7 +139,7 @@ void bass_preset_configure_track(uint8_t synth_id, uint16_t patch,
 
     } else if (patch == SEQ_PATCH_BASS_3) {
         /* ─── Preset 266: Bright Synth Bass ─────────────────────────────
-         * PULSE carrier cuts through the mix; SAW_DOWN sub-octave (ratio=0.5)
+         * PULSE carrier cuts through the mix; SAW_DOWN sub-octave
          * reinforces the low end. Percussive envelope: fast attack, moderate
          * decay to a sustained body. */
 
@@ -160,9 +165,9 @@ void bass_preset_configure_track(uint8_t synth_id, uint16_t patch,
         e->synth                 = synth_id;
         e->osc                   = 1;
         e->wave                  = SAW_DOWN;
-        e->freq_coefs[COEF_NOTE] = 1.0f;
-        e->ratio                 = 0.5f;     /* one octave below carrier */
-        e->amp_coefs[COEF_CONST] = 0.7f;
+        e->freq_coefs[COEF_NOTE]  = 1.0f;
+        e->freq_coefs[COEF_CONST] = ZERO_LOGFREQ_IN_HZ * 0.5f;   /* one octave below carrier */
+        e->amp_coefs[COEF_CONST]  = 0.7f;
         e->amp_coefs[COEF_VEL]   = 1.0f;
         e->amp_coefs[COEF_EG0]   = 1.0f;
         e->eg_type[0]            = ENVELOPE_NORMAL;

@@ -477,7 +477,7 @@ seq_env_t *seq_layer_env1(uint8_t layer_idx, uint8_t track)
  * kind dispatch for every consumer (melodic tracks and the arp; the drone has
  * its own excitation model):
  *   raw wave / wavetable  -> direct oscillator config (no patch string)
- *   bass preset (264-266) -> bass_preset_configure_track (oscs_per_voice=2)
+ *   bass preset (264-266) -> bass_preset_configure_track (oscs_per_voice=4)
  *   FM/ALGO (272-276)     -> fm preset / live-editable custom voice (7 oscs)
  *   additive (277-279)    -> additive preset / custom voice (N+1 oscs)
  *   everything else       -> amy_send_patch() string loader
