@@ -100,6 +100,115 @@ uint8_t voice_wob_db_to_depth(uint8_t db)
     return (uint8_t)(((unsigned)db * 100u + VOICE_WOB_DB_MAX / 2u) / VOICE_WOB_DB_MAX);
 }
 
+/* ââ Unison copy math (spec: voice_unison_t, seq_model.h) âââââââââââââââ
+ * Copy i of n sits at position s in -1..+1 (0 alone for n = 1; the center
+ * copy of an odd n at 0). Detune fans log-linearly: freq CONST is Hz through
+ * the event API and logfreq_of_freq() anchors it at 440 Hz, so a
+ * note-tracking offset of c cents is SEQ_LFO_PITCH_BASE_HZ * 2^(c/1200).
+ * Blend tapers the outer copies (weight 1 - (1-blend)*|s|), normalized so
+ * summed power stays at the single-copy level (detuned copies decorrelate,
+ * so power - not amplitude - is what adds). */
+/* Index map (contract in voice_config.h). Headed n is even and >= 2, so the
+ * highest audible index is n + 1 and every mask fits a uint8_t. */
+_Static_assert(((VOICE_UNISON_MAX_COPIES & ~1u) + 2u) <= 8u,
+               "unison osc masks are uint8_t");
+
+static inline bool unison_is_headed(uint8_t n, bool headed)
+{
+    return headed && n >= 2u;
+}
+
+uint8_t voice_unison_oscs_per_voice(uint8_t n, bool headed)
+{
+    if (n < 1u) n = 1u;
+    return (uint8_t)(n + (unison_is_headed(n, headed) ? 4u : 2u));
+}
+
+uint8_t voice_unison_head_osc(uint8_t group, uint8_t n)
+{
+    return group ? (uint8_t)(n / 2u + 1u) : 0u;
+}
+
+uint8_t voice_unison_copy_osc(uint8_t i, uint8_t n, bool headed)
+{
+    if (!unison_is_headed(n, headed)) return i;
+    uint8_t p     = (i < (uint8_t)(n - 1u - i)) ? i : (uint8_t)(n - 1u - i);
+    uint8_t group = (uint8_t)((p & 1u) ^ ((i == p) ? 0u : 1u));
+    uint8_t rank  = 0;                       /* copies fill their group in i order */
+    for (uint8_t j = 0; j < i; j++) {
+        uint8_t pj = (j < (uint8_t)(n - 1u - j)) ? j : (uint8_t)(n - 1u - j);
+        if ((uint8_t)((pj & 1u) ^ ((j == pj) ? 0u : 1u)) == group) rank++;
+    }
+    return (uint8_t)(voice_unison_head_osc(group, n) + 1u + rank);
+}
+
+uint8_t voice_unison_copies_mask(uint8_t n, bool headed)
+{
+    uint8_t m = 0;
+    for (uint8_t i = 0; i < n; i++)
+        m |= (uint8_t)(1u << voice_unison_copy_osc(i, n, headed));
+    return m;
+}
+
+uint8_t voice_unison_heads_mask(uint8_t n, bool headed)
+{
+    if (!unison_is_headed(n, headed)) return 0u;
+    return (uint8_t)((1u << voice_unison_head_osc(0, n)) |
+                     (1u << voice_unison_head_osc(1, n)));
+}
+
+static float unison_pos(uint8_t i, uint8_t n)
+{
+    return (n > 1u) ? (2.0f * (float)i / (float)(n - 1u) - 1.0f) : 0.0f;
+}
+
+static float unison_weight(uint8_t i, uint8_t n, float blend)
+{
+    return 1.0f - (1.0f - blend) * fabsf(unison_pos(i, n));
+}
+
+static float unison_amp_norm(uint8_t n, float blend)
+{
+    float sum = 0.0f;
+    for (uint8_t i = 0; i < n; i++) {
+        float w = unison_weight(i, n, blend);
+        sum += w * w;
+    }
+    /* blend 0 with no center copy (even n) zeroes every weight; fall back to
+     * the equal-weight norm instead of dividing by zero. */
+    if (sum < 1e-6f) return 1.0f / sqrtf((float)n);
+    return 1.0f / sqrtf(sum);
+}
+
+/* Per-copy CONST terms, shared by the build and the live push so the two
+ * paths cannot drift. Overwrites amp CONST with the blend law. `headed` copies
+ * leave pan alone - it is dead on a chained osc, the head mixes the group. */
+static void unison_copy_coefs(amy_event *e, uint8_t i, uint8_t n,
+                              const voice_unison_t *u, float base_amp,
+                              bool headed)
+{
+    float s     = unison_pos(i, n);
+    float blend = (float)u->blend_pct / 100.0f;
+    e->freq_coefs[COEF_CONST] = SEQ_LFO_PITCH_BASE_HZ *
+        powf(2.0f, (float)u->detune_cents * s / 1200.0f);
+    if (!headed)
+        e->pan_coefs[COEF_CONST] = 0.5f +
+            0.5f * ((float)u->spread_pct / 100.0f) * s;
+    e->amp_coefs[COEF_CONST]  = base_amp *
+        unison_weight(i, n, blend) * unison_amp_norm(n, blend);
+    /* Deterministic, decorrelated start phase per copy: left phase-aligned,
+     * the copies comb through the whole attack. */
+    e->trigger_phase = (float)i / (float)n;
+}
+
+/* The whole stereo fan collapses onto the two heads in the headed layout: each
+ * head sits at the outermost position of its side. */
+static float unison_head_pan(const voice_unison_t *u, uint8_t group)
+{
+    float half = 0.5f * ((float)u->spread_pct / 100.0f);
+    return group ? (0.5f + half) : (0.5f - half);
+}
+
 void voice_build_wave(const voice_wave_cfg_t *cfg)
 {
     if (!cfg) return;
@@ -114,28 +223,123 @@ void voice_build_wave(const voice_wave_cfg_t *cfg)
     e->oscs_per_voice = cfg->oscs_per_voice;
     amy_helpers_event_send(e);
 
-    /* osc 0: note-following carrier (COEF_NOTE=1), EG0-gated amplitude. */
-    e = amy_helpers_event_begin();
-    e->synth = cfg->synth;
-    e->osc   = 0;
-    e->wave  = cfg->wave;
-    if (cfg->wt_preset >= 0) e->preset = cfg->wt_preset;
-    if (cfg->wave == KS) {
-        /* Authored feedback drives KS string decay; the 0 "never set"
-         * sentinel falls back to the fixed default. */
-        float fb = cfg->ks_feedback;
-        if (fb > 1.0f) fb = 1.0f;   /* > 1 would make the KS buffer diverge */
-        e->feedback = (cfg->ks_feedback_authored && fb > 0.0f) ? fb : 0.9f;
+    /* Audible copies: osc 0 alone, or the unison fan 0..n-1 (any reserved
+     * LFO pair sits above it - the caller sized oscs_per_voice). n == 1
+     * emits exactly the single-osc skeleton, with no pan/phase/freq CONST
+     * terms, so unison off is bit-for-bit the old build. Each copy is a
+     * note-following carrier (COEF_NOTE=1) with EG0-gated amplitude. */
+    uint8_t n = 1;
+    if (cfg->unison && cfg->unison->count > 1u && cfg->wave != KS)
+        n = cfg->unison->count;
+    if (n > VOICE_UNISON_MAX_COPIES) n = VOICE_UNISON_MAX_COPIES;
+    bool headed = cfg->unison && cfg->unison->headed && n > 1u;
+    if (headed) n = (uint8_t)(n & ~1u);   /* the headed layout runs even counts */
+
+    /* A fan-N pool and a headed-(N-2) pool have the same shape, and AMY does
+     * not reset a re-sent shape, so a layout switch would inherit the previous
+     * build's chained_osc, filter_type and MOD rails. Wipe every audible osc
+     * first (voice-relative; a no-op on one AMY has not allocated yet). The
+     * reserved carrier pair stays untouched - resetting it would be the
+     * allocation the lazy reservation exists to avoid. */
+    if (n > 1u) {
+        uint8_t audible = (uint8_t)(headed ? n + 2u : n);
+        for (uint8_t i = 0; i < audible; i++) {
+            e = amy_helpers_event_begin();
+            e->synth     = cfg->synth;
+            e->reset_osc = i;
+            amy_helpers_event_send(e);
+        }
     }
-    e->freq_coefs[COEF_NOTE] = 1.0f;
-    e->amp_coefs[COEF_CONST] = cfg->osc0_amp_const;
-    e->amp_coefs[COEF_VEL]   = cfg->osc0_amp_vel;
-    e->amp_coefs[COEF_EG0]   = 1.0f;
-    amy_helpers_event_send(e);
+
+    if (headed) {
+        /* Two SILENT heads, each chaining half the copies: the head renders
+         * after its chain and applies the envelope, dist, filter and pan to the
+         * group sum once (amy.c render_osc_wave). */
+        for (uint8_t g = 0; g < 2u; g++) {
+            uint8_t head = voice_unison_head_osc(g, n);
+            e = amy_helpers_event_begin();
+            e->synth = cfg->synth;
+            e->osc   = head;
+            e->wave  = SILENT;
+            e->amp_coefs[COEF_CONST] = cfg->osc0_amp_const;
+            e->amp_coefs[COEF_VEL]   = cfg->osc0_amp_vel;
+            e->amp_coefs[COEF_EG0]   = 1.0f;
+            e->pan_coefs[COEF_CONST] = unison_head_pan(cfg->unison, g);
+            e->chained_osc           = (uint8_t)(head + 1u);
+            amy_helpers_event_send(e);
+        }
+    }
+
+    for (uint8_t i = 0; i < n; i++) {
+        uint8_t osc = voice_unison_copy_osc(i, n, headed);
+        e = amy_helpers_event_begin();
+        e->synth = cfg->synth;
+        e->osc   = osc;
+        e->wave  = cfg->wave;
+        if (cfg->wt_preset >= 0) e->preset = cfg->wt_preset;
+        if (cfg->wave == KS) {
+            /* Authored feedback drives KS string decay; the 0 "never set"
+             * sentinel falls back to the fixed default. */
+            float fb = cfg->ks_feedback;
+            if (fb > 1.0f) fb = 1.0f;   /* > 1 would make the KS buffer diverge */
+            e->feedback = (cfg->ks_feedback_authored && fb > 0.0f) ? fb : 0.9f;
+        }
+        e->freq_coefs[COEF_NOTE] = 1.0f;
+        if (headed) {
+            /* The head owns the envelope, velocity and level for the group, so
+             * a copy contributes its blend weight alone; chaining it to the
+             * next copy of its group closes the linked list. */
+            e->amp_coefs[COEF_VEL] = 0.0f;
+            e->amp_coefs[COEF_EG0] = 0.0f;
+            unison_copy_coefs(e, i, n, cfg->unison, 1.0f, true);
+            uint8_t grp  = (osc > voice_unison_head_osc(1, n)) ? 1u : 0u;
+            uint8_t last = (uint8_t)(voice_unison_head_osc(grp, n) + n / 2u);
+            if (osc < last) e->chained_osc = (uint8_t)(osc + 1u);
+        } else {
+            e->amp_coefs[COEF_CONST] = cfg->osc0_amp_const;
+            e->amp_coefs[COEF_VEL]   = cfg->osc0_amp_vel;
+            e->amp_coefs[COEF_EG0]   = 1.0f;
+            if (n > 1u)
+                unison_copy_coefs(e, i, n, cfg->unison, cfg->osc0_amp_const, false);
+        }
+        amy_helpers_event_send(e);
+    }
 
     /* A rebuild must not drop the stage, so the owner's block rides every
      * build. cfg->dist == NULL means the caller has none to assert yet. */
-    if (cfg->dist) voice_apply_dist(cfg->synth, cfg->dist);
+    if (cfg->dist) {
+        if (headed) {
+            for (uint8_t g = 0; g < 2u; g++)
+                voice_apply_dist_osc(cfg->synth, voice_unison_head_osc(g, n),
+                                     cfg->dist);
+        } else {
+            voice_apply_dist(cfg->synth, cfg->dist);
+        }
+    }
+}
+
+void voice_push_unison_live(uint8_t synth, const voice_unison_t *u,
+                            float base_amp)
+{
+    if (!u || u->count <= 1u || u->count > VOICE_UNISON_MAX_COPIES) return;
+    uint8_t n      = u->count;
+    bool    headed = u->headed != 0u;
+    if (headed) n = (uint8_t)(n & ~1u);
+    for (uint8_t i = 0; i < n; i++) {
+        amy_event *e = amy_helpers_event_begin();
+        e->synth = synth;
+        e->osc   = voice_unison_copy_osc(i, n, headed);
+        unison_copy_coefs(e, i, n, u, headed ? 1.0f : base_amp, headed);
+        amy_helpers_event_send(e);
+    }
+    /* Spread lives on the heads: the copies feed them through the chain. */
+    for (uint8_t g = 0; headed && g < 2u; g++) {
+        amy_event *e = amy_helpers_event_begin();
+        e->synth = synth;
+        e->osc   = voice_unison_head_osc(g, n);
+        e->pan_coefs[COEF_CONST] = unison_head_pan(u, g);
+        amy_helpers_event_send(e);
+    }
 }
 
 /* ── Per-voice distortion ────────────────────────────────────────────────── */
@@ -152,19 +356,24 @@ void voice_dist_clamp(seq_dist_t *d)
 
 void voice_apply_dist(uint8_t synth, const seq_dist_t *d)
 {
-    if (!d) return;
-    seq_dist_t v = *d;
-    voice_dist_clamp(&v);
-
     /* osc 0 addresses the BASE osc of every voice in the synth (AMY's
      * patches_event_has_voices). For wave voices and for ALGO/FM voices - where
      * osc 0 already carries the summed operator output - that is the whole
      * voice. Multi-osc patch strings distort their base osc only; distorting
      * each osc and summing afterwards is a different, harsher effect, so the
      * reach stops here deliberately. */
+    voice_apply_dist_osc(synth, 0, d);
+}
+
+void voice_apply_dist_osc(uint8_t synth, uint8_t osc, const seq_dist_t *d)
+{
+    if (!d) return;
+    seq_dist_t v = *d;
+    voice_dist_clamp(&v);
+
     amy_event *e = amy_helpers_event_begin();
     e->synth      = synth;
-    e->osc        = 0;
+    e->osc        = osc;
     /* v.type is a stage mask; author all three enables explicitly so a
      * mask change turns dropped stages off. */
     e->dist_clip  = !!(v.type & 1u);
@@ -221,10 +430,11 @@ void voice_push_dist_lfo(uint8_t synth, const seq_dist_t *base,
 
 void voice_apply_native_lfo_topo(uint8_t synth, const seq_lfo_t *lfo,
                                  uint16_t bpm, uint8_t carrier_osc,
-                                 uint8_t coupled_mask)
+                                 uint8_t pitch_mask, uint8_t voice_mask)
 {
     amy_event *e;
-    uint8_t wobble_osc = (uint8_t)(carrier_osc + 1u);
+    uint8_t wobble_osc   = (uint8_t)(carrier_osc + 1u);
+    uint8_t coupled_mask = (uint8_t)(pitch_mask | voice_mask);
 
     if (lfo && lfo->enabled && lfo->targets) {
         /* Coupled (audible) oscs: wire mod_source to the carrier (voice-local -
@@ -232,7 +442,10 @@ void voice_apply_native_lfo_topo(uint8_t synth, const seq_lfo_t *lfo,
          * checked target, clearing every sibling rail first. One carrier feeds
          * all targets on all coupled oscs, each scaled by its own normalizing
          * constant. Bass couples both audible oscs so vibrato/tremolo hits the
-         * sub; the wave build couples osc0 only. */
+         * sub; the wave build couples osc0 only. The two masks split which
+         * oscs take which rails: pitch/duty ride the sounding oscs, the
+         * per-voice stages ride whatever carries them (osc 0, or the SILENT
+         * heads under unison). */
         float d = (float)lfo->depth / 100.0f;
         for (uint8_t o = 0; (uint8_t)(coupled_mask >> o) != 0u; o++) {
             if (!(coupled_mask & (uint8_t)(1u << o))) continue;
@@ -245,16 +458,19 @@ void voice_apply_native_lfo_topo(uint8_t synth, const seq_lfo_t *lfo,
             e->freq_coefs[COEF_MOD]        = 0.0f;
             e->duty_coefs[COEF_MOD]        = 0.0f;
             e->pan_coefs[COEF_MOD]         = 0.0f;
-            /* Distortion lives on the base osc (osc0) only - the same reach as
-             * voice_apply_dist - so its COEF_MOD rides osc0 alone; clear it on
-             * every coupled osc so a stale rail cannot keep modulating. */
+            /* Distortion rides the oscs that carry the stage - the same reach
+             * as voice_apply_dist - so its COEF_MOD follows voice_mask; clear
+             * it on every coupled osc so a stale rail cannot keep modulating.
+             * Inert on an osc with no dist stage enabled. */
             e->dist_drive_coefs[COEF_MOD]  = 0.0f;
             e->dist_mix_coefs[COEF_MOD]    = 0.0f;
-            if (LFO_HAS_TGT(lfo, LFO_TARGET_FILTER)) e->filter_freq_coefs[COEF_MOD] = voice_lfo_filter_octaves(lfo);
-            if (LFO_HAS_TGT(lfo, LFO_TARGET_AMP))    e->amp_coefs[COEF_MOD]         = d * VOICE_LFO_DEPTH_AMP;
-            if (LFO_HAS_TGT(lfo, LFO_TARGET_PITCH))  e->freq_coefs[COEF_MOD]        = d * VOICE_LFO_DEPTH_PITCH;
-            if (LFO_HAS_TGT(lfo, LFO_TARGET_SCAN))   e->duty_coefs[COEF_MOD]        = d * VOICE_LFO_DEPTH_SCAN;
-            if (o == 0) {
+            if (pitch_mask & (uint8_t)(1u << o)) {
+                if (LFO_HAS_TGT(lfo, LFO_TARGET_PITCH)) e->freq_coefs[COEF_MOD] = d * VOICE_LFO_DEPTH_PITCH;
+                if (LFO_HAS_TGT(lfo, LFO_TARGET_SCAN))  e->duty_coefs[COEF_MOD] = d * VOICE_LFO_DEPTH_SCAN;
+            }
+            if (voice_mask & (uint8_t)(1u << o)) {
+                if (LFO_HAS_TGT(lfo, LFO_TARGET_FILTER)) e->filter_freq_coefs[COEF_MOD] = voice_lfo_filter_octaves(lfo);
+                if (LFO_HAS_TGT(lfo, LFO_TARGET_AMP))    e->amp_coefs[COEF_MOD]         = d * VOICE_LFO_DEPTH_AMP;
                 /* Drive rides AMY's log2 rail, so the drive COEF_MOD is in
                  * octaves: the carrier's +/-1 swing is +/-(d*OCT) octaves of
                  * pre-gain, matching the old software stepper's law. Mix is a
@@ -263,12 +479,12 @@ void voice_apply_native_lfo_topo(uint8_t synth, const seq_lfo_t *lfo,
                     e->dist_drive_coefs[COEF_MOD] = d * VOICE_LFO_DEPTH_DIST_OCT;
                 if (LFO_HAS_TGT(lfo, LFO_TARGET_DIST_MIX))
                     e->dist_mix_coefs[COEF_MOD]   = d * VOICE_LFO_DEPTH_DIST_MIX;
-            }
-            if (LFO_HAS_TGT(lfo, LFO_TARGET_PAN)) {
-                /* Pan is [0,1], not bipolar: set the center baseline and swing
-                 * COEF_MOD around it in the same event. */
-                e->pan_coefs[COEF_CONST] = 0.5f;
-                e->pan_coefs[COEF_MOD]   = d * VOICE_LFO_DEPTH_PAN;
+                if (LFO_HAS_TGT(lfo, LFO_TARGET_PAN)) {
+                    /* Pan is [0,1], not bipolar: set the center baseline and
+                     * swing COEF_MOD around it in the same event. */
+                    e->pan_coefs[COEF_CONST] = 0.5f;
+                    e->pan_coefs[COEF_MOD]   = d * VOICE_LFO_DEPTH_PAN;
+                }
             }
             amy_helpers_event_send(e);
         }
@@ -367,5 +583,5 @@ void voice_apply_native_lfo_topo(uint8_t synth, const seq_lfo_t *lfo,
  * WAVE-mode engine calls. */
 void voice_apply_native_lfo(uint8_t synth, const seq_lfo_t *lfo, uint16_t bpm)
 {
-    voice_apply_native_lfo_topo(synth, lfo, bpm, 1, 0x01);
+    voice_apply_native_lfo_topo(synth, lfo, bpm, 1, 0x01, 0x01);
 }

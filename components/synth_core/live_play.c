@@ -154,7 +154,8 @@ static void live_apply_lfo(void)
     if (!sequencer_core_lfo_native_layout(s_patch, &carrier, &coupled)) return;
     bool on = s_vp.lfo_authored && s_vp.lfo.enabled;
     voice_apply_native_lfo_topo(LIVE_SYNTH, on ? &s_vp.lfo : NULL,
-                                sequencer_core_get_bpm(), carrier, coupled);
+                                sequencer_core_get_bpm(), carrier,
+                                coupled, coupled);
 }
 
 /* Re-push whatever the user has authored. Called after every slot configure,

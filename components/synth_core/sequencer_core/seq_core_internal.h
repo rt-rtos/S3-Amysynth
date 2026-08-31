@@ -192,6 +192,22 @@ seq_env_t *seq_layer_env1(uint8_t layer_idx, uint8_t track);
  * the drum bank seeding (drum layers are always TRACK) and the project store
  * touch the blocks directly. Out-of-range indices clamp to 0. */
 voice_params_t *seq_track_vp(uint8_t layer_idx, uint8_t track);
+typedef struct {
+    uint8_t carrier;     /* LFO carrier osc; wobble = carrier + 1 */
+    uint8_t pitch_mask;  /* oscs whose freq/duty MOD rails the LFO drives */
+    uint8_t voice_mask;  /* oscs whose filter/amp/pan/dist MOD rails the LFO drives */
+    uint8_t heads_mask;  /* SILENT-head oscs; 0 = no heads: filter pushes
+                            broadcast and dist pushes address osc 0 as before */
+} seq_voice_layout_t;
+
+/* Native-LFO / push layout for one melodic track: the patch-only predicate
+ * (sequencer_core_lfo_native_layout) lifted over the row's AS-BUILT unison
+ * fan. Every per-track osc-addressed consumer (LFO apply, BPM refresh, filter
+ * and dist pushes) resolves through this. Returns false for non-native rows. */
+bool seq_track_voice_layout(uint8_t layer_idx, uint8_t track,
+                            seq_voice_layout_t *out);
+/* Effective unison copy count the track's synth is built with (1 = none). */
+uint8_t seq_track_unison_copies(uint8_t layer_idx, uint8_t track);
 
 /* From seq_core_editors.c */
 void sequencer_configure_melodic_envelope_track(uint8_t layer_idx, uint8_t track);

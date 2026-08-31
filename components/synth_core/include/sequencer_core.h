@@ -261,6 +261,23 @@ void    sequencer_core_set_drum_pcm_mode(uint8_t layer_idx, uint8_t track,
                                          uint8_t pcm_mode);
 uint8_t sequencer_core_get_drum_pcm_mode(uint8_t layer_idx, uint8_t track);
 
+/* ââ Melodic per-layer unison (PROTOTYPE - dev menu) ââ
+ * N detuned/spread copies of the wave build's audible osc, per melodic layer,
+ * applied to all of its rows. count 1 = off (the exact single-osc build).
+ * Raw-wave/wavetable patches only (KS excluded), native-LFO builds only; a
+ * spec set while another patch is loaded is stored and applies on the next
+ * wave build. `headed` picks the layout: 0 fans the copies unchained (a
+ * filter, envelope, dist stage and pan mixdown each), 1 chains them under two
+ * SILENT L/R heads that carry those stages once per group - even counts only,
+ * so an odd count floors (3 -> 2, 5 -> 4) and 1 stays off either way. A count
+ * or layout change rebuilds the layer's voices (sounding notes stop, like a
+ * wave change); detune/spread/blend changes push live. The getter serves
+ * defaults until the first set (count 1 = inactive). Volatile - not
+ * serialized. UI task only; no-op for the drum layer / out-of-range. */
+void           sequencer_core_set_unison(uint8_t layer_idx,
+                                         const voice_unison_t *u);
+voice_unison_t sequencer_core_get_unison(uint8_t layer_idx);
+
 /* Step one drum track's PCM preset by `dir` through the combined drum sample
  * space: the ROM bank (0 .. pcm_wavetable_base-1) then the gamma9001 banks
  * (256..391) when their blob is mounted, wrapping, with wavetable and memory

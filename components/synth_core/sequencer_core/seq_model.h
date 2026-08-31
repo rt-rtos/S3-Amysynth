@@ -288,6 +288,31 @@ typedef enum {
     SEQ_VP_SRC_LAYER = 1,
 } seq_vp_src_t;
 
+/* ââ Unison spec (per melodic layer; PROTOTYPE - dev-menu backed, volatile) ââ
+ * N detuned copies of the wave build's audible osc, fanned symmetrically in
+ * pitch (detune_cents at the outermost copy) and stereo (spread_pct of full
+ * width), blend_pct tapering the outer copies against the center. count = 1
+ * disables and restores the single-osc build exactly. Raw-wave/wavetable
+ * patches only (KS excluded); not serialized.
+ *
+ * Two layouts (`headed`): the unchained fan gives every copy its own filter,
+ * envelope, dist stage and pan mixdown; the headed layout splits the copies
+ * into an L and an R group, each chained under a SILENT head that carries
+ * those stages once for the whole group. Headed runs even counts only - an
+ * odd count floors (3 -> 2, 5 -> 4), and count 1 is off in either layout. */
+typedef struct {
+    uint8_t count;        /* audible copies per voice, 1..VOICE_UNISON_MAX_COPIES */
+    uint8_t detune_cents; /* outermost copy's offset, 0..VOICE_UNISON_MAX_DETUNE */
+    uint8_t spread_pct;   /* stereo width: 0 = all center, 100 = full L/R fan */
+    uint8_t blend_pct;    /* outer-copy level: 100 = equal, 0 = center only */
+    uint8_t headed;       /* 0 = unchained fan (N filters); 1 = two SILENT
+                             heads, copies chained per L/R group. Even
+                             counts only when headed (odd floors). */
+} voice_unison_t;
+
+#define VOICE_UNISON_MAX_COPIES 7u
+#define VOICE_UNISON_MAX_DETUNE 50u
+
 /* One editable parameter group of a voice_params_t; the granularity of the
  * authored flags and of "release to patch". */
 typedef enum {

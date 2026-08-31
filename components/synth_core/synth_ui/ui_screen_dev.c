@@ -73,6 +73,63 @@ static void pcm_mode_adjust(int delta, int arg)
     sequencer_core_set_drum_pcm_mode(0, (uint8_t)arg, (uint8_t)m);
 }
 
+/* Melodic unison prototype (sequencer_core_set_unison): pick a melodic
+ * layer (L2-L4), then edit its spec. The field id rides `arg`; LAYER is
+ * dev-local navigation state, the spec itself lives in the core. COUNT and
+ * LAYOUT changes rebuild the layer's voices (notes stop); the rest push
+ * live. */
+enum { UNI_LAYER, UNI_COUNT, UNI_LAYOUT, UNI_DETUNE, UNI_SPREAD, UNI_BLEND };
+
+static uint8_t s_uni_layer = 1;   /* layer INDEX 1..3 = UI L2..L4 */
+
+static void uni_fmt(char *buf, size_t n, int arg)
+{
+    voice_unison_t u = sequencer_core_get_unison(s_uni_layer);
+    switch (arg) {
+        case UNI_LAYER:  snprintf(buf, n, "L%u", (unsigned)s_uni_layer + 1u); break;
+        case UNI_COUNT:  snprintf(buf, n, "%u",   (unsigned)u.count);         break;
+        case UNI_LAYOUT: snprintf(buf, n, "%s",   u.headed ? "head" : "fan"); break;
+        case UNI_DETUNE: snprintf(buf, n, "%uc",  (unsigned)u.detune_cents);  break;
+        case UNI_SPREAD: snprintf(buf, n, "%u%%", (unsigned)u.spread_pct);    break;
+        case UNI_BLEND:  snprintf(buf, n, "%u%%", (unsigned)u.blend_pct);     break;
+        default:         buf[0] = '\0';                                       break;
+    }
+}
+
+static void uni_adjust(int delta, int arg)
+{
+    if (arg == UNI_LAYER) {
+        int l = (int)s_uni_layer - 1 + delta;   /* wrap over indices 1..3 */
+        l %= 3;
+        if (l < 0) l += 3;
+        s_uni_layer = (uint8_t)(l + 1);
+        return;
+    }
+    voice_unison_t u = sequencer_core_get_unison(s_uni_layer);
+    switch (arg) {
+        case UNI_COUNT:
+            u.count = (uint8_t)SEQ_CLAMP_INT((int)u.count + delta,
+                                             1, (int)VOICE_UNISON_MAX_COPIES);
+            break;
+        case UNI_LAYOUT:
+            u.headed = u.headed ? 0u : 1u;   /* two states: either turn flips */
+            break;
+        case UNI_DETUNE:
+            u.detune_cents = (uint8_t)SEQ_CLAMP_INT((int)u.detune_cents + delta,
+                                                    0, (int)VOICE_UNISON_MAX_DETUNE);
+            break;
+        case UNI_SPREAD:
+            u.spread_pct = (uint8_t)SEQ_CLAMP_INT((int)u.spread_pct + delta, 0, 100);
+            break;
+        case UNI_BLEND:
+            u.blend_pct = (uint8_t)SEQ_CLAMP_INT((int)u.blend_pct + delta, 0, 100);
+            break;
+        default:
+            return;
+    }
+    sequencer_core_set_unison(s_uni_layer, &u);
+}
+
 /* One-shot sequencer state dump to the console (seq_core_dump.c). */
 static void seqdump_fire(int arg)
 {
@@ -254,8 +311,20 @@ static const dev_item_t s_pcm_items[] = {
 static const dev_page_t s_page_pcm = { "PCM MODE L1", s_pcm_items,
                                        sizeof s_pcm_items / sizeof *s_pcm_items };
 
+static const dev_item_t s_uni_items[] = {
+    { .label = "Layer",  .fmt = uni_fmt, .adjust = uni_adjust, .arg = UNI_LAYER  },
+    { .label = "Count",  .fmt = uni_fmt, .adjust = uni_adjust, .arg = UNI_COUNT  },
+    { .label = "Layout", .fmt = uni_fmt, .adjust = uni_adjust, .arg = UNI_LAYOUT },
+    { .label = "Detune", .fmt = uni_fmt, .adjust = uni_adjust, .arg = UNI_DETUNE },
+    { .label = "Spread", .fmt = uni_fmt, .adjust = uni_adjust, .arg = UNI_SPREAD },
+    { .label = "Blend",  .fmt = uni_fmt, .adjust = uni_adjust, .arg = UNI_BLEND  },
+};
+static const dev_page_t s_page_uni = { "UNISON", s_uni_items,
+                                       sizeof s_uni_items / sizeof *s_uni_items };
+
 static const dev_item_t s_root_items[] = {
     { .label = "PCM Mode L1", .sub = &s_page_pcm },
+    { .label = "Unison",      .sub = &s_page_uni },
     { .label = "AMY OOM",     .fmt = oom_fmt },
     { .label = "Heap int",    .fmt = heap_fmt },
     { .label = "CPU c0/c1",   .fmt = cpu_fmt },

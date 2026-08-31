@@ -279,7 +279,7 @@ static void arp_rebuild(void)
         voice_apply_native_lfo_topo(sequencer_core_arp_synth(),
                                     lfo_on ? &s_arp.vp.lfo : NULL,
                                     sequencer_core_get_bpm(),
-                                    carrier, coupled);
+                                    carrier, coupled, coupled);
     }
     /* arp_apply_filter also pushes the EG1 breakpoints whenever it wires the
      * sweep coef. */
@@ -678,7 +678,7 @@ void arp_set_lfo(const seq_lfo_t *lfo)
         voice_apply_native_lfo_topo(sequencer_core_arp_synth(),
                                     lfo->enabled ? &s_arp.vp.lfo : NULL,
                                     sequencer_core_get_bpm(),
-                                    carrier, coupled);
+                                    carrier, coupled, coupled);
     }
     ESP_LOGI(TAG, "arp LFO -> en=%d wave=%u rate=%u depth=%u tgt=0x%02x",
              lfo->enabled, (unsigned)lfo->wave, (unsigned)lfo->rate,

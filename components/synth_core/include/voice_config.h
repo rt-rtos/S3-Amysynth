@@ -155,10 +155,47 @@ typedef struct {
     const seq_dist_t *dist;        /* re-pushed on every build so a rebuild
                                       never drops the stage; NULL = leave the
                                       synth's distortion untouched            */
+    const voice_unison_t *unison;  /* copy-fan spec (seq_model.h); NULL or
+                                      count <= 1 = the single-osc build. The
+                                      caller passes the EFFECTIVE count: it
+                                      has sized oscs_per_voice for count
+                                      copies plus any reserved pair, excluded
+                                      KS and clamped against the osc budget.
+                                      `headed` picks the layout; size
+                                      oscs_per_voice with
+                                      voice_unison_oscs_per_voice()          */
 } voice_wave_cfg_t;
+
+/* ── Unison index map ────────────────────────────────────────────────────
+ * Shared by the build, the live push and the sequencer's layout query, so the
+ * pool shape and the osc masks cannot disagree. n = EFFECTIVE copy count
+ * (>= 2 and even when headed; n <= 1 is the single-osc build and reads as the
+ * fan). Copies are numbered i = 0..n-1 by pitch position (i = 0 most flat);
+ * mirror pair p = min(i, n-1-i), p = 0 outermost. Headed: pair p sits in group
+ * L when p is even, else R; copy i goes to the group of pair p if i == p, the
+ * other group otherwise, and within a group the copies occupy ascending osc
+ * indices in ascending i order. Fan: copy i is osc i. */
+uint8_t voice_unison_oscs_per_voice(uint8_t n, bool headed); /* n+4 / n+2 */
+uint8_t voice_unison_copy_osc(uint8_t i, uint8_t n, bool headed);
+uint8_t voice_unison_head_osc(uint8_t group, uint8_t n);      /* 0: L, 1: R */
+uint8_t voice_unison_copies_mask(uint8_t n, bool headed);     /* bit = osc */
+uint8_t voice_unison_heads_mask(uint8_t n, bool headed);      /* 0 when fan */
 
 /* Core-0 / UI-task only; pushes through amy_helpers (never amy_queue_lock). */
 void voice_build_wave(const voice_wave_cfg_t *cfg);
+
+/* Re-send only the per-copy unison fields (freq/pan/amp CONST, trigger_phase)
+ * to a synth built by voice_build_wave() with this same count - a live
+ * detune/spread/blend turn without a rebuild (mirrors fm_voice_push_live).
+ * On the headed layout the copies take detune and blend and the two heads take
+ * the spread on their pan CONST. A count or layout change needs a rebuild
+ * instead (the pool shape moves). base_amp = the build's osc0_amp_const (the
+ * heads carry it on the headed layout, so the copies ignore it). No-op when
+ * count <= 1. Known interaction: an
+ * LFO PAN target writes pan CONST 0.5 on the coupled oscs and flattens the
+ * spread until the next push. Core-0 / UI-task only. */
+void voice_push_unison_live(uint8_t synth, const voice_unison_t *u,
+                            float base_amp);
 
 /* ── Per-voice distortion (AMY DIST_*) ───────────────────────────────────
  * The distortion block is owned by the caller's voice_params_t (seq_model.h),
@@ -184,6 +221,10 @@ void voice_dist_clamp(seq_dist_t *d);
  * stage rather than leaving the last setting running. Clamps a copy, so the
  * caller's block is untouched. NULL `d`: no-op. Core-0 / UI-task only. */
 void voice_apply_dist(uint8_t synth, const seq_dist_t *d);
+
+/* Same as voice_apply_dist, addressed to one voice-relative osc instead of
+ * the base osc - the SILENT-head layout carries the stage on each head. */
+void voice_apply_dist_osc(uint8_t synth, uint8_t osc, const seq_dist_t *d);
 
 /* One distortion-target stepper tick, the PATCH-mode fallback. Computes the
  * swept drive and/or mix - whichever of LFO_TARGET_DIST_DRIVE / DIST_MIX the
@@ -245,10 +286,15 @@ void voice_lfo_note_pool_shape(uint8_t synth, uint8_t num_voices,
 void voice_apply_native_lfo(uint8_t synth, const seq_lfo_t *lfo, uint16_t bpm);
 
 /* Topology-parameterized applier behind voice_apply_native_lfo (the wave-build
- * special case: carrier 1, mask 0x01). carrier_osc = voice-relative index of
- * the reserved LFO carrier (wobble = carrier+1); coupled_mask selects the
- * audible oscs receiving mod_source + COEF_MOD (bit n = osc n). Derive both
- * from sequencer_core_lfo_native_layout(), never hardcode osc indices. */
+ * special case: carrier 1, both masks 0x01). carrier_osc = voice-relative index
+ * of the reserved LFO carrier (wobble = carrier+1). Two masks select where each
+ * target's COEF_MOD lands (bit n = osc n): pitch_mask takes the PITCH and SCAN
+ * rails, voice_mask the FILTER, AMP, PAN and DIST rails. They are the same mask
+ * on a flat layout; the SILENT-head layout splits them, since the copies carry
+ * the pitch and the heads carry the per-voice stages. Every osc in either mask
+ * gets mod_source and a full sibling clear. Derive the masks from
+ * seq_track_voice_layout() / sequencer_core_lfo_native_layout(), never hardcode
+ * osc indices. */
 void voice_apply_native_lfo_topo(uint8_t synth, const seq_lfo_t *lfo,
                                  uint16_t bpm, uint8_t carrier_osc,
-                                 uint8_t coupled_mask);
+                                 uint8_t pitch_mask, uint8_t voice_mask);

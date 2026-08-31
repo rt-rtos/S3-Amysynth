@@ -32,12 +32,13 @@ static bool is_native_lfo_track(const seq_lfo_t *lfo)
 static void melodic_native_lfo_apply(const seq_layer_t *layer, uint8_t track,
                                      const seq_lfo_t *lfo)
 {
-    uint8_t carrier, coupled;
-    if (!sequencer_core_lfo_native_layout(layer->patch, &carrier, &coupled))
+    seq_voice_layout_t vl;
+    uint8_t layer_idx = (uint8_t)(layer - s_layers);
+    if (!seq_track_voice_layout(layer_idx, track, &vl))
         return;
     voice_apply_native_lfo_topo(layer->synth_id[track],
                                 is_native_lfo_track(lfo) ? lfo : NULL, s_bpm,
-                                carrier, coupled);
+                                vl.carrier, vl.pitch_mask, vl.voice_mask);
 }
 
 static void melodic_configure_native_lfo_track(uint8_t layer_idx, uint8_t track)
@@ -48,19 +49,63 @@ static void melodic_configure_native_lfo_track(uint8_t layer_idx, uint8_t track)
 
 #endif /* CONFIG_SEQ_MELODIC_AMY_NATIVE_LFO */
 
+/* The row's SILENT-head oscs, or 0 when its voice carries the filter and dist
+ * stages the flat way (broadcast / base osc). Every osc-addressed per-voice
+ * push resolves the layout through here. */
+static uint8_t melodic_heads_mask(uint8_t layer_idx, uint8_t track)
+{
+    seq_voice_layout_t vl;
+    if (!seq_track_voice_layout(layer_idx, track, &vl)) return 0u;
+    return vl.heads_mask;
+}
+
+/* Push one EG1 breakpoint set to every osc that can carry a filter-env rail.
+ * AMY reads a never-configured breakpoint set as a constant 1.0, so an osc
+ * left out would sit at the full filter_env_amount offset instead of sweeping.
+ * voice_mask is where the per-voice stages live: the SILENT heads on a headed
+ * row, the copies on a fan row, osc 0 on a plain wave row. */
+static void melodic_eg1_push(uint8_t layer_idx, uint8_t track,
+                             const seq_env_t *env)
+{
+    uint8_t synth = s_layers[layer_idx].synth_id[track];
+    seq_voice_layout_t vl;
+    if (!seq_track_voice_layout(layer_idx, track, &vl)) {
+        sequencer_core_push_envelope_eg1(synth, 0, env);
+        return;
+    }
+    for (uint8_t o = 0; (uint8_t)(vl.voice_mask >> o) != 0u; o++)
+        if (vl.voice_mask & (uint8_t)(1u << o))
+            sequencer_core_push_envelope_eg1(synth, o, env);
+}
+
+static void melodic_filter_apply(uint8_t layer_idx, uint8_t track,
+                                 const seq_filter_t *f);
+
+/* Push one dist block where the row's layout carries the stage. */
+static void melodic_dist_apply(uint8_t layer_idx, uint8_t track,
+                               const seq_dist_t *d)
+{
+    uint8_t synth = s_layers[layer_idx].synth_id[track];
+    uint8_t heads = melodic_heads_mask(layer_idx, track);
+    if (!heads) {
+        voice_apply_dist(synth, d);
+        return;
+    }
+    for (uint8_t o = 0; (uint8_t)(heads >> o) != 0u; o++)
+        if (heads & (uint8_t)(1u << o)) voice_apply_dist_osc(synth, o, d);
+}
+
 /* Restore the resting coefficient for every target the LFO was driving, so
  * nothing stays modulated after it is switched off. FILTER restores the
  * track's authored cutoff; the rest push a neutral constant. */
 static void lfo_restore_target_neutrals(uint8_t layer_idx, uint8_t track,
                                         const seq_lfo_t *lfo)
 {
-    const seq_layer_t *layer = &s_layers[layer_idx];
     const voice_params_t *vp = seq_track_vp(layer_idx, track);
     for (int t = 0; t < LFO_TARGET_COUNT; t++) {
         if (!(lfo->targets & LFO_TGT_BIT(t))) continue;
         if (t == LFO_TARGET_FILTER)
-            sequencer_core_push_filter(layer->synth_id[track], &vp->filter,
-                                       layer->patch == SEQ_PATCH_KS);
+            melodic_filter_apply(layer_idx, track, &vp->filter);
         else if (t == LFO_TARGET_DIST_DRIVE || t == LFO_TARGET_DIST_MIX) {
             /* Neutral = the committed dist block; only this caller has it,
              * so lfo_push_target_neutral leaves DIST alone (like FILTER).
@@ -68,10 +113,19 @@ static void lfo_restore_target_neutrals(uint8_t layer_idx, uint8_t track,
              * block for the second bit would just cost a redundant event. */
             if (t == LFO_TARGET_DIST_DRIVE ||
                 !LFO_HAS_TGT(lfo, LFO_TARGET_DIST_DRIVE))
-                voice_apply_dist(layer->synth_id[track], &vp->dist);
+                melodic_dist_apply(layer_idx, track, &vp->dist);
         }
         else
-            lfo_push_target_neutral(layer->synth_id[track], (lfo_target_t)t);
+            lfo_push_target_neutral(s_layers[layer_idx].synth_id[track],
+                                    (lfo_target_t)t);
+    }
+    /* The AMP and PAN neutrals are voice-wide pushes: they overwrite the
+     * copies' blend weights and the heads' spread, so restate them. */
+    uint8_t copies = seq_track_unison_copies(layer_idx, track);
+    if (copies > 1u) {
+        voice_unison_t eff = sequencer_core_get_unison(layer_idx);
+        eff.count = copies;
+        voice_push_unison_live(s_layers[layer_idx].synth_id[track], &eff, 1.0f);
     }
 }
 
@@ -185,13 +239,12 @@ void sequencer_core_set_melodic_envelope(uint8_t layer_idx, uint8_t track,
 
 /* ── Per-row second envelope (runtime-editable EG1) ──────────────────────── */
 
-/* Push the row's stored EG1 to its own AMY synth, osc 0 - the same oscillator
- * EG0 targets. No KS/NOISE special case: EG1 has no role for those waves. */
+/* Push the row's stored EG1 to every osc of its synth that can carry a
+ * filter-env rail (melodic_eg1_push resolves which). No KS/NOISE special case:
+ * EG1 has no role for those waves. */
 void sequencer_configure_melodic_envelope1_track(uint8_t layer_idx, uint8_t track)
 {
-    const seq_layer_t *layer = &s_layers[layer_idx];
-    const seq_env_t   *env   = seq_layer_env1(layer_idx, track);
-    sequencer_core_push_envelope_eg1(layer->synth_id[track], 0, env);
+    melodic_eg1_push(layer_idx, track, seq_layer_env1(layer_idx, track));
 }
 
 bool sequencer_core_get_melodic_envelope2(uint8_t layer_idx, uint8_t track,
@@ -237,15 +290,16 @@ float sequencer_core_ks_feedback_from_q(float q)
     return SEQ_CLAMP_F32(n, 0.0f, 1.0f);
 }
 
-/* Apply one filter config to a row's AMY synth. Shared by the stored-state
- * configure below and the live-preview push: the caller decides whether `f` is
- * the row's committed filter or an editor's scratch copy. */
-static void melodic_filter_apply(uint8_t layer_idx, uint8_t track,
-                                 const seq_filter_t *f)
+/* One filter event, either broadcast to the whole voice (osc < 0) or addressed
+ * to one voice-relative osc - the SILENT-head layout carries the stage on each
+ * head instead of on every sounding osc. */
+static void melodic_filter_push_osc(uint8_t layer_idx, uint8_t track,
+                                    const seq_filter_t *f, int osc)
 {
     const seq_layer_t *layer = &s_layers[layer_idx];
     amy_event *e = amy_helpers_event_begin();
     e->synth       = layer->synth_id[track];
+    if (osc >= 0) e->osc = (uint8_t)osc;
     if (f->enabled) {
         e->filter_type = f->filter_type;
         e->filter_freq_coefs[COEF_CONST] = f->cutoff_hz;
@@ -266,14 +320,29 @@ static void melodic_filter_apply(uint8_t layer_idx, uint8_t track,
         e->feedback = SEQ_CLAMP_F32(f->feedback, 0.0f, 1.0f);
     }
     amy_helpers_event_send(e);
+}
+
+/* Apply one filter config to a row's AMY synth. Shared by the stored-state
+ * configure below and the live-preview push: the caller decides whether `f` is
+ * the row's committed filter or an editor's scratch copy. */
+static void melodic_filter_apply(uint8_t layer_idx, uint8_t track,
+                                 const seq_filter_t *f)
+{
+    uint8_t heads = melodic_heads_mask(layer_idx, track);
+    if (!heads) {
+        melodic_filter_push_osc(layer_idx, track, f, -1);
+    } else {
+        for (uint8_t o = 0; (uint8_t)(heads >> o) != 0u; o++)
+            if (heads & (uint8_t)(1u << o))
+                melodic_filter_push_osc(layer_idx, track, f, (int)o);
+    }
 
     /* Guarantee valid EG1 breakpoints whenever the filter env is live, so
      * filter_freq_coefs[COEF_EG1] modulates a real ramp: AMY treats a
      * never-configured breakpoint set as a permanent 1.0. Uses the row's stored
      * EG1 (authored shape or the zeroed default). */
     if (f->enabled && f->filter_env_amount != 0.0f) {
-        sequencer_core_push_envelope_eg1(layer->synth_id[track], 0,
-                                         seq_layer_env1(layer_idx, track));
+        melodic_eg1_push(layer_idx, track, seq_layer_env1(layer_idx, track));
     }
 }
 
@@ -345,14 +414,13 @@ void sequencer_core_preview_melodic_dist(uint8_t layer_idx, uint8_t track,
                                          const seq_dist_t *d)
 {
     if (!d || layer_idx >= s_num_layers || track >= SEQ_TRACKS) return;
-    voice_apply_dist(s_layers[layer_idx].synth_id[track], d);
+    melodic_dist_apply(layer_idx, track, d);
 }
 
 void sequencer_core_reapply_melodic_dist(uint8_t layer_idx, uint8_t track)
 {
     if (layer_idx >= s_num_layers || track >= SEQ_TRACKS) return;
-    voice_apply_dist(s_layers[layer_idx].synth_id[track],
-                     &seq_track_vp(layer_idx, track)->dist);
+    melodic_dist_apply(layer_idx, track, &seq_track_vp(layer_idx, track)->dist);
 }
 
 /* Re-assert a row's stored distortion after anything that rebuilds its voice
@@ -666,18 +734,22 @@ void melodic_lfo_refresh_native_freq(void)
 #if CONFIG_SEQ_MELODIC_AMY_NATIVE_LFO
     for (int li = 0; li < s_num_layers; li++) {
         const seq_layer_t *layer = &s_layers[li];
-        uint8_t carrier;
         /* Melodic-only, same reason as sequencer_core_set_melodic_lfo(): the
          * carrier oscs don't exist on non-melodic (1-osc) synths. */
         if (layer->type != SEQ_LAYER_MELODIC)
             continue;
-        if (!sequencer_core_lfo_native_layout(layer->patch, &carrier, NULL))
+        if (!sequencer_core_lfo_native_layout(layer->patch, NULL, NULL))
             continue;
         for (int tr = 0; tr < SEQ_TRACKS; tr++) {
             const voice_params_t *vp = seq_track_vp((uint8_t)li, (uint8_t)tr);
             if (!vp->lfo_authored) continue;
             const seq_lfo_t *lfo = &vp->lfo;
             if (!is_native_lfo_track(lfo)) continue;
+            seq_voice_layout_t vl;
+            /* Carrier index is per track under unison (copy fans differ). */
+            if (!seq_track_voice_layout((uint8_t)li, (uint8_t)tr, &vl))
+                continue;
+            uint8_t carrier = vl.carrier;
             amy_event *e = amy_helpers_event_begin();
             e->synth                  = layer->synth_id[tr];
             e->osc                    = carrier;
