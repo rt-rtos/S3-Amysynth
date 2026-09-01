@@ -322,11 +322,12 @@ static voice_unison_t s_unison[MAX_LAYERS];
  * native-LFO wave patches (KS excluded - every sounding voice needs its own
  * ks_buffer ring, see seq_track_num_voices) and clamped so the layout's
  * voices * oscs_per_voice fits the per-track osc budget - copies + 2 on the
- * fan, copies + 4 with the two SILENT heads. THE single clamp - the build,
- * the live push and the LFO layout all derive from it, so the built pool and
- * the carrier index cannot disagree. */
+ * fan, copies + 4 with the two SILENT heads, a flat 4 on the engine layout
+ * (the copies live inside the two cluster oscs, capped by AMY_UNISON_MAX per
+ * side). THE single clamp - the build, the live push and the LFO layout all
+ * derive from it, so the built pool and the carrier index cannot disagree. */
 static uint8_t unison_copies_for(uint16_t patch, uint8_t count, uint8_t voices,
-                                 bool headed)
+                                 uint8_t layout)
 {
 #if CONFIG_SEQ_MELODIC_AMY_NATIVE_LFO
     if (count <= 1u) return 1u;
@@ -335,7 +336,15 @@ static uint8_t unison_copies_for(uint16_t patch, uint8_t count, uint8_t voices,
     if (count > VOICE_UNISON_MAX_COPIES) count = VOICE_UNISON_MAX_COPIES;
     if (voices == 0u) voices = 1u;
     uint16_t per_voice = SEQ_TRACK_OSC_BUDGET / voices;
-    if (headed) {
+    if (layout == VOICE_UNISON_LAYOUT_ENGINE) {
+        /* Even counts, two equal clusters; the pool cost is the 4-osc voice
+         * whatever the count. */
+        count = (uint8_t)(count & ~1u);
+        if (per_voice < 4u) return 1u;
+        if (count > 2u * AMY_UNISON_MAX) count = (uint8_t)(2u * AMY_UNISON_MAX);
+        return (count < 2u) ? 1u : count;
+    }
+    if (layout == VOICE_UNISON_LAYOUT_HEADED) {
         /* Even counts only, and the budget itself floors to even: an odd
          * ceiling would split the groups unevenly. Anything under a pair
          * falls back to the plain single-osc build. */
@@ -350,7 +359,7 @@ static uint8_t unison_copies_for(uint16_t patch, uint8_t count, uint8_t voices,
 #else
     /* Without the native layout the software pitch stepper owns osc0's freq
      * CONST and would stomp the detune fan - single copy only. */
-    (void)patch; (void)count; (void)voices; (void)headed;
+    (void)patch; (void)count; (void)voices; (void)layout;
     return 1u;
 #endif
 }
@@ -365,7 +374,7 @@ uint8_t seq_track_unison_copies(uint8_t layer_idx, uint8_t track)
     uint8_t voices = s_voices_applied[layer_idx][track];
     if (voices == 0u) voices = seq_track_num_voices(layer, track);
     voice_unison_t u = sequencer_core_get_unison(layer_idx);
-    return unison_copies_for(layer->patch, u.count, voices, u.headed != 0u);
+    return unison_copies_for(layer->patch, u.count, voices, u.layout);
 }
 
 bool seq_track_voice_layout(uint8_t layer_idx, uint8_t track,
@@ -381,14 +390,15 @@ bool seq_track_voice_layout(uint8_t layer_idx, uint8_t track,
                              .heads_mask = 0u };
     uint8_t n = seq_track_unison_copies(layer_idx, track);
     if (n > 1u) {   /* wave layout only - unison_copies_for gates on it */
-        bool headed  = sequencer_core_get_unison(layer_idx).headed != 0u;
+        uint8_t layout = sequencer_core_get_unison(layer_idx).layout;
         /* The carrier pair sits above the audible oscs, whatever their shape. */
-        l.carrier    = (uint8_t)(voice_unison_oscs_per_voice(n, headed) - 2u);
-        l.pitch_mask = voice_unison_copies_mask(n, headed);
-        l.heads_mask = voice_unison_heads_mask(n, headed);
+        l.carrier    = (uint8_t)(voice_unison_oscs_per_voice(n, layout) - 2u);
+        l.pitch_mask = voice_unison_copies_mask(n, layout);
+        l.heads_mask = voice_unison_heads_mask(n, layout);
         /* Headed: the per-voice stages live on the heads, so filter/amp/pan/
-         * dist modulation follows them and never the chained copies. */
-        l.voice_mask = headed ? l.heads_mask : l.pitch_mask;
+         * dist modulation follows them and never the chained copies. Engine:
+         * the two cluster oscs are both the copies and the heads. */
+        l.voice_mask = l.heads_mask ? l.heads_mask : l.pitch_mask;
     }
     if (out) *out = l;
     return true;
@@ -411,14 +421,15 @@ void sequencer_core_set_unison(uint8_t layer_idx, const voice_unison_t *u)
     v.detune_cents = SEQ_CLAMP_U8(v.detune_cents, 0u, VOICE_UNISON_MAX_DETUNE);
     v.spread_pct   = SEQ_CLAMP_U8(v.spread_pct, 0u, 100u);
     v.blend_pct    = SEQ_CLAMP_U8(v.blend_pct, 0u, 100u);
-    v.headed       = v.headed ? 1u : 0u;
+    if (v.layout >= (uint8_t)VOICE_UNISON_LAYOUT_COUNT)
+        v.layout = (uint8_t)VOICE_UNISON_LAYOUT_FAN;
     voice_unison_t old = sequencer_core_get_unison(layer_idx);
     s_unison[layer_idx] = v;
     if (layer_idx >= s_num_layers) return;         /* applies when it exists */
     seq_layer_t *layer = &s_layers[layer_idx];
     if (layer->type != SEQ_LAYER_MELODIC) return;
     if (!sequencer_core_is_wave_patch(layer->patch)) return; /* next wave build */
-    if (v.count != old.count || v.headed != old.headed) {
+    if (v.count != old.count || v.layout != old.layout) {
         /* A copy-count or layout change moves the pool shape (oscs_per_voice
          * and the index map): full rebuild under the ringing discipline, which
          * also re-lands envelope/filter/LFO on the moved carrier index.
@@ -471,8 +482,8 @@ static void sequencer_configure_melodic_wave_track(uint8_t synth_id,
 
 #if CONFIG_SEQ_MELODIC_AMY_NATIVE_LFO
     uint8_t copies = (uni && uni->count > 1u) ? uni->count : 1u;
-    bool    headed = (uni && uni->headed && copies > 1u);
-    uint8_t oscs_per_voice = voice_unison_oscs_per_voice(copies, headed);
+    uint8_t layout = uni ? uni->layout : (uint8_t)VOICE_UNISON_LAYOUT_FAN;
+    uint8_t oscs_per_voice = voice_unison_oscs_per_voice(copies, layout);
 #endif
 
     voice_wave_cfg_t cfg = {
@@ -783,7 +794,7 @@ void sequencer_configure_synth(uint8_t layer_idx)
         const voice_params_t *vp = seq_track_vp(layer_idx, t);
         voice_unison_t uni = sequencer_core_get_unison(layer_idx);
         uni.count = unison_copies_for(layer->patch, uni.count, voices,
-                                      uni.headed != 0u);
+                                      uni.layout);
         string_patch |= seq_apply_patch(layer->synth_id[t],
                                         layer->patch,
                                         voices,

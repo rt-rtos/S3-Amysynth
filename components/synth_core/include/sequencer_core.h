@@ -296,12 +296,15 @@ uint8_t sequencer_core_get_drum_pcm_mode(uint8_t layer_idx, uint8_t track);
  * applied to all of its rows. count 1 = off (the exact single-osc build).
  * Raw-wave/wavetable patches only (KS excluded), native-LFO builds only; a
  * spec set while another patch is loaded is stored and applies on the next
- * wave build. `headed` picks the layout: 0 fans the copies unchained (a
- * filter, envelope, dist stage and pan mixdown each), 1 chains them under two
- * SILENT L/R heads that carry those stages once per group - even counts only,
- * so an odd count floors (3 -> 2, 5 -> 4) and 1 stays off either way. A count
- * or layout change rebuilds the layer's voices (sounding notes stop, like a
- * wave change); detune/spread/blend changes push live. The getter serves
+ * wave build. `layout` (voice_unison_layout_t) picks the form: FAN spreads
+ * the copies unchained (a filter, envelope, dist stage and pan mixdown each),
+ * HEADED chains them under two SILENT L/R heads that carry those stages once
+ * per group, ENGINE renders each group inside one AMY unison-cluster osc (the
+ * experimental LOCAL EDIT; two audible oscs per voice at any count). Headed
+ * and engine take even counts only, so an odd count floors (3 -> 2, 5 -> 4)
+ * and 1 stays off in every layout. A count or layout change rebuilds the
+ * layer's voices (sounding notes stop, like a wave change);
+ * detune/spread/blend changes push live. The getter serves
  * defaults until the first set (count 1 = inactive). Volatile - not
  * serialized. UI task only; no-op for the drum layer / out-of-range. */
 void           sequencer_core_set_unison(uint8_t layer_idx,

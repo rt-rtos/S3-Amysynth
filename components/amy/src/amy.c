@@ -902,6 +902,11 @@ void amy_event_to_deltas_queue(amy_event *e, uint16_t base_osc, uint16_t oscs_pe
     EVENT_TO_DELTA_COEFS(pan_coefs, PAN)
     EVENT_TO_DELTA_F(feedback, FEEDBACK)
     EVENT_TO_DELTA_F(trigger_phase, PHASE)
+    // LOCAL EDIT (S3-Amysynth, experimental): unison cluster.
+    EVENT_TO_DELTA_I(unison_count, UNISON_COUNT)
+    EVENT_TO_DELTA_F(unison_spacing, UNISON_SPACING)
+    EVENT_TO_DELTA_F(unison_offset, UNISON_OFFSET)
+    EVENT_TO_DELTA_F(unison_blend, UNISON_BLEND)
     EVENT_TO_DELTA_I(sample_offset, SAMPLE_OFFSET)
     EVENT_TO_DELTA_F(fit_ticks, FIT)
     EVENT_TO_DELTA_I(fit_search, FIT_SEARCH)
@@ -1066,6 +1071,11 @@ void reset_osc_params(struct synthinfo *psynth) {
     psynth->pan_coefs[COEF_CONST] = 0.5f;
     psynth->feedback = F2S(0); //.996; todo ks feedback is v different from fm feedback
     AMY_UNSET(psynth->trigger_phase);
+    // LOCAL EDIT (S3-Amysynth, experimental): one copy, no detune, equal weights.
+    psynth->unison_count = 1;
+    psynth->unison_spacing = 0;
+    psynth->unison_offset = 0;
+    psynth->unison_blend = 1.0f;
     AMY_UNSET(psynth->sample_offset);
     AMY_UNSET(psynth->fit_ticks);
     AMY_UNSET(psynth->fit_search);
@@ -1109,6 +1119,8 @@ void reset_osc_state(struct synthinfo *psynth) {
     psynth->role = SYNTH_IS_NORMAL;
     psynth->status = SYNTH_OFF;
     psynth->phase = F2P(0);
+    // LOCAL EDIT (S3-Amysynth, experimental): unison copy phases.
+    for (int j = 0; j < AMY_UNISON_MAX - 1; ++j) psynth->unison_phase[j] = F2P(0);
     AMY_UNSET(psynth->render_clock);
     AMY_UNSET(psynth->note_on_clock);
     psynth->note_off_clock = 0;  // Used to check that last event seen by note was off.
@@ -1697,6 +1709,12 @@ void play_delta(struct delta *d) {
         if (!AMY_WAVE_IS_PCM(synth[d->osc]->wave))
             synth[d->osc]->phase = F2P(synth[d->osc]->trigger_phase);
     }
+    // LOCAL EDIT (S3-Amysynth, experimental): unison cluster.  Count and
+    // blend clamp here so unison_prepare() reads checked values every block.
+    DELTA_TO_SYNTH_I_CLAMPED(UNISON_COUNT, unison_count, 1, AMY_UNISON_MAX)
+    DELTA_TO_SYNTH_F(UNISON_SPACING, unison_spacing)
+    DELTA_TO_SYNTH_F(UNISON_OFFSET, unison_offset)
+    DELTA_TO_SYNTH_F_CLAMPED(UNISON_BLEND, unison_blend, 0.0f, 1.0f)
     DELTA_TO_SYNTH_I(SAMPLE_OFFSET, sample_offset)
     if (d->param == FIT) {
         // Negative fit turns the feature back off; 0 means "pitch-shift at
@@ -1944,6 +1962,9 @@ void play_delta(struct delta *d) {
                         // PCM handles trigger_phase its own way in pcm_note_on.
                         synth[osc]->phase = F2P(synth[osc]->trigger_phase);
                     }
+                    // LOCAL EDIT (S3-Amysynth, experimental): the unison copies
+                    // respread from whatever phase copy 0 now has.
+                    if (synth[osc]->unison_count > 1) unison_note_on(osc);
                     // restart the waveforms
                     // Guess at the initial frequency depending only on const & note.  Envelopes not "developed" yet.
                     float initial_logfreq = synth[osc]->logfreq_coefs[COEF_CONST] + synth[osc]->logfreq_coefs[COEF_NOTE] * note_logfreq;

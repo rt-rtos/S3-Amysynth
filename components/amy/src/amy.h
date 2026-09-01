@@ -282,6 +282,9 @@ typedef int16_t output_sample_type;
 // Frequency of Midi note 0, used to make logfreq scales.
 // Have 0 be midi 69, A4, 440.0
 #define ZERO_LOGFREQ_IN_HZ 440.0f  // 261.63
+// LOCAL EDIT (S3-Amysynth, experimental): most copies one osc renders as a
+// unison cluster (unison_count).  Sizes synthinfo.unison_phase[].
+#define AMY_UNISON_MAX 8
 #define ZERO_MIDI_NOTE 69  // 60
 #define MIN_FILTER_LOGFREQ -2.75f  // -2.0  // LPF cutoff cannot go below w = 0.01 rad/samp in filters.c = 72 Hz, so clip it here at ~65 Hz.
 
@@ -475,6 +478,11 @@ enum params{
     RESET_OSC,                           // 207
     FREE_OSC,                            // 208: like RESET_OSC, but returns the osc's storage to the heap
     NOTE_SOURCE_CHANNEL,                 // 209
+    // LOCAL EDIT (S3-Amysynth, experimental): per-osc unison cluster, see
+    // unison_prepare() in oscillators.c.  Numbered here, above the bus-effect
+    // ids, because none of these cross the wire (no letter yet).
+    UNISON_COUNT, UNISON_SPACING,        // 210, 211
+    UNISON_OFFSET, UNISON_BLEND,         // 212, 213
     ECHO_LEVEL,
     ECHO_DELAY_MS,
     ECHO_MAX_DELAY_MS,
@@ -666,6 +674,13 @@ typedef struct amy_event {
     float feedback;
     float velocity;
     float trigger_phase;
+    // LOCAL EDIT (S3-Amysynth, experimental): unison cluster.  Copy i of
+    // unison_count renders at logfreq + unison_offset + i * unison_spacing
+    // (both in octaves); unison_blend tapers the outer copies (1 = equal).
+    uint8_t unison_count;
+    float unison_spacing;
+    float unison_offset;
+    float unison_blend;
     uint16_t sample_offset;  // PCM: start this note-on at a sample offset within its block (0..AMY_BLOCK_SIZE-1)
     float fit_ticks;  // PCM: >0 = time-stretch to this many sequencer ticks; 0 = pitch-shift at original length; <0 = off
     uint16_t fit_search;  // PCM fit engine: grain alignment search half-width in frames (0 = off, unset = PCM_STRETCH_SEARCH)
@@ -801,6 +816,11 @@ struct synthinfo {
     float pan_coefs[NUM_COMBO_COEFS];
     float feedback;
     float trigger_phase;
+    // LOCAL EDIT (S3-Amysynth, experimental): unison cluster config (see amy_event).
+    uint8_t unison_count;
+    float unison_spacing;
+    float unison_offset;
+    float unison_blend;
     uint16_t sample_offset;  // PCM note-on start offset in samples within its block
     float fit_ticks;  // PCM fit target in sequencer ticks (0 = pitch-shift at original length)
     uint16_t fit_search;  // PCM fit grain alignment search half-width in frames (0 = off)
@@ -833,6 +853,9 @@ struct synthinfo {
     uint8_t status;  // not in event
     uint8_t role;  // not in event
     PHASOR phase;  // not in event
+    // LOCAL EDIT (S3-Amysynth, experimental): copies 1..unison_count-1 keep
+    // their phase here; copy 0 rides `phase`.  Respread at every note-on.
+    PHASOR unison_phase[AMY_UNISON_MAX - 1];  // not in event
     uint32_t render_clock;
     uint32_t note_on_clock;
     uint32_t note_off_clock;
@@ -1207,6 +1230,9 @@ void config_reverb(uint16_t bus, float level, float liveness, float damping, flo
 void config_chorus(uint16_t bus, float level, uint16_t max_delay, float lfo_freq, float depth);
 void config_echo(uint16_t bus, float level, float delay_ms, float max_delay_ms, float feedback, float filter_coef);
 void osc_note_on(uint16_t osc, float initial_freq);
+// LOCAL EDIT (S3-Amysynth, experimental): respread the unison copy phases
+// from the osc's own phase (oscillators.c).
+void unison_note_on(uint16_t osc);
 void chorus_note_on(float initial_freq);
 
 float map_60dB_to_01f(float lin);

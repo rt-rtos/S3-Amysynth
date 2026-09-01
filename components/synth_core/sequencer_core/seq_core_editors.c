@@ -63,7 +63,8 @@ static uint8_t melodic_heads_mask(uint8_t layer_idx, uint8_t track)
  * AMY reads a never-configured breakpoint set as a constant 1.0, so an osc
  * left out would sit at the full filter_env_amount offset instead of sweeping.
  * voice_mask is where the per-voice stages live: the SILENT heads on a headed
- * row, the copies on a fan row, osc 0 on a plain wave row. */
+ * row, the two cluster oscs on an engine row, the copies on a fan row, osc 0
+ * on a plain wave row. */
 static void melodic_eg1_push(uint8_t layer_idx, uint8_t track,
                              const seq_env_t *env)
 {

@@ -161,7 +161,7 @@ typedef struct {
                                       has sized oscs_per_voice for count
                                       copies plus any reserved pair, excluded
                                       KS and clamped against the osc budget.
-                                      `headed` picks the layout; size
+                                      `layout` picks the layout; size
                                       oscs_per_voice with
                                       voice_unison_oscs_per_voice()          */
 } voice_wave_cfg_t;
@@ -169,17 +169,21 @@ typedef struct {
 /* ── Unison index map ────────────────────────────────────────────────────
  * Shared by the build, the live push and the sequencer's layout query, so the
  * pool shape and the osc masks cannot disagree. n = EFFECTIVE copy count
- * (>= 2 and even when headed; n <= 1 is the single-osc build and reads as the
- * fan). Copies are numbered i = 0..n-1 by pitch position (i = 0 most flat);
- * mirror pair p = min(i, n-1-i), p = 0 outermost. Headed: pair p sits in group
- * L when p is even, else R; copy i goes to the group of pair p if i == p, the
- * other group otherwise, and within a group the copies occupy ascending osc
- * indices in ascending i order. Fan: copy i is osc i. */
-uint8_t voice_unison_oscs_per_voice(uint8_t n, bool headed); /* n+4 / n+2 */
-uint8_t voice_unison_copy_osc(uint8_t i, uint8_t n, bool headed);
-uint8_t voice_unison_head_osc(uint8_t group, uint8_t n);      /* 0: L, 1: R */
-uint8_t voice_unison_copies_mask(uint8_t n, bool headed);     /* bit = osc */
-uint8_t voice_unison_heads_mask(uint8_t n, bool headed);      /* 0 when fan */
+ * (>= 2 and even when headed or engine; n <= 1 is the single-osc build and
+ * reads as the fan). Copies are numbered i = 0..n-1 by pitch position (i = 0
+ * most flat); mirror pair p = min(i, n-1-i), p = 0 outermost. Headed: pair p
+ * sits in group L when p is even, else R; copy i goes to the group of pair p
+ * if i == p, the other group otherwise, and within a group the copies occupy
+ * ascending osc indices in ascending i order. Engine: the same interleaving
+ * (even i in L, odd in R) but a group is one AMY unison-cluster osc - L is
+ * osc 0, R is osc 1 - so copy_osc returns the group osc and the "heads" are
+ * the two cluster oscs. Fan: copy i is osc i. `layout` is a
+ * voice_unison_layout_t (seq_model.h). */
+uint8_t voice_unison_oscs_per_voice(uint8_t n, uint8_t layout); /* n+2 / n+4 / 4 */
+uint8_t voice_unison_copy_osc(uint8_t i, uint8_t n, uint8_t layout);
+uint8_t voice_unison_head_osc(uint8_t group, uint8_t n, uint8_t layout); /* 0: L, 1: R */
+uint8_t voice_unison_copies_mask(uint8_t n, uint8_t layout);    /* bit = osc */
+uint8_t voice_unison_heads_mask(uint8_t n, uint8_t layout);     /* 0 when fan */
 
 /* Core-0 / UI-task only; pushes through amy_helpers (never amy_queue_lock). */
 void voice_build_wave(const voice_wave_cfg_t *cfg);
@@ -188,10 +192,11 @@ void voice_build_wave(const voice_wave_cfg_t *cfg);
  * to a synth built by voice_build_wave() with this same count - a live
  * detune/spread/blend turn without a rebuild (mirrors fm_voice_push_live).
  * On the headed layout the copies take detune and blend and the two heads take
- * the spread on their pan CONST. A count or layout change needs a rebuild
- * instead (the pool shape moves). base_amp = the build's osc0_amp_const (the
- * heads carry it on the headed layout, so the copies ignore it). No-op when
- * count <= 1. Known interaction: an
+ * the spread on their pan CONST; on the engine layout each cluster osc takes
+ * its unison fields, group gain and pan. A count or layout change needs a
+ * rebuild instead (the pool shape moves). base_amp = the build's
+ * osc0_amp_const (the heads carry it on the headed layout, so the copies
+ * ignore it). No-op when count <= 1. Known interaction: an
  * LFO PAN target writes pan CONST 0.5 on the coupled oscs and flattens the
  * spread until the next push. Core-0 / UI-task only. */
 void voice_push_unison_live(uint8_t synth, const voice_unison_t *u,

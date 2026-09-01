@@ -42,6 +42,7 @@ flowchart TD
     Active --> API["Read accessors: voice base osc, patch oscs per voice, gamma blob size, algorithm count<br/>src/patches.c, src/pcm.c, src/algorithms.c"]
     Active --> CUST["Custom operator programs + algorithm_ops accessor<br/>src/algorithms.c, src/amy.h"]
     Active --> BUILD["Kconfig + CMakeLists: fixed-point, profiler, wavetable, gamma808 flags; NDEBUG hot files; drums-flash<br/>Kconfig, CMakeLists.txt"]
+    Active --> UNI["Experimental per-osc unison cluster<br/>src/amy.h, src/amy.c, src/oscillators.c, src/patches.c, src/api.c"]
 ```
 
 ## Dropped (merged upstream)
@@ -76,6 +77,30 @@ flowchart TD
 | [#1137](https://github.com/shorepine/amy/pull/1137) (v1.2.158) | Second-core render-done semaphore in `i2s.c`'s fill task; dormant here (`multicore = 0`). |
 
 ## Active local edits
+
+### `amy.h` + `amy.c` + `oscillators.c` + `patches.c` + `api.c` — per-osc unison cluster (experimental, dev-only)
+
+An exploratory engine-side unison, kept to settle by measurement whether
+many-copy unison on this target is bound by per-osc bookkeeping or by LUT
+arithmetic. Not upstream-shaped: no wire letter (struct events only, and the
+readable event print carries the fields while the wire form drops them),
+no test coverage, and the parameter model may change. The app-side layouts
+it is measured against live in `components/synth_core` (`voice_unison_t`).
+
+One osc renders `unison_count` detuned copies of its LUT wave into its own
+buffer (`unison_prepare()` + a per-copy loop in `render_lpf_lut`,
+`render_triangle`, `render_sine`, `render_wavetable`); envelope, filter,
+distortion, pan and every mod rail stay one per osc. Copy `i` sits at
+`logfreq + unison_offset + i * unison_spacing` (octaves) off the osc's
+per-block `logfreq`, so NOTE, BEND, portamento and the pitch rails move the
+whole cluster; `unison_blend` tapers the outer copies by position within the
+cluster's own span and the weights are power-normalized. Copies 1..n-1 keep
+their phase in `synthinfo.unison_phase[]` and respread from copy 0 at every
+note-on (`unison_note_on()`). Deltas `UNISON_COUNT/SPACING/OFFSET/BLEND` sit
+above `NOTE_SOURCE_CHANNEL` (the ids below are auto-numbered and never cross
+the wire). Count 1 (the default) is the previous single render, one step and
+one amp pair per renderer. Waves without a LUT renderer (PCM, KS, ALGO,
+partials, noise) ignore the count.
 
 ### `oscillators.c` — Karplus-Strong ring-index init + sample-rate-derived buffer length (upstream PR candidate)
 

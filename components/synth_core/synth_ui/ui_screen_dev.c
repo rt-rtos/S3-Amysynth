@@ -88,7 +88,13 @@ static void uni_fmt(char *buf, size_t n, int arg)
     switch (arg) {
         case UNI_LAYER:  snprintf(buf, n, "L%u", (unsigned)s_uni_layer + 1u); break;
         case UNI_COUNT:  snprintf(buf, n, "%u",   (unsigned)u.count);         break;
-        case UNI_LAYOUT: snprintf(buf, n, "%s",   u.headed ? "head" : "fan"); break;
+        case UNI_LAYOUT: {
+            static const char *const names[VOICE_UNISON_LAYOUT_COUNT] =
+                { "fan", "head", "eng" };
+            uint8_t l = (u.layout < VOICE_UNISON_LAYOUT_COUNT) ? u.layout : 0u;
+            snprintf(buf, n, "%s", names[l]);
+            break;
+        }
         case UNI_DETUNE: snprintf(buf, n, "%uc",  (unsigned)u.detune_cents);  break;
         case UNI_SPREAD: snprintf(buf, n, "%u%%", (unsigned)u.spread_pct);    break;
         case UNI_BLEND:  snprintf(buf, n, "%u%%", (unsigned)u.blend_pct);     break;
@@ -111,9 +117,12 @@ static void uni_adjust(int delta, int arg)
             u.count = (uint8_t)SEQ_CLAMP_INT((int)u.count + delta,
                                              1, (int)VOICE_UNISON_MAX_COPIES);
             break;
-        case UNI_LAYOUT:
-            u.headed = u.headed ? 0u : 1u;   /* two states: either turn flips */
+        case UNI_LAYOUT: {
+            int l = ((int)u.layout + delta) % (int)VOICE_UNISON_LAYOUT_COUNT;
+            if (l < 0) l += (int)VOICE_UNISON_LAYOUT_COUNT;
+            u.layout = (uint8_t)l;           /* fan -> head -> eng, wrapping */
             break;
+        }
         case UNI_DETUNE:
             u.detune_cents = (uint8_t)SEQ_CLAMP_INT((int)u.detune_cents + delta,
                                                     0, (int)VOICE_UNISON_MAX_DETUNE);
