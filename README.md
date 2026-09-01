@@ -121,7 +121,7 @@ or recorder can capture it without drivers.
 
 ## Software
 
-- **SDK:** ESP-IDF 6.0.2; IDF FreeRTOS on both cores with every task pinned
+- **SDK:** ESP-IDF 6.1; IDF FreeRTOS on both cores with every task pinned
   to a core
 - **Synthesis:** AMY engine, vendored - 21 documented local edits in
   [AMY-EDITS.md](AMY-EDITS.md), several of them upstreamed
@@ -1178,7 +1178,7 @@ flowchart LR
 
 ## Building
 
-ESP-IDF 6.0.2 with the `esp32s3` target. Source the IDF environment, then:
+ESP-IDF 6.1 with the `esp32s3` target. Source the IDF environment, then:
 
 ```sh
 idf.py set-target esp32s3

@@ -70,6 +70,6 @@ direct_dependencies:
 - espressif/tinyusb
 - idf
 - joltwallet/littlefs
-manifest_hash: f98fa392ee28fd3c10cba3cbedc824f7be66adea1c02ab10f2253c02d1d85935
+manifest_hash: d7685850fbf40af1b1fb6d4e240f13f8ce021f7a2e223e81d71a056e080f6fb0
 target: esp32s3
 version: 3.0.0
