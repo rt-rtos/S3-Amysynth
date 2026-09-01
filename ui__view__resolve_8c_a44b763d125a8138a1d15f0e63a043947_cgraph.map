@@ -1,0 +1,7 @@
+<map id="hint_menu_b1" name="hint_menu_b1">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,13,120,38"/>
+<area shape="rect" id="Node000002" href="$ui__screen__menu_8c.html#ace71e193b7fd867de129b88dfda8713e" title=" " alt="" coords="168,5,347,45"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="120,23,154,23,154,28,120,28"/>
+<area shape="rect" id="Node000003" href="$synth__ui__internal_8h.html#adaae8b648b36232099b56d80342d1021" title=" " alt="" coords="395,13,600,38"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="347,23,381,23,381,28,347,28"/>
+</map>

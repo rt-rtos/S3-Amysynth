@@ -1,0 +1,28 @@
+var searchData=
+[
+  ['octaves_0',['octaves',['../structarp__state__t.html#a86df67663aaf608b58d2d2be6580ffea',1,'arp_state_t::octaves'],['../structarp__view__t.html#a1b0d27c8a810ee7d6ce86443b68011d5',1,'arp_view_t::octaves'],['../structstaged__arp__t.html#af6b0abc40ac542ecfef66e522a15beb9',1,'staged_arp_t::octaves']]],
+  ['offset_1',['offset',['../structpcm__map__t.html#afb6ea2af44a65396b3e7a0654690a396',1,'pcm_map_t']]],
+  ['offset_5fval_2',['offset_val',['../structmidi__mapping.html#ae172fd59df845a1a92d6cf4a0239cf5a',1,'midi_mapping']]],
+  ['ok_3',['ok',['../struct__zdump__stream.html#a2ca2708eac2ab4d59c2a11995c23a43b',1,'_zdump_stream']]],
+  ['oom_5fcount_4',['oom_count',['../structglobal__state__t.html#ac26e0b03aada6c72aed0a7b7ce9f4b91',1,'global_state_t']]],
+  ['op_5fenv_5',['op_env',['../structfm__voice__t.html#a1e3316b2a56651f59aaddd51f5675b49',1,'fm_voice_t']]],
+  ['op_5flevel_6',['op_level',['../structfm__voice__t.html#a9edf807d2bbaa2614c253a323cd6be80',1,'fm_voice_t']]],
+  ['op_5fratio_7',['op_ratio',['../structfm__voice__t.html#ad8799fe0e24ba26e4f2efe6f186ae1aa',1,'fm_voice_t']]],
+  ['op_5fto_8',['op_to',['../structcompile__ctx__t.html#aca79aec61c2d27c4cf1ac97237717363',1,'compile_ctx_t::op_to'],['../structfm__voice__t.html#a3429252bedf2154e046384fa2054744d',1,'fm_voice_t::op_to']]],
+  ['ops_9',['ops',['../structfm__program__t.html#a9a33988e980a8abfeee8056c893a09f9',1,'fm_program_t::ops'],['../structFmAlgorithm.html#aab30636f5b8b89b179d4347a315140a1',1,'FmAlgorithm::ops']]],
+  ['osc_10',['osc',['../structdelta.html#a914d2826577ed30e3e0e657951241aa5',1,'delta::osc'],['../structamy__event.html#a2636324c7943c170e6302ab4acbbd80a',1,'amy_event::osc'],['../structsynthinfo.html#a23b546966086dd80ff94c8dfd0bfb0d4',1,'synthinfo::osc']]],
+  ['osc0_5famp_5fconst_11',['osc0_amp_const',['../structvoice__wave__cfg__t.html#a2b49260ff9a62d076d5ad8fce3a1f483',1,'voice_wave_cfg_t']]],
+  ['osc0_5famp_5fvel_12',['osc0_amp_vel',['../structvoice__wave__cfg__t.html#af845302ee93b3f2a86677e09e80f62b5',1,'voice_wave_cfg_t']]],
+  ['osc_5ffor_5fcv_13',['osc_for_cv',['../cv__trigger_8c.html#ada728ce9313a98e12fca2fd50b7408ef',1,'cv_trigger.c']]],
+  ['osc_5fto_5fvoice_14',['osc_to_voice',['../amy_8h.html#ab74d6d112ecf1f2d572540ad1f9e5c16',1,'osc_to_voice:&#160;patches.c'],['../patches_8c.html#ab74d6d112ecf1f2d572540ad1f9e5c16',1,'osc_to_voice:&#160;patches.c']]],
+  ['oscs_5fper_5fvoice_15',['oscs_per_voice',['../structvoice__wave__cfg__t.html#a2bf582489bb01d410552282f52f8ad37',1,'voice_wave_cfg_t::oscs_per_voice'],['../structamy__event.html#a1da5d602d4e598920afbdc7467f4eed1',1,'amy_event::oscs_per_voice'],['../structinstrument__info.html#a4ed4a0b849be942b18ddb75a4bc6ce79',1,'instrument_info::oscs_per_voice']]],
+  ['out_5fmask_16',['out_mask',['../structfm__graph__view__t.html#a7fea6cadc1f23173a6ee683405c4948c',1,'fm_graph_view_t']]],
+  ['output_5fblock_17',['output_block',['../amy_8c.html#a7e975d01a50715c67768e605ab7ff22f',1,'amy.c']]],
+  ['output_5fblock_5f0_18',['output_block_0',['../amy_8c.html#a3cb4d793a468f6ee0fdf74f66ca1ee32',1,'amy.c']]],
+  ['output_5fblock_5f1_19',['output_block_1',['../amy_8c.html#a162a72a125a51600a8956a86f1c2ac04',1,'amy.c']]],
+  ['overload_5fblocks_20',['overload_blocks',['../structglobal__state__t.html#a67c5d9192205e0809a85634af1ac7bbb',1,'global_state_t']]],
+  ['overload_5fcount_21',['overload_count',['../structglobal__state__t.html#adf2871c556239ea824058adc1fc14db5',1,'global_state_t']]],
+  ['overload_5fms_22',['overload_ms',['../structamy__config__t.html#a632c2d4878669a27dfb010663cdfc3b0',1,'amy_config_t']]],
+  ['overload_5fthreshold_23',['overload_threshold',['../structamy__config__t.html#a252eab41db611b8592845ab0c73c338c',1,'amy_config_t']]],
+  ['overload_5fthreshold_5fus_24',['overload_threshold_us',['../structglobal__state__t.html#a22e0ade16f793d424a8890f9d5e9a3cd',1,'global_state_t']]]
+];

@@ -1,0 +1,9 @@
+<map id="components/harness/include/harness.h" name="components/harness/include/harness.h">
+<area shape="rect" id="Node000001" title=" " alt="" coords="81,5,239,45"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,93,88,119"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="134,48,76,87,73,83,131,43"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="112,93,208,119"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="163,46,163,79,157,79,157,46"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="233,93,314,119"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="189,43,247,83,244,87,186,48"/>
+</map>

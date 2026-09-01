@@ -1,0 +1,5 @@
+<map id="synth_ui_lfo_view_draw" name="synth_ui_lfo_view_draw">
+<area shape="rect" id="Node000001" title=" " alt="" coords="132,5,311,31"/>
+<area shape="rect" id="Node000002" href="$ui__view__resolve_8c.html#a67e228c5be569cca8ea9bb8c00a0df84" title=" " alt="" coords="5,5,84,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="119,21,84,21,84,15,119,15"/>
+</map>

@@ -1,0 +1,9 @@
+<map id="display_badge_draw" name="display_badge_draw">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,31,160,56"/>
+<area shape="rect" id="Node000002" href="$display__badge_8c.html#a303485b31cde0b7bfd88411f0b97c93c" title=" " alt="" coords="208,5,359,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="160,31,194,27,194,32,161,36"/>
+<area shape="rect" id="Node000003" href="$display__badge_8c.html#a56fb68056cd1463a146216c944705c6d" title=" " alt="" coords="245,55,322,80"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="161,50,231,58,231,64,160,55"/>
+<area shape="rect" id="Node000004" href="$display__badge_8c.html#a403699c8d2c38242ad71aa238e30fd05" title=" " alt="" coords="407,55,509,80"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="322,65,393,65,393,70,322,70"/>
+</map>

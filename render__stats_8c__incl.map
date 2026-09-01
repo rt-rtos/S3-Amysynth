@@ -1,0 +1,11 @@
+<map id="components/diagnostics/render_stats.c" name="components/diagnostics/render_stats.c">
+<area shape="rect" id="Node000001" title=" " alt="" coords="52,5,232,45"/>
+<area shape="rect" id="Node000002" href="$render__stats_8h.html" title=" " alt="" coords="85,93,199,119"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="145,46,145,79,139,79,139,46"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="5,167,76,192"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="127,121,70,161,67,156,124,116"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="101,167,183,192"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="145,119,145,153,139,153,139,119"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="207,167,303,192"/>
+<area shape="poly" id="edge4_Node000002_Node000005" title=" " alt="" coords="162,116,227,157,224,162,159,121"/>
+</map>

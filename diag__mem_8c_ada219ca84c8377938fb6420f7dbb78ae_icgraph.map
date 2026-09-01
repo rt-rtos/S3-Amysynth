@@ -1,0 +1,10 @@
+<map id="diag_mem_track" name="diag_mem_track">
+<area shape="rect" id="Node000001" title=" " alt="" coords="376,31,507,56"/>
+<area shape="rect" id="Node000002" href="$main_8c.html#a683368dd6654f5530237379b60d8ec29" title=" " alt="" coords="140,5,328,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="362,36,328,32,328,27,363,31"/>
+<area shape="rect" id="Node000004" href="$usb__audio_8c.html#aa5828f5f7e11f0d0ea92743b62fe5388" title="Initialize USB Audio Class device (UAC Microphone – ESP → Host only)" alt="" coords="176,55,292,80"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="363,55,292,63,292,58,362,50"/>
+<area shape="rect" id="Node000003" href="$main_8c.html#a630544a7f0a2cc40d8a7fefab7e2fe70" title=" " alt="" coords="5,31,92,56"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="128,35,92,40,92,35,127,30"/>
+<area shape="poly" id="edge4_Node000004_Node000003" title=" " alt="" coords="162,61,92,52,93,46,163,55"/>
+</map>

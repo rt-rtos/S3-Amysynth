@@ -1,0 +1,38 @@
+var ui__screen__drone_8c =
+[
+    [ "drone_logical_row_t", "ui__screen__drone_8c.html#a088077cd512baac0c201ef5ea9d2b9e7", [
+      [ "DROW_ENABLE", "ui__screen__drone_8c.html#a088077cd512baac0c201ef5ea9d2b9e7a4524b831e5e73e85f8cfbf5427783435", null ],
+      [ "DROW_SOURCE", "ui__screen__drone_8c.html#a088077cd512baac0c201ef5ea9d2b9e7a0863547a2d4ee05b71f0f1f73342e09b", null ],
+      [ "DROW_WAVE", "ui__screen__drone_8c.html#a088077cd512baac0c201ef5ea9d2b9e7a43634fb6e2153bdde5dfa7df35866897", null ],
+      [ "DROW_ROOT", "ui__screen__drone_8c.html#a088077cd512baac0c201ef5ea9d2b9e7a8257bc4fbc63a1f37645ea8e465df05b", null ],
+      [ "DROW_CHORD", "ui__screen__drone_8c.html#a088077cd512baac0c201ef5ea9d2b9e7a5f314795eceb0c85e61d1c5dc0a25210", null ],
+      [ "DROW_RES", "ui__screen__drone_8c.html#a088077cd512baac0c201ef5ea9d2b9e7ad20cb1096e05ff213d7d629a149f9b15", null ],
+      [ "DROW_CONST", "ui__screen__drone_8c.html#a088077cd512baac0c201ef5ea9d2b9e7ac6a74c2c2abd8e1cea7832669bd1aab1", null ],
+      [ "DROW_MOD", "ui__screen__drone_8c.html#a088077cd512baac0c201ef5ea9d2b9e7ae745ee3b63f9c5e59b136aa830eff9f0", null ],
+      [ "DROW_VIS_POPUP", "ui__screen__drone_8c.html#a088077cd512baac0c201ef5ea9d2b9e7a3023da17230d40e54b82358a0df945f6", null ],
+      [ "DROW_RATE", "ui__screen__drone_8c.html#a088077cd512baac0c201ef5ea9d2b9e7ad2ae7916643eeb53e1d3fa8b479f3724", null ],
+      [ "DROW_GATE_LEN", "ui__screen__drone_8c.html#a088077cd512baac0c201ef5ea9d2b9e7a7abc74dfc72f81c73919577d85974a8c", null ],
+      [ "DROW_SWING", "ui__screen__drone_8c.html#a088077cd512baac0c201ef5ea9d2b9e7a5e43283b895e10e111761711fbf62e1b", null ],
+      [ "DROW_PATTERN", "ui__screen__drone_8c.html#a088077cd512baac0c201ef5ea9d2b9e7a09bbed4a8ddb32435391d292bb08bacb", null ],
+      [ "DROW_BLIP", "ui__screen__drone_8c.html#a088077cd512baac0c201ef5ea9d2b9e7a92b41e64cc49ac8f85626331f5d5d3ea", null ],
+      [ "DROW_SWEEP_LO", "ui__screen__drone_8c.html#a088077cd512baac0c201ef5ea9d2b9e7acd48707b4f5b5ab7b36a315419ed6cf1", null ],
+      [ "DROW_SWEEP_HI", "ui__screen__drone_8c.html#a088077cd512baac0c201ef5ea9d2b9e7adadf3a9ba6cd071d51d4c3f1c63bf110", null ],
+      [ "DROW_SWEEP_BARS", "ui__screen__drone_8c.html#a088077cd512baac0c201ef5ea9d2b9e7a1bf839829930a46789ec8ad3eaad8e15", null ],
+      [ "DROW_SUB", "ui__screen__drone_8c.html#a088077cd512baac0c201ef5ea9d2b9e7ab66ba7c103824209875013787b53cd2b", null ],
+      [ "DROW_SUB_INTVL", "ui__screen__drone_8c.html#a088077cd512baac0c201ef5ea9d2b9e7a25d1629c7e268c3d0f892d4a8fa66ace", null ],
+      [ "DROW_PATCH", "ui__screen__drone_8c.html#a088077cd512baac0c201ef5ea9d2b9e7a1f30a8a189bc55d1335e57d95aaac148", null ],
+      [ "DROW_ALL_COUNT", "ui__screen__drone_8c.html#a088077cd512baac0c201ef5ea9d2b9e7a0203fb5addf6b0ccc2fe2d93d4cd97a7", null ]
+    ] ],
+    [ "drone_build_view", "ui__screen__drone_8c.html#a007f552b476e93fe0054f8e4e19ef8e9", null ],
+    [ "drone_edit_row", "ui__screen__drone_8c.html#a1dc22c17796dfb3d28576143bbba316f", null ],
+    [ "drone_row_label_value", "ui__screen__drone_8c.html#aa8c0173154bd23b845a220a433e6d709", null ],
+    [ "drone_view_signature", "ui__screen__drone_8c.html#a3c8faf275f55374832adcc76f846a561", null ],
+    [ "drone_visible_rows", "ui__screen__drone_8c.html#a7aefad5df3b946899602e3a7f3fc446b", null ],
+    [ "synth_ui_drone_handle_button", "ui__screen__drone_8c.html#a43fe497ccf46343682449944ca2cb3b0", null ],
+    [ "synth_ui_drone_handle_encoder", "ui__screen__drone_8c.html#a5dbc7bb2e871c648cf939be1016c9c3c", null ],
+    [ "synth_ui_drone_is_active", "ui__screen__drone_8c.html#a13ed07535416aa871433549450e142ad", null ],
+    [ "s_drone_cursor", "ui__screen__drone_8c.html#a8b62ee6880e6b0398ac63e98bd3cea8b", null ],
+    [ "s_drone_editing", "ui__screen__drone_8c.html#abf14617ff36f7f351b471519567cf053", null ],
+    [ "s_drone_rows", "ui__screen__drone_8c.html#adcf20cb2e69a56b2ada0377b4eda88bf", null ],
+    [ "s_drone_vis_open", "ui__screen__drone_8c.html#a77cc3bda06f31ebadf6d124b17bb6607", null ]
+];

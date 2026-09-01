@@ -1,0 +1,28 @@
+/* Project overrides on top of doxygen-awesome. Kept to variables the theme
+ * exposes; the heavy lifting stays in the upstream stylesheet. */
+html {
+    --primary-color: #4f5fd5;
+    --primary-dark-color: #3a48ab;
+    --primary-light-color: #8b96e8;
+    --fragment-lineheight: 1.45;
+    --content-maxwidth: 1150px;
+    --font-family-monospace: ui-monospace, "JetBrains Mono", "Cascadia Code",
+        "Fira Code", Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+    html:not(.light-mode) {
+        --primary-color: #8b96e8;
+        --primary-dark-color: #a5aeee;
+    }
+}
+
+/* Mermaid diagrams: center, breathe, and stay inside the content column. */
+pre.mermaid {
+    display: flex;
+    justify-content: center;
+    background: none;
+    border: none;
+    margin: 1.5em 0;
+    overflow-x: auto;
+}

@@ -1,0 +1,13 @@
+<map id="midi_clock_out_start" name="midi_clock_out_start">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,31,163,56"/>
+<area shape="rect" id="Node000002" href="$amy__midi_8c.html#aec34c94753f371eacf9b7617344d2b17" title=" " alt="" coords="211,5,389,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="163,31,197,27,197,33,163,37"/>
+<area shape="rect" id="Node000003" href="$amy__midi_8c.html#a9c707580afb26256700bcf93861e1265" title=" " alt="" coords="229,55,371,80"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="163,49,216,55,215,61,163,55"/>
+<area shape="rect" id="Node000004" href="$amy__midi_8c.html#adce2317b0b9c99120822814d2ca3c794" title=" " alt="" coords="437,55,516,80"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="371,65,423,65,423,70,371,70"/>
+<area shape="rect" id="Node000005" href="$amy__midi_8c.html#a66252bfc63e9a6f22e6a00081e773baa" title=" " alt="" coords="600,29,707,55"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="516,59,585,49,586,54,517,64"/>
+<area shape="rect" id="Node000006" href="$amy__midi_8c.html#a2bcf42d7e23e670df9ea23b1603cafbc" title=" " alt="" coords="564,79,743,104"/>
+<area shape="poly" id="edge5_Node000004_Node000006" title=" " alt="" coords="517,70,551,75,550,80,516,75"/>
+</map>

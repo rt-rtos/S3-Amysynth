@@ -1,0 +1,15 @@
+<map id="ser_env" name="ser_env">
+<area shape="rect" id="Node000001" title=" " alt="" coords="489,56,563,81"/>
+<area shape="rect" id="Node000002" href="$project__snapshot_8c.html#aa9bb1d8fb53529839950277f89b47541" title=" " alt="" coords="230,5,301,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="476,55,441,46,366,32,301,24,301,19,367,27,442,41,477,50"/>
+<area shape="rect" id="Node000004" href="$project__snapshot_8c.html#a48124138c7b9dc4c7e38d9b96c25b9ce" title=" " alt="" coords="355,56,441,81"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="475,71,442,71,442,66,475,66"/>
+<area shape="rect" id="Node000005" href="$project__snapshot_8c.html#a02d1b6ee485ed713a174d4dc4f589d0b" title=" " alt="" coords="365,105,431,131"/>
+<area shape="poly" id="edge5_Node000001_Node000005" title=" " alt="" coords="481,89,432,108,430,103,479,84"/>
+<area shape="rect" id="Node000003" href="$project__snapshot_8c.html#a60da0804771ff732a1d5943a36b47a46" title=" " alt="" coords="5,56,176,81"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="217,35,136,58,135,53,216,29"/>
+<area shape="poly" id="edge4_Node000004_Node000003" title=" " alt="" coords="341,71,177,71,177,66,341,66"/>
+<area shape="rect" id="Node000006" href="$project__snapshot_8c.html#af28dd312ad0aa26a84ba5c06f8d730d4" title=" " alt="" coords="224,107,307,132"/>
+<area shape="poly" id="edge6_Node000005_Node000006" title=" " alt="" coords="352,121,307,122,307,116,352,116"/>
+<area shape="poly" id="edge7_Node000006_Node000003" title=" " alt="" coords="210,106,134,84,136,79,211,101"/>
+</map>

@@ -1,0 +1,15 @@
+<map id="diag_register_reporter" name="diag_register_reporter">
+<area shape="rect" id="Node000001" title=" " alt="" coords="695,30,861,55"/>
+<area shape="rect" id="Node000002" href="$main_8c.html#a630544a7f0a2cc40d8a7fefab7e2fe70" title=" " alt="" coords="5,30,92,55"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="685,31,646,26,504,14,393,9,282,12,140,26,93,35,92,29,140,21,282,7,393,3,504,9,647,21,685,25"/>
+<area shape="rect" id="Node000003" href="$diag__report_8c.html#a17f518df38f0686a3efd443f8a9c6f58" title=" " alt="" coords="330,30,409,55"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="681,45,409,45,409,40,681,40"/>
+<area shape="rect" id="Node000004" href="$seq__trig__pump_8c.html#a2ce3e4a4abe523a1a99da6d805c3b6ce" title=" " alt="" coords="493,80,647,120"/>
+<area shape="poly" id="edge4_Node000001_Node000004" title=" " alt="" coords="719,61,644,82,642,77,717,56"/>
+<area shape="poly" id="edge3_Node000003_Node000002" title=" " alt="" coords="316,45,92,45,92,40,316,40"/>
+<area shape="rect" id="Node000005" href="$seq__core__state_8c.html#afa9c5a5ce286282851f7929e9feb0cea" title=" " alt="" coords="293,84,445,110"/>
+<area shape="poly" id="edge5_Node000004_Node000005" title=" " alt="" coords="480,101,446,101,446,95,480,96"/>
+<area shape="rect" id="Node000006" href="$synth__ui__task_8c.html#a41099aa99dac8edebec80153422e646b" title=" " alt="" coords="140,82,245,107"/>
+<area shape="poly" id="edge6_Node000005_Node000006" title=" " alt="" coords="280,98,246,98,246,92,280,93"/>
+<area shape="poly" id="edge7_Node000006_Node000002" title=" " alt="" coords="143,79,84,58,86,53,145,74"/>
+</map>

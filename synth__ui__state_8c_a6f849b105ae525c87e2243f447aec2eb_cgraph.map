@@ -1,0 +1,13 @@
+<map id="synth_ui_reload_mirror_from_core" name="synth_ui_reload_mirror_from_core">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,69,177,109"/>
+<area shape="rect" id="Node000002" href="$seq__core__snapshot_8c.html#a0b548c7202bb8ce7116ceffc5f2deaca" title=" " alt="" coords="225,37,399,77"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="177,74,212,69,212,74,178,80"/>
+<area shape="rect" id="Node000006" href="$seq__core__state_8c.html#aacff3fe360aea5879018471f9089cfde" title=" " alt="" coords="236,101,388,141"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="178,99,223,106,222,111,177,104"/>
+<area shape="rect" id="Node000003" href="$seq__core__synth_8c.html#a0c17bfb49bf9487980b5b492b3bc4185" title=" " alt="" coords="447,5,599,45"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="399,41,432,36,433,42,400,47"/>
+<area shape="rect" id="Node000004" href="$seq__core__synth_8c.html#aacd23543a1ee9cf50bbc07e2497f2b0a" title=" " alt="" coords="447,69,599,109"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="400,68,433,73,432,78,399,73"/>
+<area shape="rect" id="Node000005" href="$seq__core__synth_8c.html#adcb7610cd1fa65d35606f0eefc9c8d88" title=" " alt="" coords="647,77,811,102"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="599,87,633,87,633,92,599,92"/>
+</map>

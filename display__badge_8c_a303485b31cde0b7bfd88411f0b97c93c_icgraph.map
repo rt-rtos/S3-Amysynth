@@ -1,0 +1,11 @@
+<map id="buffer_is_probeable" name="buffer_is_probeable">
+<area shape="rect" id="Node000001" title=" " alt="" coords="656,5,807,31"/>
+<area shape="rect" id="Node000002" href="$display__badge_8c.html#a9903d4322f2c5729e55475f64740bec4" title=" " alt="" coords="453,5,608,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="642,21,608,21,608,15,642,15"/>
+<area shape="rect" id="Node000003" href="$synth__ui__task_8c.html#a2bb363d79d95e76f7a51edca096e4d88" title=" " alt="" coords="293,5,405,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="440,21,406,21,406,15,440,15"/>
+<area shape="rect" id="Node000004" href="$synth__ui__task_8c.html#a41099aa99dac8edebec80153422e646b" title=" " alt="" coords="140,5,245,31"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="280,21,245,21,245,15,280,15"/>
+<area shape="rect" id="Node000005" href="$main_8c.html#a630544a7f0a2cc40d8a7fefab7e2fe70" title=" " alt="" coords="5,5,92,31"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="126,21,92,21,92,15,126,15"/>
+</map>

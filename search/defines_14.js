@@ -1,0 +1,22 @@
+var searchData=
+[
+  ['vis_5frate_5fcount_0',['VIS_RATE_COUNT',['../display__drone_8c.html#a6ea565fe90b55001c18c1717f4eb5edf',1,'display_drone.c']]],
+  ['voice_5fenv_5fattack_5fmin_5fms_1',['VOICE_ENV_ATTACK_MIN_MS',['../voice__config_8h.html#a9c8e2f92115bdd9d164adab62fe42c50',1,'voice_config.h']]],
+  ['voice_5fenv_5frelease_5fmin_5fms_2',['VOICE_ENV_RELEASE_MIN_MS',['../voice__config_8h.html#af4a956c914f15a4eca8cb5b08b41df84',1,'voice_config.h']]],
+  ['voice_5fenv_5fsustain_5fmax_5fpct_3',['VOICE_ENV_SUSTAIN_MAX_PCT',['../voice__config_8h.html#ae89d3e63c9a36f526ba2d52fd4aef89b',1,'voice_config.h']]],
+  ['voice_5fenv_5ftime_5fmax_5fms_4',['VOICE_ENV_TIME_MAX_MS',['../voice__config_8h.html#a1edb500b8e2370b680054256607e780c',1,'voice_config.h']]],
+  ['voice_5flfo_5fdepth_5famp_5',['VOICE_LFO_DEPTH_AMP',['../voice__config_8h.html#ab988880abb88de7f1898c4e1e843bd71',1,'voice_config.h']]],
+  ['voice_5flfo_5fdepth_5fdist_5fmix_6',['VOICE_LFO_DEPTH_DIST_MIX',['../voice__config_8h.html#a967027b6c51290b848632b42e72b549f',1,'voice_config.h']]],
+  ['voice_5flfo_5fdepth_5fdist_5foct_7',['VOICE_LFO_DEPTH_DIST_OCT',['../voice__config_8h.html#ad4ef58787bbc9dec4eb2c9663a73b35f',1,'voice_config.h']]],
+  ['voice_5flfo_5fdepth_5ffilter_8',['VOICE_LFO_DEPTH_FILTER',['../voice__config_8h.html#a9beccb0abb84b64926ae78fd9aaaa86b',1,'voice_config.h']]],
+  ['voice_5flfo_5fdepth_5fpan_9',['VOICE_LFO_DEPTH_PAN',['../voice__config_8h.html#aa35f9c229cdaa74cfbad0c559a574b2e',1,'voice_config.h']]],
+  ['voice_5flfo_5fdepth_5fpitch_10',['VOICE_LFO_DEPTH_PITCH',['../voice__config_8h.html#a2a2716bb36341cb1becf57aa72e43a39',1,'voice_config.h']]],
+  ['voice_5flfo_5fdepth_5fscan_11',['VOICE_LFO_DEPTH_SCAN',['../voice__config_8h.html#acbdd6bb083095543a0a18ce57fa439fd',1,'voice_config.h']]],
+  ['voice_5flfo_5fflt_5foct_5fq_5fmax_12',['VOICE_LFO_FLT_OCT_Q_MAX',['../voice__config_8h.html#a622ce5709086b1423e6fe0a633c3df08',1,'voice_config.h']]],
+  ['voice_5flfo_5fsynth_5fmax_13',['VOICE_LFO_SYNTH_MAX',['../voice__config_8c.html#a97f53e14c0a8707e1335212f9cb2dfc7',1,'voice_config.c']]],
+  ['voice_5funison_5fmax_5fcopies_14',['VOICE_UNISON_MAX_COPIES',['../seq__model_8h.html#a58884fd3fafcc093844eeeae9cb05ba0',1,'seq_model.h']]],
+  ['voice_5funison_5fmax_5fdetune_15',['VOICE_UNISON_MAX_DETUNE',['../seq__model_8h.html#a3140d3752e6fb53fd380fb0d7c6918c1',1,'seq_model.h']]],
+  ['voice_5fwob_5fdb_5fmax_16',['VOICE_WOB_DB_MAX',['../voice__config_8h.html#a958f3f3d0cc85f1c8c1614c697dafdb1',1,'voice_config.h']]],
+  ['voice_5fwob_5fdepth_5famp_17',['VOICE_WOB_DEPTH_AMP',['../voice__config_8h.html#ae3c8f3847f7efff5a158663ec181d498',1,'voice_config.h']]],
+  ['voice_5fwob_5fdepth_5frate_18',['VOICE_WOB_DEPTH_RATE',['../voice__config_8h.html#a3e834be4a8ca3e19c14f3c145b2d1bed',1,'voice_config.h']]]
+];

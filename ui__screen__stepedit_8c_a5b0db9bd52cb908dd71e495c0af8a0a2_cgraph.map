@@ -1,0 +1,17 @@
+<map id="stepedit_view_signature" name="stepedit_view_signature">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,117,187,142"/>
+<area shape="rect" id="Node000002" href="$synth__ui__internal_8h.html#a202c77d048648108c104376a2bb3d844" title=" " alt="" coords="259,91,362,117"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="187,116,245,109,246,114,188,121"/>
+<area shape="rect" id="Node000003" href="$ui__screen__stepedit_8c.html#a467d713f5b0f75a19cc0a078936e6a40" title=" " alt="" coords="235,141,387,166"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="188,137,221,141,221,146,187,142"/>
+<area shape="rect" id="Node000004" href="$seq__core__trig_8c.html#a8da1bdb1177dd02d191e38a33eb0b80f" title=" " alt="" coords="435,5,587,45"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="363,138,385,126,401,109,409,92,417,74,433,55,439,50,443,55,436,59,421,77,413,94,405,112,388,130,365,143"/>
+<area shape="rect" id="Node000005" href="$seq__core__trig_8c.html#a988631832086d3f172f587ea65370d77" title=" " alt="" coords="435,69,587,109"/>
+<area shape="poly" id="edge4_Node000003_Node000005" title=" " alt="" coords="351,138,434,111,435,116,352,143"/>
+<area shape="rect" id="Node000006" href="$seq__core__trig_8c.html#ab77b70e8cd11729bffb483db7658ae20" title=" " alt="" coords="435,133,587,173"/>
+<area shape="poly" id="edge5_Node000003_Node000006" title=" " alt="" coords="387,151,421,151,421,156,387,156"/>
+<area shape="rect" id="Node000007" href="$seq__core__trig_8c.html#aaa0b3f1409c7a868e81f651f097e7a6c" title=" " alt="" coords="435,197,587,237"/>
+<area shape="poly" id="edge6_Node000003_Node000007" title=" " alt="" coords="352,164,435,191,434,196,351,169"/>
+<area shape="rect" id="Node000008" href="$seq__core__trig_8c.html#ad98afc23f067f10de0153b1ec27b9559" title=" " alt="" coords="435,261,587,301"/>
+<area shape="poly" id="edge7_Node000003_Node000008" title=" " alt="" coords="328,164,374,204,436,247,447,253,444,258,433,252,371,208,324,168"/>
+</map>

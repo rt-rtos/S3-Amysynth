@@ -1,0 +1,7 @@
+<map id="usb_audio_write_stereo" name="usb_audio_write_stereo">
+<area shape="rect" id="Node000001" title="Write interleaved stereo 16&#45;bit samples (L, R, L, R, ...)" alt="" coords="5,45,181,70"/>
+<area shape="rect" id="Node000002" href="$usb__audio_8c.html#a9969b166b96a0514e7f18d0bb3fba9aa" title="True iff a USB host has pulled audio within the liveness timeout. Producer&#45;side gate so render output..." alt="" coords="237,5,395,45"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="181,42,223,36,223,41,182,47"/>
+<area shape="rect" id="Node000003" href="$usb__audio_8c.html#a178a01d76d9610220ef0df88f37da693" title=" " alt="" coords="229,69,403,109"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="182,67,216,72,215,78,181,73"/>
+</map>

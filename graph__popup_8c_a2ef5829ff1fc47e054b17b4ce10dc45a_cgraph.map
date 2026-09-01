@@ -1,0 +1,7 @@
+<map id="adsr_effective_axis_is_y" name="adsr_effective_axis_is_y">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,31,187,56"/>
+<area shape="rect" id="Node000002" href="$graph__popup_8c.html#ac63ecf7abe9a8c43a8bfc0d6b82b91fb" title=" " alt="" coords="235,5,360,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="186,29,221,25,221,30,187,35"/>
+<area shape="rect" id="Node000003" href="$graph__popup_8c.html#a1e757b0a73bd62578739ee85eccafd71" title=" " alt="" coords="235,55,360,80"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="187,51,221,56,221,61,186,57"/>
+</map>

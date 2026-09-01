@@ -1,0 +1,7 @@
+<map id="voice_wave_cfg_t" name="voice_wave_cfg_t">
+<area shape="rect" id="Node000001" title=" " alt="" coords="44,93,183,119"/>
+<area shape="rect" id="Node000002" href="$structseq__dist__t.html" title=" " alt="" coords="5,5,93,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="68,40,107,91,102,94,64,43"/>
+<area shape="rect" id="Node000003" href="$structvoice__unison__t.html" title=" " alt="" coords="118,5,237,31"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="163,43,124,94,120,91,158,40"/>
+</map>

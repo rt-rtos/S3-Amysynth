@@ -1,0 +1,11 @@
+<map id="components/display/display_badge.c" name="components/display/display_badge.c">
+<area shape="rect" id="Node000001" title=" " alt="" coords="71,5,225,45"/>
+<area shape="rect" id="Node000002" href="$display__badge_8h.html" title=" " alt="" coords="84,93,212,119"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="151,46,151,79,145,79,145,46"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="5,167,88,192"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="133,121,76,161,73,156,130,116"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="113,167,183,192"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="151,119,151,153,145,153,145,119"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="208,167,275,192"/>
+<area shape="poly" id="edge4_Node000002_Node000005" title=" " alt="" coords="165,117,217,156,214,160,161,121"/>
+</map>

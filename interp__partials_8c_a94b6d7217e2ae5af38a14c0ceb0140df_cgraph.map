@@ -1,0 +1,9 @@
+<map id="_osc_on_with_harm_param" name="_osc_on_with_harm_param">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,55,204,80"/>
+<area shape="rect" id="Node000002" href="$interp__partials_8c.html#a37a3a081cd7f9a264ee2b960c8e7ce20" title=" " alt="" coords="279,5,398,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="165,52,265,31,266,36,166,57"/>
+<area shape="rect" id="Node000003" href="$interp__partials_8c.html#ad201ede09c0ddd42d90d13008acdf6b0" title=" " alt="" coords="252,55,425,80"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="204,65,238,65,238,70,204,70"/>
+<area shape="rect" id="Node000004" href="$oscillators_8c.html#a426d158dc09ff4dcc349de594bb2e8aa" title=" " alt="" coords="277,104,400,129"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="166,77,265,98,264,104,165,83"/>
+</map>

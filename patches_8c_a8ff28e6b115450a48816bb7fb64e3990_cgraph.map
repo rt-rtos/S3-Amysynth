@@ -1,0 +1,19 @@
+<map id="schedule_osc_reset" name="schedule_osc_reset">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,55,155,80"/>
+<area shape="rect" id="Node000002" href="$amy_8c.html#aa7d88b83ca97e69a528be225d33a95b0" title=" " alt="" coords="203,55,356,80"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="155,65,189,65,189,70,155,70"/>
+<area shape="rect" id="Node000003" href="$amy_8c.html#ad054834a7fb83106117b4598c0babeaf" title=" " alt="" coords="413,5,535,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="329,52,409,32,410,37,331,57"/>
+<area shape="rect" id="Node000004" href="$amy_8c.html#a732c26c53a8c2d5b2c900b17e1158aa8" title=" " alt="" coords="404,55,544,80"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="357,65,390,65,390,70,357,70"/>
+<area shape="rect" id="Node000005" href="$amy_8c.html#a9a80c0ab945c788dd0b777d5717d7f7d" title=" " alt="" coords="433,104,515,129"/>
+<area shape="poly" id="edge4_Node000002_Node000005" title=" " alt="" coords="331,77,420,100,419,106,329,83"/>
+<area shape="rect" id="Node000006" href="$amy_8c.html#ad5f094d1ffcfd597c4ee014b96b2516a" title=" " alt="" coords="592,104,763,129"/>
+<area shape="poly" id="edge5_Node000005_Node000006" title=" " alt="" coords="515,114,578,114,578,119,515,119"/>
+<area shape="rect" id="Node000007" href="$amy_8c.html#a2d2477e82bc4052f6a0693cc9905bc32" title=" " alt="" coords="835,79,921,104"/>
+<area shape="poly" id="edge6_Node000006_Node000007" title=" " alt="" coords="763,103,821,96,822,101,764,108"/>
+<area shape="rect" id="Node000008" href="$amy_8c.html#abf367c547003cadbd7e675d2efc5bcde" title=" " alt="" coords="811,128,945,153"/>
+<area shape="poly" id="edge7_Node000006_Node000008" title=" " alt="" coords="764,124,797,128,797,134,763,130"/>
+<area shape="rect" id="Node000009" href="$amy_8c.html#adf4eb9b209ec33e5816b81031376947e" title=" " alt="" coords="993,128,1096,153"/>
+<area shape="poly" id="edge8_Node000008_Node000009" title=" " alt="" coords="946,138,980,138,980,143,946,143"/>
+</map>

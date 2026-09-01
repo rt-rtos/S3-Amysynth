@@ -1,0 +1,17 @@
+<map id="arp_get_scale" name="arp_get_scale">
+<area shape="rect" id="Node000001" title=" " alt="" coords="940,42,1052,67"/>
+<area shape="rect" id="Node000002" href="$seq__core__progression_8c.html#a1058bc4d32883e28a884c7f64d4cea15" title=" " alt="" coords="708,5,892,45"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="926,47,892,42,893,36,927,42"/>
+<area shape="rect" id="Node000007" href="$project__snapshot_8c.html#aa9bb1d8fb53529839950277f89b47541" title=" " alt="" coords="765,70,835,95"/>
+<area shape="poly" id="edge6_Node000001_Node000007" title=" " alt="" coords="927,67,836,80,835,75,926,62"/>
+<area shape="rect" id="Node000003" href="$seq__core__progression_8c.html#aed15af754d14ad14a2f198c2182d42e4" title=" " alt="" coords="453,5,660,45"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="694,28,660,28,660,23,694,23"/>
+<area shape="rect" id="Node000004" href="$synth__ui__task_8c.html#a2bb363d79d95e76f7a51edca096e4d88" title=" " alt="" coords="293,13,405,38"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="440,28,406,28,406,23,440,23"/>
+<area shape="rect" id="Node000005" href="$synth__ui__task_8c.html#a41099aa99dac8edebec80153422e646b" title=" " alt="" coords="140,13,245,38"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="280,28,245,28,245,23,280,23"/>
+<area shape="rect" id="Node000006" href="$main_8c.html#a630544a7f0a2cc40d8a7fefab7e2fe70" title=" " alt="" coords="5,13,92,38"/>
+<area shape="poly" id="edge5_Node000005_Node000006" title=" " alt="" coords="126,28,92,28,92,23,126,23"/>
+<area shape="rect" id="Node000008" href="$project__snapshot_8c.html#a60da0804771ff732a1d5943a36b47a46" title=" " alt="" coords="471,70,642,95"/>
+<area shape="poly" id="edge7_Node000007_Node000008" title=" " alt="" coords="751,85,642,85,642,80,751,80"/>
+</map>

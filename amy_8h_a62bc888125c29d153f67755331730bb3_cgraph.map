@@ -1,0 +1,11 @@
+<map id="delta_get" name="delta_get">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,31,88,56"/>
+<area shape="rect" id="Node000002" href="$amy_8c.html#ad5f094d1ffcfd597c4ee014b96b2516a" title=" " alt="" coords="136,31,307,56"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="88,41,122,41,122,46,88,46"/>
+<area shape="rect" id="Node000003" href="$amy_8c.html#a2d2477e82bc4052f6a0693cc9905bc32" title=" " alt="" coords="379,5,465,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="307,30,365,22,366,28,308,35"/>
+<area shape="rect" id="Node000004" href="$amy_8c.html#abf367c547003cadbd7e675d2efc5bcde" title=" " alt="" coords="355,55,489,80"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="308,51,341,55,341,60,307,56"/>
+<area shape="rect" id="Node000005" href="$amy_8c.html#adf4eb9b209ec33e5816b81031376947e" title=" " alt="" coords="537,55,640,80"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="490,65,524,65,524,70,490,70"/>
+</map>

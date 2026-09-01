@@ -1,0 +1,26 @@
+var voice__config_8c =
+[
+    [ "VOICE_LFO_SYNTH_MAX", "voice__config_8c.html#a97f53e14c0a8707e1335212f9cb2dfc7", null ],
+    [ "lfo_materialized", "voice__config_8c.html#a24cd22698246f377b2701ca7c38b3d1d", null ],
+    [ "lfo_set_materialized", "voice__config_8c.html#a02427dbabaa03011904ddcc48f06ff8e", null ],
+    [ "unison_amp_norm", "voice__config_8c.html#af838b425ef784c6f604b0e3bdde3d54e", null ],
+    [ "unison_copy_coefs", "voice__config_8c.html#a6f170923cd5a2e8cc34eb8f8db4e6af2", null ],
+    [ "unison_pos", "voice__config_8c.html#a99619941d50b471075548c516cc6a3ed", null ],
+    [ "unison_weight", "voice__config_8c.html#aacd01e567efa60f3ad6b2a5ee4f7728b", null ],
+    [ "voice_apply_dist", "voice__config_8c.html#a4ede7c549ed7d849b58885b49b015c4e", null ],
+    [ "voice_apply_native_lfo", "voice__config_8c.html#a142843ef8757f3e37d8aaa649f099b29", null ],
+    [ "voice_apply_native_lfo_topo", "voice__config_8c.html#a63b85029cad6d0e23ba20bc8122fa392", null ],
+    [ "voice_build_wave", "voice__config_8c.html#af28aa69c560408987c14bdf2e2d7e837", null ],
+    [ "voice_dist_clamp", "voice__config_8c.html#ac099447f1a4dfaa25642cbcf48bdfcbc", null ],
+    [ "voice_lfo_mark_foreign", "voice__config_8c.html#ae36d8c559d49ffe16d82b824fae08696", null ],
+    [ "voice_lfo_note_pool_shape", "voice__config_8c.html#a0040a2a074972942252f7fcbe4ab9456", null ],
+    [ "voice_lfo_siblings_materialized", "voice__config_8c.html#a2285cb8846593d03160e6172d3d4e5f8", null ],
+    [ "voice_lfo_wave_to_amy", "voice__config_8c.html#a6b7bbd09c3889264f6bda555f7c2c89b", null ],
+    [ "voice_params_init_defaults", "voice__config_8c.html#a86a2bbed66a9b836ba13af0b348240d4", null ],
+    [ "voice_push_dist_lfo", "voice__config_8c.html#aca226159aad01f80e0cd4cba2fda806c", null ],
+    [ "voice_push_unison_live", "voice__config_8c.html#a316092a7e0bdc5be44c2d8db998b7c7a", null ],
+    [ "voice_wob_db_to_depth", "voice__config_8c.html#a7dd5342af2da7e3b91657f3331b80f83", null ],
+    [ "voice_wob_depth_to_db", "voice__config_8c.html#a0d022555b6d935694be2f4d5023b2f35", null ],
+    [ "s_lfo_materialized", "voice__config_8c.html#a2c2ee2be0b790b82957111722a3952bb", null ],
+    [ "s_pool_shape", "voice__config_8c.html#abcf4c5f21c1853435c9cd89d36d7310a", null ]
+];

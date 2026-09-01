@@ -1,0 +1,9 @@
+<map id="amy_external_midi_output" name="amy_external_midi_output">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,31,203,56"/>
+<area shape="rect" id="Node000002" href="$amy__midi_8c.html#adce2317b0b9c99120822814d2ca3c794" title=" " alt="" coords="251,31,329,56"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="203,41,237,41,237,46,203,46"/>
+<area shape="rect" id="Node000003" href="$amy__midi_8c.html#a66252bfc63e9a6f22e6a00081e773baa" title=" " alt="" coords="413,5,520,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="329,35,399,25,400,30,330,40"/>
+<area shape="rect" id="Node000004" href="$amy__midi_8c.html#a2bcf42d7e23e670df9ea23b1603cafbc" title=" " alt="" coords="377,55,556,80"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="330,46,364,51,364,56,329,51"/>
+</map>

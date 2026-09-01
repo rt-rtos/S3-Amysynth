@@ -1,0 +1,7 @@
+<map id="filter_tgt_is_drone_std" name="filter_tgt_is_drone_std">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,13,172,38"/>
+<area shape="rect" id="Node000002" href="$ui__editors_8c.html#aad00095c870c26437d3e390d01e19ff7" title=" " alt="" coords="220,13,347,38"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="173,23,206,23,206,28,173,28"/>
+<area shape="rect" id="Node000003" href="$ui__screen__menu_8c.html#a8e61f2ac73701eda5367dbf5bb3b2975" title=" " alt="" coords="395,5,572,45"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="347,23,381,23,381,28,347,28"/>
+</map>

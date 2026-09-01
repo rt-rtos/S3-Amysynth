@@ -1,0 +1,26 @@
+<map id="parse_drone" name="parse_drone">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,137,108,162"/>
+<area shape="rect" id="Node000002" href="$project__snapshot_8c.html#a43527771b88e6a17266adee3c0e7e684" title=" " alt="" coords="156,13,261,38"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="66,134,103,93,154,47,162,42,165,47,158,51,107,97,70,138"/>
+<area shape="rect" id="Node000004" href="$project__snapshot_8c.html#ae205d37160f91804853d546f718176e1" title=" " alt="" coords="174,111,243,137"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="108,138,160,129,161,135,109,143"/>
+<area shape="rect" id="Node000007" href="$project__tlv_8c.html#a893cf5c61e18afca27b5040fd2f84342" title=" " alt="" coords="347,162,438,187"/>
+<area shape="poly" id="edge14_Node000001_Node000007" title=" " alt="" coords="108,150,334,168,334,173,108,156"/>
+<area shape="rect" id="Node000008" href="$project__tlv_8c.html#a397b059f3935a6a55816724b700d4c2c" title=" " alt="" coords="161,62,256,87"/>
+<area shape="poly" id="edge8_Node000001_Node000008" title=" " alt="" coords="81,134,155,96,166,91,169,96,157,101,83,139"/>
+<area shape="rect" id="Node000009" href="$project__tlv_8c.html#a39e04d294727ddcca579b5235fc0c97a" title=" " alt="" coords="165,213,252,238"/>
+<area shape="poly" id="edge10_Node000001_Node000009" title=" " alt="" coords="84,160,171,204,169,209,82,164"/>
+<area shape="rect" id="Node000010" href="$project__tlv_8c.html#ae8eaf065d303c6ad0ee420acb57ddd10" title=" " alt="" coords="343,237,442,262"/>
+<area shape="poly" id="edge12_Node000001_Node000010" title=" " alt="" coords="68,160,102,206,127,230,157,248,200,261,245,266,290,265,330,260,330,265,290,270,245,271,199,266,155,253,124,234,98,210,63,164"/>
+<area shape="rect" id="Node000003" href="$sequencer__core_8h.html#a2994328bf8e20a233e2436271b1038ba" title=" " alt="" coords="309,5,476,45"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="261,23,296,23,296,28,261,28"/>
+<area shape="rect" id="Node000005" href="$project__tlv_8c.html#a03fc97c7040c3d0754f668c1143bc543" title=" " alt="" coords="343,111,442,137"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="244,121,329,121,329,127,244,127"/>
+<area shape="poly" id="edge6_Node000004_Node000007" title=" " alt="" coords="244,131,335,156,333,161,243,136"/>
+<area shape="rect" id="Node000006" href="$project__tlv_8c.html#a7fc9faf6c488936de87ead51bcdde310" title=" " alt="" coords="524,162,563,187"/>
+<area shape="poly" id="edge5_Node000005_Node000006" title=" " alt="" coords="438,134,477,147,512,160,510,165,475,152,436,139"/>
+<area shape="poly" id="edge7_Node000007_Node000006" title=" " alt="" coords="438,172,510,172,510,177,438,177"/>
+<area shape="poly" id="edge9_Node000008_Node000005" title=" " alt="" coords="257,85,332,105,331,110,256,90"/>
+<area shape="poly" id="edge11_Node000009_Node000007" title=" " alt="" coords="251,211,333,188,335,193,253,216"/>
+<area shape="poly" id="edge13_Node000010_Node000006" title=" " alt="" coords="418,234,510,188,513,192,421,239"/>
+</map>

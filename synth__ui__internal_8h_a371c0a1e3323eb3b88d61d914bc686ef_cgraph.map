@@ -1,0 +1,15 @@
+<map id="lfo_view_signature" name="lfo_view_signature">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,127,151,152"/>
+<area shape="rect" id="Node000002" href="$arp__core_8c.html#a6b15e2f75ce0f35c80d2b848b4894923" title=" " alt="" coords="218,5,333,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="90,124,135,84,197,41,213,33,216,38,200,46,139,88,94,128"/>
+<area shape="rect" id="Node000003" href="$live__play_8h.html#aa1fd57902895095ab4151b6168898eb8" title=" " alt="" coords="199,55,352,95"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="117,124,199,97,201,102,119,129"/>
+<area shape="rect" id="Node000004" href="$seq__core__synth_8c.html#aea1e04161c3986c5cb5b25e12f5e5351" title=" " alt="" coords="199,119,351,159"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="151,137,185,137,185,142,151,142"/>
+<area shape="rect" id="Node000005" href="$seq__core__state_8c.html#a5246c0162110492f258bd0e14c065cbe" title=" " alt="" coords="199,183,351,223"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="119,150,201,176,199,182,117,155"/>
+<area shape="rect" id="Node000006" href="$sequencer__core_8h.html#a9fff7fd5098c3bc3ae8058b5e72ace4b" title=" " alt="" coords="201,247,349,287"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="94,150,140,190,200,233,211,239,208,244,197,238,136,194,91,154"/>
+<area shape="rect" id="Node000007" href="$sequencer__core_8h.html#a8501381ca8fc695002483d2f012edc76" title=" " alt="" coords="400,247,584,287"/>
+<area shape="poly" id="edge6_Node000006_Node000007" title=" " alt="" coords="350,265,386,265,386,270,350,270"/>
+</map>

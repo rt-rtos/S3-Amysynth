@@ -1,0 +1,25 @@
+var structstaged__drone__t =
+[
+    [ "amp_duck", "structstaged__drone__t.html#a580bbff021e52aa6981cfe5cc9b51126", null ],
+    [ "amp_peak", "structstaged__drone__t.html#aa4bc9cc0db24ebc7998e1e933cab04d1", null ],
+    [ "amp_trim", "structstaged__drone__t.html#af335d2771c75daef02deaddb0ee82f11", null ],
+    [ "blip", "structstaged__drone__t.html#af0496ae9ac50eda72109fdd391a339ff", null ],
+    [ "chord", "structstaged__drone__t.html#a4464e4f6bd511a86222c98507504b2d1", null ],
+    [ "enabled", "structstaged__drone__t.html#a6243aa7cabb80ef918dc22ae45cc4bc7", null ],
+    [ "env", "structstaged__drone__t.html#a54859234b1172cee7df4b2fb272cc812", null ],
+    [ "env2", "structstaged__drone__t.html#a8f9f86d61333ad09fc6d45a7fe2c4d22", null ],
+    [ "gate_len", "structstaged__drone__t.html#a9ee762f6ea8640be1bd47a5da09ce6a5", null ],
+    [ "patch", "structstaged__drone__t.html#aaf7dbbc2b2a9ea27920d48801cd19a11", null ],
+    [ "pattern", "structstaged__drone__t.html#a78e7e8c83b2564fc0cdaa559bf8817c9", null ],
+    [ "rate", "structstaged__drone__t.html#af1839d399b532ab0232b23c790898883", null ],
+    [ "resonance", "structstaged__drone__t.html#a97b9f54fe8bea738469e60a939e8deff", null ],
+    [ "root", "structstaged__drone__t.html#af1687ecc2867043ace733afaec0108f9", null ],
+    [ "source", "structstaged__drone__t.html#a1ba2b624e0faa759a5086b911e60695f", null ],
+    [ "sub_enabled", "structstaged__drone__t.html#ab738046461a5529504daf57992c0315f", null ],
+    [ "sub_interval", "structstaged__drone__t.html#a91d2c801ce42ff541c122f165989c9f3", null ],
+    [ "sweep_bars", "structstaged__drone__t.html#a265ab8bc49d6c8c2c635ee45a423d338", null ],
+    [ "sweep_hi", "structstaged__drone__t.html#a750dff4df4aac535fcc1ab128e6283bf", null ],
+    [ "sweep_lo", "structstaged__drone__t.html#a8838e165c2b6f3f51aea0fa7210641ed", null ],
+    [ "swing", "structstaged__drone__t.html#a057407eaaa6f116070968fb7609e35b4", null ],
+    [ "wave", "structstaged__drone__t.html#aa326056a2e9b6ce38d6c2729d24ed77c", null ]
+];

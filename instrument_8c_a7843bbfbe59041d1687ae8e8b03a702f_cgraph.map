@@ -1,0 +1,7 @@
+<map id="voice_fifo_init" name="voice_fifo_init">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,31,119,56"/>
+<area shape="rect" id="Node000002" href="$amy_8c.html#a2d2477e82bc4052f6a0693cc9905bc32" title=" " alt="" coords="175,5,261,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="118,32,161,25,161,30,119,37"/>
+<area shape="rect" id="Node000003" href="$amy_8c.html#adf4eb9b209ec33e5816b81031376947e" title=" " alt="" coords="167,55,269,80"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="119,49,154,55,153,60,118,55"/>
+</map>

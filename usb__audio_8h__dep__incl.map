@@ -1,0 +1,7 @@
+<map id="components/usb_audio/include/usb_audio.h" name="components/usb_audio/include/usb_audio.h">
+<area shape="rect" id="Node000001" title=" " alt="" coords="85,5,257,45"/>
+<area shape="rect" id="Node000002" href="$usb__audio_8c.html" title=" " alt="" coords="5,93,177,133"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="146,57,111,95,107,91,142,54"/>
+<area shape="rect" id="Node000003" href="$main_8c.html" title=" " alt="" coords="201,101,304,126"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="201,54,243,98,239,102,197,57"/>
+</map>

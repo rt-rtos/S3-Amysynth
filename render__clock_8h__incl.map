@@ -1,0 +1,9 @@
+<map id="main/render_clock.h" name="main/render_clock.h">
+<area shape="rect" id="Node000001" title=" " alt="" coords="98,5,253,31"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,79,76,104"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="155,33,76,74,74,70,152,28"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="100,79,251,104"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="178,31,178,65,173,65,173,31"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="275,79,393,104"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="202,28,297,71,295,75,200,33"/>
+</map>

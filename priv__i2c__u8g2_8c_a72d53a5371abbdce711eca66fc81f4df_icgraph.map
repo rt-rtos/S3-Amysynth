@@ -1,0 +1,9 @@
+<map id="i2c_u8g2_handle_from_u8x8" name="i2c_u8g2_handle_from_u8x8">
+<area shape="rect" id="Node000001" title=" " alt="" coords="483,5,691,31"/>
+<area shape="rect" id="Node000002" href="$priv__i2c__u8g2_8c.html#a3cc12b24ecc64e92d676dc2db6bab4f9" title=" " alt="" coords="296,5,435,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="469,21,435,21,435,15,469,15"/>
+<area shape="rect" id="Node000003" href="$priv__i2c__u8g2_8c.html#ac67635335eeddf1d825ba91e74c80fd7" title="Initialize I2C bus and U8G2 display." alt="" coords="140,5,248,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="282,21,248,21,248,15,282,15"/>
+<area shape="rect" id="Node000004" href="$main_8c.html#a630544a7f0a2cc40d8a7fefab7e2fe70" title=" " alt="" coords="5,5,92,31"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="126,21,92,21,92,15,126,15"/>
+</map>

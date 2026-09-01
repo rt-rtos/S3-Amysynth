@@ -1,0 +1,11 @@
+<map id="editor_src_badge" name="editor_src_badge">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,42,139,67"/>
+<area shape="rect" id="Node000002" href="$ui__editors_8c.html#a50bcd810670fee18cc595fcd2927bbb6" title=" " alt="" coords="206,13,350,38"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="138,43,192,35,193,40,139,48"/>
+<area shape="rect" id="Node000004" href="$seq__core__editors_8c.html#a05a5392e866defb2dc2b6b1156fcaef1" title=" " alt="" coords="187,63,369,103"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="139,61,174,66,173,71,138,66"/>
+<area shape="rect" id="Node000003" href="$seq__core__editors_8c.html#a8122df718ee985ad07d4f4844e17b386" title=" " alt="" coords="417,5,572,45"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="351,23,404,23,404,28,351,28"/>
+<area shape="rect" id="Node000005" href="$seq__core__synth_8c.html#a5ba3cfd0489c8ae5508fab8de5e24364" title=" " alt="" coords="441,70,549,95"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="369,80,427,80,427,85,369,85"/>
+</map>

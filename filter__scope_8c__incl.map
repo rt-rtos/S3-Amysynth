@@ -1,0 +1,11 @@
+<map id="components/synth_core/filter_scope.c" name="components/synth_core/filter_scope.c">
+<area shape="rect" id="Node000001" title=" " alt="" coords="59,5,237,45"/>
+<area shape="rect" id="Node000002" href="$filter__scope_8h.html" title=" " alt="" coords="93,93,203,119"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="151,46,151,79,145,79,145,46"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="5,167,88,192"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="133,121,76,161,73,156,130,116"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="113,167,183,192"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="151,119,151,153,145,153,145,119"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="208,167,304,192"/>
+<area shape="poly" id="edge4_Node000002_Node000005" title=" " alt="" coords="167,116,228,157,225,161,164,121"/>
+</map>

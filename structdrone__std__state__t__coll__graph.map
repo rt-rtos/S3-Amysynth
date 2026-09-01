@@ -1,0 +1,13 @@
+<map id="drone_std_state_t" name="drone_std_state_t">
+<area shape="rect" id="Node000001" title=" " alt="" coords="152,196,291,221"/>
+<area shape="rect" id="Node000002" href="$structvoice__params__t.html" title=" " alt="" coords="159,108,284,133"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="224,147,224,195,219,195,219,147"/>
+<area shape="rect" id="Node000003" href="$structseq__env__t.html" title=" " alt="" coords="5,5,93,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="78,36,151,82,198,106,195,110,148,86,75,41"/>
+<area shape="rect" id="Node000004" href="$structseq__filter__t.html" title=" " alt="" coords="118,5,213,31"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="181,42,217,107,213,109,176,44"/>
+<area shape="rect" id="Node000005" href="$structseq__lfo__t.html" title=" " alt="" coords="237,5,318,31"/>
+<area shape="poly" id="edge4_Node000002_Node000005" title=" " alt="" coords="266,44,230,109,225,107,262,42"/>
+<area shape="rect" id="Node000006" href="$structseq__dist__t.html" title=" " alt="" coords="343,5,431,31"/>
+<area shape="poly" id="edge5_Node000002_Node000006" title=" " alt="" coords="358,40,283,86,242,110,239,106,280,82,355,36"/>
+</map>

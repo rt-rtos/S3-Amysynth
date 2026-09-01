@@ -1,0 +1,17 @@
+<map id="components/synth_core/quantizer.c" name="components/synth_core/quantizer.c">
+<area shape="rect" id="Node000001" title=" " alt="" coords="228,5,405,45"/>
+<area shape="rect" id="Node000002" href="$quantizer_8h.html" title=" " alt="" coords="148,93,243,119"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="289,48,226,88,223,84,286,43"/>
+<area shape="rect" id="Node000006" href="$seq__clamp_8h.html" title="Type&#45;safe, double&#45;evaluation&#45;safe boundary clamping utilities." alt="" coords="301,167,405,192"/>
+<area shape="poly" id="edge6_Node000001_Node000006" title=" " alt="" coords="324,45,349,152,344,154,319,46"/>
+<area shape="rect" id="Node000007" title=" " alt="" coords="354,93,429,119"/>
+<area shape="poly" id="edge8_Node000001_Node000007" title=" " alt="" coords="337,44,373,81,369,85,333,47"/>
+<area shape="rect" id="Node000003" href="$chord__types_8h.html" title=" " alt="" coords="5,167,119,192"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="175,121,97,162,95,158,173,116"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="121,240,192,265"/>
+<area shape="poly" id="edge5_Node000002_Node000004" title=" " alt="" coords="195,120,166,227,161,226,190,118"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="194,167,277,192"/>
+<area shape="poly" id="edge4_Node000002_Node000005" title=" " alt="" coords="204,118,224,153,220,156,200,120"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="79,190,132,229,129,234,76,194"/>
+<area shape="poly" id="edge7_Node000006_Node000004" title=" " alt="" coords="322,195,202,238,201,233,320,190"/>
+</map>

@@ -1,0 +1,9 @@
+<map id="graph_sync_min_gap" name="graph_sync_min_gap">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,35,164,60"/>
+<area shape="rect" id="Node000002" href="$ui__editors_8c.html#a220a64fbc64db0e00d58225aaff2339f" title=" " alt="" coords="234,5,355,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="164,34,220,26,220,31,165,39"/>
+<area shape="rect" id="Node000004" href="$graph__popup_8c.html#aca5901283124e914e5b067fd007d18d4" title=" " alt="" coords="212,55,377,95"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="165,55,199,60,198,65,164,61"/>
+<area shape="rect" id="Node000003" href="$ui__editors_8c.html#a18927d60158a6b9289b3df57ca94e0dc" title=" " alt="" coords="425,5,580,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="355,15,412,15,412,21,355,21"/>
+</map>

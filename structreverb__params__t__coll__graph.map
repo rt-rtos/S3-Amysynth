@@ -1,0 +1,5 @@
+<map id="reverb_params_t" name="reverb_params_t">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,240,137,265"/>
+<area shape="rect" id="Node000002" href="$structdelay__line__t.html" title=" " alt="" coords="21,5,122,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="74,45,74,240,69,240,69,45"/>
+</map>

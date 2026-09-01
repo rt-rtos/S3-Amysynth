@@ -1,0 +1,9 @@
+<map id="amy_parse_dist_layer_message" name="amy_parse_dist_layer_message">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,47,171,87"/>
+<area shape="rect" id="Node000002" href="$parse_8c.html#a47df3a8ce90677cf9aa2a32c41ce7c56" title=" " alt="" coords="272,5,324,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="170,45,258,24,259,30,171,51"/>
+<area shape="rect" id="Node000003" href="$parse_8c.html#ae7ab33aefdb3f46742931fbf337146d6" title=" " alt="" coords="219,55,377,80"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="171,65,205,65,205,70,171,70"/>
+<area shape="rect" id="Node000004" href="$patches_8c.html#a3a5d33a7f779c8c9f6c2be8e754c9ffe" title=" " alt="" coords="225,104,371,129"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="171,84,230,98,229,103,170,89"/>
+</map>

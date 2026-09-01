@@ -1,0 +1,33 @@
+<map id="components" name="components">
+<area shape="rect" id="node2" href="dir_422e57e6900c7a12ea82b42003bf251f.html" title="amy" alt="" coords="65,100,116,125"/>
+<area shape="rect" id="node3" href="dir_4f5cffbb4574e42961bbba4b0e605cb5.html" title="diagnostics" alt="" coords="352,173,448,199"/>
+<area shape="rect" id="node4" href="dir_8d9cd6af9ade969320dc9b5b1a8726e2.html" title="display" alt="" coords="140,100,209,125"/>
+<area shape="rect" id="node9" href="dir_d529dc809a9f1acd28ae1f6dbe73bf81.html" title="seq_clamp" alt="" coords="78,173,170,199"/>
+<area shape="poly" id="edge2" href="dir_000005_000021.html" alt="" coords="168,127,142,164,138,161,164,124"/>
+<area shape="rect" id="edge2-headlabel" href="dir_000005_000021.html" title="3" alt="" coords="145,156,154,171"/>
+<area shape="rect" id="node11" href="dir_91355707e04bed1f3ba33ec59f49d25b.html" title="synth_core" alt="" coords="128,27,221,52"/>
+<area shape="poly" id="edge1" href="dir_000005_000025.html" alt="" coords="179,100,181,66,186,66,184,100"/>
+<area shape="rect" id="edge1-headlabel" href="dir_000005_000025.html" title="4" alt="" coords="171,64,180,79"/>
+<area shape="rect" id="node5" href="dir_b917b0c87307fc933c957c0797489391.html" title="harness" alt="" coords="627,27,701,52"/>
+<area shape="rect" id="node6" href="dir_a0ffdc25d14455713fbec43043df8a37.html" title="my_buttons" alt="" coords="504,27,603,52"/>
+<area shape="rect" id="node7" href="dir_7c2c98b6faa73d44a6a56e2856e73ea8.html" title="project_store" alt="" coords="233,100,340,125"/>
+<area shape="rect" id="node8" href="dir_0f6fee55ec31f3182cd416906262600e.html" title="rotary_encoder" alt="" coords="360,27,480,52"/>
+<area shape="rect" id="node10" href="dir_2f1ff57f6a147bb10f52d32244e1489e.html" title="status_led" alt="" coords="246,27,335,52"/>
+<area shape="poly" id="edge3" href="dir_000025_000000.html" alt="" coords="163,54,117,93,113,89,159,50"/>
+<area shape="rect" id="edge3-headlabel" href="dir_000025_000000.html" title="14" alt="" coords="115,87,132,102"/>
+<area shape="poly" id="edge4" href="dir_000025_000004.html" alt="" coords="221,49,297,72,330,85,354,98,378,127,394,159,389,161,374,130,350,102,328,90,295,77,220,55"/>
+<area shape="rect" id="edge4-headlabel" href="dir_000025_000004.html" title="4" alt="" coords="393,146,403,160"/>
+<area shape="poly" id="edge6" href="dir_000025_000005.html" alt="" coords="170,52,169,87,163,86,165,52"/>
+<area shape="rect" id="edge6-headlabel" href="dir_000025_000005.html" title="34" alt="" coords="165,73,182,88"/>
+<area shape="poly" id="edge5" href="dir_000025_000019.html" alt="" coords="194,50,258,90,255,95,191,54"/>
+<area shape="rect" id="edge5-headlabel" href="dir_000025_000019.html" title="3" alt="" coords="253,76,262,90"/>
+<area shape="poly" id="edge7" href="dir_000025_000021.html" alt="" coords="129,53,88,71,70,84,56,101,52,118,59,135,74,150,92,164,89,168,70,154,55,138,46,119,51,99,66,81,85,66,127,48"/>
+<area shape="rect" id="edge7-headlabel" href="dir_000025_000021.html" title="27" alt="" coords="82,149,100,164"/>
+<area shape="rect" id="node12" href="dir_5d2685a95e359eb8c57155e0d36c45d9.html" title="usb_audio" alt="" coords="391,100,479,125"/>
+<area shape="poly" id="edge8" href="dir_000025_000027.html" alt="" coords="217,49,380,94,379,99,216,55"/>
+<area shape="rect" id="edge8-headlabel" href="dir_000025_000027.html" title="1" alt="" coords="373,80,382,94"/>
+<area shape="poly" id="edge9" href="dir_000027_000004.html" alt="" coords="431,127,414,162,409,160,427,124"/>
+<area shape="rect" id="edge9-headlabel" href="dir_000027_000004.html" title="2" alt="" coords="417,153,426,168"/>
+<area shape="rect" id="node13" href="dir_8ef4d4695057bb38cff3e9bad7c053c3.html" title="wireless" alt="" coords="27,27,103,52"/>
+<area shape="rect" id="clust1" href="dir_409f97388efe006bc3438b95e9edef48.html" alt="" coords="16,16,839,209"/>
+</map>

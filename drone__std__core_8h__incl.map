@@ -1,0 +1,26 @@
+<map id="components/synth_core/include/custompatches/drone_std_core.h" name="components/synth_core/include/custompatches/drone_std_core.h">
+<area shape="rect" id="Node000001" title=" " alt="" coords="160,5,338,60"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="265,269,348,295"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="300,58,325,79,345,107,352,127,354,147,350,189,337,227,323,258,318,256,332,225,345,188,349,147,346,128,340,109,321,83,296,62"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="192,343,263,368"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="313,58,343,79,367,106,395,156,411,202,412,224,408,247,399,271,385,296,363,319,335,335,306,346,277,352,276,347,304,341,333,330,359,315,380,293,395,269,403,246,407,224,405,203,390,158,363,110,340,83,310,63"/>
+<area shape="rect" id="Node000004" href="$seq__model_8h.html" title=" " alt="" coords="20,196,126,221"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="214,62,158,110,121,149,92,186,88,183,117,146,154,106,211,58"/>
+<area shape="rect" id="Node000005" href="$chord__types_8h.html" title=" " alt="" coords="76,269,190,295"/>
+<area shape="poly" id="edge8_Node000001_Node000005" title=" " alt="" coords="175,63,129,85,83,114,42,152,25,173,12,197,8,208,9,218,22,236,45,251,72,263,70,268,42,256,18,240,4,220,3,208,7,195,21,170,38,148,80,110,127,80,173,58"/>
+<area shape="rect" id="Node000006" href="$drone__core_8h.html" title=" " alt="" coords="168,108,330,148"/>
+<area shape="poly" id="edge9_Node000001_Node000006" title=" " alt="" coords="252,60,252,94,246,94,246,60"/>
+<area shape="poly" id="edge6_Node000004_Node000002" title=" " alt="" coords="111,219,256,263,255,268,110,224"/>
+<area shape="poly" id="edge7_Node000004_Node000003" title=" " alt="" coords="70,222,60,257,61,276,67,293,90,316,118,332,149,342,179,348,178,353,148,347,116,337,87,320,63,296,55,277,55,256,65,221"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="85,220,117,257,113,261,81,223"/>
+<area shape="poly" id="edge5_Node000005_Node000003" title=" " alt="" coords="150,293,203,332,200,336,147,297"/>
+<area shape="poly" id="edge10_Node000006_Node000002" title=" " alt="" coords="275,146,295,168,312,195,317,226,315,256,309,256,312,227,307,197,291,171,271,150"/>
+<area shape="poly" id="edge11_Node000006_Node000003" title=" " alt="" coords="280,146,316,174,350,211,363,232,370,253,371,275,362,296,345,316,323,330,277,348,275,343,321,326,341,312,357,293,365,274,365,254,358,234,346,214,312,178,276,150"/>
+<area shape="poly" id="edge12_Node000006_Node000004" title=" " alt="" coords="208,150,113,193,111,188,206,146"/>
+<area shape="poly" id="edge13_Node000006_Node000005" title=" " alt="" coords="233,150,192,198,150,259,145,256,188,194,229,146"/>
+<area shape="rect" id="Node000007" href="$quantizer_8h.html" title=" " alt="" coords="202,196,296,221"/>
+<area shape="poly" id="edge14_Node000006_Node000007" title=" " alt="" coords="252,148,252,182,246,182,246,148"/>
+<area shape="poly" id="edge16_Node000007_Node000002" title=" " alt="" coords="261,220,290,257,286,260,256,223"/>
+<area shape="poly" id="edge17_Node000007_Node000003" title=" " alt="" coords="250,222,234,329,229,329,245,221"/>
+<area shape="poly" id="edge15_Node000007_Node000005" title=" " alt="" coords="232,224,165,264,162,260,229,219"/>
+</map>

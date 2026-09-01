@@ -1,0 +1,9 @@
+<map id="components/display/patch_names.c" name="components/display/patch_names.c">
+<area shape="rect" id="Node000001" title=" " alt="" coords="17,5,171,45"/>
+<area shape="rect" id="Node000002" href="$patch__names_8h.html" title=" " alt="" coords="33,93,155,119"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="97,46,97,79,91,79,91,46"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="5,167,76,192"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="87,121,60,157,55,154,83,117"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="101,167,197,192"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="105,117,134,154,129,157,101,121"/>
+</map>

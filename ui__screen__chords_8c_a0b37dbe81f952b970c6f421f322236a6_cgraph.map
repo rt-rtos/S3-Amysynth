@@ -1,0 +1,7 @@
+<map id="chord_root_max" name="chord_root_max">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,5,132,31"/>
+<area shape="rect" id="Node000002" href="$ui__screen__chords_8c.html#ae873431c2531c4465acf1a1bc11c5464" title=" " alt="" coords="180,5,312,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="132,15,166,15,166,21,132,21"/>
+<area shape="rect" id="Node000003" href="$quantizer_8c.html#ab584a035712841fdfacc92e1b8c0a47b" title=" " alt="" coords="360,5,551,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="312,15,346,15,346,21,312,21"/>
+</map>

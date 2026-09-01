@@ -1,0 +1,18 @@
+<map id="seq_track_lfo_native_layout" name="seq_track_lfo_native_layout">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,110,163,150"/>
+<area shape="rect" id="Node000002" href="$seq__core__synth_8c.html#ad4c17c4ada9474028f7d0ce76b483b78" title=" " alt="" coords="211,76,395,101"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="162,113,221,101,222,107,163,118"/>
+<area shape="rect" id="Node000008" href="$sequencer__core_8h.html#a9fff7fd5098c3bc3ae8058b5e72ace4b" title=" " alt="" coords="229,138,377,178"/>
+<area shape="poly" id="edge7_Node000001_Node000008" title=" " alt="" coords="163,137,215,144,215,149,162,143"/>
+<area shape="rect" id="Node000003" href="$seq__core__synth_8c.html#abb8367e0c4d551f092b84e3350d1b036" title=" " alt="" coords="443,5,613,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="341,73,442,41,470,32,471,37,443,46,343,78"/>
+<area shape="rect" id="Node000005" href="$seq__core__synth_8c.html#a835eebf26ba0e187348a5a2aaf2ac5b7" title=" " alt="" coords="452,55,604,95"/>
+<area shape="poly" id="edge4_Node000002_Node000005" title=" " alt="" coords="395,81,438,78,439,83,395,86"/>
+<area shape="rect" id="Node000006" href="$seq__core__synth_8c.html#aa053ee3cbfda22b02c4a8f861ed93211" title=" " alt="" coords="459,120,597,145"/>
+<area shape="poly" id="edge5_Node000002_Node000006" title=" " alt="" coords="369,99,450,115,449,120,368,104"/>
+<area shape="rect" id="Node000004" href="$seq__chords_8c.html#aa6518ae558bce30098d3537679e412ed" title=" " alt="" coords="684,5,823,31"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="614,15,670,15,670,21,614,21"/>
+<area shape="rect" id="Node000007" href="$sequencer__core_8h.html#a8501381ca8fc695002483d2f012edc76" title=" " alt="" coords="661,138,845,178"/>
+<area shape="poly" id="edge6_Node000006_Node000007" title=" " alt="" coords="598,138,648,143,647,149,597,143"/>
+<area shape="poly" id="edge8_Node000008_Node000007" title=" " alt="" coords="377,155,648,155,648,161,377,161"/>
+</map>

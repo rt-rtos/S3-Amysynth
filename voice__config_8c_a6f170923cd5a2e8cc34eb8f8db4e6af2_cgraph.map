@@ -1,0 +1,11 @@
+<map id="unison_copy_coefs" name="unison_copy_coefs">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,56,151,81"/>
+<area shape="rect" id="Node000002" href="$voice__config_8c.html#af838b425ef784c6f604b0e3bdde3d54e" title=" " alt="" coords="199,5,341,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="126,53,207,32,208,37,128,58"/>
+<area shape="rect" id="Node000003" href="$voice__config_8c.html#aacd01e567efa60f3ad6b2a5ee4f7728b" title=" " alt="" coords="389,56,505,81"/>
+<area shape="poly" id="edge5_Node000001_Node000003" title=" " alt="" coords="151,66,375,66,375,71,151,71"/>
+<area shape="rect" id="Node000004" href="$voice__config_8c.html#a99619941d50b471075548c516cc6a3ed" title=" " alt="" coords="553,81,648,107"/>
+<area shape="poly" id="edge4_Node000001_Node000004" title=" " alt="" coords="151,73,389,90,539,92,539,97,389,95,151,78"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="316,28,390,50,388,55,315,33"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="506,76,540,81,539,87,505,81"/>
+</map>

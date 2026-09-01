@@ -1,0 +1,9 @@
+<map id="midi_realtime_out" name="midi_realtime_out">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,31,147,56"/>
+<area shape="rect" id="Node000002" href="$amy__midi_8c.html#adce2317b0b9c99120822814d2ca3c794" title=" " alt="" coords="195,31,273,56"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="147,41,181,41,181,46,147,46"/>
+<area shape="rect" id="Node000003" href="$amy__midi_8c.html#a66252bfc63e9a6f22e6a00081e773baa" title=" " alt="" coords="357,5,464,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="273,35,343,25,344,30,274,40"/>
+<area shape="rect" id="Node000004" href="$amy__midi_8c.html#a2bcf42d7e23e670df9ea23b1603cafbc" title=" " alt="" coords="321,55,500,80"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="274,46,308,51,308,56,273,51"/>
+</map>

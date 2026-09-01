@@ -1,0 +1,7 @@
+<map id="dropout_stats_get" name="dropout_stats_get">
+<area shape="rect" id="Node000001" title=" " alt="" coords="204,35,343,60"/>
+<area shape="rect" id="Node000002" href="$main_8c.html#a630544a7f0a2cc40d8a7fefab7e2fe70" title=" " alt="" coords="37,5,124,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="190,37,124,27,125,22,191,32"/>
+<area shape="rect" id="Node000003" href="$usb__audio_8c.html#ac2d601bbc530ebc94226049e06e69724" title="Get a snapshot of USB audio diagnostic counters and buffer state." alt="" coords="5,55,156,95"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="191,62,156,67,156,62,190,57"/>
+</map>

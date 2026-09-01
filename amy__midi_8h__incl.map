@@ -1,0 +1,13 @@
+<map id="components/amy/src/amy_midi.h" name="components/amy/src/amy_midi.h">
+<area shape="rect" id="Node000001" title=" " alt="" coords="179,5,338,45"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,93,88,119"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="209,48,92,91,90,86,207,43"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="113,93,183,119"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="233,48,177,87,174,83,230,43"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="207,93,310,119"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="261,46,261,79,256,79,256,46"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="335,93,449,119"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="292,43,362,84,359,89,289,48"/>
+<area shape="rect" id="Node000006" title=" " alt="" coords="474,93,566,119"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="322,43,469,87,468,92,320,48"/>
+</map>

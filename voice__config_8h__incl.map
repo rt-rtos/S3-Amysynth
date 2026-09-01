@@ -1,0 +1,14 @@
+<map id="components/synth_core/include/voice_config.h" name="components/synth_core/include/voice_config.h">
+<area shape="rect" id="Node000001" title=" " alt="" coords="159,5,336,45"/>
+<area shape="rect" id="Node000002" href="$seq__model_8h.html" title=" " alt="" coords="104,93,209,119"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="227,48,182,86,179,82,224,44"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="121,240,192,265"/>
+<area shape="poly" id="edge7_Node000001_Node000004" title=" " alt="" coords="263,44,281,74,297,113,303,154,300,174,291,193,274,213,252,228,206,246,204,241,250,223,270,209,286,191,294,173,297,154,292,114,276,77,259,47"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="194,167,277,192"/>
+<area shape="poly" id="edge6_Node000001_Node000005" title=" " alt="" coords="248,46,240,153,235,153,243,46"/>
+<area shape="rect" id="Node000003" href="$chord__types_8h.html" title=" " alt="" coords="5,167,119,192"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="143,121,90,160,87,156,140,117"/>
+<area shape="poly" id="edge5_Node000002_Node000004" title=" " alt="" coords="159,119,159,226,154,226,154,119"/>
+<area shape="poly" id="edge4_Node000002_Node000005" title=" " alt="" coords="171,117,214,156,211,159,168,121"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="79,190,132,229,129,234,76,194"/>
+</map>

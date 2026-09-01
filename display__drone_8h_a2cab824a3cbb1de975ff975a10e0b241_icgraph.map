@@ -1,0 +1,9 @@
+<map id="display_drone_draw_frame_titled" name="display_drone_draw_frame_titled">
+<area shape="rect" id="Node000001" title=" " alt="" coords="205,63,357,103"/>
+<area shape="rect" id="Node000002" href="$display__drone_8c.html#a356c89e21fe3b333944e313480ea3bdf" title=" " alt="" coords="5,5,157,45"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="197,61,151,48,152,43,199,56"/>
+<area shape="rect" id="Node000003" href="$ui__view__resolve_8c.html#a49cc28b97fd292454d21697c5aa83604" title=" " alt="" coords="32,70,131,95"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="191,85,131,85,131,80,191,80"/>
+<area shape="rect" id="Node000004" href="$ui__view__resolve_8c.html#added6d02f119788d004ea21baabecc8c" title=" " alt="" coords="19,119,144,145"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="193,107,134,122,133,117,191,102"/>
+</map>

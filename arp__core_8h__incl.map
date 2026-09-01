@@ -1,0 +1,14 @@
+<map id="components/synth_core/include/arp_core.h" name="components/synth_core/include/arp_core.h">
+<area shape="rect" id="Node000001" title=" " alt="" coords="49,5,226,45"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,167,88,192"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="116,47,94,69,74,95,61,124,53,153,48,152,56,122,70,92,90,65,112,44"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="185,240,255,265"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="172,43,202,64,236,92,267,126,291,166,293,186,285,204,271,221,254,234,251,230,267,217,281,202,288,185,285,168,262,129,232,96,199,69,168,48"/>
+<area shape="rect" id="Node000004" href="$seq__model_8h.html" title=" " alt="" coords="85,93,190,119"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="140,46,140,79,135,79,135,46"/>
+<area shape="poly" id="edge6_Node000004_Node000002" title=" " alt="" coords="124,121,74,160,71,156,121,117"/>
+<area shape="poly" id="edge7_Node000004_Node000003" title=" " alt="" coords="139,119,141,153,145,172,153,191,170,213,191,230,187,234,166,216,148,193,140,174,136,154,134,119"/>
+<area shape="rect" id="Node000005" href="$chord__types_8h.html" title=" " alt="" coords="163,167,277,192"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="152,117,198,155,194,160,149,121"/>
+<area shape="poly" id="edge5_Node000005_Node000003" title=" " alt="" coords="223,192,223,226,217,226,217,192"/>
+</map>

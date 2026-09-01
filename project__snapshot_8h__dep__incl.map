@@ -1,0 +1,9 @@
+<map id="components/synth_core/project/project_snapshot.h" name="components/synth_core/project/project_snapshot.h">
+<area shape="rect" id="Node000001" title=" " alt="" coords="221,5,419,45"/>
+<area shape="rect" id="Node000002" href="$project__snapshot_8c.html" title=" " alt="" coords="5,93,203,133"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="261,53,152,96,150,91,259,48"/>
+<area shape="rect" id="Node000003" href="$synth__ui__task_8c.html" title=" " alt="" coords="227,93,413,133"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="323,59,323,93,317,93,317,59"/>
+<area shape="rect" id="Node000004" href="$main_8c.html" title=" " alt="" coords="438,101,541,126"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="371,49,468,98,466,103,368,54"/>
+</map>

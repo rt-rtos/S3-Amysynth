@@ -1,0 +1,13 @@
+<map id="drone_chord_note_count" name="drone_chord_note_count">
+<area shape="rect" id="Node000001" title=" " alt="" coords="673,31,855,56"/>
+<area shape="rect" id="Node000002" href="$drone__core_8c.html#a2da2f9371c92d6816395ad5ba33ebe4c" title=" " alt="" coords="464,5,625,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="660,34,625,30,626,25,660,29"/>
+<area shape="rect" id="Node000003" href="$drone__core_8c.html#a86f4d2fc75f17f5960753a6aedcce208" title=" " alt="" coords="489,55,600,80"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="660,57,601,64,600,59,660,52"/>
+<area shape="rect" id="Node000004" href="$drone__core_8c.html#ad6aa7f97a8e006af1e2bbbbbf6d06459" title=" " alt="" coords="293,55,416,80"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="475,70,417,70,417,65,475,65"/>
+<area shape="rect" id="Node000005" href="$synth__ui__task_8c.html#a41099aa99dac8edebec80153422e646b" title=" " alt="" coords="140,55,245,80"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="280,70,245,70,245,65,280,65"/>
+<area shape="rect" id="Node000006" href="$main_8c.html#a630544a7f0a2cc40d8a7fefab7e2fe70" title=" " alt="" coords="5,55,92,80"/>
+<area shape="poly" id="edge5_Node000005_Node000006" title=" " alt="" coords="126,70,92,70,92,65,126,65"/>
+</map>

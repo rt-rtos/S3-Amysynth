@@ -1,0 +1,9 @@
+<map id="components/wireless/midi_core.c" name="components/wireless/midi_core.c">
+<area shape="rect" id="Node000001" title=" " alt="" coords="9,5,169,45"/>
+<area shape="rect" id="Node000002" href="$midi__core_8h.html" title=" " alt="" coords="39,93,138,119"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="91,46,91,79,86,79,86,46"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="5,167,76,192"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="83,121,58,157,54,154,79,118"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="101,167,175,192"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="99,117,124,154,120,157,95,121"/>
+</map>

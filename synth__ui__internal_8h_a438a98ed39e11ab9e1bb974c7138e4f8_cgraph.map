@@ -1,0 +1,13 @@
+<map id="synth_ui_dist_view_draw" name="synth_ui_dist_view_draw">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,55,191,80"/>
+<area shape="rect" id="Node000002" href="$display__dist_8c.html#a81bf74c00054acf226e0856d83b7ab24" title=" " alt="" coords="239,55,361,80"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="191,65,225,65,225,70,191,70"/>
+<area shape="rect" id="Node000003" href="$display__dist_8c.html#a7b81dab6368327852440b65f70e1f625" title=" " alt="" coords="440,5,537,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="349,52,426,32,427,37,350,57"/>
+<area shape="rect" id="Node000005" href="$display__dist_8c.html#af47a216014d426cfc4209be3e346bd32" title=" " alt="" coords="427,55,550,80"/>
+<area shape="poly" id="edge4_Node000002_Node000005" title=" " alt="" coords="362,65,414,65,414,70,362,70"/>
+<area shape="rect" id="Node000006" href="$seq__model_8h.html#a860011dc291c82b4771d3a74d02ebc6e" title=" " alt="" coords="409,104,568,129"/>
+<area shape="poly" id="edge5_Node000002_Node000006" title=" " alt="" coords="350,77,427,98,425,103,349,83"/>
+<area shape="rect" id="Node000004" href="$display__dist_8c.html#acd7c32a6ecaaf7979b71e23dc1bed153" title=" " alt="" coords="616,5,720,31"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="537,15,602,15,602,21,537,21"/>
+</map>

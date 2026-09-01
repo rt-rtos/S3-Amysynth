@@ -1,0 +1,7 @@
+<map id="sequencer_core_progression_set_count" name="sequencer_core_progression_set_count">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,5,212,45"/>
+<area shape="rect" id="Node000002" href="$seq__core__engine_8c.html#ab0f5488fe287e969feaa669f1eabf366" title=" " alt="" coords="260,13,443,38"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="212,23,246,23,246,28,212,28"/>
+<area shape="rect" id="Node000003" href="$sequencer_8c.html#a7624e9bb6769780229bde167ce353b88" title=" " alt="" coords="491,13,617,38"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="443,23,477,23,477,28,443,28"/>
+</map>

@@ -1,0 +1,9 @@
+<map id="components/display/priv_i2c_u8g2.h" name="components/display/priv_i2c_u8g2.h">
+<area shape="rect" id="Node000001" title=" " alt="" coords="200,5,353,45"/>
+<area shape="rect" id="Node000002" href="$priv__i2c__u8g2_8c.html" title=" " alt="" coords="5,93,159,133"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="223,53,126,96,124,91,221,48"/>
+<area shape="rect" id="Node000003" href="$synth__ui__task_8c.html" title=" " alt="" coords="183,93,370,133"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="279,59,279,93,274,93,274,59"/>
+<area shape="rect" id="Node000004" href="$main_8c.html" title=" " alt="" coords="395,101,497,126"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="327,49,425,98,422,103,325,54"/>
+</map>

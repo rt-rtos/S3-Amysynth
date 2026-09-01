@@ -1,0 +1,9 @@
+<map id="components/rotary_encoder/rotary_encoder.h" name="components/rotary_encoder/rotary_encoder.h">
+<area shape="rect" id="Node000001" title=" " alt="" coords="73,5,277,45"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,93,109,119"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="148,48,87,88,84,84,145,43"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="134,93,215,119"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="177,46,177,79,172,79,172,46"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="239,93,310,119"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="201,43,250,82,247,87,197,48"/>
+</map>

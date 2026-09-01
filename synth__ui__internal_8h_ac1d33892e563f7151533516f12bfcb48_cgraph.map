@@ -1,0 +1,23 @@
+<map id="trackopts_build_view" name="trackopts_build_view">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,209,164,234"/>
+<area shape="rect" id="Node000002" href="$seq__core__engine_8c.html#ab9e71eb4724b31a4647b18901a71ccd7" title=" " alt="" coords="608,62,797,88"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="88,208,102,172,127,125,163,78,186,57,211,41,269,18,331,6,394,3,456,7,515,16,570,28,657,55,656,60,569,33,514,21,455,12,394,8,331,11,270,23,213,45,189,61,167,81,132,128,107,174,93,210"/>
+<area shape="rect" id="Node000003" href="$seq__core__progression_8c.html#a25de95738dab3bdd6167f51ec2f86edb" title=" " alt="" coords="239,55,391,95"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="95,207,142,158,175,129,211,105,225,97,228,102,213,109,178,134,145,162,99,211"/>
+<area shape="rect" id="Node000004" href="$seq__core__state_8c.html#a5246c0162110492f258bd0e14c065cbe" title=" " alt="" coords="627,236,779,276"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="92,234,106,272,130,322,166,373,188,394,213,411,243,425,274,433,306,437,338,437,403,426,467,404,527,375,582,343,665,283,669,288,585,348,530,380,469,409,405,431,339,442,306,442,273,438,242,430,211,416,184,398,162,376,125,324,101,274,87,236"/>
+<area shape="rect" id="Node000005" href="$seq__core__engine_8c.html#a6f18a1dfa59a6ba0d5e7ca24c360e00c" title=" " alt="" coords="239,170,391,210"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="164,208,225,200,226,205,165,213"/>
+<area shape="rect" id="Node000006" href="$seq__core__engine_8c.html#ae13b580bf47ef0f51b590ccec0a70b4d" title=" " alt="" coords="239,234,391,274"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="165,230,226,239,225,244,164,235"/>
+<area shape="rect" id="Node000007" href="$seq__core__engine_8c.html#a6633a5e1184ef3ede2a87be0977c2d58" title=" " alt="" coords="239,298,391,338"/>
+<area shape="poly" id="edge6_Node000001_Node000007" title=" " alt="" coords="109,232,157,257,213,283,232,291,231,296,211,288,154,262,107,237"/>
+<area shape="rect" id="Node000008" href="$seq__core__progression_8c.html#ad189500dc22c8f2433f0d2f5719535cd" title=" " alt="" coords="212,362,419,402"/>
+<area shape="poly" id="edge7_Node000001_Node000008" title=" " alt="" coords="97,233,143,288,176,320,213,348,225,354,222,359,211,352,173,324,139,292,93,236"/>
+<area shape="rect" id="Node000009" href="$ui__screen__trackopts_8c.html#a3805fd38d38f046446adf8c95cb0352e" title=" " alt="" coords="251,120,380,145"/>
+<area shape="poly" id="edge8_Node000001_Node000009" title=" " alt="" coords="106,207,154,181,211,155,239,146,241,151,213,160,156,186,109,211"/>
+<area shape="rect" id="Node000010" href="$ui__screen__trackopts_8c.html#a9773091fbadbcfbf238a07c384a86f8a" title=" " alt="" coords="467,120,560,145"/>
+<area shape="poly" id="edge9_Node000009_Node000010" title=" " alt="" coords="380,130,452,130,452,135,380,135"/>
+<area shape="poly" id="edge10_Node000010_Node000002" title=" " alt="" coords="555,117,646,89,648,94,557,122"/>
+<area shape="poly" id="edge11_Node000010_Node000004" title=" " alt="" coords="535,143,661,226,658,231,532,147"/>
+</map>

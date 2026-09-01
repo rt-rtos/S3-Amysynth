@@ -1,0 +1,36 @@
+var ui__screen__chords_8c =
+[
+    [ "CHORDS_EDIT_BACK", "ui__screen__chords_8c.html#ab4576b595f9d72403957f3223622807a", null ],
+    [ "CHORDS_EDIT_CLEAR", "ui__screen__chords_8c.html#a712988e6d5feeec1bd8c5af15d0c13dd", null ],
+    [ "CHORDS_EDIT_COUNT", "ui__screen__chords_8c.html#a3fdad96b644390e58c02a12019abe06a", null ],
+    [ "CHORDS_EDIT_ROOT", "ui__screen__chords_8c.html#a2972c74f7d4f833f1ea0ecf81157ea05", null ],
+    [ "CHORDS_EDIT_TYPE", "ui__screen__chords_8c.html#a6c9889adb80fdac2ddf3355db15f87c1", null ],
+    [ "CHORDS_LIST_COUNT", "ui__screen__chords_8c.html#a247ea0d5d83ab3d00fa993b7191ff7ce", null ],
+    [ "chords_mode_t", "ui__screen__chords_8c.html#a72556c7f6624f73629aa00edb9ff98aa", [
+      [ "CHORDS_MODE_LIST", "ui__screen__chords_8c.html#a72556c7f6624f73629aa00edb9ff98aaa65dfc45e14ef8d7e882f18e0507f0107", null ],
+      [ "CHORDS_MODE_EDIT", "ui__screen__chords_8c.html#a72556c7f6624f73629aa00edb9ff98aaadc7900f5fd4a77ee966e30e7437f4cc6", null ]
+    ] ],
+    [ "chord_build", "ui__screen__chords_8c.html#a94387dc7576495d9586427d0174d0426", null ],
+    [ "chord_match", "ui__screen__chords_8c.html#a9473741f8c37fe410bc889293bfd32e2", null ],
+    [ "chord_root_max", "ui__screen__chords_8c.html#a0b37dbe81f952b970c6f421f322236a6", null ],
+    [ "chord_type_fits", "ui__screen__chords_8c.html#ac409c90d47c60bfe009bb419c98fc2cc", null ],
+    [ "chord_type_span", "ui__screen__chords_8c.html#ae873431c2531c4465acf1a1bc11c5464", null ],
+    [ "chord_type_step", "ui__screen__chords_8c.html#a3c63499837058acdf5bb33a6c3197fe5", null ],
+    [ "chord_type_tones", "ui__screen__chords_8c.html#a20e33d7137f23756148bd471b61bf68e", null ],
+    [ "chords_audition", "ui__screen__chords_8c.html#a2b108acbd9d218fb5867b579422455b7", null ],
+    [ "chords_audition_target", "ui__screen__chords_8c.html#a49674369a684c9f9f018bac057d962df", null ],
+    [ "chords_commit", "ui__screen__chords_8c.html#a32baab66f1f68d955e428d12d30df35d", null ],
+    [ "chords_menu_build_items", "ui__screen__chords_8c.html#a8a33ce9a63ebd95b803021f6348e696f", null ],
+    [ "chords_menu_edit_value", "ui__screen__chords_8c.html#ae3c02a3cb2e4bb016e98b9548b825f38", null ],
+    [ "chords_menu_handle_click", "ui__screen__chords_8c.html#a398f87fc469930148eba4073c6200f27", null ],
+    [ "chords_menu_item_count", "ui__screen__chords_8c.html#a1495bc7932e03d1b3e3ccbbfe91cf898", null ],
+    [ "chords_menu_item_is_back", "ui__screen__chords_8c.html#a1217b22eeba59ac88e5b58c9233a8cce", null ],
+    [ "chords_menu_item_is_value", "ui__screen__chords_8c.html#a591769b9d831f86b0123b6a9f6c27d04", null ],
+    [ "chords_menu_reset", "ui__screen__chords_8c.html#a0e8db493b0a21c8a8ebd875f9f6ed2e6", null ],
+    [ "chords_menu_title", "ui__screen__chords_8c.html#ab7b0d5dc773a36f01e0703a63dd6b371", null ],
+    [ "s_items", "ui__screen__chords_8c.html#a34624833b68a945844cc161a0cc951e7", null ],
+    [ "s_mode", "ui__screen__chords_8c.html#a2f359a17cbfca820ff1a62f1b4276a09", null ],
+    [ "s_root", "ui__screen__chords_8c.html#a9397b14c6f8ab48b672de9e92f7e5ad2", null ],
+    [ "s_slot", "ui__screen__chords_8c.html#a0435eaa31c7a2fd4c573eed0702228c6", null ],
+    [ "s_type", "ui__screen__chords_8c.html#aaf31ceedd760849212461fa64fe2ab95", null ]
+];

@@ -1,0 +1,7 @@
+<map id="vis_clamp01" name="vis_clamp01">
+<area shape="rect" id="Node000001" title=" " alt="" coords="404,5,508,31"/>
+<area shape="rect" id="Node000002" href="$display__drone_8c.html#a21a49effeec22d9a258cb794e50b93ba" title=" " alt="" coords="177,5,356,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="390,21,356,21,356,15,390,15"/>
+<area shape="rect" id="Node000003" href="$ui__view__resolve_8c.html#aa64f17eae3379fd7a4512474a0f286c1" title=" " alt="" coords="5,5,129,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="163,21,130,21,130,15,163,15"/>
+</map>

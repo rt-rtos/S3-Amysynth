@@ -1,0 +1,26 @@
+var structdrone__state__t =
+[
+    [ "amp_duck", "structdrone__state__t.html#a63175c304db5aebcfdd4e1f021269cd5", null ],
+    [ "amp_peak", "structdrone__state__t.html#a9599f23e6871303ceb698dc9d815957c", null ],
+    [ "blip_depth", "structdrone__state__t.html#ae1060ee5a51378dc6d6e0a543db34654", null ],
+    [ "chord", "structdrone__state__t.html#ac8504954f54b1aaff24854165aca2c41", null ],
+    [ "enabled", "structdrone__state__t.html#ac591e7f74bc9385941b863d129f274b0", null ],
+    [ "gate_len", "structdrone__state__t.html#a1c2a3c4fe34630fe7a2cda84684b29d9", null ],
+    [ "last_blip_cutoff", "structdrone__state__t.html#ae3ce8217cadbf3340c41440dd2fb083a", null ],
+    [ "last_lfo_hz", "structdrone__state__t.html#a577b53a11311c0134768099651a68143", null ],
+    [ "patch", "structdrone__state__t.html#aa9d24dfdfb7c6eec48b3549585dc25fd", null ],
+    [ "pattern", "structdrone__state__t.html#aceb0211651687c78613ed6a304589de4", null ],
+    [ "rate", "structdrone__state__t.html#acb43fa13a52e7ee3941b25dbf50b454f", null ],
+    [ "resonance", "structdrone__state__t.html#a0b502f94be14fc5c0d3139561eea347b", null ],
+    [ "root_note", "structdrone__state__t.html#a4eac4c98ee5ea36a02f7cefa34345858", null ],
+    [ "solo_muted", "structdrone__state__t.html#a323b71a0b528c6c5256f4519d5d4bdf4", null ],
+    [ "source", "structdrone__state__t.html#acbc01f6459145e0a2a2dfcce71a44ce2", null ],
+    [ "sub_enabled", "structdrone__state__t.html#a1ebd634c6fdfae8ef5385a52dcddeda4", null ],
+    [ "sub_interval", "structdrone__state__t.html#a42df7c213f4f750670038ec17bb9b98d", null ],
+    [ "sweep_bars", "structdrone__state__t.html#aeb166bbcd882140e0faeb7b483113699", null ],
+    [ "sweep_hi", "structdrone__state__t.html#aa37f0ae2b0dfa79941aa2ba777ff596e", null ],
+    [ "sweep_lo", "structdrone__state__t.html#a9bc07a3cd2695fe39013385a5b460451", null ],
+    [ "swing_pct", "structdrone__state__t.html#a406835fc4c61ffd78856f45ad2d74220", null ],
+    [ "vp", "structdrone__state__t.html#accd379974f5107b30a2acb18dbb44987", null ],
+    [ "wave", "structdrone__state__t.html#a4d5372493010966077bce5b3e210f7df", null ]
+];

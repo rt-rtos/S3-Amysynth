@@ -1,0 +1,21 @@
+<map id="release_voice_oscs" name="release_voice_oscs">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,55,153,80"/>
+<area shape="rect" id="Node000002" href="$patches_8c.html#a916edff5a2a4d3a33b3b137e4a4c5341" title=" " alt="" coords="201,55,344,80"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="154,65,188,65,188,70,154,70"/>
+<area shape="rect" id="Node000003" href="$amy_8c.html#aa7d88b83ca97e69a528be225d33a95b0" title=" " alt="" coords="392,55,545,80"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="344,65,378,65,378,70,344,70"/>
+<area shape="rect" id="Node000004" href="$amy_8c.html#ad054834a7fb83106117b4598c0babeaf" title=" " alt="" coords="603,5,724,31"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="519,52,598,32,600,37,520,57"/>
+<area shape="rect" id="Node000005" href="$amy_8c.html#a732c26c53a8c2d5b2c900b17e1158aa8" title=" " alt="" coords="593,55,733,80"/>
+<area shape="poly" id="edge4_Node000003_Node000005" title=" " alt="" coords="546,65,579,65,579,70,546,70"/>
+<area shape="rect" id="Node000006" href="$amy_8c.html#a9a80c0ab945c788dd0b777d5717d7f7d" title=" " alt="" coords="622,104,705,129"/>
+<area shape="poly" id="edge5_Node000003_Node000006" title=" " alt="" coords="520,77,609,100,608,106,519,83"/>
+<area shape="rect" id="Node000007" href="$amy_8c.html#ad5f094d1ffcfd597c4ee014b96b2516a" title=" " alt="" coords="781,104,952,129"/>
+<area shape="poly" id="edge6_Node000006_Node000007" title=" " alt="" coords="705,114,768,114,768,119,705,119"/>
+<area shape="rect" id="Node000008" href="$amy_8c.html#a2d2477e82bc4052f6a0693cc9905bc32" title=" " alt="" coords="1024,79,1111,104"/>
+<area shape="poly" id="edge7_Node000007_Node000008" title=" " alt="" coords="952,103,1010,96,1011,101,953,108"/>
+<area shape="rect" id="Node000009" href="$amy_8c.html#abf367c547003cadbd7e675d2efc5bcde" title=" " alt="" coords="1000,128,1135,153"/>
+<area shape="poly" id="edge8_Node000007_Node000009" title=" " alt="" coords="953,124,987,128,986,134,952,130"/>
+<area shape="rect" id="Node000010" href="$amy_8c.html#adf4eb9b209ec33e5816b81031376947e" title=" " alt="" coords="1183,128,1285,153"/>
+<area shape="poly" id="edge9_Node000009_Node000010" title=" " alt="" coords="1135,138,1169,138,1169,143,1135,143"/>
+</map>

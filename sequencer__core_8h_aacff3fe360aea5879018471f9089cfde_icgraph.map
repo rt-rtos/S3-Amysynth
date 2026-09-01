@@ -1,0 +1,10 @@
+<map id="sequencer_core_get_num_layers" name="sequencer_core_get_num_layers">
+<area shape="rect" id="Node000001" title=" " alt="" coords="441,17,593,57"/>
+<area shape="rect" id="Node000002" href="$project__snapshot_8c.html#adc328f05222133bb8129c9d502dc3ff4" title=" " alt="" coords="5,28,173,53"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="427,19,393,14,307,8,222,14,137,31,136,25,221,9,307,3,394,9,428,14"/>
+<area shape="rect" id="Node000003" href="$project__snapshot_8c.html#a60da0804771ff732a1d5943a36b47a46" title=" " alt="" coords="222,24,393,49"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="428,39,393,39,393,34,428,34"/>
+<area shape="rect" id="Node000004" href="$synth__ui__state_8c.html#a6f849b105ae525c87e2243f447aec2eb" title=" " alt="" coords="221,74,393,114"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="431,63,382,77,380,72,430,58"/>
+<area shape="poly" id="edge4_Node000004_Node000002" title=" " alt="" coords="211,73,141,56,143,51,213,68"/>
+</map>

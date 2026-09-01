@@ -1,0 +1,16 @@
+<map id="components/display/display_trackopts.c" name="components/display/display_trackopts.c">
+<area shape="rect" id="Node000001" title=" " alt="" coords="189,5,342,45"/>
+<area shape="rect" id="Node000002" href="$display__trackopts_8h.html" title=" " alt="" coords="126,93,274,119"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="252,47,220,84,216,81,247,44"/>
+<area shape="rect" id="Node000007" title=" " alt="" coords="299,93,365,119"/>
+<area shape="poly" id="edge7_Node000001_Node000007" title=" " alt="" coords="283,44,315,81,311,84,279,47"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="5,167,72,192"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="175,121,79,163,76,159,173,116"/>
+<area shape="rect" id="Node000004" href="$chord__types_8h.html" title=" " alt="" coords="97,167,210,192"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="195,120,171,157,166,154,190,118"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="165,240,235,265"/>
+<area shape="poly" id="edge6_Node000002_Node000005" title=" " alt="" coords="208,118,218,140,225,166,224,199,215,228,210,227,219,198,220,167,213,141,203,120"/>
+<area shape="rect" id="Node000006" title=" " alt="" coords="285,167,368,192"/>
+<area shape="poly" id="edge5_Node000002_Node000006" title=" " alt="" coords="222,116,295,157,293,162,219,121"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="163,191,187,227,183,230,159,194"/>
+</map>

@@ -1,0 +1,19 @@
+<map id="components/rotary_encoder/rotary_encoder.c" name="components/rotary_encoder/rotary_encoder.c">
+<area shape="rect" id="Node000001" title=" " alt="" coords="377,5,581,45"/>
+<area shape="rect" id="Node000002" href="$rotary__encoder_8h.html" title=" " alt="" coords="109,93,240,119"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="407,48,233,92,232,87,405,43"/>
+<area shape="rect" id="Node000006" title=" " alt="" coords="264,93,403,119"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="445,48,368,89,365,84,443,43"/>
+<area shape="rect" id="Node000007" title=" " alt="" coords="427,93,530,119"/>
+<area shape="poly" id="edge6_Node000001_Node000007" title=" " alt="" coords="481,46,481,79,476,79,476,46"/>
+<area shape="rect" id="Node000008" title=" " alt="" coords="554,93,638,119"/>
+<area shape="poly" id="edge7_Node000001_Node000008" title=" " alt="" coords="509,43,569,84,566,88,506,48"/>
+<area shape="rect" id="Node000009" title=" " alt="" coords="662,93,733,119"/>
+<area shape="poly" id="edge8_Node000001_Node000009" title=" " alt="" coords="532,43,653,86,651,91,530,48"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="5,167,109,192"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="157,121,90,162,87,157,154,116"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="134,167,215,192"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="177,119,177,153,172,153,172,119"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="239,167,310,192"/>
+<area shape="poly" id="edge4_Node000002_Node000005" title=" " alt="" coords="192,117,249,156,246,161,189,121"/>
+</map>

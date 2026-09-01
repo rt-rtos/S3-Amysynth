@@ -1,0 +1,16 @@
+<map id="components/my_buttons/my_buttons.c" name="components/my_buttons/my_buttons.c">
+<area shape="rect" id="Node000001" title=" " alt="" coords="207,5,389,45"/>
+<area shape="rect" id="Node000002" href="$my__buttons_8h.html" title=" " alt="" coords="99,93,209,119"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="265,48,188,89,186,84,262,43"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="205,167,305,192"/>
+<area shape="poly" id="edge5_Node000001_Node000005" title=" " alt="" coords="295,47,281,94,264,154,259,153,275,93,290,45"/>
+<area shape="rect" id="Node000006" title=" " alt="" coords="289,93,400,119"/>
+<area shape="poly" id="edge6_Node000001_Node000006" title=" " alt="" coords="312,44,333,80,328,83,307,47"/>
+<area shape="rect" id="Node000007" title=" " alt="" coords="424,93,508,119"/>
+<area shape="poly" id="edge7_Node000001_Node000007" title=" " alt="" coords="339,43,430,85,428,90,337,48"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="5,167,87,192"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="138,121,77,161,74,157,135,116"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="111,167,181,192"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="155,119,151,153,146,153,150,119"/>
+<area shape="poly" id="edge4_Node000002_Node000005" title=" " alt="" coords="172,116,229,156,226,161,169,121"/>
+</map>

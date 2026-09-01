@@ -1,0 +1,29 @@
+<map id="components/synth_core/include/custompatches/additive_presets.h" name="components/synth_core/include/custompatches/additive_presets.h">
+<area shape="rect" id="Node000001" title=" " alt="" coords="1006,5,1183,60"/>
+<area shape="rect" id="Node000002" href="$additive__presets_8c.html" title=" " alt="" coords="898,108,1081,163"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="1059,72,1019,110,1015,106,1055,68"/>
+<area shape="rect" id="Node000003" href="$seq__core__internal_8h.html" title=" " alt="" coords="1105,108,1295,163"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="1134,68,1174,106,1171,110,1130,72"/>
+<area shape="rect" id="Node000004" href="$seq__chords_8c.html" title=" " alt="" coords="5,218,221,258"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="1091,165,960,181,849,189,660,191,472,192,362,199,234,213,192,221,191,215,233,208,362,194,472,187,660,185,849,183,960,176,1090,160"/>
+<area shape="rect" id="Node000005" href="$seq__core__dump_8c.html" title=" " alt="" coords="246,211,437,265"/>
+<area shape="poly" id="edge4_Node000003_Node000005" title=" " alt="" coords="1091,165,993,178,910,185,767,189,626,193,544,200,448,213,438,215,437,210,448,208,544,195,626,188,767,184,909,180,993,173,1091,160"/>
+<area shape="rect" id="Node000006" href="$seq__core__editors_8c.html" title=" " alt="" coords="461,211,651,265"/>
+<area shape="poly" id="edge5_Node000003_Node000006" title=" " alt="" coords="1091,165,970,182,875,189,781,197,663,213,652,215,651,210,662,208,780,191,874,184,969,177,1090,160"/>
+<area shape="rect" id="Node000007" href="$seq__core__engine_8c.html" title=" " alt="" coords="675,211,866,265"/>
+<area shape="poly" id="edge6_Node000003_Node000007" title=" " alt="" coords="1092,165,878,213,867,216,865,211,877,208,1091,160"/>
+<area shape="rect" id="Node000008" href="$seq__core__progression_8c.html" title=" " alt="" coords="890,211,1081,265"/>
+<area shape="poly" id="edge7_Node000003_Node000008" title=" " alt="" coords="1133,171,1042,213,1040,208,1131,166"/>
+<area shape="rect" id="Node000009" href="$seq__core__snapshot_8c.html" title=" " alt="" coords="1105,211,1295,265"/>
+<area shape="poly" id="edge8_Node000003_Node000009" title=" " alt="" coords="1203,176,1203,211,1197,211,1197,176"/>
+<area shape="rect" id="Node000010" href="$seq__core__state_8c.html" title=" " alt="" coords="1319,211,1510,265"/>
+<area shape="poly" id="edge9_Node000003_Node000010" title=" " alt="" coords="1269,166,1360,208,1358,213,1267,171"/>
+<area shape="rect" id="Node000011" href="$seq__core__synth_8c.html" title=" " alt="" coords="1534,211,1725,265"/>
+<area shape="poly" id="edge10_Node000003_Node000011" title=" " alt="" coords="1309,159,1523,208,1535,211,1533,216,1522,213,1308,164"/>
+<area shape="rect" id="Node000012" href="$seq__core__tempo_8c.html" title=" " alt="" coords="1749,211,1939,265"/>
+<area shape="poly" id="edge11_Node000003_Node000012" title=" " alt="" coords="1310,146,1509,171,1738,208,1749,210,1748,215,1737,213,1509,176,1309,151"/>
+<area shape="rect" id="Node000013" href="$seq__core__trig_8c.html" title=" " alt="" coords="1963,211,2154,265"/>
+<area shape="poly" id="edge12_Node000003_Node000013" title=" " alt="" coords="1309,140,1601,163,1777,182,1952,208,1963,210,1962,215,1952,213,1776,188,1600,168,1309,145"/>
+<area shape="rect" id="Node000014" href="$seq__trig__pump_8c.html" title=" " alt="" coords="2179,211,2363,265"/>
+<area shape="poly" id="edge13_Node000003_Node000014" title=" " alt="" coords="1309,136,1476,143,1690,155,1928,176,2167,208,2179,210,2178,215,2166,213,1928,182,1690,161,1476,148,1309,142"/>
+</map>

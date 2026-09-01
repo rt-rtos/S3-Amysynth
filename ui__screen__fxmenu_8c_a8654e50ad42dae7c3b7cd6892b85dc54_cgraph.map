@@ -1,0 +1,7 @@
+<map id="fx_menu_build_items" name="fx_menu_build_items">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,31,168,56"/>
+<area shape="rect" id="Node000002" href="$ui__screen__fxmenu_8c.html#a83becd2071f2600e17494bc7db5def35" title=" " alt="" coords="266,5,325,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="168,31,252,20,253,26,169,36"/>
+<area shape="rect" id="Node000003" href="$seq__model_8h.html#a860011dc291c82b4771d3a74d02ebc6e" title=" " alt="" coords="216,55,375,80"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="169,50,203,54,202,59,168,55"/>
+</map>

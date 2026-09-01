@@ -1,0 +1,7 @@
+<map id="dist_view_draw" name="dist_view_draw">
+<area shape="rect" id="Node000001" title=" " alt="" coords="372,5,495,31"/>
+<area shape="rect" id="Node000002" href="$ui__editors_8c.html#a438a98ed39e11ab9e1bb974c7138e4f8" title=" " alt="" coords="139,5,324,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="358,21,324,21,324,15,358,15"/>
+<area shape="rect" id="Node000003" href="$ui__view__resolve_8c.html#aae464d1d86f1c90208ac0e4dd1b59921" title=" " alt="" coords="5,5,91,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="125,21,91,21,91,15,125,15"/>
+</map>

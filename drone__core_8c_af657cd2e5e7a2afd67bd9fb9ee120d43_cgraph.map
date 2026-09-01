@@ -1,0 +1,9 @@
+<map id="drone_lfo_hz" name="drone_lfo_hz">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,5,111,31"/>
+<area shape="rect" id="Node000002" href="$drone__core_8c.html#a02b53ba22d2859e2dc820af52ada8f84" title=" " alt="" coords="159,5,248,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="111,15,145,15,145,21,111,21"/>
+<area shape="rect" id="Node000003" href="$synth__ui__state_8c.html#aaee19ed5ca361b710f496162fde425aa" title=" " alt="" coords="296,5,405,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="248,15,282,15,282,21,248,21"/>
+<area shape="rect" id="Node000004" href="$seq__core__tempo_8c.html#ae92364ccd8a25928ce5a2a394629acfd" title=" " alt="" coords="453,5,641,31"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="406,15,440,15,440,21,406,21"/>
+</map>

@@ -1,0 +1,7 @@
+<map id="synth_ui_graph_flip_eg1_polarity" name="synth_ui_graph_flip_eg1_polarity">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,27,153,67"/>
+<area shape="rect" id="Node000002" href="$graph__popup_8c.html#a251dbdc1a600bbd8d812d96eba100049" title=" " alt="" coords="201,5,372,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="153,34,187,29,188,35,154,40"/>
+<area shape="rect" id="Node000003" href="$ui__editors_8c.html#a0de1fb6520647e6a19f2db1482108328" title=" " alt="" coords="203,55,370,95"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="154,55,190,60,189,65,153,60"/>
+</map>

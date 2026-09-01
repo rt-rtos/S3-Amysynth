@@ -1,0 +1,9 @@
+<map id="trig_roll_probability" name="trig_roll_probability">
+<area shape="rect" id="Node000001" title=" " alt="" coords="644,5,793,31"/>
+<area shape="rect" id="Node000002" href="$seq__core__trig_8c.html#a0d0beed8a4026107336ab09deb0bbf87" title=" " alt="" coords="387,5,596,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="630,21,596,21,596,15,630,15"/>
+<area shape="rect" id="Node000003" href="$main_8c.html#a24b717c818aaf1efc9533b21926a220a" title=" " alt="" coords="140,5,339,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="373,21,339,21,339,15,373,15"/>
+<area shape="rect" id="Node000004" href="$main_8c.html#a630544a7f0a2cc40d8a7fefab7e2fe70" title=" " alt="" coords="5,5,92,31"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="126,21,92,21,92,15,126,15"/>
+</map>

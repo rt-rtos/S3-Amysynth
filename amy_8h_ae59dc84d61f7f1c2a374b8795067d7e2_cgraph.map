@@ -1,0 +1,17 @@
+<map id="instrument_all_notes_off" name="instrument_all_notes_off">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,80,188,105"/>
+<area shape="rect" id="Node000002" href="$instrument_8c.html#a7d434b74ee7c55812bf2473c1fcfdb6f" title=" " alt="" coords="239,55,429,80"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="188,80,225,76,225,82,188,86"/>
+<area shape="rect" id="Node000007" href="$instrument_8c.html#ab399572fa622955fc4ae6ef2ce085346" title=" " alt="" coords="236,104,432,129"/>
+<area shape="poly" id="edge6_Node000001_Node000007" title=" " alt="" coords="188,99,223,103,222,108,188,105"/>
+<area shape="rect" id="Node000003" href="$instrument_8c.html#a0bf0c9e4e2cdd327776e26adebc692cb" title=" " alt="" coords="480,5,723,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="403,52,518,31,519,36,404,57"/>
+<area shape="rect" id="Node000004" href="$instrument_8c.html#af0b76c7a8576cc68d9b12b44bc3cabc0" title=" " alt="" coords="518,55,685,80"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="429,65,504,65,504,70,429,70"/>
+<area shape="rect" id="Node000005" href="$instrument_8c.html#ae91467747990d717baf3679d2e98550e" title=" " alt="" coords="785,31,899,56"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="685,56,771,48,772,53,685,62"/>
+<area shape="rect" id="Node000006" href="$instrument_8c.html#a14a005433b807b702e806649a6a89109" title=" " alt="" coords="771,80,913,105"/>
+<area shape="poly" id="edge5_Node000004_Node000006" title=" " alt="" coords="685,73,757,81,757,86,685,79"/>
+<area shape="rect" id="Node000008" href="$instrument_8c.html#a74bf594cb8ad72799475687a19c5c275" title=" " alt="" coords="515,104,688,129"/>
+<area shape="poly" id="edge7_Node000007_Node000008" title=" " alt="" coords="432,114,501,114,501,119,432,119"/>
+</map>

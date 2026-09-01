@@ -1,0 +1,8 @@
+<map id="midi_fetch_mapping_command" name="midi_fetch_mapping_command">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,22,160,62"/>
+<area shape="rect" id="Node000002" href="$midi__mappings_8c.html#a55fad89b2b8e1e1d2d5382d26fb1abc4" title=" " alt="" coords="208,29,355,55"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="160,39,194,39,194,45,160,45"/>
+<area shape="poly" id="edge3_Node000002_Node000002" title=" " alt="" coords="249,31,242,21,245,11,259,5,281,3,308,6,320,15,316,19,306,11,281,8,260,10,249,15,247,20,253,28"/>
+<area shape="rect" id="Node000003" href="$midi__mappings_8c.html#a972b8b7297ed570c4efab4589f4e7cbd" title=" " alt="" coords="403,29,563,55"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="355,39,389,39,389,45,355,45"/>
+</map>

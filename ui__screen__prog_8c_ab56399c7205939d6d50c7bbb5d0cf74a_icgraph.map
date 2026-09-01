@@ -1,0 +1,7 @@
+<map id="prog_build_view" name="prog_build_view">
+<area shape="rect" id="Node000001" title=" " alt="" coords="336,5,464,31"/>
+<area shape="rect" id="Node000002" href="$ui__screen__prog_8c.html#a27848aba9b42798bbef4cc4cda820161" title=" " alt="" coords="131,5,288,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="322,21,288,21,288,15,322,15"/>
+<area shape="rect" id="Node000003" href="$ui__view__resolve_8c.html#adbca8d6e63a8c89ee75fb7dd0e904257" title=" " alt="" coords="5,5,83,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="117,21,83,21,83,15,117,15"/>
+</map>

@@ -1,0 +1,21 @@
+<map id="bus_state_t" name="bus_state_t">
+<area shape="rect" id="Node000001" title=" " alt="" coords="285,427,382,452"/>
+<area shape="rect" id="Node000002" href="$structeq__state__t.html" title=" " alt="" coords="5,339,96,364"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="90,367,179,400,285,426,284,431,178,405,88,372"/>
+<area shape="rect" id="Node000003" href="$structreverb__state__t.html" title=" " alt="" coords="121,339,237,364"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="195,374,222,401,252,416,285,427,283,432,250,421,218,405,191,377"/>
+<area shape="rect" id="Node000004" href="$structreverb__params__t.html" title=" " alt="" coords="113,240,245,265"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="181,279,181,339,176,339,176,279"/>
+<area shape="rect" id="Node000005" href="$structdelay__line__t.html" title=" " alt="" coords="232,5,333,31"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="221,38,199,56,186,79,178,104,171,157,173,205,179,239,173,240,168,205,165,156,172,103,181,77,195,53,218,34"/>
+<area shape="rect" id="Node000006" href="$structchorus__config__t.html" title=" " alt="" coords="223,289,345,315"/>
+<area shape="poly" id="edge6_Node000006_Node000005" title=" " alt="" coords="285,44,287,289,281,289,280,44"/>
+<area shape="rect" id="Node000007" href="$structecho__config__t.html" title=" " alt="" coords="370,289,481,315"/>
+<area shape="poly" id="edge8_Node000007_Node000005" title=" " alt="" coords="348,19,385,30,401,40,415,53,433,83,444,116,449,150,450,185,442,247,432,290,426,289,437,246,444,184,444,151,439,117,429,85,411,56,398,44,382,35,346,24"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="294,327,307,363,331,426,326,428,301,365,289,329"/>
+<area shape="poly" id="edge7_Node000001_Node000007" title=" " alt="" coords="406,327,395,340,364,388,342,428,337,425,359,385,391,337,402,324"/>
+<area shape="rect" id="Node000008" href="$structdist__config__t.html" title=" " alt="" coords="441,339,545,364"/>
+<area shape="poly" id="edge9_Node000001_Node000008" title=" " alt="" coords="461,373,401,405,356,429,354,424,399,400,459,368"/>
+<area shape="rect" id="Node000009" href="$structdist__state__t.html" title=" " alt="" coords="569,339,668,364"/>
+<area shape="poly" id="edge10_Node000001_Node000009" title=" " alt="" coords="572,371,461,405,376,429,375,424,459,400,570,366"/>
+</map>

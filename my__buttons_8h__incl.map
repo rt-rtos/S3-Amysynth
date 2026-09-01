@@ -1,0 +1,9 @@
+<map id="components/my_buttons/include/my_buttons.h" name="components/my_buttons/include/my_buttons.h">
+<area shape="rect" id="Node000001" title=" " alt="" coords="55,5,237,45"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,93,87,119"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="123,48,73,87,70,82,120,43"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="111,93,181,119"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="149,46,149,79,143,79,143,46"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="205,93,305,119"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="174,43,230,83,227,87,171,48"/>
+</map>

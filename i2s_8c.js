@@ -1,0 +1,26 @@
+var i2s_8c =
+[
+    [ "I2S_32BIT", "i2s_8c.html#a1dfba44773c6ac1c2c091ab4b67738e1", null ],
+    [ "I2S_BYTES_PER_SAMPLE", "i2s_8c.html#a06000fdbf142a138ca2a903bdadcb546", null ],
+    [ "amy_i2s_write", "i2s_8c.html#ab8d50fefc99b73641b155e83266dcc5b", null ],
+    [ "amy_platform_deinit", "i2s_8c.html#a8c980478b794e90c56554a82956f4b0c", null ],
+    [ "amy_platform_init", "i2s_8c.html#abb790467468c14186c705a7b19c71ee5", null ],
+    [ "amy_render_audio", "i2s_8c.html#a9422b0fa4e0482a9d8408ac65af7c0d5", null ],
+    [ "amy_update_tasks", "i2s_8c.html#aa2391e50582ec764cab28d3b2d3687ca", null ],
+    [ "esp32_setup_i2s", "i2s_8c.html#abd921b609c1521c3a2991b4a36f32358", null ],
+    [ "esp32_teardown_i2s", "i2s_8c.html#a3a73a2bc9ec7afbe259dda05bdd7884d", null ],
+    [ "esp_fill_audio_buffer_task", "i2s_8c.html#a83751bfe6c09cc3b61451cc506be2912", null ],
+    [ "esp_poll_midi", "i2s_8c.html#a35eb5e2f7a07fbd4cdc5046f9e434d4a", null ],
+    [ "esp_read_i2s_input", "i2s_8c.html#a6aca38768b7129d483d686e249352d3c", null ],
+    [ "esp_render_on_cores", "i2s_8c.html#ad923a7874c1c8f9ad3986a0a41722332", null ],
+    [ "esp_render_task", "i2s_8c.html#a91aafa4edbc42df28327fc650a48faf3", null ],
+    [ "amy_fill_buffer_handle", "i2s_8c.html#ae4b50a164b66e0df3e29646496690909", null ],
+    [ "amy_in_block", "i2s_8c.html#a137cb8e0b5ce1d2b3f2440de1129e878", null ],
+    [ "amy_render_handle", "i2s_8c.html#a2fe3884a4bd268a6c2466790deccb30b", null ],
+    [ "amy_update_handle", "i2s_8c.html#a3197c1514f218f85491f19a4b1d5c543", null ],
+    [ "block32", "i2s_8c.html#a7e901a0f0f585eb16b7c4c67bbcd84ef", null ],
+    [ "esp_render_done_sem", "i2s_8c.html#a80a3a1325d54f86ba3ba650aabdd0f12", null ],
+    [ "last_audio_buffer", "i2s_8c.html#a7a33490d402b95a2a4e8cc8f9be80a25", null ],
+    [ "rx_handle", "i2s_8c.html#a2823bdc27bcddfa52cfce2a830906551", null ],
+    [ "tx_handle", "i2s_8c.html#afadbad21046e7a630fe1adc215b4e760", null ]
+];

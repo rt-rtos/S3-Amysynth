@@ -1,0 +1,15 @@
+<map id="draw_seq" name="draw_seq">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,105,89,131"/>
+<area shape="rect" id="Node000002" href="$display__seq_8c.html#a1b1b0298a667f83f5b0e096f81aaf5b4" title="Draw one full sequencer frame from the provided state." alt="" coords="137,68,321,93"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="89,107,153,94,154,99,90,112"/>
+<area shape="rect" id="Node000006" href="$synth__ui__state_8c.html#aaee19ed5ca361b710f496162fde425aa" title=" " alt="" coords="175,129,284,155"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="90,121,161,130,161,136,89,126"/>
+<area shape="rect" id="Node000003" href="$display__seq_8c.html#a2aed9926372ad7fcc75b2047f5eedb26" title=" " alt="" coords="404,5,523,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="275,65,369,39,398,32,399,37,370,45,276,70"/>
+<area shape="rect" id="Node000004" href="$patch__names_8h.html#a069c43909623a7c11b69c73889747f9e" title=" " alt="" coords="400,55,527,80"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="321,73,386,69,387,74,322,78"/>
+<area shape="rect" id="Node000005" href="$patch__names_8h.html#a6f687a32e1e15e15378b742bf6d60788" title=" " alt="" coords="380,104,547,129"/>
+<area shape="poly" id="edge4_Node000002_Node000005" title=" " alt="" coords="313,91,367,99,366,104,312,96"/>
+<area shape="rect" id="Node000007" href="$seq__core__tempo_8c.html#ae92364ccd8a25928ce5a2a394629acfd" title=" " alt="" coords="369,153,557,179"/>
+<area shape="poly" id="edge6_Node000006_Node000007" title=" " alt="" coords="285,145,356,152,356,158,284,150"/>
+</map>

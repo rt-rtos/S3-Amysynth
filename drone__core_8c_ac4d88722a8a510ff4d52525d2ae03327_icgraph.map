@@ -1,0 +1,11 @@
+<map id="drone_configure_patch_synth" name="drone_configure_patch_synth">
+<area shape="rect" id="Node000001" title=" " alt="" coords="623,5,792,45"/>
+<area shape="rect" id="Node000002" href="$drone__core_8c.html#a86f4d2fc75f17f5960753a6aedcce208" title=" " alt="" coords="464,13,575,38"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="609,28,575,28,575,23,609,23"/>
+<area shape="rect" id="Node000003" href="$drone__core_8c.html#ad6aa7f97a8e006af1e2bbbbbf6d06459" title=" " alt="" coords="293,13,416,38"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="450,28,416,28,416,23,450,23"/>
+<area shape="rect" id="Node000004" href="$synth__ui__task_8c.html#a41099aa99dac8edebec80153422e646b" title=" " alt="" coords="140,13,245,38"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="280,28,245,28,245,23,280,23"/>
+<area shape="rect" id="Node000005" href="$main_8c.html#a630544a7f0a2cc40d8a7fefab7e2fe70" title=" " alt="" coords="5,13,92,38"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="126,28,92,28,92,23,126,23"/>
+</map>

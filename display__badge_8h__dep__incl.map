@@ -1,0 +1,7 @@
+<map id="components/display/display_badge.h" name="components/display/display_badge.h">
+<area shape="rect" id="Node000001" title=" " alt="" coords="103,5,256,45"/>
+<area shape="rect" id="Node000002" href="$display__badge_8c.html" title=" " alt="" coords="5,93,159,133"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="149,56,105,95,102,91,146,52"/>
+<area shape="rect" id="Node000003" href="$synth__ui__task_8c.html" title=" " alt="" coords="183,93,370,133"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="213,52,257,91,253,95,209,56"/>
+</map>

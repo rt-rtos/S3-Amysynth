@@ -1,0 +1,37 @@
+var ui__screen__fxmenu_8c =
+[
+    [ "fx_menu_item_id_t", "ui__screen__fxmenu_8c.html#a778a83cfa1b80e045647c3b9e406bb1a", [
+      [ "FXI_EQ_LOW", "ui__screen__fxmenu_8c.html#a778a83cfa1b80e045647c3b9e406bb1aa745f529de3024f885cc4bb7d74cc8fa0", null ],
+      [ "FXI_EQ_MID", "ui__screen__fxmenu_8c.html#a778a83cfa1b80e045647c3b9e406bb1aab014820de0a1391cb5816980566620b6", null ],
+      [ "FXI_EQ_HIGH", "ui__screen__fxmenu_8c.html#a778a83cfa1b80e045647c3b9e406bb1aacca2212e3fdd227336ed1f2d3a1eaaa8", null ],
+      [ "FXI_ECHO_LEVEL", "ui__screen__fxmenu_8c.html#a778a83cfa1b80e045647c3b9e406bb1aa22e30d3fdeee182473c5b31b88a90b70", null ],
+      [ "FXI_ECHO_FEEDBACK", "ui__screen__fxmenu_8c.html#a778a83cfa1b80e045647c3b9e406bb1aa897af4e17bd3e3dbcaa9286baeb2253c", null ],
+      [ "FXI_ECHO_TIME", "ui__screen__fxmenu_8c.html#a778a83cfa1b80e045647c3b9e406bb1aa4cc9deb7ff291f83b88205872e29d80f", null ],
+      [ "FXI_ECHO_TONE", "ui__screen__fxmenu_8c.html#a778a83cfa1b80e045647c3b9e406bb1aa92bacd25fa94cab3437119cc61275372", null ],
+      [ "FXI_CHORUS_LEVEL", "ui__screen__fxmenu_8c.html#a778a83cfa1b80e045647c3b9e406bb1aa991896231e7bd5830eb421a50bade5ff", null ],
+      [ "FXI_CHORUS_RATE", "ui__screen__fxmenu_8c.html#a778a83cfa1b80e045647c3b9e406bb1aa82c8d77e43a6cab3e13fe0997a554100", null ],
+      [ "FXI_CHORUS_DEPTH", "ui__screen__fxmenu_8c.html#a778a83cfa1b80e045647c3b9e406bb1aaf6e7884f6bf3861cc7aff882d34d3bce", null ],
+      [ "FXI_REVERB_LEVEL", "ui__screen__fxmenu_8c.html#a778a83cfa1b80e045647c3b9e406bb1aadd0e6d529f1ae682e0bc6f8d42cba9fa", null ],
+      [ "FXI_REVERB_LIVENESS", "ui__screen__fxmenu_8c.html#a778a83cfa1b80e045647c3b9e406bb1aa7b17a039de8c81ab4ea876103fcbe248", null ],
+      [ "FXI_REVERB_DAMPING", "ui__screen__fxmenu_8c.html#a778a83cfa1b80e045647c3b9e406bb1aa34403787167b742216590a2d3a586252", null ],
+      [ "FXI_REVERB_XOVER", "ui__screen__fxmenu_8c.html#a778a83cfa1b80e045647c3b9e406bb1aac6bcf470ce90ed59efc1707921478a68", null ],
+      [ "FXI_DIST_TYPE", "ui__screen__fxmenu_8c.html#a778a83cfa1b80e045647c3b9e406bb1aa1bd48e2b5fb61d319bf8da65324d545b", null ],
+      [ "FXI_DIST_DRIVE", "ui__screen__fxmenu_8c.html#a778a83cfa1b80e045647c3b9e406bb1aa32f53136dcb7a33c76bd3bdb80e00965", null ],
+      [ "FXI_DIST_BITS", "ui__screen__fxmenu_8c.html#a778a83cfa1b80e045647c3b9e406bb1aae4955e8724e23d0bb2bb580a38cdf4c7", null ],
+      [ "FXI_DIST_RATE", "ui__screen__fxmenu_8c.html#a778a83cfa1b80e045647c3b9e406bb1aa4b9737852b2ad629011b7816e33eb191", null ],
+      [ "FXI_DIST_MIX", "ui__screen__fxmenu_8c.html#a778a83cfa1b80e045647c3b9e406bb1aa6054c071cbfcbe31d61ac73e2928b219", null ],
+      [ "FXI_PRESET_GLOBAL_FX", "ui__screen__fxmenu_8c.html#a778a83cfa1b80e045647c3b9e406bb1aa09d8bde8367354a97c41c34e13fc318b", null ],
+      [ "FXI_NOTEFX", "ui__screen__fxmenu_8c.html#a778a83cfa1b80e045647c3b9e406bb1aac9453ae80d9de8dd4d0b5101b8a94be6", null ],
+      [ "FXI_BACK", "ui__screen__fxmenu_8c.html#a778a83cfa1b80e045647c3b9e406bb1aacf3df5636a47e319b4998c6d669df7ef", null ],
+      [ "FXI_COUNT", "ui__screen__fxmenu_8c.html#a778a83cfa1b80e045647c3b9e406bb1aad866725c68ddbd230860c3e78af9a34c", null ]
+    ] ],
+    [ "fx_eff", "ui__screen__fxmenu_8c.html#a83becd2071f2600e17494bc7db5def35", null ],
+    [ "fx_menu_build_items", "ui__screen__fxmenu_8c.html#a8654e50ad42dae7c3b7cd6892b85dc54", null ],
+    [ "fx_menu_edit_value", "ui__screen__fxmenu_8c.html#a11e006c22406f101b6e46563a1263196", null ],
+    [ "fx_menu_item_count", "ui__screen__fxmenu_8c.html#a7c85830207d91bb9301e03afc0e36bd4", null ],
+    [ "fx_menu_item_is_back", "ui__screen__fxmenu_8c.html#ab4ac71da7a4f846b035ea00cc5dbfd1c", null ],
+    [ "fx_menu_item_is_notefx", "ui__screen__fxmenu_8c.html#a45a7fc20a94db5695565f1ada4535437", null ],
+    [ "fx_menu_item_is_value", "ui__screen__fxmenu_8c.html#a08fbe80e17bdada294041c49bcb444bb", null ],
+    [ "fx_step", "ui__screen__fxmenu_8c.html#ae16b73feb17ddd28b27ae99e68ac7a4c", null ],
+    [ "s_fx_items", "ui__screen__fxmenu_8c.html#a4a088aa0d1eb0be39346516e5ad73414", null ]
+];

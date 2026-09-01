@@ -1,0 +1,25 @@
+var searchData=
+[
+  ['g2f_0',['G2F',['../amy__fixedpoint_8h.html#a473e211d4dcb5183776ef8740649f97c',1,'amy_fixedpoint.h']]],
+  ['gamma9001_5fbin_5fframes_1',['GAMMA9001_BIN_FRAMES',['../pcm__gamma9001_8h.html#a9768f02a65e8bf019a9834fa1f29e976',1,'pcm_gamma9001.h']]],
+  ['gamma9001_5fnum_5fsamples_2',['GAMMA9001_NUM_SAMPLES',['../pcm__gamma9001_8h.html#a11b3e5a6cf664edc1d922dcee73fcea3',1,'pcm_gamma9001.h']]],
+  ['gamma9001_5fpreset_5fbase_3',['GAMMA9001_PRESET_BASE',['../pcm__gamma9001_8h.html#ad308f33d1a75892f9531cff6ff8c6d1b',1,'pcm_gamma9001.h']]],
+  ['gamma9001_5fsample_5frate_4',['GAMMA9001_SAMPLE_RATE',['../pcm__gamma9001_8h.html#aaea528f11ed6da603682241677ad43c3',1,'pcm_gamma9001.h']]],
+  ['genfxp_5',['GENFXP',['../amy__fixedpoint_8h.html#a955feacf93ace5fac69eeb28f9d657ec',1,'amy_fixedpoint.h']]],
+  ['gpopup_5fadjust_5fstep_6',['GPOPUP_ADJUST_STEP',['../graph__popup_8c.html#a23ac61b25041f58b5d03b419f962563b',1,'graph_popup.c']]],
+  ['gpopup_5fdefault_5fmin_5fx_5fgap_7',['GPOPUP_DEFAULT_MIN_X_GAP',['../graph__popup_8c.html#a502f227104307240ed0bb4236845b572',1,'graph_popup.c']]],
+  ['gpopup_5fmax_5fpoints_8',['GPOPUP_MAX_POINTS',['../graph__popup_8h.html#a1023dfa0db9cf74ca8f062ee69175677',1,'graph_popup.h']]],
+  ['gpopup_5fmin_5fx_5fgap_5fhi_9',['GPOPUP_MIN_X_GAP_HI',['../graph__popup_8c.html#afb56a56767699bfbc8b4c458e67efbbf',1,'graph_popup.c']]],
+  ['gpopup_5fmin_5fx_5fgap_5flo_10',['GPOPUP_MIN_X_GAP_LO',['../graph__popup_8c.html#aa94d66fbc9b061e80164bd6d234ef4ed',1,'graph_popup.c']]],
+  ['gpopup_5fpad_5fbot_11',['GPOPUP_PAD_BOT',['../graph__popup_8c.html#a78451064583a85f0507d78dc69f01069',1,'graph_popup.c']]],
+  ['gpopup_5fpad_5ftop_12',['GPOPUP_PAD_TOP',['../graph__popup_8c.html#a29a925a0fb3d2fe909212dbdcfa3cf5a',1,'graph_popup.c']]],
+  ['gpopup_5fpad_5fx_13',['GPOPUP_PAD_X',['../graph__popup_8c.html#a889371ef49396ab9d7ecde331ab77597',1,'graph_popup.c']]],
+  ['gpopup_5ftitle_5fh_14',['GPOPUP_TITLE_H',['../graph__popup_8c.html#a7a39209531710c7648c71d7b4c818fea',1,'graph_popup.c']]],
+  ['graph_5famp_5flive_5fms_15',['GRAPH_AMP_LIVE_MS',['../ui__editors_8c.html#aa18674e13ac9b6d806dbd1ad671ffc94',1,'ui_editors.c']]],
+  ['graph_5fenv_5feps_16',['GRAPH_ENV_EPS',['../ui__editors_8c.html#afb4e642031577069bf328b5da564ab0f',1,'ui_editors.c']]],
+  ['graph_5flong_5fsquash_17',['GRAPH_LONG_SQUASH',['../ui__editors_8c.html#a9a2b33725a32e75660a20e3a468c573e',1,'ui_editors.c']]],
+  ['graph_5frange_5flong_5fms_18',['GRAPH_RANGE_LONG_MS',['../ui__editors_8c.html#ad5e5b57b0bda37b549bb39749c9b11b4',1,'ui_editors.c']]],
+  ['graph_5frange_5fshort_5fms_19',['GRAPH_RANGE_SHORT_MS',['../ui__editors_8c.html#afcc95d1a323f156e9814442682682b3f',1,'ui_editors.c']]],
+  ['graph_5ftopbar_5fh_20',['GRAPH_TOPBAR_H',['../ui__editors_8c.html#af50eee7179f9b3a5de6bcba9edea6c13',1,'ui_editors.c']]],
+  ['graph_5ftype_5fflash_5fms_21',['GRAPH_TYPE_FLASH_MS',['../ui__editors_8c.html#a30f6f56fdaaee4b159d61c5ad7b6fbc9',1,'ui_editors.c']]]
+];

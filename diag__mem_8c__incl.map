@@ -1,0 +1,17 @@
+<map id="components/diagnostics/diag_mem.c" name="components/diagnostics/diag_mem.c">
+<area shape="rect" id="Node000001" title=" " alt="" coords="267,5,447,45"/>
+<area shape="rect" id="Node000002" href="$diag__mem_8h.html" title=" " alt="" coords="42,93,145,119"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="295,48,146,92,144,87,293,43"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="169,93,255,119"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="324,48,247,89,244,84,321,43"/>
+<area shape="rect" id="Node000006" title=" " alt="" coords="280,93,435,119"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="360,46,360,79,355,79,355,46"/>
+<area shape="rect" id="Node000007" title=" " alt="" coords="459,93,592,119"/>
+<area shape="poly" id="edge6_Node000001_Node000007" title=" " alt="" coords="399,43,489,85,487,90,396,48"/>
+<area shape="rect" id="Node000008" title=" " alt="" coords="617,93,701,119"/>
+<area shape="poly" id="edge7_Node000001_Node000008" title=" " alt="" coords="430,43,604,88,603,93,429,48"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="5,167,80,192"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="87,121,61,157,57,154,83,117"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="104,167,187,192"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="104,117,131,154,127,157,100,121"/>
+</map>

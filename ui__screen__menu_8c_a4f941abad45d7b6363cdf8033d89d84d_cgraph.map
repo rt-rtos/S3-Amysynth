@@ -1,0 +1,7 @@
+<map id="synth_ui_menu_toggle" name="synth_ui_menu_toggle">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,5,175,31"/>
+<area shape="rect" id="Node000002" href="$ui__editors_8c.html#a6c8d67673ac2a3281acdf8f6551da335" title=" " alt="" coords="223,5,409,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="175,15,209,15,209,21,175,21"/>
+<area shape="rect" id="Node000003" href="$graph__popup_8c.html#a251dbdc1a600bbd8d812d96eba100049" title=" " alt="" coords="457,5,628,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="410,15,443,15,443,21,410,21"/>
+</map>

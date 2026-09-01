@@ -1,0 +1,9 @@
+<map id="components/display/display_badge.h" name="components/display/display_badge.h">
+<area shape="rect" id="Node000001" title=" " alt="" coords="71,5,225,45"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,93,88,119"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="125,48,74,87,71,82,122,43"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="113,93,183,119"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="151,46,151,79,145,79,145,46"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="208,93,275,119"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="172,44,218,82,215,86,169,48"/>
+</map>

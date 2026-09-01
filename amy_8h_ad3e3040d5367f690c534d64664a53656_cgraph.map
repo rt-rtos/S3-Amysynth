@@ -1,0 +1,22 @@
+<map id="fprintf_event_stderr" name="fprintf_event_stderr">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,80,156,105"/>
+<area shape="rect" id="Node000002" href="$patches_8c.html#abb607a450657caf1912ecfce7e125839" title=" " alt="" coords="204,80,307,105"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="156,90,190,90,190,95,156,95"/>
+<area shape="rect" id="Node000003" href="$patches_8c.html#a125041f5311eebe30a956406dc7a7b37" title=" " alt="" coords="361,5,523,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="277,77,354,40,374,32,376,37,356,44,279,82"/>
+<area shape="rect" id="Node000004" href="$patches_8c.html#a9fa5460df4e65d953ee8833568dfbfd7" title=" " alt="" coords="358,55,526,80"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="307,83,344,78,345,83,307,88"/>
+<area shape="rect" id="Node000005" href="$amy_8c.html#abbbb901ff57a21c269a9e1e38ca38256" title=" " alt="" coords="577,80,661,105"/>
+<area shape="poly" id="edge10_Node000002_Node000005" title=" " alt="" coords="307,90,563,90,563,95,307,95"/>
+<area shape="rect" id="Node000010" href="$patches_8c.html#ae2b196e1d866764f0bdbfa61a7f75744" title=" " alt="" coords="355,156,529,181"/>
+<area shape="poly" id="edge9_Node000002_Node000010" title=" " alt="" coords="285,103,356,134,393,149,391,154,354,139,283,108"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="526,77,564,82,563,87,526,82"/>
+<area shape="rect" id="Node000006" href="$amy_8c.html#a4b1a26458bbc43572d6133072976737c" title=" " alt="" coords="709,80,869,105"/>
+<area shape="poly" id="edge5_Node000005_Node000006" title=" " alt="" coords="662,90,695,90,695,95,662,95"/>
+<area shape="rect" id="Node000007" href="$amy_8c.html#ac87ab0bceffc455f00701e04f969d7d3" title=" " alt="" coords="931,31,1044,56"/>
+<area shape="poly" id="edge6_Node000006_Node000007" title=" " alt="" coords="840,77,922,57,923,62,842,83"/>
+<area shape="rect" id="Node000008" href="$amy_8c.html#a341dcecea4ec3b2b4f8884afa1affd5c" title=" " alt="" coords="917,80,1057,105"/>
+<area shape="poly" id="edge7_Node000006_Node000008" title=" " alt="" coords="870,90,903,90,903,95,870,95"/>
+<area shape="rect" id="Node000009" href="$amy_8c.html#a47d3d1e22b2bc289297d07bdb976f9ca" title=" " alt="" coords="925,129,1049,155"/>
+<area shape="poly" id="edge8_Node000006_Node000009" title=" " alt="" coords="842,103,923,123,922,129,840,108"/>
+</map>

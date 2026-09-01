@@ -1,0 +1,21 @@
+<map id="arp_snap" name="arp_snap">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,176,87,201"/>
+<area shape="rect" id="Node000002" href="$quantizer_8c.html#ad51c0f86cba0b4cc400b20ffe19f1ba3" title=" " alt="" coords="162,5,314,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="49,175,59,147,76,111,101,73,133,41,148,32,151,37,136,45,105,76,81,113,64,149,54,177"/>
+<area shape="rect" id="Node000004" href="$quantizer_8c.html#af1af59564c1fca81cb98f569fab9b498" title=" " alt="" coords="141,55,335,80"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="53,174,85,133,107,110,133,90,149,83,151,87,136,95,111,114,89,136,57,177"/>
+<area shape="rect" id="Node000006" href="$seq__core__synth_8c.html#a3b21f76a4a99fcace64536aedde8fcb5" title=" " alt="" coords="153,105,323,145"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="80,173,134,154,157,146,159,151,136,159,82,178"/>
+<area shape="rect" id="Node000007" href="$seq__core__tempo_8c.html#ae864eed0b56bd44bdc80317a99509421" title=" " alt="" coords="162,169,314,209"/>
+<area shape="poly" id="edge6_Node000001_Node000007" title=" " alt="" coords="87,186,148,186,148,191,87,191"/>
+<area shape="rect" id="Node000008" href="$seq__core__tempo_8c.html#a8c2b2af0a043b434ce6cad3f40c2b058" title=" " alt="" coords="159,233,317,273"/>
+<area shape="poly" id="edge7_Node000001_Node000008" title=" " alt="" coords="82,199,136,218,159,226,157,231,134,223,80,204"/>
+<area shape="rect" id="Node000009" href="$seq__core__tempo_8c.html#a52bde9a780d6b25da3071d3c772559ca" title=" " alt="" coords="162,297,314,337"/>
+<area shape="poly" id="edge8_Node000001_Node000009" title=" " alt="" coords="58,200,89,241,111,263,136,282,150,290,148,295,133,287,108,267,85,244,54,204"/>
+<area shape="rect" id="Node000010" href="$seq__core__progression_8c.html#a93eb41c91c6b3cf82b05975298497615" title=" " alt="" coords="135,361,341,401"/>
+<area shape="poly" id="edge9_Node000001_Node000010" title=" " alt="" coords="53,201,63,231,80,270,104,311,136,347,143,351,140,356,133,351,100,314,75,272,58,233,48,202"/>
+<area shape="rect" id="Node000003" href="$quantizer_8c.html#a8efdeb78f0c3889a2a571c12bf7edef6" title=" " alt="" coords="389,5,556,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="314,15,376,15,376,21,314,21"/>
+<area shape="rect" id="Node000005" href="$quantizer_8c.html#abdfec7c162a17c76e89cc114c3da7b2a" title=" " alt="" coords="399,55,546,80"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="335,65,385,65,385,70,335,70"/>
+</map>

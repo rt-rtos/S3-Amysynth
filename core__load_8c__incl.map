@@ -1,0 +1,17 @@
+<map id="components/diagnostics/core_load.c" name="components/diagnostics/core_load.c">
+<area shape="rect" id="Node000001" title=" " alt="" coords="289,5,469,45"/>
+<area shape="rect" id="Node000002" href="$core__load_8h.html" title=" " alt="" coords="93,93,191,119"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="323,48,190,92,189,87,322,43"/>
+<area shape="rect" id="Node000006" title=" " alt="" coords="215,93,365,119"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="359,48,315,86,312,82,356,44"/>
+<area shape="rect" id="Node000007" title=" " alt="" coords="389,93,551,119"/>
+<area shape="poly" id="edge6_Node000001_Node000007" title=" " alt="" coords="403,44,448,82,444,86,400,48"/>
+<area shape="rect" id="Node000008" title=" " alt="" coords="575,93,674,119"/>
+<area shape="poly" id="edge7_Node000001_Node000008" title=" " alt="" coords="439,43,577,87,575,92,437,48"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="5,167,76,192"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="127,121,70,161,67,156,124,116"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="101,167,183,192"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="145,119,145,153,139,153,139,119"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="207,167,303,192"/>
+<area shape="poly" id="edge4_Node000002_Node000005" title=" " alt="" coords="162,116,227,157,224,162,159,121"/>
+</map>

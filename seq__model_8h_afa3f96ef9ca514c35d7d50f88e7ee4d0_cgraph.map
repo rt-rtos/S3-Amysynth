@@ -1,0 +1,8 @@
+<map id="seq_dist_stage_step" name="seq_dist_stage_step">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,31,160,56"/>
+<area shape="rect" id="Node000002" href="$seq__model_8h.html#a6a69a28f88e39d2c0476412949634f93" title=" " alt="" coords="208,5,371,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="160,31,194,27,195,32,161,36"/>
+<area shape="rect" id="Node000003" href="$seq__model_8h.html#a275e5f3147703b46d2775d325fc4af08" title=" " alt="" coords="419,31,581,56"/>
+<area shape="poly" id="edge3_Node000001_Node000003" title=" " alt="" coords="160,41,405,41,405,46,160,46"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="371,25,406,29,405,35,371,30"/>
+</map>

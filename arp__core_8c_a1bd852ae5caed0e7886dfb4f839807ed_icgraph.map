@@ -1,0 +1,16 @@
+<map id="lfo_next_rand" name="lfo_next_rand">
+<area shape="rect" id="Node000001" title=" " alt="" coords="836,35,947,60"/>
+<area shape="rect" id="Node000002" href="$arp__core_8c.html#a4d6b536b61ae0fa7aa78fb564bb4f6c7" title=" " alt="" coords="649,8,788,33"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="822,39,788,34,788,29,823,34"/>
+<area shape="rect" id="Node000007" href="$seq__core__editors_8c.html#a4c3be650d43a6a8e28c0dacaeb31cac5" title=" " alt="" coords="453,55,601,95"/>
+<area shape="poly" id="edge6_Node000001_Node000007" title=" " alt="" coords="823,55,602,72,602,67,822,50"/>
+<area shape="rect" id="Node000003" href="$arp__core_8c.html#ab1dd581ff21c440446891c39d193f492" title=" " alt="" coords="461,5,593,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="636,22,593,22,594,16,636,17"/>
+<area shape="rect" id="Node000004" href="$synth__ui__task_8c.html#a2bb363d79d95e76f7a51edca096e4d88" title=" " alt="" coords="293,35,405,60"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="448,34,406,41,405,36,447,28"/>
+<area shape="rect" id="Node000005" href="$synth__ui__task_8c.html#a41099aa99dac8edebec80153422e646b" title=" " alt="" coords="140,35,245,60"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="280,50,245,50,245,45,280,45"/>
+<area shape="rect" id="Node000006" href="$main_8c.html#a630544a7f0a2cc40d8a7fefab7e2fe70" title=" " alt="" coords="5,35,92,60"/>
+<area shape="poly" id="edge5_Node000005_Node000006" title=" " alt="" coords="126,50,92,50,92,45,126,45"/>
+<area shape="poly" id="edge7_Node000007_Node000004" title=" " alt="" coords="440,64,405,59,406,53,440,59"/>
+</map>

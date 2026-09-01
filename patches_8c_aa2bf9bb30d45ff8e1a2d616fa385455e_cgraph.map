@@ -1,0 +1,21 @@
+<map id="add_deltas_to_queue_with_baseosc" name="add_deltas_to_queue_with_baseosc">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,73,165,113"/>
+<area shape="rect" id="Node000002" href="$amy_8c.html#aa7d88b83ca97e69a528be225d33a95b0" title=" " alt="" coords="216,55,369,80"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="165,80,202,76,203,81,166,86"/>
+<area shape="rect" id="Node000010" href="$amy_8c.html#a00dcb64d2ad22aa95d62413e119594dd" title=" " alt="" coords="213,104,372,129"/>
+<area shape="poly" id="edge9_Node000001_Node000010" title=" " alt="" coords="166,99,200,103,199,109,165,105"/>
+<area shape="rect" id="Node000003" href="$amy_8c.html#ad054834a7fb83106117b4598c0babeaf" title=" " alt="" coords="429,5,551,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="343,52,425,31,426,37,345,57"/>
+<area shape="rect" id="Node000004" href="$amy_8c.html#a732c26c53a8c2d5b2c900b17e1158aa8" title=" " alt="" coords="420,55,560,80"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="370,65,406,65,406,70,370,70"/>
+<area shape="rect" id="Node000005" href="$amy_8c.html#a9a80c0ab945c788dd0b777d5717d7f7d" title=" " alt="" coords="449,104,531,129"/>
+<area shape="poly" id="edge4_Node000002_Node000005" title=" " alt="" coords="345,77,436,101,435,106,343,83"/>
+<area shape="rect" id="Node000006" href="$amy_8c.html#ad5f094d1ffcfd597c4ee014b96b2516a" title=" " alt="" coords="608,104,779,129"/>
+<area shape="poly" id="edge5_Node000005_Node000006" title=" " alt="" coords="531,114,594,114,594,119,531,119"/>
+<area shape="rect" id="Node000007" href="$amy_8c.html#a2d2477e82bc4052f6a0693cc9905bc32" title=" " alt="" coords="851,79,937,104"/>
+<area shape="poly" id="edge6_Node000006_Node000007" title=" " alt="" coords="779,103,837,96,838,101,780,108"/>
+<area shape="rect" id="Node000008" href="$amy_8c.html#abf367c547003cadbd7e675d2efc5bcde" title=" " alt="" coords="827,128,961,153"/>
+<area shape="poly" id="edge7_Node000006_Node000008" title=" " alt="" coords="780,124,813,128,813,134,779,130"/>
+<area shape="rect" id="Node000009" href="$amy_8c.html#adf4eb9b209ec33e5816b81031376947e" title=" " alt="" coords="1009,128,1112,153"/>
+<area shape="poly" id="edge8_Node000008_Node000009" title=" " alt="" coords="962,138,996,138,996,143,962,143"/>
+</map>

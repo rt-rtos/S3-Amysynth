@@ -1,0 +1,18 @@
+<map id="components/synth_core/include/custompatches/fm_voice.h" name="components/synth_core/include/custompatches/fm_voice.h">
+<area shape="rect" id="Node000001" title=" " alt="" coords="157,5,335,60"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="200,255,271,280"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="336,46,377,59,412,77,425,89,432,102,434,118,428,135,399,175,360,208,319,234,281,252,279,247,317,229,357,204,395,172,424,132,428,117,427,104,420,92,409,82,375,64,334,51"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="194,181,277,207"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="229,62,216,84,206,109,204,124,207,140,221,168,216,171,202,141,199,124,201,107,211,82,224,59"/>
+<area shape="rect" id="Node000004" href="$seq__model_8h.html" title=" " alt="" coords="35,108,140,133"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="199,62,122,104,120,99,196,58"/>
+<area shape="rect" id="Node000006" href="$fm__graph_8h.html" title=" " alt="" coords="215,108,413,133"/>
+<area shape="poly" id="edge8_Node000001_Node000006" title=" " alt="" coords="269,58,298,95,294,99,265,62"/>
+<area shape="poly" id="edge7_Node000004_Node000002" title=" " alt="" coords="101,132,216,243,212,247,98,136"/>
+<area shape="poly" id="edge6_Node000004_Node000003" title=" " alt="" coords="112,131,200,173,198,178,110,136"/>
+<area shape="rect" id="Node000005" href="$chord__types_8h.html" title=" " alt="" coords="5,181,119,207"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="86,135,73,169,68,168,81,133"/>
+<area shape="poly" id="edge5_Node000005_Node000002" title=" " alt="" coords="91,204,195,247,193,252,89,209"/>
+<area shape="poly" id="edge9_Node000006_Node000002" title=" " alt="" coords="315,134,307,168,291,208,261,247,256,243,286,205,302,167,310,133"/>
+<area shape="poly" id="edge10_Node000006_Node000003" title=" " alt="" coords="303,135,260,174,256,170,300,131"/>
+</map>

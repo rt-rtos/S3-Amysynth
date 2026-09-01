@@ -1,0 +1,11 @@
+<map id="notch2_mag" name="notch2_mag">
+<area shape="rect" id="Node000001" title=" " alt="" coords="756,5,859,31"/>
+<area shape="rect" id="Node000002" href="$filter__graph_8c.html#a7b8ec0733be8e2a1350abbc93b5af74a" title=" " alt="" coords="565,5,708,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="742,21,708,21,708,15,742,15"/>
+<area shape="rect" id="Node000003" href="$filter__graph_8c.html#ad228360fc698686ff18f2f899ba9c6c9" title=" " alt="" coords="383,5,517,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="552,21,518,21,518,15,552,15"/>
+<area shape="rect" id="Node000004" href="$ui__editors_8c.html#ae689dc776cb668076bfd489abf5b3ffa" title=" " alt="" coords="144,5,335,31"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="369,21,335,21,335,15,369,15"/>
+<area shape="rect" id="Node000005" href="$ui__view__resolve_8c.html#a0d380ca34b8b6689e727f121c5f8ed97" title=" " alt="" coords="5,5,96,31"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="130,21,96,21,96,15,130,15"/>
+</map>

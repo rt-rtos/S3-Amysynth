@@ -1,0 +1,9 @@
+<map id="components/diagnostics/dropout_stats.c" name="components/diagnostics/dropout_stats.c">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,5,185,45"/>
+<area shape="rect" id="Node000002" href="$dropout__stats_8h.html" title=" " alt="" coords="34,93,157,119"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="98,46,98,79,93,79,93,46"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="7,167,77,192"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="89,121,61,157,57,154,84,117"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="102,167,198,192"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="106,117,135,154,131,157,102,121"/>
+</map>

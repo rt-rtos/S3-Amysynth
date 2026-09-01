@@ -1,0 +1,13 @@
+<map id="seq_track_unison_copies" name="seq_track_unison_copies">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,63,189,88"/>
+<area shape="rect" id="Node000002" href="$seq__core__synth_8c.html#abb8367e0c4d551f092b84e3350d1b036" title=" " alt="" coords="237,5,408,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="147,60,258,31,260,37,149,65"/>
+<area shape="rect" id="Node000004" href="$seq__core__synth_8c.html#a835eebf26ba0e187348a5a2aaf2ac5b7" title=" " alt="" coords="247,55,399,95"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="190,73,233,73,233,78,190,78"/>
+<area shape="rect" id="Node000005" href="$seq__core__synth_8c.html#aa053ee3cbfda22b02c4a8f861ed93211" title=" " alt="" coords="253,120,392,145"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="149,85,260,114,258,119,147,91"/>
+<area shape="rect" id="Node000003" href="$seq__chords_8c.html#aa6518ae558bce30098d3537679e412ed" title=" " alt="" coords="479,5,617,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="408,15,465,15,465,21,408,21"/>
+<area shape="rect" id="Node000006" href="$sequencer__core_8h.html#a8501381ca8fc695002483d2f012edc76" title=" " alt="" coords="456,113,640,153"/>
+<area shape="poly" id="edge5_Node000005_Node000006" title=" " alt="" coords="392,130,442,130,442,135,392,135"/>
+</map>

@@ -1,0 +1,17 @@
+<map id="sequencer_midi_start" name="sequencer_midi_start">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,31,168,56"/>
+<area shape="rect" id="Node000002" href="$api_8c.html#aea2ccbcb73cd3c4f537711d6ec02d2bb" title=" " alt="" coords="229,5,360,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="168,31,215,25,216,30,169,36"/>
+<area shape="rect" id="Node000003" href="$amy__midi_8c.html#aa901b49c1366e6ea0a29ab3bbc135627" title=" " alt="" coords="216,55,373,80"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="169,50,202,54,202,59,168,55"/>
+<area shape="rect" id="Node000004" href="$amy__midi_8c.html#aec34c94753f371eacf9b7617344d2b17" title=" " alt="" coords="421,29,600,55"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="373,55,408,51,408,57,374,61"/>
+<area shape="rect" id="Node000005" href="$amy__midi_8c.html#a9c707580afb26256700bcf93861e1265" title=" " alt="" coords="440,79,581,104"/>
+<area shape="poly" id="edge4_Node000003_Node000005" title=" " alt="" coords="374,73,427,79,426,85,373,79"/>
+<area shape="rect" id="Node000006" href="$amy__midi_8c.html#adce2317b0b9c99120822814d2ca3c794" title=" " alt="" coords="648,79,727,104"/>
+<area shape="poly" id="edge5_Node000005_Node000006" title=" " alt="" coords="582,89,634,89,634,94,582,94"/>
+<area shape="rect" id="Node000007" href="$amy__midi_8c.html#a66252bfc63e9a6f22e6a00081e773baa" title=" " alt="" coords="811,53,917,79"/>
+<area shape="poly" id="edge6_Node000006_Node000007" title=" " alt="" coords="726,83,796,73,797,78,727,88"/>
+<area shape="rect" id="Node000008" href="$amy__midi_8c.html#a2bcf42d7e23e670df9ea23b1603cafbc" title=" " alt="" coords="775,103,953,128"/>
+<area shape="poly" id="edge7_Node000006_Node000008" title=" " alt="" coords="727,94,762,99,761,104,726,99"/>
+</map>

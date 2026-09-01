@@ -1,0 +1,11 @@
+<map id="synth_ui_arp_is_active" name="synth_ui_arp_is_active">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,35,176,60"/>
+<area shape="rect" id="Node000002" href="$ui__view__resolve_8c.html#ab257b332dd43234c49d9e44e6888bcc1" title=" " alt="" coords="224,35,387,60"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="176,45,210,45,210,50,176,50"/>
+<area shape="rect" id="Node000003" href="$ui__editors_8c.html#a6c8d67673ac2a3281acdf8f6551da335" title=" " alt="" coords="435,5,621,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="386,34,421,29,421,35,387,39"/>
+<area shape="rect" id="Node000005" href="$ui__screen__stepedit_8c.html#a1ef95622218bc2bc45110173a489c027" title=" " alt="" coords="451,55,605,95"/>
+<area shape="poly" id="edge4_Node000002_Node000005" title=" " alt="" coords="387,55,437,61,436,67,386,60"/>
+<area shape="rect" id="Node000004" href="$graph__popup_8c.html#a251dbdc1a600bbd8d812d96eba100049" title=" " alt="" coords="669,5,840,31"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="622,15,655,15,655,21,622,21"/>
+</map>

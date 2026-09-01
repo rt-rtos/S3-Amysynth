@@ -1,0 +1,11 @@
+<map id="_saw_note_on" name="_saw_note_on">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,31,120,56"/>
+<area shape="rect" id="Node000002" href="$oscillators_8c.html#a70ff2d6a7d7a4effe12663cbdec9bc8f" title=" " alt="" coords="168,5,319,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="120,33,154,28,155,33,121,38"/>
+<area shape="rect" id="Node000003" href="$amy_8c.html#a5991b7f59fbc673336a89244357cd823" title=" " alt="" coords="183,55,304,80"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="121,48,169,55,169,60,120,54"/>
+<area shape="rect" id="Node000004" href="$log2__exp2_8c.html#a3c5fafabe0408ec4bc9c1bb808f239a0" title=" " alt="" coords="367,55,445,80"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="304,65,353,65,353,70,304,70"/>
+<area shape="rect" id="Node000005" href="$log2__exp2_8c.html#ac6498beb19cf144f6579b0223b2c5bc8" title=" " alt="" coords="493,55,560,80"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="446,65,480,65,480,70,446,70"/>
+</map>
