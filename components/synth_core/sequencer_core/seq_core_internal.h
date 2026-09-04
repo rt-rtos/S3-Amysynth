@@ -19,7 +19,7 @@
 #include <string.h>
 #include <math.h>
 #include "freertos/semphr.h"
-#include "amy_fx.h"   /* synth_ui_fx_reassert_global() — avoids u8g2/display headers */
+#include "amy_fx.h"   /* synth_ui_fx_reassert() - avoids u8g2/display headers */
 #include "patch_cycle.h"
 
 /* Private config — included after sdkconfig.h so CONFIG_* are resolved first */

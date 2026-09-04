@@ -16,6 +16,7 @@
 #include "synth_ui.h"
 #include "sequencer_core.h"
 #include "synth_slots.h"      /* SYNTH_SLOT_COUNT for amy_cfg.max_synths */
+#include "fx_bus.h"           /* FX_BUS_COUNT for amy_cfg.max_buses */
 #include "seq_core_config.h"  /* AMY sequencer tag-space layout */
 #include "amy_helpers.h"   /* amy_helpers_set_render_task */
 #include "custompatches/sample_rec.h"
@@ -911,6 +912,10 @@ void app_main(void)
     /* Slot map lives in synth_slots.h: statics pack 1..10, melodic is the
      * open-ended arena 11..SYNTH_SLOT_COUNT-1. This is the polyphony knob. */
     amy_cfg.max_synths = SYNTH_SLOT_COUNT;
+    /* One bus per synth group (fx_bus.h): the buses beyond 0 carry a group
+     * only while its Split toggle is on, but the tables are preallocated
+     * either way, so this is a fixed cost, not a per-split one. */
+    amy_cfg.max_buses = FX_BUS_COUNT;
     /* Karplus-Strong rings. One ring is one physical string: two voices on a
      * ring damp each other's decay, and a note-on refills the ring under any
      * voice still reading it (a silent note-on measured +134% on the voices

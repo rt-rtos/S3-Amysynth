@@ -267,10 +267,12 @@ static bool de_vp(tlv_reader_t *r, voice_params_t *vp, uint8_t ver)
 }
 
 /* ── GLOB section ─────────────────────────────────────────────────────────
- * Backward-compat: a shorter GLOB body just runs out of bytes; fields past
- * that keep their seeded live-state value. tlv_reader_t.err sticks on the
- * first short read, so a failed tlv_get_* here means "no more data", not
- * corruption. */
+ * Tail tolerance WITHIN the current version: a shorter GLOB body just runs out
+ * of bytes and fields past that keep their seeded live-state value, so a new
+ * tail field costs no reader work. tlv_reader_t.err sticks on the first short
+ * read, so a failed tlv_get_* here means "no more data", not corruption.
+ * Older section versions are rejected outright (no migration) - the dispatcher
+ * checks the version before this runs. */
 
 typedef struct {
     uint16_t bpm;
@@ -279,51 +281,69 @@ typedef struct {
     uint8_t  quant_root;
     uint8_t  quant_scale;
     seq_drum_engine_t drum_engine;
-    fx_state_t fx;
+    fx_state_t fx[FX_BUS_COUNT];
+    bool     presets_alter_global;
+    uint8_t  split_flags;   /* bit fx_group_t: that group renders on its own bus */
 } staged_glob_t;
 
 static void ser_glob(tlv_writer_t *w)
 {
-    size_t h = tlv_begin_section(w, TAG_GLOB, 1);
+    size_t h = tlv_begin_section(w, TAG_GLOB, 2);  /* v2: per-bus FX + splits */
     tlv_put_u16(w, sequencer_core_get_bpm());
     tlv_put_f32(w, amy_fx_get_master_volume());
     tlv_put_u8(w, sequencer_core_get_quantizer_enabled() ? 1 : 0);
     tlv_put_u8(w, sequencer_core_get_quantizer_root_note());
     tlv_put_u8(w, sequencer_core_get_quantizer_scale());
     tlv_put_u8(w, (uint8_t)sequencer_core_get_drum_engine());
-    tlv_put_i8(w,  s_fx.eq_low_db);
-    tlv_put_i8(w,  s_fx.eq_mid_db);
-    tlv_put_i8(w,  s_fx.eq_high_db);
-    tlv_put_u8(w,  s_fx.echo_level);
-    tlv_put_u8(w,  s_fx.chorus_level);
-    tlv_put_u8(w,  s_fx.reverb_level);
-    tlv_put_i16(w, s_fx.echo_delay_ms);
-    tlv_put_i16(w, s_fx.echo_feedback);
-    tlv_put_i16(w, s_fx.echo_tone);
-    tlv_put_i16(w, s_fx.reverb_liveness);
-    tlv_put_i16(w, s_fx.reverb_damping);
-    tlv_put_i16(w, s_fx.reverb_xover_hz);
-    tlv_put_i16(w, s_fx.chorus_rate);
-    tlv_put_i16(w, s_fx.chorus_depth);
-    tlv_put_u8(w,  s_fx.presets_alter_global ? 1 : 0);
-    tlv_put_u8(w,  s_fx.bus_dist_type);
-    tlv_put_u8(w,  s_fx.bus_dist_drive);
-    tlv_put_u8(w,  s_fx.bus_dist_bits);
-    tlv_put_u8(w,  s_fx.bus_dist_rate);
-    tlv_put_u8(w,  s_fx.bus_dist_mix);
+    tlv_put_u8(w, s_fx_presets_alter_global ? 1 : 0);
+    {
+        uint8_t flags = 0;
+        for (fx_group_t g = FX_GROUP_DRUMS; g < FX_GROUP_COUNT; g++) {
+            if (fx_group_is_split(g)) flags |= (uint8_t)(1u << g);
+        }
+        tlv_put_u8(w, flags);
+    }
+    for (uint8_t bus = 0; bus < FX_BUS_COUNT; bus++) {
+        const fx_state_t *f = &s_fx[bus];
+        tlv_put_i8(w,  f->eq_low_db);
+        tlv_put_i8(w,  f->eq_mid_db);
+        tlv_put_i8(w,  f->eq_high_db);
+        tlv_put_u8(w,  f->echo_level);
+        tlv_put_u8(w,  f->chorus_level);
+        tlv_put_u8(w,  f->reverb_level);
+        tlv_put_i16(w, f->echo_delay_ms);
+        tlv_put_i16(w, f->echo_feedback);
+        tlv_put_i16(w, f->echo_tone);
+        tlv_put_i16(w, f->reverb_liveness);
+        tlv_put_i16(w, f->reverb_damping);
+        tlv_put_i16(w, f->reverb_xover_hz);
+        tlv_put_i16(w, f->chorus_rate);
+        tlv_put_i16(w, f->chorus_depth);
+        tlv_put_u8(w,  f->bus_dist_type);
+        tlv_put_u8(w,  f->bus_dist_drive);
+        tlv_put_u8(w,  f->bus_dist_bits);
+        tlv_put_u8(w,  f->bus_dist_rate);
+        tlv_put_u8(w,  f->bus_dist_mix);
+        tlv_put_u8(w,  f->level);
+    }
     tlv_end_section(w, h);
 }
 
 static bool parse_glob(tlv_reader_t *b, staged_glob_t *g)
 {
-    /* Seed from live state so a short/older section leaves the tail as-is. */
+    /* Seed from live state so a short section leaves the tail as-is. */
     g->bpm           = sequencer_core_get_bpm();
     g->master_volume = amy_fx_get_master_volume();
     g->quant_enabled = sequencer_core_get_quantizer_enabled();
     g->quant_root    = sequencer_core_get_quantizer_root_note();
     g->quant_scale   = sequencer_core_get_quantizer_scale();
     g->drum_engine   = sequencer_core_get_drum_engine();
-    g->fx            = s_fx;
+    memcpy(g->fx, s_fx, sizeof g->fx);
+    g->presets_alter_global = s_fx_presets_alter_global;
+    g->split_flags = 0;
+    for (fx_group_t grp = FX_GROUP_DRUMS; grp < FX_GROUP_COUNT; grp++) {
+        if (fx_group_is_split(grp)) g->split_flags |= (uint8_t)(1u << grp);
+    }
 
     uint8_t v;
     if (!tlv_get_u16(b, &g->bpm))           return true;
@@ -334,45 +354,55 @@ static bool parse_glob(tlv_reader_t *b, staged_glob_t *g)
     if (!tlv_get_u8(b, &g->quant_scale))    return true;
     if (!tlv_get_u8(b, &v))                 return true;
     g->drum_engine = (v == SEQ_DRUM_PCM) ? SEQ_DRUM_PCM : SEQ_DRUM_SYNTH;
-    if (!tlv_get_i8(b, &g->fx.eq_low_db))       return true;
-    if (!tlv_get_i8(b, &g->fx.eq_mid_db))       return true;
-    if (!tlv_get_i8(b, &g->fx.eq_high_db))      return true;
-    if (!tlv_get_u8(b, &g->fx.echo_level))      return true;
-    if (!tlv_get_u8(b, &g->fx.chorus_level))    return true;
-    if (!tlv_get_u8(b, &g->fx.reverb_level))    return true;
-    if (!tlv_get_i16(b, &g->fx.echo_delay_ms))  return true;
-    if (!tlv_get_i16(b, &g->fx.echo_feedback))  return true;
-    if (!tlv_get_i16(b, &g->fx.echo_tone))      return true;
-    if (!tlv_get_i16(b, &g->fx.reverb_liveness))return true;
-    if (!tlv_get_i16(b, &g->fx.reverb_damping)) return true;
-    if (!tlv_get_i16(b, &g->fx.reverb_xover_hz))return true;
-    if (!tlv_get_i16(b, &g->fx.chorus_rate))    return true;
-    if (!tlv_get_i16(b, &g->fx.chorus_depth))   return true;
-    if (!tlv_get_u8(b, &v))                     return true;
-    g->fx.presets_alter_global = v != 0;
-    if (!tlv_get_u8(b, &g->fx.bus_dist_type))   return true;
-    g->fx.bus_dist_type &= 7;  /* stray data reads as a valid stage mask */
-    if (!tlv_get_u8(b, &g->fx.bus_dist_drive))  return true;
-    if (!tlv_get_u8(b, &g->fx.bus_dist_bits))   return true;
-    if (!tlv_get_u8(b, &g->fx.bus_dist_rate))   return true;
-    if (!tlv_get_u8(b, &g->fx.bus_dist_mix))    return true;
+    if (!tlv_get_u8(b, &v))                 return true;
+    g->presets_alter_global = v != 0;
+    if (!tlv_get_u8(b, &g->split_flags))    return true;
+    for (uint8_t bus = 0; bus < FX_BUS_COUNT; bus++) {
+        fx_state_t *f = &g->fx[bus];
+        if (!tlv_get_i8(b, &f->eq_low_db))        return true;
+        if (!tlv_get_i8(b, &f->eq_mid_db))        return true;
+        if (!tlv_get_i8(b, &f->eq_high_db))       return true;
+        if (!tlv_get_u8(b, &f->echo_level))       return true;
+        if (!tlv_get_u8(b, &f->chorus_level))     return true;
+        if (!tlv_get_u8(b, &f->reverb_level))     return true;
+        if (!tlv_get_i16(b, &f->echo_delay_ms))   return true;
+        if (!tlv_get_i16(b, &f->echo_feedback))   return true;
+        if (!tlv_get_i16(b, &f->echo_tone))       return true;
+        if (!tlv_get_i16(b, &f->reverb_liveness)) return true;
+        if (!tlv_get_i16(b, &f->reverb_damping))  return true;
+        if (!tlv_get_i16(b, &f->reverb_xover_hz)) return true;
+        if (!tlv_get_i16(b, &f->chorus_rate))     return true;
+        if (!tlv_get_i16(b, &f->chorus_depth))    return true;
+        if (!tlv_get_u8(b, &f->bus_dist_type))    return true;
+        f->bus_dist_type &= 7;  /* stray data reads as a valid stage mask */
+        if (!tlv_get_u8(b, &f->bus_dist_drive))   return true;
+        if (!tlv_get_u8(b, &f->bus_dist_bits))    return true;
+        if (!tlv_get_u8(b, &f->bus_dist_rate))    return true;
+        if (!tlv_get_u8(b, &f->bus_dist_mix))     return true;
+        if (!tlv_get_u8(b, &f->level))            return true;
+        if (f->level > 200) f->level = 200;
+    }
     return true;
 }
 
 static void apply_glob(const staged_glob_t *g)
 {
     sequencer_core_set_bpm(g->bpm);
-    amy_fx_set_master_volume(g->master_volume);
     sequencer_core_set_quantizer_enabled(g->quant_enabled);
     sequencer_core_set_quantizer_root_note(g->quant_root);
     sequencer_core_set_quantizer_scale(g->quant_scale);
     sequencer_core_set_drum_engine(g->drum_engine);
-    s_fx = g->fx;
-    fx_push_eq();
-    fx_push_echo();
-    fx_push_chorus();
-    fx_push_dist();
-    fx_push_reverb();
+    s_fx_presets_alter_global = g->presets_alter_global;
+    for (fx_group_t grp = FX_GROUP_DRUMS; grp < FX_GROUP_COUNT; grp++) {
+        fx_bus_set_split(grp, (g->split_flags & (1u << grp)) != 0);
+    }
+    memcpy(s_fx, g->fx, sizeof s_fx);
+    /* Volume last of the caches: the per-bus levels it multiplies are already
+     * in place, so one call lands the right product on every bus. */
+    amy_fx_set_master_volume(g->master_volume);
+    /* Re-tags the movable groups onto the buses the flags just named and
+     * pushes every bus's FX - the muting rule keeps unsplit buses silent. */
+    amy_fx_apply_routing();
 }
 
 /* ── LAYR section ─────────────────────────────────────────────────────────
@@ -1048,7 +1078,7 @@ bool project_snapshot_load(uint8_t slot)
     while (ok && tlv_next_section(&r, &tag, &ver, &body)) {
         switch (tag) {
         case TAG_GLOB:
-            if (got_glob || ver != 1) { ok = false; break; }
+            if (got_glob || ver != 2) { ok = false; break; }
             ok = parse_glob(&body, &staged_glob);
             got_glob = ok;
             break;

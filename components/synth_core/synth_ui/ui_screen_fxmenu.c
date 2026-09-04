@@ -1,23 +1,125 @@
 #include "synth_ui/synth_ui_internal.h"
 #include "amy_fx.h"
+#include "fx_bus.h"
 #include "display_dist.h"   /* DIST_DRIVE/BITS/RATE range + mix step */
 #include "seq_clamp.h"
 #include <stdio.h>
 
 /* ════════════════════════════════════════════════════════════════════════
- *  GLOBAL FX SUBMENU PAGE
+ *  FX HUB + PER-BUS FX PAGE
  * ════════════════════════════════════════════════════════════════════════
- * Item model for the FX page of the menu overlay; page state and input
- * routing live in ui_screen_menu.c. Covers the three-band EQ, echo/chorus/
- * reverb levels and their extended params (fx_state_t).
+ * Two item models for the FX side of the menu overlay; page state and input
+ * routing live in ui_screen_menu.c.
+ *
+ * The HUB is one row per AMY bus (dive rows, showing whether the bus carries
+ * anything) plus the two settings that are not per-bus: the Preset FX guard
+ * and the dive into the per-layer NoteFX page.
+ *
+ * The BUS page is the old global-FX model, now bound to one bus: three-band
+ * EQ, echo/chorus/reverb with their extended params, distortion (fx_state_t),
+ * plus the group's Split toggle and the bus trim. fx_menu_set_bus() picks
+ * which cache it reads and writes.
  *
  * Extended params use the FX_PARAM_UNSET sentinel: while unset, fx_push_*
  * never writes the matching amy_event field, so AMY keeps its factory value.
  * Rows therefore display the AMY default while unset, and the first encoder
  * step seeds the field from that default - shown and audible never disagree. */
 
+/* ── Hub ─────────────────────────────────────────────────────────────────── */
+
 typedef enum {
-    FXI_EQ_LOW = 0,
+    FXH_BUS0 = 0,
+    FXH_BUS1,
+    FXH_BUS2,
+    FXH_BUS3,
+    FXH_PRESET_GLOBAL_FX,
+    FXH_NOTEFX,     /* dive row: opens the per-layer NoteFX (gate/glide) page */
+    FXH_BACK,
+    FXH_COUNT
+} fxhub_item_id_t;
+
+_Static_assert(FXH_BUS3 - FXH_BUS0 + 1 == FX_BUS_COUNT,
+               "hub bus rows must cover every bus");
+
+static menu_item_view_t s_hub_items[FXH_COUNT];
+
+uint8_t fxhub_item_count(void)
+{
+    return FXH_COUNT;
+}
+
+const menu_item_view_t *fxhub_build_items(void)
+{
+    for (int i = 0; i < FXH_COUNT; i++) {
+        s_hub_items[i].value[0] = '\0';
+    }
+
+    for (uint8_t bus = 0; bus < FX_BUS_COUNT; bus++) {
+        menu_item_view_t *it = &s_hub_items[FXH_BUS0 + bus];
+        snprintf(it->label, MENU_LABEL_LEN, "Bus %u %s",
+                 (unsigned)(bus + 1u), fx_bus_label(bus));
+        /* Bus 0 always carries the melodic mix, so it has no on/off to show. */
+        if (bus == FX_BUS_HOME) {
+            snprintf(it->value, MENU_VALUE_LEN, ">");
+        } else {
+            snprintf(it->value, MENU_VALUE_LEN, "%s >",
+                     fx_bus_is_active(bus) ? "ON" : "OFF");
+        }
+    }
+
+    /* "Presets alter bus FX? y/n" - OFF makes Juno presets timbre-only. */
+    snprintf(s_hub_items[FXH_PRESET_GLOBAL_FX].label, MENU_LABEL_LEN, "Preset FX");
+    snprintf(s_hub_items[FXH_PRESET_GLOBAL_FX].value, MENU_VALUE_LEN, "%s",
+             s_fx_presets_alter_global ? "ON" : "OFF");
+
+    /* Per-layer note controls (gate/glide) live on their own page:
+     * ui_screen_notefx.c. */
+    snprintf(s_hub_items[FXH_NOTEFX].label, MENU_LABEL_LEN, "NoteFX");
+    snprintf(s_hub_items[FXH_NOTEFX].value, MENU_VALUE_LEN, ">");
+
+    snprintf(s_hub_items[FXH_BACK].label, MENU_LABEL_LEN, "< Back");
+
+    return s_hub_items;
+}
+
+bool fxhub_item_is_bus(uint8_t idx, uint8_t *bus_out)
+{
+    if (idx > FXH_BUS3) return false;
+    if (bus_out) *bus_out = (uint8_t)(idx - FXH_BUS0);
+    return true;
+}
+
+bool fxhub_item_is_value(uint8_t idx)
+{
+    return idx == FXH_PRESET_GLOBAL_FX;
+}
+
+bool fxhub_item_is_notefx(uint8_t idx)
+{
+    return idx == FXH_NOTEFX;
+}
+
+bool fxhub_item_is_back(uint8_t idx)
+{
+    return idx == FXH_BACK;
+}
+
+void fxhub_edit_value(uint8_t idx, int delta)
+{
+    if (delta == 0) return;
+    if (idx != FXH_PRESET_GLOBAL_FX) return;
+    s_fx_presets_alter_global = !s_fx_presets_alter_global;
+    /* Re-arming the guard re-imposes the cached FX at once, on every bus,
+     * undoing whatever the last preset left behind. */
+    if (!s_fx_presets_alter_global) synth_ui_fx_reassert_all();
+}
+
+/* ── Per-bus page ────────────────────────────────────────────────────────── */
+
+typedef enum {
+    FXI_SPLIT = 0,  /* route this bus's group off bus 0 (no-op row on bus 0) */
+    FXI_LEVEL,
+    FXI_EQ_LOW,
     FXI_EQ_MID,
     FXI_EQ_HIGH,
     FXI_ECHO_LEVEL,
@@ -36,13 +138,32 @@ typedef enum {
     FXI_DIST_BITS,
     FXI_DIST_RATE,
     FXI_DIST_MIX,
-    FXI_PRESET_GLOBAL_FX,
-    FXI_NOTEFX,     /* dive row: opens the per-layer NoteFX (gate/glide) page */
     FXI_BACK,
     FXI_COUNT
 } fx_menu_item_id_t;
 
 static menu_item_view_t s_fx_items[FXI_COUNT];
+
+/* Which bus the page is bound to; the hub sets it on the way in. */
+static uint8_t s_page_bus = FX_BUS_HOME;
+
+void fx_menu_set_bus(uint8_t bus)
+{
+    s_page_bus = (bus < FX_BUS_COUNT) ? bus : FX_BUS_HOME;
+}
+
+uint8_t fx_menu_current_bus(void)
+{
+    return s_page_bus;
+}
+
+const char *fx_menu_title(void)
+{
+    static char s_title[24];
+    snprintf(s_title, sizeof s_title, "BUS %u FX  %s",
+             (unsigned)(s_page_bus + 1u), fx_bus_label(s_page_bus));
+    return s_title;
+}
 
 /* Effective value of a sentinel-gated param: while unset, the AMY factory
  * default (what the bus is actually running); the stored value once set. */
@@ -58,86 +179,92 @@ uint8_t fx_menu_item_count(void)
 
 const menu_item_view_t *fx_menu_build_items(void)
 {
+    const fx_state_t *f = &s_fx[s_page_bus];
+
     for (int i = 0; i < FXI_COUNT; i++) {
         s_fx_items[i].value[0] = '\0';
     }
 
+    if (s_page_bus == FX_BUS_HOME) {
+        /* Bus 0 is where everything renders by default; nothing to split. */
+        snprintf(s_fx_items[FXI_SPLIT].label, MENU_LABEL_LEN, "Bus");
+        snprintf(s_fx_items[FXI_SPLIT].value, MENU_VALUE_LEN, "home");
+    } else {
+        snprintf(s_fx_items[FXI_SPLIT].label, MENU_LABEL_LEN, "Split");
+        snprintf(s_fx_items[FXI_SPLIT].value, MENU_VALUE_LEN, "%s",
+                 fx_group_is_split(fx_group_of_bus(s_page_bus)) ? "ON" : "OFF");
+    }
+
+    snprintf(s_fx_items[FXI_LEVEL].label, MENU_LABEL_LEN, "Level");
+    snprintf(s_fx_items[FXI_LEVEL].value, MENU_VALUE_LEN, "%u%%",
+             (unsigned)f->level);
+
     snprintf(s_fx_items[FXI_EQ_LOW].label, MENU_LABEL_LEN, "EQ Low");
     snprintf(s_fx_items[FXI_EQ_LOW].value, MENU_VALUE_LEN, "%+ddB",
-             (int)s_fx.eq_low_db);
+             (int)f->eq_low_db);
     snprintf(s_fx_items[FXI_EQ_MID].label, MENU_LABEL_LEN, "EQ Mid");
     snprintf(s_fx_items[FXI_EQ_MID].value, MENU_VALUE_LEN, "%+ddB",
-             (int)s_fx.eq_mid_db);
+             (int)f->eq_mid_db);
     snprintf(s_fx_items[FXI_EQ_HIGH].label, MENU_LABEL_LEN, "EQ High");
     snprintf(s_fx_items[FXI_EQ_HIGH].value, MENU_VALUE_LEN, "%+ddB",
-             (int)s_fx.eq_high_db);
+             (int)f->eq_high_db);
 
     snprintf(s_fx_items[FXI_ECHO_LEVEL].label, MENU_LABEL_LEN, "Echo");
     snprintf(s_fx_items[FXI_ECHO_LEVEL].value, MENU_VALUE_LEN, "%u%%",
-             (unsigned)s_fx.echo_level);
+             (unsigned)f->echo_level);
     snprintf(s_fx_items[FXI_ECHO_FEEDBACK].label, MENU_LABEL_LEN, "Echo Fbk");
     snprintf(s_fx_items[FXI_ECHO_FEEDBACK].value, MENU_VALUE_LEN, "%d%%",
-             fx_eff(s_fx.echo_feedback, 0));
+             fx_eff(f->echo_feedback, 0));
     snprintf(s_fx_items[FXI_ECHO_TIME].label, MENU_LABEL_LEN, "Echo Time");
     snprintf(s_fx_items[FXI_ECHO_TIME].value, MENU_VALUE_LEN, "%dms",
-             fx_eff(s_fx.echo_delay_ms, 500));
+             fx_eff(f->echo_delay_ms, 500));
     snprintf(s_fx_items[FXI_ECHO_TONE].label, MENU_LABEL_LEN, "Echo Tone");
     snprintf(s_fx_items[FXI_ECHO_TONE].value, MENU_VALUE_LEN, "%+d",
-             fx_eff(s_fx.echo_tone, 0));
+             fx_eff(f->echo_tone, 0));
 
     snprintf(s_fx_items[FXI_CHORUS_LEVEL].label, MENU_LABEL_LEN, "Chorus");
     snprintf(s_fx_items[FXI_CHORUS_LEVEL].value, MENU_VALUE_LEN, "%u%%",
-             (unsigned)s_fx.chorus_level);
+             (unsigned)f->chorus_level);
     {
-        int r = fx_eff(s_fx.chorus_rate, 50);   /* centi-Hz */
+        int r = fx_eff(f->chorus_rate, 50);   /* centi-Hz */
         snprintf(s_fx_items[FXI_CHORUS_RATE].label, MENU_LABEL_LEN, "Cho Rate");
         snprintf(s_fx_items[FXI_CHORUS_RATE].value, MENU_VALUE_LEN, "%d.%02dHz",
                  r / 100, r % 100);
     }
     snprintf(s_fx_items[FXI_CHORUS_DEPTH].label, MENU_LABEL_LEN, "Cho Depth");
     snprintf(s_fx_items[FXI_CHORUS_DEPTH].value, MENU_VALUE_LEN, "%d%%",
-             fx_eff(s_fx.chorus_depth, 50));
+             fx_eff(f->chorus_depth, 50));
 
     snprintf(s_fx_items[FXI_REVERB_LEVEL].label, MENU_LABEL_LEN, "Reverb");
     snprintf(s_fx_items[FXI_REVERB_LEVEL].value, MENU_VALUE_LEN, "%u%%",
-             (unsigned)s_fx.reverb_level);
+             (unsigned)f->reverb_level);
     snprintf(s_fx_items[FXI_REVERB_LIVENESS].label, MENU_LABEL_LEN, "Rev Live");
     snprintf(s_fx_items[FXI_REVERB_LIVENESS].value, MENU_VALUE_LEN, "%d%%",
-             fx_eff(s_fx.reverb_liveness, 85));
+             fx_eff(f->reverb_liveness, 85));
     snprintf(s_fx_items[FXI_REVERB_DAMPING].label, MENU_LABEL_LEN, "Rev Damp");
     snprintf(s_fx_items[FXI_REVERB_DAMPING].value, MENU_VALUE_LEN, "%d%%",
-             fx_eff(s_fx.reverb_damping, 50));
+             fx_eff(f->reverb_damping, 50));
     snprintf(s_fx_items[FXI_REVERB_XOVER].label, MENU_LABEL_LEN, "Rev Xover");
     snprintf(s_fx_items[FXI_REVERB_XOVER].value, MENU_VALUE_LEN, "%dHz",
-             fx_eff(s_fx.reverb_xover_hz, 3000));
+             fx_eff(f->reverb_xover_hz, 3000));
 
-    /* Per-bus distortion at global scope; same field model as the per-track
-     * dist editor (type = stage mask, drive 1..16, bits/rate for CRUSH). */
+    /* Bus distortion; same field model as the per-track dist editor
+     * (type = stage mask, drive 1..16, bits/rate for CRUSH). */
     snprintf(s_fx_items[FXI_DIST_TYPE].label, MENU_LABEL_LEN, "Dist");
     snprintf(s_fx_items[FXI_DIST_TYPE].value, MENU_VALUE_LEN, "%s",
-             seq_dist_stage_label(s_fx.bus_dist_type));
+             seq_dist_stage_label(f->bus_dist_type));
     snprintf(s_fx_items[FXI_DIST_DRIVE].label, MENU_LABEL_LEN, "Dst Drive");
     snprintf(s_fx_items[FXI_DIST_DRIVE].value, MENU_VALUE_LEN, "%u",
-             (unsigned)s_fx.bus_dist_drive);
+             (unsigned)f->bus_dist_drive);
     snprintf(s_fx_items[FXI_DIST_BITS].label, MENU_LABEL_LEN, "Dst Bits");
     snprintf(s_fx_items[FXI_DIST_BITS].value, MENU_VALUE_LEN, "%u",
-             (unsigned)s_fx.bus_dist_bits);
+             (unsigned)f->bus_dist_bits);
     snprintf(s_fx_items[FXI_DIST_RATE].label, MENU_LABEL_LEN, "Dst Rate");
     snprintf(s_fx_items[FXI_DIST_RATE].value, MENU_VALUE_LEN, "%u",
-             (unsigned)s_fx.bus_dist_rate);
+             (unsigned)f->bus_dist_rate);
     snprintf(s_fx_items[FXI_DIST_MIX].label, MENU_LABEL_LEN, "Dst Mix");
     snprintf(s_fx_items[FXI_DIST_MIX].value, MENU_VALUE_LEN, "%u%%",
-             (unsigned)s_fx.bus_dist_mix);
-
-    /* "Presets alter global FX? y/n" — OFF makes Juno presets per-synth. */
-    snprintf(s_fx_items[FXI_PRESET_GLOBAL_FX].label, MENU_LABEL_LEN, "Preset FX");
-    snprintf(s_fx_items[FXI_PRESET_GLOBAL_FX].value, MENU_VALUE_LEN, "%s",
-             s_fx.presets_alter_global ? "ON" : "OFF");
-
-    /* Per-layer note controls (gate/glide) live on their own page:
-     * ui_screen_notefx.c. */
-    snprintf(s_fx_items[FXI_NOTEFX].label, MENU_LABEL_LEN, "NoteFX");
-    snprintf(s_fx_items[FXI_NOTEFX].value, MENU_VALUE_LEN, ">");
+             (unsigned)f->bus_dist_mix);
 
     snprintf(s_fx_items[FXI_BACK].label, MENU_LABEL_LEN, "< Back");
 
@@ -146,8 +273,11 @@ const menu_item_view_t *fx_menu_build_items(void)
 
 bool fx_menu_item_is_value(uint8_t idx)
 {
-    /* Every row except the NoteFX dive and Back holds an editable value. */
-    return idx < FXI_BACK && idx != FXI_NOTEFX;
+    /* Every row except Back holds an editable value - bar Split on bus 0,
+     * which states where the bus sits rather than offering a choice. */
+    if (idx >= FXI_BACK) return false;
+    if (idx == FXI_SPLIT && s_page_bus == FX_BUS_HOME) return false;
+    return true;
 }
 
 bool fx_menu_item_is_back(uint8_t idx)
@@ -155,19 +285,14 @@ bool fx_menu_item_is_back(uint8_t idx)
     return idx == FXI_BACK;
 }
 
-bool fx_menu_item_is_notefx(uint8_t idx)
-{
-    return idx == FXI_NOTEFX;
-}
-
 /* Step a sentinel-gated param: the first edit seeds the field from the AMY
  * default it was displaying, then steps and pushes normally. */
 static void fx_step(int16_t *field, int def, int step, int lo, int hi,
-                    int dir, void (*push)(void))
+                    int dir, void (*push)(uint8_t), uint8_t bus)
 {
     int cur = (*field == FX_PARAM_UNSET) ? def : (int)*field;
     *field = (int16_t)SEQ_CLAMP_INT(cur + dir * step, lo, hi);
-    push();
+    push(bus);
 }
 
 void fx_menu_edit_value(uint8_t idx, int delta)
@@ -175,98 +300,107 @@ void fx_menu_edit_value(uint8_t idx, int delta)
     int dir = (delta > 0) ? 1 : (delta < 0 ? -1 : 0);
     if (dir == 0) return;
 
+    uint8_t bus = s_page_bus;
+    fx_state_t *f = &s_fx[bus];
+
     switch ((fx_menu_item_id_t)idx) {
+        case FXI_SPLIT: {
+            /* A toggle, not a range: either encoder direction flips it. */
+            fx_group_t g = fx_group_of_bus(bus);
+            amy_fx_set_bus_split(g, !fx_group_is_split(g));
+            break;
+        }
+        case FXI_LEVEL: {
+            int v = SEQ_CLAMP_INT((int)f->level + dir * 5, 0, 200);
+            amy_fx_set_bus_level(bus, (uint8_t)v);
+            break;
+        }
         case FXI_EQ_LOW: {
-            int v = SEQ_CLAMP_INT((int)s_fx.eq_low_db + dir, -15, 15);
-            s_fx.eq_low_db = (int8_t)v; fx_push_eq();
+            int v = SEQ_CLAMP_INT((int)f->eq_low_db + dir, -15, 15);
+            f->eq_low_db = (int8_t)v; fx_push_eq(bus);
             break;
         }
         case FXI_EQ_MID: {
-            int v = SEQ_CLAMP_INT((int)s_fx.eq_mid_db + dir, -15, 15);
-            s_fx.eq_mid_db = (int8_t)v; fx_push_eq();
+            int v = SEQ_CLAMP_INT((int)f->eq_mid_db + dir, -15, 15);
+            f->eq_mid_db = (int8_t)v; fx_push_eq(bus);
             break;
         }
         case FXI_EQ_HIGH: {
-            int v = SEQ_CLAMP_INT((int)s_fx.eq_high_db + dir, -15, 15);
-            s_fx.eq_high_db = (int8_t)v; fx_push_eq();
+            int v = SEQ_CLAMP_INT((int)f->eq_high_db + dir, -15, 15);
+            f->eq_high_db = (int8_t)v; fx_push_eq(bus);
             break;
         }
         case FXI_ECHO_LEVEL: {
-            int v = SEQ_CLAMP_INT((int)s_fx.echo_level + dir * 5, 0, 100);
-            s_fx.echo_level = (uint8_t)v; fx_push_echo();
+            int v = SEQ_CLAMP_INT((int)f->echo_level + dir * 5, 0, 100);
+            f->echo_level = (uint8_t)v; fx_push_echo(bus);
             break;
         }
         case FXI_ECHO_FEEDBACK:
-            fx_step(&s_fx.echo_feedback, 0, 5, 0, 99, dir, fx_push_echo);
+            fx_step(&f->echo_feedback, 0, 5, 0, 99, dir, fx_push_echo, bus);
             break;
         case FXI_ECHO_TIME:
             /* 743 ms = AMY's default-allocated echo delay line; longer values
              * get clamped inside config_echo anyway. */
-            fx_step(&s_fx.echo_delay_ms, 500, 10, 0, 743, dir, fx_push_echo);
+            fx_step(&f->echo_delay_ms, 500, 10, 0, 743, dir, fx_push_echo, bus);
             break;
         case FXI_ECHO_TONE:
-            fx_step(&s_fx.echo_tone, 0, 5, -99, 99, dir, fx_push_echo);
+            fx_step(&f->echo_tone, 0, 5, -99, 99, dir, fx_push_echo, bus);
             break;
         case FXI_CHORUS_LEVEL: {
-            int v = SEQ_CLAMP_INT((int)s_fx.chorus_level + dir * 5, 0, 100);
-            s_fx.chorus_level = (uint8_t)v; fx_push_chorus();
+            int v = SEQ_CLAMP_INT((int)f->chorus_level + dir * 5, 0, 100);
+            f->chorus_level = (uint8_t)v; fx_push_chorus(bus);
             break;
         }
         case FXI_CHORUS_RATE:
             /* centi-Hz: 5..1000 = 0.05..10 Hz in 0.05 Hz steps. */
-            fx_step(&s_fx.chorus_rate, 50, 5, 5, 1000, dir, fx_push_chorus);
+            fx_step(&f->chorus_rate, 50, 5, 5, 1000, dir, fx_push_chorus, bus);
             break;
         case FXI_CHORUS_DEPTH:
-            fx_step(&s_fx.chorus_depth, 50, 5, 0, 100, dir, fx_push_chorus);
+            fx_step(&f->chorus_depth, 50, 5, 0, 100, dir, fx_push_chorus, bus);
             break;
         case FXI_REVERB_LEVEL: {
-            int v = SEQ_CLAMP_INT((int)s_fx.reverb_level + dir * 5, 0, 100);
-            s_fx.reverb_level = (uint8_t)v; fx_push_reverb();
+            int v = SEQ_CLAMP_INT((int)f->reverb_level + dir * 5, 0, 100);
+            f->reverb_level = (uint8_t)v; fx_push_reverb(bus);
             break;
         }
         case FXI_REVERB_LIVENESS:
-            fx_step(&s_fx.reverb_liveness, 85, 5, 0, 100, dir, fx_push_reverb);
+            fx_step(&f->reverb_liveness, 85, 5, 0, 100, dir, fx_push_reverb, bus);
             break;
         case FXI_REVERB_DAMPING:
-            fx_step(&s_fx.reverb_damping, 50, 5, 0, 100, dir, fx_push_reverb);
+            fx_step(&f->reverb_damping, 50, 5, 0, 100, dir, fx_push_reverb, bus);
             break;
         case FXI_REVERB_XOVER:
-            fx_step(&s_fx.reverb_xover_hz, 3000, 250, 500, 8000, dir, fx_push_reverb);
+            fx_step(&f->reverb_xover_hz, 3000, 250, 500, 8000, dir,
+                    fx_push_reverb, bus);
             break;
         case FXI_DIST_TYPE:
             /* 8-state stage-set cycle like the per-track dist editor: OFF is
              * a value in the cycle, not a separate toggle. */
-            s_fx.bus_dist_type = seq_dist_stage_step(s_fx.bus_dist_type, dir);
-            fx_push_dist();
+            f->bus_dist_type = seq_dist_stage_step(f->bus_dist_type, dir);
+            fx_push_dist(bus);
             break;
         case FXI_DIST_DRIVE:
-            s_fx.bus_dist_drive = (uint8_t)SEQ_CLAMP_INT(
-                (int)s_fx.bus_dist_drive + dir,
+            f->bus_dist_drive = (uint8_t)SEQ_CLAMP_INT(
+                (int)f->bus_dist_drive + dir,
                 (int)DIST_DRIVE_MIN, (int)DIST_DRIVE_MAX);
-            fx_push_dist();
+            fx_push_dist(bus);
             break;
         case FXI_DIST_BITS:
-            s_fx.bus_dist_bits = (uint8_t)SEQ_CLAMP_INT(
-                (int)s_fx.bus_dist_bits + dir,
+            f->bus_dist_bits = (uint8_t)SEQ_CLAMP_INT(
+                (int)f->bus_dist_bits + dir,
                 (int)DIST_BITS_MIN, (int)DIST_BITS_MAX);
-            fx_push_dist();
+            fx_push_dist(bus);
             break;
         case FXI_DIST_RATE:
-            s_fx.bus_dist_rate = (uint8_t)SEQ_CLAMP_INT(
-                (int)s_fx.bus_dist_rate + dir,
+            f->bus_dist_rate = (uint8_t)SEQ_CLAMP_INT(
+                (int)f->bus_dist_rate + dir,
                 (int)DIST_RATE_MIN, (int)DIST_RATE_MAX);
-            fx_push_dist();
+            fx_push_dist(bus);
             break;
         case FXI_DIST_MIX:
-            s_fx.bus_dist_mix = (uint8_t)SEQ_CLAMP_INT(
-                (int)s_fx.bus_dist_mix + dir * (int)DIST_MIX_STEP, 0, 100);
-            fx_push_dist();
-            break;
-        case FXI_PRESET_GLOBAL_FX:
-            s_fx.presets_alter_global = !s_fx.presets_alter_global;
-            /* Re-arming the guard re-imposes the cached FX at once, undoing
-             * whatever the last preset left behind. */
-            if (!s_fx.presets_alter_global) synth_ui_fx_reassert_global();
+            f->bus_dist_mix = (uint8_t)SEQ_CLAMP_INT(
+                (int)f->bus_dist_mix + dir * (int)DIST_MIX_STEP, 0, 100);
+            fx_push_dist(bus);
             break;
         default:
             break;

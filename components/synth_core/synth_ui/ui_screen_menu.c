@@ -27,7 +27,7 @@ static const char *TAG = "synth_ui";
  * A small modal list. Items are either ACTIONS (run on click) or VALUE items
  * (click to enter editing, encoder changes the value, click to exit). The model
  * is a static table; values are read/written live from sequencer_core, arp_core
- * and the global FX cache.
+ * and the per-bus FX caches.
  *
  * This file owns the page state (main list plus the sub-pages dived into from
  * it) and routes encoder/button input to the active page; every page shares
@@ -72,14 +72,18 @@ typedef enum {
 
 static menu_item_view_t s_menu_items[MI_COUNT];
 
-/* Page state: false = main list, true = the global-FX page. The main-page
- * cursor is parked here while the FX page is open so Back restores it. */
+/* Page state: false = main list, true = the FX hub (one row per AMY bus). The
+ * main-page cursor is parked here while the hub is open so Back restores it. */
 static bool    s_fx_page = false;
 static uint8_t s_main_cursor = 0;
-/* NoteFX is a sub-page of the FX page (per-layer gate/glide). The FX-page
- * cursor is parked here while it is open so Back restores it. */
+/* NoteFX is a sub-page of the hub (per-layer gate/glide). The hub cursor is
+ * parked here while it is open so Back restores it. */
 static bool    s_notefx_page = false;
 static uint8_t s_fx_cursor = 0;
+/* The per-bus FX page is the hub's other sub-page; it parks the hub cursor
+ * separately so a Back from either sub-page lands on the row it came from. */
+static bool    s_fxbus_page = false;
+static uint8_t s_fxhub_cursor = 0;
 #if CONFIG_SYNTH_PROJECT_STORE
 static bool    s_projects_page = false;
 #endif
@@ -103,6 +107,7 @@ const char *menu_page_title(void)
                  (unsigned)seq_state.num_layers);
         return s_nfx_title;
     }
+    if (s_fxbus_page) return fx_menu_title();
     if (s_fx_page) return "GLOBAL FX";
 #if CONFIG_SYNTH_PROJECT_STORE
     if (s_projects_page) return "PROJECTS";
@@ -138,9 +143,16 @@ void menu_build_view(menu_view_t *out)
         out->editing = seq_state.menu_editing;
         return;
     }
-    if (s_fx_page) {
+    if (s_fxbus_page) {
         out->items   = fx_menu_build_items();
         out->count   = fx_menu_item_count();
+        out->cursor  = seq_state.menu_cursor;
+        out->editing = seq_state.menu_editing;
+        return;
+    }
+    if (s_fx_page) {
+        out->items   = fxhub_build_items();
+        out->count   = fxhub_item_count();
         out->cursor  = seq_state.menu_cursor;
         out->editing = seq_state.menu_editing;
         return;
@@ -251,7 +263,7 @@ void menu_build_view(menu_view_t *out)
     snprintf(s_menu_items[MI_CHORDS].value, MENU_VALUE_LEN, "%u/%u",
              (unsigned)seq_chords_defined_count(), (unsigned)SEQ_CHORD_SLOTS);
 
-    /* Global FX live on their own page (ui_screen_fxmenu.c). */
+    /* FX live on their own hub page, one row per bus (ui_screen_fxmenu.c). */
     snprintf(s_menu_items[MI_FX_MENU].label, MENU_LABEL_LEN, "FX");
     snprintf(s_menu_items[MI_FX_MENU].value, MENU_VALUE_LEN, ">");
 
@@ -414,6 +426,7 @@ void synth_ui_menu_toggle(void)
     if (seq_state.menu_open) {
         /* Always reopen on the main page so the menu lands somewhere known. */
         s_fx_page = false;
+        s_fxbus_page = false;
         s_notefx_page = false;
 #if CONFIG_SYNTH_PROJECT_STORE
         s_projects_page = false;
@@ -469,8 +482,10 @@ bool synth_ui_menu_handle_encoder(long delta)
     if (seq_state.menu_editing) {
         if (s_notefx_page) {
             notefx_menu_edit_value(seq_state.menu_cursor, (int)delta);
-        } else if (s_fx_page) {
+        } else if (s_fxbus_page) {
             fx_menu_edit_value(seq_state.menu_cursor, (int)delta);
+        } else if (s_fx_page) {
+            fxhub_edit_value(seq_state.menu_cursor, (int)delta);
 #if CONFIG_SYNTH_PROJECT_STORE
         } else if (s_projects_page) {
             projects_menu_edit_value(seq_state.menu_cursor, (int)delta);
@@ -486,7 +501,8 @@ bool synth_ui_menu_handle_encoder(long delta)
         }
     } else {
         int n = s_notefx_page ? (int)notefx_menu_item_count() :
-                s_fx_page ? (int)fx_menu_item_count() :
+                s_fxbus_page ? (int)fx_menu_item_count() :
+                s_fx_page ? (int)fxhub_item_count() :
 #if CONFIG_SYNTH_PROJECT_STORE
                 s_projects_page ? (int)projects_menu_item_count() :
 #endif
@@ -515,7 +531,7 @@ bool synth_ui_menu_handle_button(void)
         if (notefx_menu_item_is_value(idx)) {
             seq_state.menu_editing = !seq_state.menu_editing;
         } else if (notefx_menu_item_is_back(idx)) {
-            /* Back returns to the FX page it was dived from. */
+            /* Back returns to the FX hub it was dived from. */
             s_notefx_page = false;
             s_fx_page = true;
             seq_state.menu_cursor  = s_fx_cursor;
@@ -525,18 +541,42 @@ bool synth_ui_menu_handle_button(void)
         return true;
     }
 
+    if (s_fxbus_page) {
+        uint8_t idx = seq_state.menu_cursor;
+        if (fx_menu_item_is_value(idx)) {
+            seq_state.menu_editing = !seq_state.menu_editing;
+        } else if (fx_menu_item_is_back(idx)) {
+            /* Back returns to the hub row this bus was dived from. */
+            s_fxbus_page = false;
+            s_fx_page = true;
+            seq_state.menu_cursor  = s_fxhub_cursor;
+            seq_state.menu_editing = false;
+        }
+        s_force_redraw = true;
+        return true;
+    }
+
     if (s_fx_page) {
         uint8_t idx = seq_state.menu_cursor;
-        if (fx_menu_item_is_notefx(idx)) {
-            /* Dive into the per-layer NoteFX page; park the FX cursor. */
+        uint8_t bus = FX_BUS_HOME;
+        if (fxhub_item_is_bus(idx, &bus)) {
+            /* Dive into that bus's FX page; park the hub cursor. */
+            s_fxhub_cursor = seq_state.menu_cursor;
+            fx_menu_set_bus(bus);
+            s_fx_page = false;
+            s_fxbus_page = true;
+            seq_state.menu_cursor  = 0;
+            seq_state.menu_editing = false;
+        } else if (fxhub_item_is_notefx(idx)) {
+            /* Dive into the per-layer NoteFX page; park the hub cursor. */
             s_fx_cursor = seq_state.menu_cursor;
             s_fx_page = false;
             s_notefx_page = true;
             seq_state.menu_cursor  = 0;
             seq_state.menu_editing = false;
-        } else if (fx_menu_item_is_value(idx)) {
+        } else if (fxhub_item_is_value(idx)) {
             seq_state.menu_editing = !seq_state.menu_editing;
-        } else if (fx_menu_item_is_back(idx)) {
+        } else if (fxhub_item_is_back(idx)) {
             s_fx_page = false;
             seq_state.menu_cursor  = s_main_cursor;
             seq_state.menu_editing = false;
@@ -650,7 +690,7 @@ bool synth_ui_menu_handle_button(void)
                 chords_menu_reset();
                 break;
             case MI_FX_MENU:
-                /* Dive into the global-FX page; the menu stays open. */
+                /* Dive into the FX hub; the menu stays open. */
                 s_main_cursor = seq_state.menu_cursor;
                 s_fx_page = true;
                 seq_state.menu_cursor = 0;

@@ -20,7 +20,9 @@ amy_event *amy_helpers_event_begin(void);
  * sends is preserved, but the engine applies them asynchronously - never read
  * AMY state right after a send to observe its effect. Task context only.
  * Exception: on the pump task itself (urgent-source callbacks) a send applies
- * inline and returns only once applied. */
+ * inline and returns only once applied.
+ * A synth-creating or re-patching event is routed to its slot's bus (fx_bus.h)
+ * unless it names one. */
 void amy_helpers_event_send(amy_event *event);
 void amy_helpers_event_cancel(amy_event *event);
 

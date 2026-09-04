@@ -615,9 +615,9 @@ seq_env_t *seq_layer_env1(uint8_t layer_idx, uint8_t track)
  *   FM/ALGO (272-276)     -> fm preset / live-editable custom voice (7 oscs)
  *   additive (277-279)    -> additive preset / custom voice (N+1 oscs)
  *   everything else       -> amy_send_patch() string loader
- * Returns true when a patch STRING was loaded: those carry global EQ/chorus
- * commands, so the caller owes one synth_ui_fx_reassert_global() afterwards,
- * even when applying to several slots. */
+ * Returns true when a patch STRING was loaded: those carry EQ/chorus commands
+ * for the bus the synth renders on, so the caller owes one
+ * synth_ui_fx_reassert() afterwards, even when applying to several slots. */
 /* Clamp a string-patch load's polyphony so oscs_per_voice x voices fits the
  * per-track osc budget. Built-in piano is 25 oscs/voice: a layer-wide load at
  * 4 voices/track attempts 400 oscs against the 250-osc pool AND ~76 KB of
@@ -708,13 +708,15 @@ static bool seq_apply_patch(uint8_t synth_id, uint16_t patch,
                                       uni);
 }
 
-/* Reassert global FX iff a patch STRING was applied since the last flush:
- * those carry global EQ/chorus commands that overwrite the user's FX state.
- * Raw-wave, bass and FM patches owe nothing. Every patch-load path flushes
- * through here so no caller can forget the reassert. */
-static inline void seq_flush_patch_fx(bool owed)
+/* Reassert bus FX iff a patch STRING was applied since the last flush: those
+ * carry EQ/chorus commands that overwrite the user's FX state on the bus the
+ * loaded synth renders on. Raw-wave, bass and FM patches owe nothing. Every
+ * patch-load path flushes through here so no caller can forget the reassert.
+ * synth_id names the slot that was configured; a batch caller passes any one
+ * of its slots, since a batch never spans two groups. */
+static inline void seq_flush_patch_fx(bool owed, uint8_t synth_id)
 {
-    if (owed) synth_ui_fx_reassert_global();
+    if (owed) synth_ui_fx_reassert(synth_id);
 }
 
 /* (Re)configure the AMY synth(s) for layer_idx.
@@ -764,7 +766,7 @@ void sequencer_configure_synth(uint8_t layer_idx)
         }
         /* Every drum SYNTH slot loads a patch string, so a flush is always
          * owed - once, after the loop. */
-        seq_flush_patch_fx(true);
+        seq_flush_patch_fx(true, layer->synth_id[0]);
         return;
     }
 
@@ -788,7 +790,7 @@ void sequencer_configure_synth(uint8_t layer_idx)
                                         &uni);
         s_voices_applied[layer_idx][t] = voices;
     }
-    seq_flush_patch_fx(string_patch);
+    seq_flush_patch_fx(string_patch, layer->synth_id[0]);
     sequencer_configure_melodic_envelope(layer_idx);
     sequencer_configure_melodic_envelope1(layer_idx);
     sequencer_configure_melodic_filter(layer_idx);
@@ -1066,7 +1068,7 @@ void sequencer_core_set_drum_patch(uint8_t layer_idx, uint8_t track,
     sequencer_resync_layer(layer_idx);
 
     /* A drum patch is always a string, so the flush is always owed. */
-    seq_flush_patch_fx(true);
+    seq_flush_patch_fx(true, layer->synth_id[track]);
 
     ESP_LOGI(TAG, "drum L%u T%u patch -> %u",
              layer_idx + 1u, track + 1u, (unsigned)patch_number);
@@ -1381,7 +1383,7 @@ void sequencer_core_arp_configure(uint16_t patch_number, uint8_t num_voices,
                                         num_voices, 0,
                                         filter_authored, ks_feedback,
                                         NULL /* no unison: arp slot */);
-    seq_flush_patch_fx(string_patch);
+    seq_flush_patch_fx(string_patch, SEQ_ARP_SYNTH);
     ESP_LOGI(TAG, "arp synth %u patch -> %u (%u voices)",
              (unsigned)SEQ_ARP_SYNTH, (unsigned)patch_number, (unsigned)num_voices);
 }
@@ -1408,7 +1410,7 @@ void sequencer_core_configure_synth_slot(uint8_t synth_id, uint16_t patch_number
     bool string_patch = seq_apply_patch(synth_id, patch_number, num_voices,
                                         0, false, 0.0f,
                                         NULL /* no unison: bare slot */);
-    seq_flush_patch_fx(string_patch);
+    seq_flush_patch_fx(string_patch, synth_id);
     ESP_LOGI(TAG, "synth %u patch -> %u (%u voices)",
              (unsigned)synth_id, (unsigned)patch_number, (unsigned)num_voices);
 }

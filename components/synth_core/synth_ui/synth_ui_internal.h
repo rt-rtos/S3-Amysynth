@@ -143,19 +143,32 @@ void     arp_build_view(arp_view_t *out);
 void     stepedit_build_view(stepedit_view_t *out);
 void     fm_build_view(fm_view_t *out);
 
-/* ─── Global-FX submenu page (item model in ui_screen_fxmenu.c; the page
- *     state and input routing live in ui_screen_menu.c) ────────────────── */
+/* ─── FX hub: one dive row per AMY bus plus the settings that are not per-bus
+ *     (item model in ui_screen_fxmenu.c; the page state and input routing
+ *     live in ui_screen_menu.c) ─────────────────────────────────────────── */
+const menu_item_view_t *fxhub_build_items(void);
+uint8_t  fxhub_item_count(void);
+bool     fxhub_item_is_bus(uint8_t idx, uint8_t *bus_out);  /* dive into a bus */
+bool     fxhub_item_is_value(uint8_t idx);
+bool     fxhub_item_is_notefx(uint8_t idx);    /* dive row into the NoteFX page */
+bool     fxhub_item_is_back(uint8_t idx);
+void     fxhub_edit_value(uint8_t idx, int delta);
+
+/* ─── Per-bus FX page, reached from a bus row on the hub. The page is bound
+ *     to one bus by fx_menu_set_bus() on the way in. ───────────────────── */
 const menu_item_view_t *fx_menu_build_items(void);
 uint8_t  fx_menu_item_count(void);
 bool     fx_menu_item_is_value(uint8_t idx);
 bool     fx_menu_item_is_back(uint8_t idx);
-bool     fx_menu_item_is_notefx(uint8_t idx);  /* dive row into the NoteFX page */
 void     fx_menu_edit_value(uint8_t idx, int delta);
+void     fx_menu_set_bus(uint8_t bus);
+uint8_t  fx_menu_current_bus(void);
+const char *fx_menu_title(void);     /* header-bar title for the bus page */
 const char *menu_page_title(void);   /* header-bar title for the active page */
 
 /* ─── NoteFX page: per-layer melodic gate + glide (item model in
  *     ui_screen_notefx.c; page state and input routing live in
- *     ui_screen_menu.c). Reached from a dive row on the global-FX page. ──── */
+ *     ui_screen_menu.c). Reached from a dive row on the FX hub. ────────── */
 const menu_item_view_t *notefx_menu_build_items(void);
 uint8_t  notefx_menu_item_count(void);
 bool     notefx_menu_item_is_value(uint8_t idx);

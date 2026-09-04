@@ -422,9 +422,10 @@ config SEQ_FX_DEFAULT_CHORUS
 	help
 		Boot-time chorus wet level, scaled to 0..1 before sending to AMY.
 		0 = off, 100 = full wet. Adjustable at runtime via the FX menu.
-		Note: every AMY built-in Juno patch string overwrites the global
-		chorus; synth_ui_fx_reassert_global() re-imposes this value after
-		each patch load when "Preset FX" is off.
+		Applies to bus 0 (Bus 1 Main); split-off buses start at 0.
+		Note: every AMY built-in Juno patch string overwrites the chorus of
+		the bus it loads onto; synth_ui_fx_reassert() re-imposes this value
+		after each patch load when "Preset FX" is off.
 
 endmenu
 

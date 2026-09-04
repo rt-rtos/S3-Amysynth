@@ -10,7 +10,7 @@
 
 #include "custompatches/drone_std_core.h"
 #include "synth_ui.h"          /* seq_get_bpm() */
-#include "amy_fx.h"            /* synth_ui_fx_reassert_global() */
+#include "amy_fx.h"            /* synth_ui_fx_reassert() */
 #include "sequencer_core.h"    /* sequencer_core_push_envelope/filter */
 #include "seq_clamp.h"
 #include "quantizer.h"         /* quantizer_chord_intervals() */
@@ -134,7 +134,7 @@ static void drone_std_configure_patch_synth(uint8_t synth, uint8_t voices)
     amy_helpers_event_send(e);
 
     /* Patch strings carry global EQ/chorus commands; keep them per-synth. */
-    synth_ui_fx_reassert_global();
+    synth_ui_fx_reassert(synth);
 
     drone_std_push_filter(synth, &s_ds.vp.filter);
 }

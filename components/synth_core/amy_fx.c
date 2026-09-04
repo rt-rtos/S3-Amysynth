@@ -1,9 +1,14 @@
-/* amy_fx.c - cached state for AMY's global effect bus (EQ, echo, chorus,
- * reverb) plus the master output volume. Kept out of synth_ui.c so the
- * sequencer/arp/drone cores can call synth_ui_fx_reassert_global() without
- * depending on the UI headers (u8g2, display_*). */
+/* amy_fx.c - cached state for AMY's effect buses (EQ, echo, chorus, reverb,
+ * distortion) plus the master output volume and the per-bus trims. Kept out of
+ * synth_ui.c so the sequencer/arp/drone cores can call synth_ui_fx_reassert()
+ * without depending on the UI headers (u8g2, display_*).
+ *
+ * One cache per bus; fx_bus.c decides which synths feed which bus. A bus that
+ * carries nothing is held muted in the engine regardless of what its cache
+ * holds, so an unused bus costs no render time. */
 
 #include "amy_fx.h"
+#include "fx_bus.h"
 #include "amy.h"
 #include "amy_helpers.h"
 #include "sdkconfig.h"
@@ -21,34 +26,79 @@
 #endif
 
 /* ── FX state ───────────────────────────────────────────────────────────── */
-fx_state_t s_fx = {
-    .eq_low_db  = 0,
-    .eq_mid_db  = 0,
-    .eq_high_db = 0,
-    .echo_level          = CONFIG_SEQ_FX_DEFAULT_ECHO,
-    .chorus_level        = CONFIG_SEQ_FX_DEFAULT_CHORUS,
-    .reverb_level        = CONFIG_SEQ_FX_DEFAULT_REVERB,
-    /* Extended params start UNSET so AMY keeps its factory character until
-     * edited. Load-bearing: designated-init would zero these, and 0
-     * liveness/damping silently mangles the reverb. */
-    .echo_delay_ms   = FX_PARAM_UNSET,
-    .echo_feedback   = FX_PARAM_UNSET,
-    .echo_tone       = FX_PARAM_UNSET,
-    .reverb_liveness = FX_PARAM_UNSET,
-    .reverb_damping  = FX_PARAM_UNSET,
-    .reverb_xover_hz = FX_PARAM_UNSET,
-    .chorus_rate     = FX_PARAM_UNSET,
-    .chorus_depth    = FX_PARAM_UNSET,
-    /* Stage off, unity drive, transparent crusher (mirrors bus_reset()).
-     * Mix starts dry, diverging from the engine's wet default: at bus scope
-     * the wet amount is small and dialed in deliberately. */
-    .bus_dist_type   = 0,
-    .bus_dist_drive  = 1,
-    .bus_dist_bits   = 16,
-    .bus_dist_rate   = 1,
-    .bus_dist_mix    = 0,
-    .presets_alter_global = false,
+
+/* The silent bus: every level at zero, every sentinel unset, distortion off.
+ * Serves double duty as the boot state of the buses beyond 0 and as the shape
+ * pushed to any bus that is not currently carrying a group. */
+#define FX_BUS_EMPTY_INIT { \
+    .eq_low_db  = 0, \
+    .eq_mid_db  = 0, \
+    .eq_high_db = 0, \
+    .echo_level   = 0, \
+    .chorus_level = 0, \
+    .reverb_level = 0, \
+    .echo_delay_ms   = FX_PARAM_UNSET, \
+    .echo_feedback   = FX_PARAM_UNSET, \
+    .echo_tone       = FX_PARAM_UNSET, \
+    .reverb_liveness = FX_PARAM_UNSET, \
+    .reverb_damping  = FX_PARAM_UNSET, \
+    .reverb_xover_hz = FX_PARAM_UNSET, \
+    .chorus_rate     = FX_PARAM_UNSET, \
+    .chorus_depth    = FX_PARAM_UNSET, \
+    .bus_dist_type   = 0, \
+    .bus_dist_drive  = 1, \
+    .bus_dist_bits   = 16, \
+    .bus_dist_rate   = 1, \
+    .bus_dist_mix    = 0, \
+    .level           = 100, \
+}
+
+fx_state_t s_fx[FX_BUS_COUNT] = {
+    /* Bus 0 is where everything renders until a group is split off, so it
+     * carries the configured boot FX. */
+    [FX_BUS_HOME] = {
+        .eq_low_db  = 0,
+        .eq_mid_db  = 0,
+        .eq_high_db = 0,
+        .echo_level          = CONFIG_SEQ_FX_DEFAULT_ECHO,
+        .chorus_level        = CONFIG_SEQ_FX_DEFAULT_CHORUS,
+        .reverb_level        = CONFIG_SEQ_FX_DEFAULT_REVERB,
+        /* Extended params start UNSET so AMY keeps its factory character until
+         * edited. Load-bearing: designated-init would zero these, and 0
+         * liveness/damping silently mangles the reverb. */
+        .echo_delay_ms   = FX_PARAM_UNSET,
+        .echo_feedback   = FX_PARAM_UNSET,
+        .echo_tone       = FX_PARAM_UNSET,
+        .reverb_liveness = FX_PARAM_UNSET,
+        .reverb_damping  = FX_PARAM_UNSET,
+        .reverb_xover_hz = FX_PARAM_UNSET,
+        .chorus_rate     = FX_PARAM_UNSET,
+        .chorus_depth    = FX_PARAM_UNSET,
+        /* Stage off, unity drive, transparent crusher (mirrors bus_reset()).
+         * Mix starts dry, diverging from the engine's wet default: at bus
+         * scope the wet amount is small and dialed in deliberately. */
+        .bus_dist_type   = 0,
+        .bus_dist_drive  = 1,
+        .bus_dist_bits   = 16,
+        .bus_dist_rate   = 1,
+        .bus_dist_mix    = 0,
+        .level           = 100,
+    },
+    [1] = FX_BUS_EMPTY_INIT,
+    [2] = FX_BUS_EMPTY_INIT,
+    [3] = FX_BUS_EMPTY_INIT,
 };
+
+bool s_fx_presets_alter_global = false;
+
+static const fx_state_t s_fx_muted = FX_BUS_EMPTY_INIT;
+
+/* What the engine must be holding for this bus: its cache while the bus
+ * carries a group, the silent shape otherwise. */
+static const fx_state_t *fx_engine_state(uint8_t bus)
+{
+    return fx_bus_is_active(bus) ? &s_fx[bus] : &s_fx_muted;
+}
 
 /* ── Master volume ──────────────────────────────────────────────────────── */
 /* Range 0..2.0, unity=1.0. Matches AMY's own init (amy_start sets
@@ -56,91 +106,160 @@ fx_state_t s_fx = {
 static float s_master_volume = 1.0f;
 
 /* ── FX push helpers ────────────────────────────────────────────────────── */
-void fx_push_eq(void)
+void fx_push_eq(uint8_t bus)
 {
+    const fx_state_t *f = fx_engine_state(bus);
     amy_event *e = amy_helpers_event_begin();
-    e->eq_l = (float)s_fx.eq_low_db;   /* AMY interprets these as dB */
-    e->eq_m = (float)s_fx.eq_mid_db;
-    e->eq_h = (float)s_fx.eq_high_db;
+    e->bus  = bus;
+    e->eq_l = (float)f->eq_low_db;   /* AMY interprets these as dB */
+    e->eq_m = (float)f->eq_mid_db;
+    e->eq_h = (float)f->eq_high_db;
     amy_helpers_event_send(e);
 }
 
-void fx_push_echo(void)
+void fx_push_echo(uint8_t bus)
 {
+    const fx_state_t *f = fx_engine_state(bus);
     amy_event *e = amy_helpers_event_begin();
-    e->echo_level = (float)s_fx.echo_level / 100.0f;
+    e->bus        = bus;
+    e->echo_level = (float)f->echo_level / 100.0f;
     /* Only send sub-params the user has set; unset ones stay AMY_UNSET so
      * config_echo keeps the bus's current value. */
-    if (s_fx.echo_delay_ms != FX_PARAM_UNSET)
-        e->echo_delay_ms   = (float)s_fx.echo_delay_ms;
-    if (s_fx.echo_feedback != FX_PARAM_UNSET)
-        e->echo_feedback   = (float)s_fx.echo_feedback / 100.0f;
-    if (s_fx.echo_tone != FX_PARAM_UNSET)
-        e->echo_filter_coef = (float)s_fx.echo_tone / 100.0f;
+    if (f->echo_delay_ms != FX_PARAM_UNSET)
+        e->echo_delay_ms   = (float)f->echo_delay_ms;
+    if (f->echo_feedback != FX_PARAM_UNSET)
+        e->echo_feedback   = (float)f->echo_feedback / 100.0f;
+    if (f->echo_tone != FX_PARAM_UNSET)
+        e->echo_filter_coef = (float)f->echo_tone / 100.0f;
     amy_helpers_event_send(e);
 }
 
-void fx_push_chorus(void)
+void fx_push_chorus(uint8_t bus)
 {
+    const fx_state_t *f = fx_engine_state(bus);
     amy_event *e = amy_helpers_event_begin();
-    e->chorus_level = (float)s_fx.chorus_level / 100.0f;
-    if (s_fx.chorus_rate != FX_PARAM_UNSET)
-        e->chorus_lfo_freq = (float)s_fx.chorus_rate / 100.0f;   /* centi-Hz -> Hz */
-    if (s_fx.chorus_depth != FX_PARAM_UNSET)
-        e->chorus_depth    = (float)s_fx.chorus_depth / 100.0f;
+    e->bus          = bus;
+    e->chorus_level = (float)f->chorus_level / 100.0f;
+    if (f->chorus_rate != FX_PARAM_UNSET)
+        e->chorus_lfo_freq = (float)f->chorus_rate / 100.0f;   /* centi-Hz -> Hz */
+    if (f->chorus_depth != FX_PARAM_UNSET)
+        e->chorus_depth    = (float)f->chorus_depth / 100.0f;
     amy_helpers_event_send(e);
 }
 
-void fx_push_reverb(void)
+void fx_push_reverb(uint8_t bus)
 {
+    const fx_state_t *f = fx_engine_state(bus);
     amy_event *e = amy_helpers_event_begin();
-    e->reverb_level = (float)s_fx.reverb_level / 100.0f;
-    if (s_fx.reverb_liveness != FX_PARAM_UNSET)
-        e->reverb_liveness = (float)s_fx.reverb_liveness / 100.0f;
-    if (s_fx.reverb_damping != FX_PARAM_UNSET)
-        e->reverb_damping  = (float)s_fx.reverb_damping / 100.0f;
-    if (s_fx.reverb_xover_hz != FX_PARAM_UNSET)
-        e->reverb_xover_hz = (float)s_fx.reverb_xover_hz;
+    e->bus          = bus;
+    e->reverb_level = (float)f->reverb_level / 100.0f;
+    if (f->reverb_liveness != FX_PARAM_UNSET)
+        e->reverb_liveness = (float)f->reverb_liveness / 100.0f;
+    if (f->reverb_damping != FX_PARAM_UNSET)
+        e->reverb_damping  = (float)f->reverb_damping / 100.0f;
+    if (f->reverb_xover_hz != FX_PARAM_UNSET)
+        e->reverb_xover_hz = (float)f->reverb_xover_hz;
     amy_helpers_event_send(e);
 }
 
-void fx_push_dist(void)
+void fx_push_dist(uint8_t bus)
 {
     /* One set of dist fields serves both scopes; the event decides which.
-     * Naming no osc puts them at bus scope, and with synth and bus unset too
-     * that bus is AMY_DEFAULT_BUS, where everything here renders. Naming a
-     * synth would instead fan them out over that synth's voices. */
+     * Naming no osc puts them at bus scope, and the named bus is the one they
+     * land on. Naming a synth would instead fan them out over its voices. */
+    const fx_state_t *f = fx_engine_state(bus);
     amy_event *e = amy_helpers_event_begin();
+    e->bus = bus;
     /* bus_dist_type is a stage mask; author all three enables explicitly
      * so a mask change turns dropped stages off. */
-    e->dist_clip  = !!(s_fx.bus_dist_type & 1u);
-    e->dist_fold  = !!(s_fx.bus_dist_type & 2u);
-    e->dist_crush = !!(s_fx.bus_dist_type & 4u);
-    e->dist_bits  = (uint8_t)s_fx.bus_dist_bits;
-    e->dist_rate  = (uint16_t)s_fx.bus_dist_rate;
+    e->dist_clip  = !!(f->bus_dist_type & 1u);
+    e->dist_fold  = !!(f->bus_dist_type & 2u);
+    e->dist_crush = !!(f->bus_dist_type & 4u);
+    e->dist_bits  = (uint8_t)f->bus_dist_bits;
+    e->dist_rate  = (uint16_t)f->bus_dist_rate;
     /* A bus sum has no per-note modulation sources, so only the CONST coef
      * of each rail reaches it: drive linear 1..16, mix linear 0..1. */
-    e->dist_drive_coefs[COEF_CONST] = (float)s_fx.bus_dist_drive;
-    e->dist_mix_coefs[COEF_CONST]   = (float)s_fx.bus_dist_mix / 100.0f;
+    e->dist_drive_coefs[COEF_CONST] = (float)f->bus_dist_drive;
+    e->dist_mix_coefs[COEF_CONST]   = (float)f->bus_dist_mix / 100.0f;
     amy_helpers_event_send(e);
+}
+
+void fx_bus_sync(uint8_t bus)
+{
+    fx_push_eq(bus);
+    fx_push_chorus(bus);
+    fx_push_echo(bus);
+    fx_push_reverb(bus);
+    fx_push_dist(bus);
 }
 
 /* ── Public API ─────────────────────────────────────────────────────────── */
 
-/* Re-impose the cached global FX after a patch load so a preset cannot hijack
- * the shared EQ/chorus/echo/reverb. No-op when the user opted into letting
- * presets drive global FX. Safe from the sequencer/arp/drone task contexts:
- * each fx_push_* serialises through the shared amy_helpers mutex.
+/* Move a group's existing synths onto whatever bus the routing table now names.
+ * Slots with no instrument behind them are skipped: a bare synth event would
+ * otherwise create one. The event names the bus explicitly, so the ingress
+ * routing hook leaves it alone. */
+static void fx_retag_group(fx_group_t g)
+{
+    uint8_t slots[8];
+    uint8_t n   = fx_group_slots(g, slots);
+    uint8_t bus = fx_bus_of_group(g);
+    for (uint8_t i = 0; i < n; i++) {
+        if (!instrument_number_exists(slots[i], NULL)) continue;
+        amy_event *e = amy_helpers_event_begin();
+        e->synth = slots[i];
+        e->bus   = bus;
+        amy_helpers_config_send(e);
+    }
+}
+
+void amy_fx_set_bus_split(fx_group_t g, bool on)
+{
+    if (!fx_bus_set_split(g, on)) return;
+    fx_retag_group(g);
+    /* Sync the group's OWN bus either way: splitting arms its cached FX,
+     * folding back mutes it. Bus 0 keeps whatever the user dialed in. */
+    fx_bus_sync(fx_group_own_bus(g));
+}
+
+void amy_fx_apply_routing(void)
+{
+    static const fx_group_t movable[] = {
+        FX_GROUP_DRUMS, FX_GROUP_ARP, FX_GROUP_DRONES
+    };
+    for (unsigned i = 0; i < sizeof movable / sizeof movable[0]; i++) {
+        fx_retag_group(movable[i]);
+    }
+    for (uint8_t b = 0; b < FX_BUS_COUNT; b++) fx_bus_sync(b);
+}
+
+/* Re-impose a bus's cached FX after a patch load so a preset cannot hijack the
+ * EQ/chorus/echo/reverb of the bus the loading synth renders on. No-op when the
+ * user opted into letting presets drive bus FX. Safe from the sequencer/arp/
+ * drone task contexts: each fx_push_* serialises through the shared
+ * amy_helpers mutex.
  *
  * These events are queued AFTER the patch's own FX deltas, so they win, and
  * both drain in the same render quantum - no audible blip. */
-void synth_ui_fx_reassert_global(void)
+void synth_ui_fx_reassert(uint8_t slot)
 {
-    if (s_fx.presets_alter_global) return;
-    fx_push_eq();
-    fx_push_chorus();
-    fx_push_echo();
-    fx_push_reverb();
+    if (s_fx_presets_alter_global) return;
+    uint8_t bus = fx_bus_for_synth(slot);
+    fx_push_eq(bus);
+    fx_push_chorus(bus);
+    fx_push_echo(bus);
+    fx_push_reverb(bus);
+}
+
+void synth_ui_fx_reassert_all(void)
+{
+    if (s_fx_presets_alter_global) return;
+    for (uint8_t b = 0; b < FX_BUS_COUNT; b++) {
+        fx_push_eq(b);
+        fx_push_chorus(b);
+        fx_push_echo(b);
+        fx_push_reverb(b);
+    }
 }
 
 void amy_fx_set_master_volume(float v)
@@ -149,12 +268,19 @@ void amy_fx_set_master_volume(float v)
     s_master_volume = v;
     /* Direct write to amy_global.volume[]: an aligned float store, atomic on
      * Xtensa. Called from synth_ui_task, never the render body. */
-    for (int b = 0; b < amy_global.config.max_buses; b++) {
-        amy_global.volume[b] = v;
+    for (int b = 0; b < amy_global.config.max_buses && b < FX_BUS_COUNT; b++) {
+        amy_global.volume[b] = v * (float)s_fx[b].level / 100.0f;
     }
 }
 
 float amy_fx_get_master_volume(void)
 {
     return s_master_volume;
+}
+
+void amy_fx_set_bus_level(uint8_t bus, uint8_t pct)
+{
+    if (bus >= FX_BUS_COUNT) return;
+    s_fx[bus].level = (uint8_t)SEQ_CLAMP_INT((int)pct, 0, 200);
+    amy_global.volume[bus] = s_master_volume * (float)s_fx[bus].level / 100.0f;
 }

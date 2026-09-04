@@ -13,7 +13,8 @@ the `display` component for rendering.
 | File | Role |
 | --- | --- |
 | `amy_helpers.c` | shared AMY event scratch + mutex (an `amy_event` is ~800 B and never lives on a task stack) |
-| `amy_fx.c` | global FX cache and post-patch-load reassert (`synth_ui_fx_reassert_global`) |
+| `amy_fx.c` | per-bus FX caches and post-patch-load reassert (`synth_ui_fx_reassert`) |
+| `fx_bus.c` | synth-group -> AMY bus routing table (the Split toggles) |
 | `quantizer.c` | scale tables and chord math (shared by grid, arp, progression, drone) |
 | `arp_core.c` | arpeggiator engine — see [ARP-ARCHITECTURE.md](ARP-ARCHITECTURE.md) |
 | `voice_config.c` | shared voice-parameter layer: builds 2-osc WAVE voices, wires the native AMY LFO |

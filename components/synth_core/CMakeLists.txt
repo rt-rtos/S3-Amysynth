@@ -29,7 +29,7 @@ if(CONFIG_SYNTH_DEV_MENU)
         "sequencer_core/seq_core_dump.c")
 endif()
 
-idf_component_register(SRCS "live_play.c" "amy_helpers.c" "amy_fx.c" "arp_core.c" "quantizer.c" "graph_popup_amy.c" "voice_config.c"
+idf_component_register(SRCS "live_play.c" "amy_helpers.c" "amy_fx.c" "fx_bus.c" "arp_core.c" "quantizer.c" "graph_popup_amy.c" "voice_config.c"
                             "filter_scope.c"
                             "synth_ui/synth_ui_state.c"
                             "synth_ui/synth_ui_task.c"

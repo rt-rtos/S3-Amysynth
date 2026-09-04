@@ -1,4 +1,5 @@
 #include "amy_helpers.h"
+#include "fx_bus.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -215,6 +216,16 @@ amy_event *amy_helpers_event_begin(void)
  * needs synchronous apply. */
 void amy_helpers_event_send(amy_event *event)
 {
+    /* Slot -> bus routing policy (fx_bus.h): a synth (re)creating event lands
+     * on its slot's bus unless it names one. Bus 0 stays unset - it is the
+     * engine default, and a spelled-out 0 would fan one BUS delta per osc for
+     * nothing. */
+    if (AMY_IS_UNSET(event->bus) && AMY_IS_SET(event->synth) &&
+        (AMY_IS_SET(event->num_voices) || AMY_IS_SET(event->patch_number) ||
+         AMY_IS_SET(event->oscs_per_voice))) {
+        uint8_t b = fx_bus_for_synth((uint8_t)event->synth);
+        if (b != FX_BUS_HOME) event->bus = b;
+    }
     if (event == &s_pump_event) {
         /* On the pump task a send IS an apply: routing through the FIFO from
          * its own consumer would deadlock when full, and the urgent path
