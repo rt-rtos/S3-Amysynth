@@ -36,23 +36,8 @@ extern CRITICAL_SECTION amy_queue_lock;
 #elif defined _POSIX_THREADS
 #include <pthread.h>
 extern pthread_mutex_t amy_queue_lock;
-#elif defined ESP_PLATFORM
-#include "freertos/FreeRTOS.h"
-#include "freertos/semphr.h"
-extern SemaphoreHandle_t amy_queue_lock;
 #endif
 #endif
-// LOCAL EDIT (S3-Amysynth): amy.c defines amy_grab_lock()/amy_release_lock()/
-// amy_init_lock() for every platform branch but never prototypes them (nor,
-// for ESP_PLATFORM, the lock variable itself, unlike the _WIN32/_POSIX_THREADS
-// cases above). Any caller outside amy.c — e.g. a component that wants to
-// guard its own pcm_load() call against a concurrent render the same way
-// add_delta_to_queue() already does internally — has no prototype to call
-// against. Upstream-PR candidate: this gap is platform-agnostic, not an
-// ESP32-specific fix.
-void amy_grab_lock(void);
-void amy_release_lock(void);
-void amy_init_lock(void);
 
 #ifdef ESP_PLATFORM
 // PRIu8 is normally hu, but the clang we're using doesn't seem to understand it.
@@ -537,7 +522,7 @@ extern uint64_t profile_start_us;
 // per-window spikes of ~uptime µs on whichever tag was mid-flight. .start is
 // only ever read by a STOP that always follows a START, so it never needs
 // zeroing; leaving it makes a racing STOP yield a normal-sized sample. See
-// AMY-EDITS.md / docs/AMY-PROFILE-LOG.md.
+// AMY-EDITS.md.
 #define AMY_PROFILE_INIT(tag) \
     profiles[tag].calls = 0; \
     profiles[tag].us_total = 0; \

@@ -1,13 +1,15 @@
 # AMY Local Edits
 
 Edits applied on top of the upstream `shorepine/amy` submodule.
-Upstream commit: `a89df0c` (v1.2.160, vendored 2026-08-28). The vendor base is
+Upstream commit: `0fb0a00` (v1.2.163, vendored 2026-09-05). The vendor base is
 upstream `main` as is - nothing is carried ahead of a merge here.
-Previous bases: v1.2.145 `55e044d`, v1.2.121 `85a7025`, v1.2.104 `fd09bd2`,
-v1.2.31 `1e23c70`. The submodule tracks upstream `main`
+Previous bases: v1.2.160 `a89df0c`, v1.2.145 `55e044d`, v1.2.121 `85a7025`,
+v1.2.104 `fd09bd2`, v1.2.31 `1e23c70`. The submodule tracks upstream `main`
 (`.gitmodules` `branch = main`; refresh with `git submodule update --remote amy`).
 
-All edits are marked `// LOCAL EDIT` in the source. ESP32-S3-specific edits are
+Edits are marked `// LOCAL EDIT` in the source, except the Karplus-Strong rework
+(`oscillators.c`, `amy.h`, `amy.c`), which is written as upstream-shaped code for
+its PR and documented by its own comments. ESP32-S3-specific edits are
 permanent (upstream has no concept of IRAM/DRAM placement or FreeRTOS task
 signatures); the fixes listed under "Dropped" were merged upstream and are no
 longer carried here.
@@ -21,7 +23,7 @@ flowchart TD
 
     Active --> SR["48 kHz sample rate on ESP<br/>src/amy.h"]
     Active --> FP["Kconfig-gated fixed-point toggle, ldexpf shifts<br/>src/amy.h, src/amy_fixedpoint.h"]
-    Active --> LOCK["Render lock + lock accessor prototypes<br/>src/amy.c, src/amy.h"]
+    Active --> LOCK["Render lock<br/>src/amy.c"]
     Active --> PIE["PIE block clears in amy_render<br/>src/algorithms.c, src/amy.c, src/amy.h"]
     Active --> POOL["Delta-pool PSRAM spill, no-abort cap<br/>src/amy.c"]
     Active --> HOT["Residual IRAM attrs upstream lacks<br/>src/filters.c x2, src/oscillators.c x1"]
@@ -35,6 +37,7 @@ flowchart TD
     Active --> CLAMP["instrument_get_num_voices voice-list clamp<br/>src/instrument.c"]
     Active --> API["Read accessors: voice base osc, patch oscs per voice, gamma blob size, algorithm count<br/>src/patches.c, src/pcm.c, src/algorithms.c"]
     Active --> CUST["Custom operator programs + algorithm_ops accessor<br/>src/algorithms.c, src/amy.h"]
+    Active --> BUILD["Kconfig + CMakeLists: fixed-point, profiler, wavetable, gamma808 flags; NDEBUG hot files; drums-flash<br/>Kconfig, CMakeLists.txt"]
 ```
 
 ## Dropped (merged upstream)
@@ -46,6 +49,7 @@ flowchart TD
 | [#787](https://github.com/shorepine/amy/pull/787) (merged as [#809](https://github.com/shorepine/amy/pull/809), v1.2.24) | Reverb `LPF()` state passed by pointer - feedback crossover lowpass now actually filters (delay.c) |
 | [#790](https://github.com/shorepine/amy/pull/790) (merged as [#811](https://github.com/shorepine/amy/pull/811), v1.2.26) | Reverb delay-line state hoisted into loop locals (delay.c) |
 | upstream `8ade0b1` | `MUL5A_SS` / `MUL6A_SS` float-mode fallbacks (amy_fixedpoint.h) |
+| upstream [#791](https://github.com/shorepine/amy/pull/791) (v1.2.x, 2026-07-07) | `amy_grab_lock()` / `amy_release_lock()` prototypes in amy.h. The local edit also declared `amy_init_lock()` and an ESP `extern SemaphoreHandle_t amy_queue_lock`; neither has a caller outside amy.c (`amy_init_lock` is `amy_start`-internal), so the whole block retired 2026-09-05. |
 | [#961](https://github.com/shorepine/amy/pull/961) (merged `ae469e1`, 2026-07-24) | OOM survival on the voice/event allocation paths: `amy_oom()` + `amy_get_oom_count()`, `bool ensure_osc_allocd()`, alloc-before-free breakpoint realloc (amy.c, amy.h, instrument.c, cv_trigger.c, interp_partials.c). Vendored tree realigned to the merged version 2026-07-25 - see that entry for what stays local. |
 | [#993](https://github.com/shorepine/amy/pull/993) (merged `56c8f1d`, 2026-07-27) | `amy_oom()` logs only the first failure, counts the rest - the vfprintf ran on the render thread and OOM retries re-fail per note-on, flooding stderr from the audio path (amy.c). Vendored shape identical to upstream; found via the BLE-MIDI + additive-piano slowdown. |
 | [#875](https://github.com/shorepine/amy/pull/875) + [#877](https://github.com/shorepine/amy/pull/877) | LUT trig (`sin2pi`/`cos2pi` over the quarter-sine table) in the biquad coefficient generators, `sin_lut`/`cos_lut` + `qsin_fxpt_lutable` (filters.c, log2_exp2.c, log2_exp2_fxpt_lutable.h). Was carried as a verbatim cherry-pick; retired on the v1.2.104 sync. |
@@ -137,7 +141,7 @@ Universal AMY logic, no target assumptions - PR candidate, same track as
 ### `algorithms.c` + `amy.h` — `amy_num_algorithms` count export (upstream PR candidate)
 
 `const uint16_t amy_num_algorithms`, derived from `sizeof(algorithms)/sizeof(algorithms[0])`
-at the end of `algorithms.c` (below the byte-identical-to-upstream line), with an
+at the end of `algorithms.c` (in the appended block after the custom-algorithm rows), with an
 `extern` in `amy.h`. API users stepping or validating `amy_event.algorithm` need
 the real table size: `render_algo` indexes `algorithms[]` unchecked, so any
 out-of-range value is an OOB read, and hardcoding 33 breaks the moment the table
@@ -212,9 +216,9 @@ clears, which upstream does not accelerate:
 
 | Where | What | Why |
 |-------|------|-----|
-| `algorithms.c`, appended at EOF | `amy_block_zero_blocks(SAMPLE *p, int nblocks)` - loops upstream's `zero()` | reach the kernel from `amy.c` without a second copy of the asm; appended so everything above stays byte-identical to upstream |
+| `algorithms.c`, appended at EOF | `amy_block_zero_blocks(SAMPLE *p, int nblocks)` - loops upstream's `zero()` | reach the kernel from `amy.c` without a second copy of the asm; appended after the custom-algorithm block so upstream's own functions stay untouched |
 | `amy.h`, after `malloc_caps_block` | its prototype | - |
-| `amy.c` `amy_render()` x2, `alloc_chorus_delay_lines` x1 | `bzero(...)` -> `amy_block_zero_blocks(p, 1)`; `fbl` passes `AMY_NCHANS` | `zero()` hardcodes one block = `AMY_BLOCK_SIZE * sizeof(SAMPLE)` = exactly `per_osc_fb` / `delay_mod`; `fbl` is `AMY_NCHANS` of them, so no length parameter is needed |
+| `amy.c` `amy_render()` x3 (`fbl`, `per_osc_fb`, chorus `delay_mod`) | `bzero(...)` -> `amy_block_zero_blocks(p, 1)`; `fbl` passes `AMY_NCHANS` | `zero()` hardcodes one block = `AMY_BLOCK_SIZE * sizeof(SAMPLE)` = exactly `per_osc_fb` / `delay_mod`; `fbl` is `AMY_NCHANS` of them, so no length parameter is needed |
 | `amy.c` `oscs_init` x2, `alloc_chorus_delay_lines` x1 | `malloc_caps` -> `malloc_caps_block` | `zero()` falls back to libc on an unaligned base, so without this the acceleration silently does nothing. Allocator body/gate are upstream's; upstream itself now aligns the FM scratch (#967/#969), leaving these three call sites as the local delta |
 
 Not measured: the 10.4% dx7 6-op figure is the FM scratch alone. Verified in the
@@ -257,67 +261,6 @@ runs `multicore = 0`, so `amy_render()` is only ever called with `core = 0` and
 therefore summing 512 int32 zeros per bus, every block, for nothing. Now
 guarded on `amy_global.config.platform.multicore` — a runtime test, not
 compile-time, so the sum reappears correctly if multicore is ever enabled.
-
-### `src/amy.c` + `src/amy.h` + `src/api.c` — master bus fold (upstream PR candidate)
-
-**Branch-scoped: lives on `feat/fx-bus-split` only (2026-07-29), not on
-main/upstream-sync - remove this note when the branch merges.**
-
-New `amy_config_t.fx_master_fold` flag (default 0, set explicitly in
-`amy_default_config()` because that struct is not zero-initialised) turning
-AMY's per-bus chains into send-style buses: chorus and echo stay per-bus, EQ
-and reverb move to one master stage over the summed mix. Upstream has no master
-stage at all — every bus runs its own full chain straight into the volume-scaled
-sum — so N buses meant N reverb tails and N reverb allocations, which is both
-the wrong sound (each group in its own room) and the dominant per-bus cost.
-
-Three hunks in `amy_fill_buffer`:
-
-| Where | What |
-|-------|------|
-| before the per-bus FX loop | `const bool fx_master_fold = config.fx_master_fold && highest_bus > 0` |
-| inside the loop | the EQ and reverb calls gain a `!fx_master_fold` guard; chorus, echo and the postprocess hook are untouched |
-| after the loop | fold buses 1..highest into bus 0, then bus 0's `parametric_eq_process` + `stereo_reverb` over the sum; `mix_highest_bus` caps the mix loop at bus 0 so the folded buses are not added twice |
-
-Bus 0 is the master chain, which is also where patch strings' trailing `k`/`x`
-FX commands land (they carry no bus field), so `synth_ui_fx_reassert_global()`
-and the FX menu keep addressing it unchanged.
-
-Four load-bearing details:
-
-- **Gated on `highest_bus > 0`, not just the flag.** With one active bus the
-  per-bus chain already IS the master chain, and folding would reorder the
-  volume scaling around EQ/reverb. Single-bus output therefore stays
-  bit-identical whatever the flag says — which also means a single-bus
-  fold-on vs fold-off A/B is vacuous by construction; correctness testing
-  needs two or more active buses (see the plan's Phase 3).
-- **Headroom budget.** The fold sums RAW bus buffers before the ~0.1×volume
-  mix scale, where the stock mix summed after it — roughly 10× less
-  accumulator headroom, and the `+=` is a plain non-saturating add. `SAMPLE`
-  is s8.23 (±256.0) and soft-clip onset corresponds to ≈9.0 raw per bus, so
-  three saturated buses reach ≈27 of 256 — ~9× margin, but the failure mode
-  beyond it is signed wraparound, not clipping. The hardware peak-polyphony
-  soak must target exactly this (all buses driven hard simultaneously).
-- **Master EQ moves after chorus/echo.** Stock order was per-bus EQ →
-  chorus → echo → reverb; folded order is chorus → echo → fold → EQ →
-  reverb. Inaudible while EQ is flat (the `!= F2S(1.0f)` guard skips it and
-  the app default is 0 dB), real once the user boosts/cuts a band.
-- **The fold accumulates at each bus's volume RELATIVE to bus 0**, because the
-  mix loop still applies `volume_scale[0]` to the folded buffer. Scaling in the
-  fold as well would put a second `MUL8_SS` on the master signal, and
-  `FXMUL_TEMPLATE` truncates 11-12 bits of each operand — a unity multiply is
-  not a no-op there, it quantises the master bus to ~4 output LSBs. Equal
-  volumes (the normal case — one master fader drives every bus) take a
-  plain-add path and are bit-exact. A zero bus-0 volume silences the master
-  chain, so nothing is folded into it.
-
-The fold sits outside the per-sample clip/pack loop, adds no allocation, no
-call in its inner loops, and leaves `AMY_HPF_OUTPUT` alone.
-
-App side: `CONFIG_SYNTH_FX_BUSES` (default n) sets the flag once in
-`main.c`; the bus map lives in `components/synth_core/include/fx_bus.h`.
-Feature, not a fix — PR to `shorepine/amy` ("master bus fold / send-style
-buses") planned after hardware validation.
 
 ### `src/amy.h` — 48 kHz sample rate on ESP
 
@@ -367,25 +310,24 @@ render walks the same pointers on Core 1. Without the lock a patch toggle can
 free `synth[osc]` between the NULL check and the deref in `hold_and_modify`,
 producing a `LoadProhibited` fault (EXCVADDR=0x8).
 
-### `src/amy.h` — lock accessor prototypes
+### `src/amy.c` — delta-pool PSRAM spill, no-abort cap
 
-Added `extern SemaphoreHandle_t amy_queue_lock;` (ESP_PLATFORM branch, missing
-alongside the existing `_WIN32`/`_POSIX_THREADS` externs) plus unconditional
-prototypes for `amy_grab_lock(void)` / `amy_release_lock(void)` /
-`amy_init_lock(void)`, none of which upstream declares anywhere despite every
-platform branch in `amy.c` defining them.
+`deltas_pool_alloc()` takes an explicit `caps` argument (and is `static`);
+`deltas_add_pool_block()` allocates block 0 from `ram_caps_synth` and every
+overflow block from `MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT`. Hitting
+`MAX_DELTA_BLOCKS` reports through `amy_oom()` and returns instead of
+upstream's `abort()`; a NULL block likewise returns with the pool untouched
+(`delta_get` guards the empty pool).
 
-**Why:** the runtime PCM sampler (`custompatches/sample_rec.c`) needs to grab
-the render lock around its own `pcm_load()`/`pcm_unload_preset()` calls —
-`pcm.c`'s memory-preset linked list is walked unlocked by `render_pcm()`
-inside the render body, so mutating it from another task without the lock
-races the render task across cores. `add_delta_to_queue()` already does
-exactly this internally; this edit just lets code outside `amy.c` do the same
-without an implicit-declaration warning. Since v1.2.104 upstream declares
-`amy_grab_lock()`/`amy_release_lock()` (bare parameter lists) in its API
-block; still missing there are `amy_init_lock()`, the `(void)` signatures,
-and the ESP `extern SemaphoreHandle_t amy_queue_lock` itself, so the
-(narrowed) edit stays. **Upstream-PR candidate** for the remainder.
+**Why:** block 0 is the hot common-case path walked every audio block and
+stays internal; growth beyond it happens only under event bursts, where
+PSRAM latency is irrelevant and internal heap is the scarce resource. On
+target a dropped event beats taking the synth down. Markers are dated
+2026-06-27; the "no-abort cap" half is target policy, the PSRAM spill is
+ESP-specific - neither is an upstream candidate.
+
+**Rollback:** restore upstream's two-argument `deltas_pool_alloc` and the
+`abort()`; every caller already tolerates a NULL return.
 
 ### `src/filters.c` + `src/oscillators.c` — residual IRAM annotations
 
@@ -519,6 +461,27 @@ PSRAM fallback copy. Upstream PR candidate (tiny, platform-neutral).
 
 Track local, project-specific changes made against the upstream AMY component here.
 
+## 2026-09-05 — Upstream sync v1.2.160 -> v1.2.163
+
+- **Vendor sync** of `components/amy` to upstream `0fb0a00` (v1.2.163, 12
+  commits since v1.2.160, three PRs); `amy/` submodule gitlink bumped to match.
+  - **Method:** upstream's delta applied directly (`git diff a89df0c
+    0fb0a00 | git apply`) - the seven files it touches carry no local hunk,
+    so the result equals an overlay rebase with zero conflicts. Every local
+    edit is untouched.
+  - **Upstream behavior new to this build:** #1149 restores real osc counts
+    for the drum-kit patches in `patch_oscs[]` (258 and 384 -> 38, 385-390
+    -> 42; they were placeholder 1), so loading a kit sizes its osc block
+    right on the first allocation. The firmware never routes those patch
+    numbers, so nothing changes at runtime here; through
+    `amy_patch_oscs_per_voice()` the polyphony clamp would now hold a kit
+    patch to one voice. #1143/#1145 add `amy.version` to the Python module
+    (not built here).
+  - **Retired:** none. **Kept:** everything in the diagram at the top of
+    this file.
+  - **Verification:** `build_project` green; `AMY_SAMPLE_RATE` ESP branch
+    confirmed 48000. No new HW items: nothing the firmware executes changed.
+
 ## 2026-08-28 — Upstream sync v1.2.145 -> v1.2.160
 
 - **Full vendor sync** of `components/amy` to upstream `a89df0c` (v1.2.160, 67
@@ -544,8 +507,10 @@ Track local, project-specific changes made against the upstream AMY component he
     following osc references, #1129 adds `sample_offset`/`fit` and grows
     `synthinfo` by roughly 56 B per osc in the PSRAM arena.
   - **Verification:** `build_project` green; `AMY_SAMPLE_RATE` ESP branch
-    confirmed 48000. Residual over upstream: 17 files, +580/-59. HW verify
-    pending (see `HW-VERIFY.md`).
+    confirmed 48000. Residual over upstream, re-measured 2026-09-05 after the
+    lock-prototype retire: 14 src files, +410/-58, plus `Kconfig` and
+    `CMakeLists.txt` with no upstream counterpart. HW verify pending (see
+    `HW-VERIFY.md`).
 
 ## 2026-08-07 — `amy_patch_oscs_per_voice()` read accessor
 

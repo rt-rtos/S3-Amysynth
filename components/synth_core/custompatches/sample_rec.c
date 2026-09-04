@@ -42,7 +42,7 @@ bool sample_rec_arm(uint8_t layer_idx, uint8_t track)
 
     /* pcm_load() mutates pcm.c's unlocked memory-preset list, which
      * render_pcm() walks inside the render body. Take the same lock
-     * add_delta_to_queue() uses (amy.h LOCAL EDIT note on amy_grab_lock). */
+     * add_delta_to_queue() uses. */
     amy_grab_lock();
     int16_t *buf = pcm_load(SAMPLE_REC_PRESET_NUMBER, SAMPLE_REC_LENGTH,
                             AMY_SAMPLE_RATE, 1, SAMPLE_REC_MIDINOTE, 0, 0);
