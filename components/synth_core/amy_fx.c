@@ -105,6 +105,17 @@ static const fx_state_t *fx_engine_state(uint8_t bus)
  * amy_global.volume[bus]=1.0f), so no push is needed at boot. */
 static float s_master_volume = 1.0f;
 
+/* What amy_global.volume[bus] holds: master x trim, times the clip bus's
+ * makeup (FX_BUS_CLIPS_MAKEUP). Direct write: an aligned float store, atomic
+ * on Xtensa. UI task, never the render body. */
+static void push_volume(uint8_t bus)
+{
+    if (bus >= amy_global.config.max_buses) return;
+    float v = s_master_volume * (float)s_fx[bus].level / 100.0f;
+    if (bus == FX_BUS_CLIPS) v *= FX_BUS_CLIPS_MAKEUP;
+    amy_global.volume[bus] = v;
+}
+
 /* ── FX push helpers ────────────────────────────────────────────────────── */
 void fx_push_eq(uint8_t bus)
 {
@@ -191,6 +202,9 @@ void fx_bus_sync(uint8_t bus)
     fx_push_echo(bus);
     fx_push_reverb(bus);
     fx_push_dist(bus);
+    /* AMY boots every bus at 1.0; the clip bus's makeup has to be in place
+     * before its first clip sounds. */
+    push_volume(bus);
 }
 
 /* ── Public API ─────────────────────────────────────────────────────────── */
@@ -225,7 +239,7 @@ void amy_fx_set_bus_split(fx_group_t g, bool on)
 void amy_fx_apply_routing(void)
 {
     static const fx_group_t movable[] = {
-        FX_GROUP_DRUMS, FX_GROUP_ARP, FX_GROUP_DRONES
+        FX_GROUP_DRUMS, FX_GROUP_DRONES, FX_GROUP_CLIPS
     };
     for (unsigned i = 0; i < sizeof movable / sizeof movable[0]; i++) {
         fx_retag_group(movable[i]);
@@ -266,11 +280,7 @@ void amy_fx_set_master_volume(float v)
 {
     v = SEQ_CLAMP_F32(v, 0.0f, 2.0f);
     s_master_volume = v;
-    /* Direct write to amy_global.volume[]: an aligned float store, atomic on
-     * Xtensa. Called from synth_ui_task, never the render body. */
-    for (int b = 0; b < amy_global.config.max_buses && b < FX_BUS_COUNT; b++) {
-        amy_global.volume[b] = v * (float)s_fx[b].level / 100.0f;
-    }
+    for (uint8_t b = 0; b < FX_BUS_COUNT; b++) push_volume(b);
 }
 
 float amy_fx_get_master_volume(void)
@@ -282,5 +292,5 @@ void amy_fx_set_bus_level(uint8_t bus, uint8_t pct)
 {
     if (bus >= FX_BUS_COUNT) return;
     s_fx[bus].level = (uint8_t)SEQ_CLAMP_INT((int)pct, 0, 200);
-    amy_global.volume[bus] = s_master_volume * (float)s_fx[bus].level / 100.0f;
+    push_volume(bus);
 }

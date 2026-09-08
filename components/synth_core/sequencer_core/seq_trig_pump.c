@@ -29,7 +29,13 @@
 
 #define SEQ_TRIG_QUEUE_DEPTH 32
 
+typedef enum {
+    SEQ_TRIG_JOB_STEP = 0,       /* decorated-step fire */
+    SEQ_TRIG_JOB_FREEZE_RELEASE, /* loop-bounce freeze: release every source voice */
+} seq_trig_job_kind_t;
+
 typedef struct {
+    uint8_t  kind;
     uint8_t  layer_idx;
     uint8_t  track;
     uint8_t  step;
@@ -55,6 +61,10 @@ static bool seq_trig_drain_one(void)
 {
     seq_trig_job_t job;
     if (xQueueReceive(s_trig_queue, &job, 0) != pdTRUE) return false;
+    if (job.kind == SEQ_TRIG_JOB_FREEZE_RELEASE) {
+        sequencer_core_freeze_release_apply();
+        return true;
+    }
     /* Closes the race the deferral itself introduces: a delete_layer()
      * compaction landing between the render task's enqueue and this dequeue
      * would otherwise read a shifted or reused s_layers[] slot. Re-check both
@@ -85,10 +95,20 @@ void sequencer_core_trig_pump_init(void)
 void sequencer_core_trig_enqueue(uint8_t layer_idx, uint8_t track, uint8_t step,
                                  uint32_t now_ticks)
 {
-    seq_trig_job_t job = { layer_idx, track, step, now_ticks };
+    seq_trig_job_t job = { SEQ_TRIG_JOB_STEP, layer_idx, track, step, now_ticks };
     /* Zero timeout: the render task must never block here. A full queue means
      * the consumer has stalled or this tick produced more decorated fires
      * than the queue was sized for - drop and count, never wait. */
+    if (xQueueSend(s_trig_queue, &job, 0) != pdTRUE) {
+        s_trig_drops_full++;
+        return;
+    }
+    amy_helpers_pump_wake();
+}
+
+void sequencer_core_freeze_release_enqueue(void)
+{
+    seq_trig_job_t job = { SEQ_TRIG_JOB_FREEZE_RELEASE, 0, 0, 0, 0 };
     if (xQueueSend(s_trig_queue, &job, 0) != pdTRUE) {
         s_trig_drops_full++;
         return;

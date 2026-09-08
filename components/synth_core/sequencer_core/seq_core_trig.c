@@ -307,6 +307,10 @@ void sequencer_core_service_tick(void)
      * a dropped tick is inaudible. */
     if (s_layers_mutating) return;
     uint32_t now_ticks = sequencer_ticks();
+    /* Loop-bounce freeze: past the horizon nothing new fires, matching the
+     * periodic entries AMY holds back. Evaluation continues so PREV/condition
+     * state stays coherent for the unfreeze. */
+    bool frozen = seq_freeze_blocks(now_ticks);
 
     for (uint8_t li = 0; li < s_num_layers; li++) {
         seq_layer_t *layer = &s_layers[li];
@@ -346,7 +350,7 @@ void sequencer_core_service_tick(void)
                 /* Mute/solo silences output only: fire and s_track_last_played
                  * keep evaluating, so a track resumes its rhythmic position
                  * seamlessly on unmute instead of freezing. */
-                if (fire && rr_bar && sequencer_track_audible(layer, tr)) {
+                if (fire && rr_bar && !frozen && sequencer_track_audible(layer, tr)) {
                     /* trig_schedule_ratchets() ends in amy_helpers_note_send(),
                      * which asserts if called from this (the render) task and
                      * can block for up to 250ms even when it doesn't - both

@@ -28,6 +28,11 @@ extern "C" {
  * plate (central attached) over the bare glyph (advertising only). */
 bool display_badge_draw(u8g2_t *u8g2, uint8_t preferred_x, bool connected);
 
+/* Draws a short text badge (4x6 font on an inverted plate, 8 rows high) with
+ * the same placement rules: nearest clear top-row slot to preferred_x, nothing
+ * when the row is full. Returns true if it was drawn. */
+bool display_badge_draw_text(u8g2_t *u8g2, uint8_t preferred_x, const char *text);
+
 #ifdef __cplusplus
 }
 #endif

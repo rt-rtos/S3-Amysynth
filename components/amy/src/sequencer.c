@@ -47,6 +47,28 @@ static volatile bool sequencer_external_clock = false;
 // flag makes those nested calls no-ops so a tick is never processed twice.
 static volatile bool wire_firing = false;
 
+// LOCAL EDIT (S3-Amysynth): periodic-entry horizon. While set, repeating
+// entries do not fire at or after this tick; one-shots are unaffected. Lets a
+// host freeze every looping note-on on an exact tick (a loop bounce's bar
+// line) without clearing and rebuilding the entries from a slower task. The
+// tick is stored before the flag so a reader that sees the flag sees the tick.
+static uint32_t periodic_horizon_tick = 0;
+static volatile uint8_t periodic_horizon_set = 0;
+
+void sequencer_set_periodic_horizon(uint32_t tick) {
+    periodic_horizon_tick = tick;
+    periodic_horizon_set = 1;
+}
+
+void sequencer_clear_periodic_horizon(void) {
+    periodic_horizon_set = 0;
+}
+
+static inline bool periodic_horizon_blocks(void) {
+    return periodic_horizon_set
+        && (int32_t)(amy_global.sequencer_tick_count - periodic_horizon_tick) >= 0;
+}
+
 void sequencer_init(int max_sequencer_tags) {
     // These are statics, so a stop/start of AMY within one process needs them
     // put back to their boot state (internal clock, running).
@@ -269,6 +291,8 @@ static void sequencer_process_tick(void) {
             if(sequences[tag].period != 0) { // period set
                 uint32_t offset = amy_global.sequencer_tick_count % sequences[tag].period;
                 if (offset == sequences[tag].tick) hit = true;
+                // LOCAL EDIT (S3-Amysynth): see periodic_horizon_blocks().
+                if (hit && periodic_horizon_blocks()) hit = false;
             } else {
                 // Test for absolute tick (no period set).  <= rather than ==:
                 // the walk above runs without the lock, and a stale link can

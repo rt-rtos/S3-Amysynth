@@ -1516,6 +1516,11 @@ extern int pcm_load_file();
 extern bool pcm_loop_config_allowed(uint16_t osc, uint16_t mode, uint16_t preset_number,
                                     bool mode_is_the_new_part);
 extern void pcm_unload_preset(uint16_t preset_number);
+// LOCAL EDIT (S3-Amysynth): a PCM osc's source position in frames (see pcm.c).
+extern uint32_t pcm_osc_frame(uint16_t osc);
+// LOCAL EDIT (S3-Amysynth): trim a memory preset to new_length frames in place
+// (see pcm.c). Under amy_queue_lock, like pcm_load().
+extern bool pcm_shrink_preset(uint16_t preset_number, uint32_t new_length);
 extern void pcm_unload_all_presets();
 
 // filters

@@ -565,6 +565,16 @@ static SAMPLE render_pcm_stretch(SAMPLE *buf, uint16_t osc, memorypcm_preset_t *
     return max_value;
 }
 
+// LOCAL EDIT (S3-Amysynth): read accessor for a PCM osc's source position in
+// sample frames - the stretcher's input timeline while it is engaged, else the
+// plain playhead - so a host can keep a looping clip locked to its grid. Read
+// only; 0 for an osc that is out of range or not allocated. See AMY-EDITS.md.
+uint32_t pcm_osc_frame(uint16_t osc) {
+    if (osc >= AMY_OSCS || synth[osc] == NULL) return 0;
+    if (synth[osc]->stretch.active) return (uint32_t)(synth[osc]->stretch.in_pos_q16 >> 16);
+    return (uint32_t)INT_OF_P(synth[osc]->phase, PCM_INDEX_BITS);
+}
+
 void pcm_note_on(uint16_t osc) {
     if(AMY_IS_SET(synth[osc]->preset)) {
         memorypcm_preset_t rom_local;
@@ -968,6 +978,42 @@ void pcm_unload_preset(uint16_t preset_number) {
         }
     }
     //fprintf(stderr, "pcm_unload_preset: preset %d not found\n", preset_number);  // This happens during a routine load_preset.
+}
+
+// LOCAL EDIT (S3-Amysynth): trim an in-memory preset to new_length frames once
+// its final length is known (a loop recorded open-ended reserves its maximum
+// first). The block is [list node | preset | samples] from one allocation, so
+// this is one realloc; shrinking is an in-place trim in the ESP heap (TLSF)
+// and in libc realloc, so nothing is copied and the node stays put. Should an
+// allocator move it anyway, the list link and the internal pointers are
+// re-pointed here. Call under amy_queue_lock like pcm_load(). loopend is
+// capped to the new length; the block is untouched on failure. See
+// AMY-EDITS.md.
+bool pcm_shrink_preset(uint16_t preset_number, uint32_t new_length) {
+    memorypcm_ll_t **link = &memorypcm_ll_start;
+    while (*link != NULL && (*link)->preset_number != preset_number) link = &(*link)->next;
+    memorypcm_ll_t *node = *link;
+    if (node == NULL) return false;
+    memorypcm_preset_t *preset = node->preset;
+    if (preset->type != AMY_PCM_TYPE_MEMORY || new_length == 0 || new_length > preset->length) return false;
+    size_t bytes = sizeof(memorypcm_ll_t) + sizeof(memorypcm_preset_t)
+                   + (size_t)new_length * preset->channels * sizeof(int16_t);
+#ifdef ESP_PLATFORM
+    memorypcm_ll_t *moved = (memorypcm_ll_t *)heap_caps_realloc(node, bytes, amy_global.config.ram_caps_sample);
+#else
+    memorypcm_ll_t *moved = (memorypcm_ll_t *)realloc(node, bytes);
+#endif
+    if (moved == NULL) return false;
+    if (moved != node) {
+        *link = moved;
+        moved->preset = (memorypcm_preset_t *)(((uint8_t *)moved) + sizeof(memorypcm_ll_t));
+        moved->preset->sample_ram = (int16_t *)(((uint8_t *)moved->preset) + sizeof(memorypcm_preset_t));
+        preset = moved->preset;
+    }
+    preset->length = new_length;
+    if (preset->loopstart >= new_length) preset->loopstart = 0;
+    if (preset->loopend > new_length) preset->loopend = new_length;
+    return true;
 }
 
 void pcm_unload_all_presets() {

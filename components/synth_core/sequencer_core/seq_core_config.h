@@ -178,5 +178,15 @@
 #define SEQ_CHORD_PREVIEW_TAG_MAX   (SEQ_CHORD_PREVIEW_TAG_BASE + \
                                      SEQ_CHORD_PREVIEW_TAG_COUNT - 1)         /* 1887 */
 
+/* ── Bounce clip start tags ──────────────────────────────────────────────
+ * Two per clip slot (clip_player.c): an aux config entry that sets the
+ * right-channel osc's start parameters, then the note-on that starts the clip
+ * at its end tick or re-anchors it on a bar line. The aux tag is the lower
+ * one so it fires first within the tick. Same off-by-one rule: main.c derives
+ * max_sequencer_tags from this ceiling. */
+#define SEQ_CLIP_TAG_BASE     (SEQ_CHORD_PREVIEW_TAG_MAX + 1u)                /* 1888 */
+#define SEQ_CLIP_TAG_COUNT    (2u * CLIP_SLOT_COUNT)
+#define SEQ_CLIP_TAG_MAX      (SEQ_CLIP_TAG_BASE + SEQ_CLIP_TAG_COUNT - 1)    /* 1891 */
+
 /* ── Global chord progression ────────────────────────────────────────────── */
 #define CHORD_PROG_MAX_ENTRIES 8

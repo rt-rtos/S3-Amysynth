@@ -22,6 +22,10 @@ void sequencer_check_and_call_js_hook();  // called from the browser main loop
 // anonymously (round-robin in a small reserved pool) and can't be addressed
 // or cancelled by any tag. Takes ownership of wire.
 uint8_t sequencer_add_wire(uint32_t tick, uint32_t period, uint32_t tag, bool has_tag, char *wire);
+// LOCAL EDIT (S3-Amysynth): periodic-entry horizon. While set, repeating
+// entries do not fire at or after tick; one-shots still do. Clear to resume.
+void sequencer_set_periodic_horizon(uint32_t tick);
+void sequencer_clear_periodic_horizon(void);
 void sequencer_midi_clock_tick();
 void sequencer_midi_start();
 void sequencer_midi_stop();

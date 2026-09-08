@@ -26,16 +26,16 @@ static bool buffer_is_probeable(u8g2_t *u8g2)
 /* Is every pixel of the badge footprint at x (plus its blank gap) still dark?
  * The badge spans rows 0..7, which is exactly tile row 0, so a column is clear
  * precisely when its first buffer byte is zero. */
-static bool slot_is_clear(u8g2_t *u8g2, int x)
+static bool slot_is_clear(u8g2_t *u8g2, int x, int w)
 {
     const int width = (int)u8g2_GetDisplayWidth(u8g2);
-    if (x < 0 || x + BADGE_W > width) {
+    if (x < 0 || x + w > width) {
         return false;
     }
 
     const uint8_t *row0 = u8g2_GetBufferPtr(u8g2);
     int lo = x - BADGE_GAP;
-    int hi = x + BADGE_W + BADGE_GAP;
+    int hi = x + w + BADGE_GAP;
     if (lo < 0) {
         lo = 0;
     }
@@ -54,16 +54,16 @@ static bool slot_is_clear(u8g2_t *u8g2, int x)
 /* Nearest clear slot to the view's preferred x, or -1 when the top row is full.
  * Searching outward keeps the badge in its hand-tuned home when free, and moves
  * it the shortest distance - not to a fixed fallback corner - when not. */
-static int find_slot(u8g2_t *u8g2, uint8_t preferred_x)
+static int find_slot(u8g2_t *u8g2, uint8_t preferred_x, int w)
 {
     const int width = (int)u8g2_GetDisplayWidth(u8g2);
     const int anchor = preferred_x;
 
     for (int delta = 0; delta < width; delta++) {
-        if (slot_is_clear(u8g2, anchor - delta)) {
+        if (slot_is_clear(u8g2, anchor - delta, w)) {
             return anchor - delta;
         }
-        if (delta != 0 && slot_is_clear(u8g2, anchor + delta)) {
+        if (delta != 0 && slot_is_clear(u8g2, anchor + delta, w)) {
             return anchor + delta;
         }
     }
@@ -76,7 +76,7 @@ bool display_badge_draw(u8g2_t *u8g2, uint8_t preferred_x, bool connected)
         return false;
     }
 
-    const int x = find_slot(u8g2, preferred_x);
+    const int x = find_slot(u8g2, preferred_x, BADGE_W);
     if (x < 0) {
         return false;   /* top row is full -- header content wins, badge yields */
     }
@@ -91,5 +91,26 @@ bool display_badge_draw(u8g2_t *u8g2, uint8_t preferred_x, bool connected)
         u8g2_SetDrawColor(u8g2, 1);
         u8g2_DrawXBM(u8g2, (u8g2_uint_t)(x + 1), 0, 5, BADGE_H, s_bt_rune);
     }
+    return true;
+}
+
+bool display_badge_draw_text(u8g2_t *u8g2, uint8_t preferred_x, const char *text)
+{
+    if (u8g2 == NULL || text == NULL || !buffer_is_probeable(u8g2)) {
+        return false;
+    }
+
+    u8g2_SetFont(u8g2, u8g2_font_4x6_tr);
+    const int w = (int)u8g2_GetStrWidth(u8g2, text) + 2;   /* 1px plate each side */
+    const int x = find_slot(u8g2, preferred_x, w);
+    if (x < 0) {
+        return false;
+    }
+
+    u8g2_SetDrawColor(u8g2, 1);
+    u8g2_DrawBox(u8g2, (u8g2_uint_t)x, 0, (u8g2_uint_t)w, BADGE_H);
+    u8g2_SetDrawColor(u8g2, 0);
+    u8g2_DrawStr(u8g2, (u8g2_uint_t)(x + 1), 7, text);
+    u8g2_SetDrawColor(u8g2, 1);
     return true;
 }

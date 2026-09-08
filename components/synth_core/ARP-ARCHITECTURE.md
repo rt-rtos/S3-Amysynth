@@ -240,12 +240,13 @@ rebuild because patch changes reset AMY's internal glide state.
 | Drone | 2 / 3 | build-your-own / preset | 5 / 1 |
 | Drone (free-running) | 4 / 5 | build-your-own / preset | chord / 1 |
 | Drum layer | 6-9 (one per track) | curated drum list / PCM presets | 1 |
-| Melodic layers | 11..`SEQ_MAX_SYNTH` (blocks of 4) | `CONFIG_SEQ_MELODIC_PATCH` | 1/row |
+| Clip players | 11-12 (`CLIP_SYNTH_BASE`) | bounce clips (runtime PCM) | 1 |
+| Melodic layers | `SEQ_MEL_SYNTH_BASE`..`SEQ_MAX_SYNTH` (blocks of 4) | `CONFIG_SEQ_MELODIC_PATCH` | 1/row |
 
 The arp owns slot **1** in the static pool at the bottom of the slot map
-(`synth_slots.h`), below the melodic base (11), so it never collides with a
-melodic layer's per-row block. `main.c` derives `amy_cfg.max_synths` from
-`SYNTH_SLOT_COUNT` (63). The arp
+(`synth_slots.h`), below the clip slots and the melodic base, so it never
+collides with a melodic layer's per-row block. `main.c` derives
+`amy_cfg.max_synths` from `SYNTH_SLOT_COUNT` (65). The arp
 synth uses 4 voices to allow note overlap at fast rates.
 
 ---

@@ -101,8 +101,9 @@ void synth_ui_fx_reassert(uint8_t slot);
 void synth_ui_fx_reassert_all(void);
 
 /* Master output volume (0..2.0, unity=1.0), scaled per bus by that bus's
- * level and written to amy_global.volume[]. The 2x headroom allows boosting
- * quiet sources. */
+ * level and written to amy_global.volume[] (the clip bus with
+ * FX_BUS_CLIPS_MAKEUP on top). The 2x headroom allows boosting quiet
+ * sources. */
 void  amy_fx_set_master_volume(float v);   /* clamps 0..2 and pushes to AMY */
 float amy_fx_get_master_volume(void);      /* returns current cached value    */
 

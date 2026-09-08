@@ -157,6 +157,12 @@ bool synth_ui_graph_is_active(void);
 /* Open the curve editor seeded from the current melodic ADSR envelope. */
 void synth_ui_graph_open_envelope(void);
 
+/* SHIFT+0 loop-bounce chord (main.c button dispatch): a press starts a bounce
+ * into the first empty slot, cancels one still waiting for its bar line, or
+ * stops a running one on the next pattern-period boundary; a long press
+ * discards a running one. */
+void synth_ui_bounce_chord(bool long_press);
+
 /* Route input to the pop-up while it is active. Each returns true if the
  * pop-up consumed the event (caller should then skip normal sequencer input).
  * synth_ui_graph_handle_button(is_long): is_long=true => long-press/cancel. */

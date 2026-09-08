@@ -6,6 +6,7 @@
 #include "custompatches/drone_core.h"
 #include "custompatches/drone_std_core.h"
 #include "custompatches/sample_rec.h"
+#include "custompatches/clip_player.h"
 #include "quantizer.h"
 #include "amy_fx.h"
 #include "seq_clamp.h"
@@ -57,6 +58,7 @@ typedef enum {
     MI_ADD_LAYER,
     MI_REMOVE_LAYER,
     MI_CHORDS,
+    MI_BOUNCE,
     MI_FX_MENU,
 #if CONFIG_SYNTH_PROJECT_STORE
     MI_PROJECTS,
@@ -89,6 +91,8 @@ static bool    s_projects_page = false;
 #endif
 /* Chord-preset editor page (item model in ui_screen_chords.c). */
 static bool    s_chords_page = false;
+/* Loop-bounce page (item model in ui_screen_bounce.c). */
+static bool    s_bounce_page = false;
 #if CONFIG_SYNTH_WIRELESS
 /* BLE MIDI session page (item model in ui_screen_wireless.c). */
 static bool    s_wireless_page = false;
@@ -113,10 +117,18 @@ const char *menu_page_title(void)
     if (s_projects_page) return "PROJECTS";
 #endif
     if (s_chords_page) return chords_menu_title();
+    if (s_bounce_page) return bounce_menu_title();
 #if CONFIG_SYNTH_WIRELESS
     if (s_wireless_page) return "WIRELESS";
 #endif
     return "MENU";
+}
+
+/* True while the overlay is showing the Bounce page; the page's redraw pump
+ * runs only then (see bounce_menu_service). */
+bool menu_bounce_page_open(void)
+{
+    return seq_state.menu_open && s_bounce_page;
 }
 
 /* True while the overlay is showing its Wireless page. The editors bind to the
@@ -169,6 +181,13 @@ void menu_build_view(menu_view_t *out)
     if (s_chords_page) {
         out->items   = chords_menu_build_items();
         out->count   = chords_menu_item_count();
+        out->cursor  = seq_state.menu_cursor;
+        out->editing = seq_state.menu_editing;
+        return;
+    }
+    if (s_bounce_page) {
+        out->items   = bounce_menu_build_items();
+        out->count   = bounce_menu_item_count();
         out->cursor  = seq_state.menu_cursor;
         out->editing = seq_state.menu_editing;
         return;
@@ -262,6 +281,18 @@ void menu_build_view(menu_view_t *out)
     snprintf(s_menu_items[MI_CHORDS].label, MENU_LABEL_LEN, "Chords");
     snprintf(s_menu_items[MI_CHORDS].value, MENU_VALUE_LEN, "%u/%u",
              (unsigned)seq_chords_defined_count(), (unsigned)SEQ_CHORD_SLOTS);
+
+    /* Loop bounce and the clip players live on their own page
+     * (ui_screen_bounce.c); the row counts the slots holding a clip. */
+    {
+        unsigned loaded = 0;
+        for (uint8_t s = 0; s < CLIP_SLOT_COUNT; s++) {
+            if (clip_player_slot_state(s) == CLIP_SLOT_LOADED) loaded++;
+        }
+        snprintf(s_menu_items[MI_BOUNCE].label, MENU_LABEL_LEN, "Bounce");
+        snprintf(s_menu_items[MI_BOUNCE].value, MENU_VALUE_LEN, "%u/%u",
+                 loaded, (unsigned)CLIP_SLOT_COUNT);
+    }
 
     /* FX live on their own hub page, one row per bus (ui_screen_fxmenu.c). */
     snprintf(s_menu_items[MI_FX_MENU].label, MENU_LABEL_LEN, "FX");
@@ -432,6 +463,7 @@ void synth_ui_menu_toggle(void)
         s_projects_page = false;
 #endif
         s_chords_page = false;
+        s_bounce_page = false;
 #if CONFIG_SYNTH_WIRELESS
         s_wireless_page = false;
 #endif
@@ -492,6 +524,8 @@ bool synth_ui_menu_handle_encoder(long delta)
 #endif
         } else if (s_chords_page) {
             chords_menu_edit_value(seq_state.menu_cursor, (int)delta);
+        } else if (s_bounce_page) {
+            bounce_menu_edit_value(seq_state.menu_cursor, (int)delta);
 #if CONFIG_SYNTH_WIRELESS
         } else if (s_wireless_page) {
             wireless_menu_edit_value(seq_state.menu_cursor, (int)delta);
@@ -507,6 +541,7 @@ bool synth_ui_menu_handle_encoder(long delta)
                 s_projects_page ? (int)projects_menu_item_count() :
 #endif
                 s_chords_page ? (int)chords_menu_item_count() :
+                s_bounce_page ? (int)bounce_menu_item_count() :
 #if CONFIG_SYNTH_WIRELESS
                 s_wireless_page ? (int)wireless_menu_item_count() :
 #endif
@@ -613,6 +648,19 @@ bool synth_ui_menu_handle_button(void)
         return true;
     }
 
+    if (s_bounce_page) {
+        uint8_t idx = seq_state.menu_cursor;
+        if (bounce_menu_item_is_back(idx)) {
+            s_bounce_page = false;
+            seq_state.menu_cursor  = s_main_cursor;
+            seq_state.menu_editing = false;
+        } else {
+            seq_state.menu_editing = bounce_menu_handle_click(idx);
+        }
+        s_force_redraw = true;
+        return true;
+    }
+
 #if CONFIG_SYNTH_WIRELESS
     if (s_wireless_page) {
         uint8_t idx = seq_state.menu_cursor;
@@ -688,6 +736,13 @@ bool synth_ui_menu_handle_button(void)
                 s_chords_page = true;
                 seq_state.menu_cursor = 0;
                 chords_menu_reset();
+                break;
+            case MI_BOUNCE:
+                /* Dive into the loop-bounce page; the menu stays open. */
+                s_main_cursor = seq_state.menu_cursor;
+                s_bounce_page = true;
+                seq_state.menu_cursor = 0;
+                bounce_menu_reset();
                 break;
             case MI_FX_MENU:
                 /* Dive into the FX hub; the menu stays open. */

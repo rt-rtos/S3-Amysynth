@@ -189,6 +189,10 @@ const menu_item_view_t *fx_menu_build_items(void)
         /* Bus 0 is where everything renders by default; nothing to split. */
         snprintf(s_fx_items[FXI_SPLIT].label, MENU_LABEL_LEN, "Bus");
         snprintf(s_fx_items[FXI_SPLIT].value, MENU_VALUE_LEN, "home");
+    } else if (s_page_bus == FX_BUS_CLIPS) {
+        /* The clip bus is owned outright: clips never render on bus 0. */
+        snprintf(s_fx_items[FXI_SPLIT].label, MENU_LABEL_LEN, "Bus");
+        snprintf(s_fx_items[FXI_SPLIT].value, MENU_VALUE_LEN, "clips");
     } else {
         snprintf(s_fx_items[FXI_SPLIT].label, MENU_LABEL_LEN, "Split");
         snprintf(s_fx_items[FXI_SPLIT].value, MENU_VALUE_LEN, "%s",
@@ -273,10 +277,12 @@ const menu_item_view_t *fx_menu_build_items(void)
 
 bool fx_menu_item_is_value(uint8_t idx)
 {
-    /* Every row except Back holds an editable value - bar Split on bus 0,
-     * which states where the bus sits rather than offering a choice. */
+    /* Every row except Back holds an editable value - bar Split on bus 0 and
+     * the clip bus, which state where the bus sits rather than offering a
+     * choice. */
     if (idx >= FXI_BACK) return false;
-    if (idx == FXI_SPLIT && s_page_bus == FX_BUS_HOME) return false;
+    if (idx == FXI_SPLIT && (s_page_bus == FX_BUS_HOME || s_page_bus == FX_BUS_CLIPS))
+        return false;
     return true;
 }
 

@@ -28,6 +28,9 @@ flowchart TD
     Active --> POOL["Delta-pool PSRAM spill, no-abort cap<br/>src/amy.c"]
     Active --> HOT["Residual IRAM attrs upstream lacks<br/>src/filters.c x2, src/oscillators.c x1"]
     Active --> TASK["IDF 6.0 task-signature fixes<br/>src/i2s.c, src/amy_midi.c"]
+    Active --> HZN["Periodic-entry horizon<br/>src/sequencer.c, src/sequencer.h"]
+    Active --> POS["pcm_osc_frame() accessor<br/>src/pcm.c, src/amy.h"]
+    Active --> SHR["pcm_shrink_preset() trim<br/>src/pcm.c, src/amy.h"]
     Active --> SEQ["sequencer_init OOM guard<br/>src/sequencer.c"]
     Active --> CAPS["ram_caps_sequencer knob + pool fallbacks<br/>src/amy.h, src/api.c, src/parse.c, src/sequencer.c"]
     Active --> PROF["COARSE profiler mode<br/>src/amy.h, src/amy.c"]
@@ -362,6 +365,35 @@ Same OOM-policy family as the #961 guards; PR-candidate-sized.
 (The former SEQ_LOCK mutex and active-tag dense index were superseded
 wholesale by upstream's sequencer rework - see the Dropped table for the
 thread-safety argument of the new design.)
+
+### `src/sequencer.c` + `src/sequencer.h` — periodic-entry horizon (upstream PR candidate)
+
+`sequencer_set_periodic_horizon(tick)` / `sequencer_clear_periodic_horizon()`:
+while set, repeating entries do not fire at or after the tick; one-shots are
+unaffected. The tick walk tests it after the period match, one compare per
+hit. The loop bounce sets it at its end tick so every looping note-on (the
+sequencer tracks' periodic tags and the arp's) stops on the bar line exactly,
+wherever the UI task is; the commit clears it after the mute flags are set.
+Generic enough for any host that freezes a loop on a beat.
+
+### `pcm.c` + `amy.h` — `pcm_osc_frame()` read accessor (LOCAL EDIT)
+
+A PCM osc's source position in frames: the stretcher's input timeline while
+it is engaged, else the plain playhead (`INT_OF_P(phase, PCM_INDEX_BITS)`,
+which only `pcm.c` can compute since the index split is private to it). The
+loop bounce's drift guard compares it with the frame the tick grid implies on
+every bar line. Read only, guarded for out-of-range and unallocated oscs;
+same shape as the `amy_voice_base_osc()` accessor.
+
+### `pcm.c` + `amy.h` — `pcm_shrink_preset()` (LOCAL EDIT)
+
+Trims a memory preset to its final frame count once known: the loop bounce
+records open-ended against a reserved maximum and cuts the block down at the
+stop press. One `realloc` of the `[list node | preset | samples]` block; a
+shrink is an in-place trim in the ESP heap (TLSF) and in libc, so no copy and
+no move, but the list link and internal pointers are re-pointed if an
+allocator ever did move it. Under the AMY lock like `pcm_load()`; loopend
+capped to the new length.
 
 ### `src/amy.h` + `src/amy.c` — COARSE profiler mode
 

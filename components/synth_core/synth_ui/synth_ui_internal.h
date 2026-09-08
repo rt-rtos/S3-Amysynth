@@ -222,6 +222,24 @@ void     chords_menu_edit_value(uint8_t idx, int delta);
 void     chords_menu_reset(void);
 const char *chords_menu_title(void);
 
+/* ─── Bounce page: loop-bounce recorder and the clip players (item model in
+ *     ui_screen_bounce.c; page state and input routing in ui_screen_menu.c).
+ *     Bounce shape + Rec on top, three rows per clip slot below. ────────── */
+const menu_item_view_t *bounce_menu_build_items(void);
+uint8_t  bounce_menu_item_count(void);
+bool     bounce_menu_item_is_back(uint8_t idx);
+bool     bounce_menu_item_is_value(uint8_t idx);
+bool     bounce_menu_handle_click(uint8_t idx);
+void     bounce_menu_edit_value(uint8_t idx, int delta);
+void     bounce_menu_reset(void);
+const char *bounce_menu_title(void);
+/* Redraw pump: the render task moves the bounce and slot states, so the page
+ * polls them from synth_ui_task's loop. No-op unless the page is open. */
+void     bounce_menu_service(void);
+/* True while the overlay is showing the Bounce page (page state lives in
+ * ui_screen_menu.c), which is what scopes the service above. */
+bool     menu_bounce_page_open(void);
+
 /* Editor live-preview service: flushes any pending throttled apply (the graph
  * editor's amp trim, whose melodic apply re-emits the track's steps). Called
  * from synth_ui_task's 50 ms loop; no-op when nothing is pending. */

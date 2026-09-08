@@ -19,6 +19,8 @@
 #include "seq_core_config.h"   /* SEQ_SWING_MAX - same-component engine limits */
 #include "arp_core.h"
 #include "custompatches/drone_core.h"
+#include "custompatches/clip_bounce.h"
+#include "custompatches/clip_player.h"
 #include "amy_fx.h"
 #include "amy.h"               /* amy_num_algorithms - fm_algo_override clamp */
 #include "quantizer.h"
@@ -40,6 +42,7 @@ static const char *TAG = "project_snapshot";
 #define TAG_DRON 0x4E4F5244u
 #define TAG_PROG 0x474F5250u
 #define TAG_CHRD 0x44524843u
+#define TAG_CLIP 0x50494C43u
 
 #define PROJECT_SER_BUF_CAP (64 * 1024)
 
@@ -288,7 +291,7 @@ typedef struct {
 
 static void ser_glob(tlv_writer_t *w)
 {
-    size_t h = tlv_begin_section(w, TAG_GLOB, 2);  /* v2: per-bus FX + splits */
+    size_t h = tlv_begin_section(w, TAG_GLOB, 3);  /* v3: bus order Main/Drums/Drones/Clips */
     tlv_put_u16(w, sequencer_core_get_bpm());
     tlv_put_f32(w, amy_fx_get_master_volume());
     tlv_put_u8(w, sequencer_core_get_quantizer_enabled() ? 1 : 0);
@@ -898,6 +901,73 @@ static void apply_drone(const staged_drone_t *d)
     drone_set_enabled(d->enabled);
 }
 
+/* ── CLIP section ─────────────────────────────────────────────────────────── */
+
+/* The bounce shape and each clip slot's settings. Clip audio is not
+ * persisted (a clip is lost on power cycle); a load shows the slots empty
+ * but configured. */
+typedef struct {
+    uint8_t bars;
+    bool    stereo;
+    uint8_t tail;
+    uint8_t level[CLIP_SLOT_COUNT];
+    uint8_t mode[CLIP_SLOT_COUNT];
+    uint8_t after;
+} staged_clip_t;
+
+static void ser_clip(tlv_writer_t *w)
+{
+    size_t h = tlv_begin_section(w, TAG_CLIP, 2);   /* v2: +after */
+    clip_bounce_shape_t sh;
+    clip_bounce_get_shape(&sh);
+    tlv_put_u8(w, sh.max_bars);
+    tlv_put_u8(w, sh.stereo ? 1 : 0);
+    tlv_put_u8(w, (uint8_t)sh.tail);
+    tlv_put_u8(w, CLIP_SLOT_COUNT);
+    for (uint8_t s = 0; s < CLIP_SLOT_COUNT; s++) {
+        tlv_put_u8(w, clip_player_get_level(s));
+        tlv_put_u8(w, (uint8_t)clip_player_get_tempo_mode(s));
+    }
+    tlv_put_u8(w, (uint8_t)sh.after);   /* v2 */
+    tlv_end_section(w, h);
+}
+
+/* Slots beyond this build's count are consumed but not stored. */
+static bool parse_clip(tlv_reader_t *b, staged_clip_t *c)
+{
+    uint8_t v, nslots;
+    if (!tlv_get_u8(b, &c->bars)) return false;
+    if (!tlv_get_u8(b, &v)) return false;
+    c->stereo = v != 0;
+    if (!tlv_get_u8(b, &c->tail)) return false;
+    if (c->tail > CLIP_TAIL_BAR) c->tail = CLIP_TAIL_BAR;
+    if (!tlv_get_u8(b, &nslots)) return false;
+    for (uint8_t s = 0; s < nslots; s++) {
+        uint8_t level, mode;
+        if (!tlv_get_u8(b, &level)) return false;
+        if (!tlv_get_u8(b, &mode))  return false;
+        if (s < CLIP_SLOT_COUNT) {
+            c->level[s] = (level > 100) ? 100 : level;
+            c->mode[s]  = (mode > CLIP_TEMPO_VARI) ? CLIP_TEMPO_STRETCH : mode;
+        }
+    }
+    if (!tlv_get_u8(b, &c->after)) return false;
+    if (c->after > CLIP_AFTER_CLEAR) c->after = CLIP_AFTER_MUTE;
+    return true;
+}
+
+static void apply_clip(const staged_clip_t *c)
+{
+    clip_bounce_shape_t sh = { .max_bars = c->bars, .stereo = c->stereo,
+                               .tail = (clip_tail_t)c->tail,
+                               .after = (clip_after_t)c->after };
+    clip_bounce_set_shape(&sh);   /* clamps bars to the 1/2/4/8/16 list */
+    for (uint8_t s = 0; s < CLIP_SLOT_COUNT; s++) {
+        clip_player_set_level(s, c->level[s]);
+        clip_player_set_tempo_mode(s, (clip_tempo_mode_t)c->mode[s]);
+    }
+}
+
 /* ── PROG section ─────────────────────────────────────────────────────────── */
 
 /* Static cap for the staged array; the real ceiling is
@@ -1036,6 +1106,7 @@ bool project_snapshot_save(uint8_t slot, const char *name)
     ser_drone(&w);
     ser_prog(&w);
     ser_chrd(&w);
+    ser_clip(&w);
 
     bool ok = !w.err && project_store_write(slot, name, buf, w.len);
 
@@ -1065,11 +1136,12 @@ bool project_snapshot_load(uint8_t slot)
     staged_arp_t   staged_arp;   memset(&staged_arp, 0, sizeof staged_arp);
     staged_drone_t staged_drone; memset(&staged_drone, 0, sizeof staged_drone);
     staged_prog_t  staged_prog;  memset(&staged_prog, 0, sizeof staged_prog);
+    staged_clip_t  staged_clip;  memset(&staged_clip, 0, sizeof staged_clip);
     seq_chord_t    staged_chords[SEQ_CHORD_SLOTS];
     memset(staged_chords, 0, sizeof staged_chords);
     uint8_t staged_layer_count = 0;
     bool got_glob = false, got_arp = false, got_drone = false, got_prog = false;
-    bool got_chrd = false;
+    bool got_chrd = false, got_clip = false;
 
     tlv_reader_t r;
     tlv_reader_init(&r, payload, len);
@@ -1078,7 +1150,7 @@ bool project_snapshot_load(uint8_t slot)
     while (ok && tlv_next_section(&r, &tag, &ver, &body)) {
         switch (tag) {
         case TAG_GLOB:
-            if (got_glob || ver != 2) { ok = false; break; }
+            if (got_glob || ver != 3) { ok = false; break; }
             ok = parse_glob(&body, &staged_glob);
             got_glob = ok;
             break;
@@ -1109,6 +1181,11 @@ bool project_snapshot_load(uint8_t slot)
             if (got_chrd || ver != 1) { ok = false; break; }
             ok = parse_chrd(&body, staged_chords);
             got_chrd = ok;
+            break;
+        case TAG_CLIP:
+            if (got_clip || ver != 2) { ok = false; break; }
+            ok = parse_clip(&body, &staged_clip);
+            got_clip = ok;
             break;
         default:
             break;   /* unknown section: ignore (forward-compat) */
@@ -1159,6 +1236,7 @@ bool project_snapshot_load(uint8_t slot)
     if (got_arp)   apply_arp(&staged_arp);
     if (got_drone) apply_drone(&staged_drone);
     if (got_prog)  apply_prog(&staged_prog);
+    if (got_clip)  apply_clip(&staged_clip);
 
     /* The layer import writes solo[] wholesale rather than through the setter,
      * so nothing has applied the loaded solo state yet. Do it after the arp and

@@ -11,9 +11,15 @@
  * renders on FX_BUS_HOME until the user splits a group off. */
 static bool s_split[FX_GROUP_COUNT];
 
+/* Set by the clip player; the clip bus renders nothing until a slot loads. */
+static bool s_clips_loaded;
+
+_Static_assert(CLIP_SLOT_COUNT <= 8, "fx_group_slots() writes at most 8 entries");
+
 fx_group_t fx_group_of_slot(uint8_t slot)
 {
-    if (slot == SEQ_ARP_SYNTH) return FX_GROUP_ARP;
+    if (slot >= CLIP_SYNTH_BASE && slot < CLIP_SYNTH_BASE + CLIP_SLOT_COUNT)
+        return FX_GROUP_CLIPS;
     if (slot >= DRONE_SYNTH_MAIN && slot <= DRONE_STD_SYNTH_SUB)
         return FX_GROUP_DRONES;
     if (slot >= SEQ_DRUM_SYNTH_BASE && slot < SEQ_DRUM_SYNTH_BASE + 4)
@@ -25,8 +31,8 @@ uint8_t fx_group_own_bus(fx_group_t g)
 {
     switch (g) {
         case FX_GROUP_DRUMS:  return 1;
-        case FX_GROUP_ARP:    return 2;
-        case FX_GROUP_DRONES: return 3;
+        case FX_GROUP_DRONES: return 2;
+        case FX_GROUP_CLIPS:  return FX_BUS_CLIPS;
         default:              return FX_BUS_HOME;
     }
 }
@@ -35,8 +41,8 @@ fx_group_t fx_group_of_bus(uint8_t bus)
 {
     switch (bus) {
         case 1:  return FX_GROUP_DRUMS;
-        case 2:  return FX_GROUP_ARP;
-        case 3:  return FX_GROUP_DRONES;
+        case 2:  return FX_GROUP_DRONES;
+        case FX_BUS_CLIPS: return FX_GROUP_CLIPS;
         default: return FX_GROUP_MELODIC;
     }
 }
@@ -44,12 +50,13 @@ fx_group_t fx_group_of_bus(uint8_t bus)
 bool fx_group_is_split(fx_group_t g)
 {
     if (g == FX_GROUP_MELODIC || g >= FX_GROUP_COUNT) return false;
+    if (g == FX_GROUP_CLIPS) return true;
     return s_split[g];
 }
 
 bool fx_bus_set_split(fx_group_t g, bool on)
 {
-    if (g == FX_GROUP_MELODIC || g >= FX_GROUP_COUNT) return false;
+    if (g == FX_GROUP_MELODIC || g == FX_GROUP_CLIPS || g >= FX_GROUP_COUNT) return false;
     if (s_split[g] == on) return false;
     s_split[g] = on;
     return true;
@@ -68,15 +75,21 @@ uint8_t fx_bus_for_synth(uint8_t slot)
 bool fx_bus_is_active(uint8_t bus)
 {
     if (bus == FX_BUS_HOME) return true;
+    if (bus == FX_BUS_CLIPS) return s_clips_loaded;
     return fx_group_is_split(fx_group_of_bus(bus));
+}
+
+void fx_bus_set_clips_loaded(bool loaded)
+{
+    s_clips_loaded = loaded;
 }
 
 const char *fx_group_name(fx_group_t g)
 {
     switch (g) {
         case FX_GROUP_DRUMS:  return "Drums";
-        case FX_GROUP_ARP:    return "Arp";
         case FX_GROUP_DRONES: return "Drones";
+        case FX_GROUP_CLIPS:  return "Clips";
         default:              return "Melodic";
     }
 }
@@ -94,9 +107,10 @@ uint8_t fx_group_slots(fx_group_t g, uint8_t out[8])
             for (uint8_t i = 0; i < 4; i++)
                 out[i] = (uint8_t)(SEQ_DRUM_SYNTH_BASE + i);
             return 4;
-        case FX_GROUP_ARP:
-            out[0] = SEQ_ARP_SYNTH;
-            return 1;
+        case FX_GROUP_CLIPS:
+            for (uint8_t i = 0; i < CLIP_SLOT_COUNT; i++)
+                out[i] = (uint8_t)(CLIP_SYNTH_BASE + i);
+            return CLIP_SLOT_COUNT;
         case FX_GROUP_DRONES:
             out[0] = DRONE_SYNTH_MAIN;
             out[1] = DRONE_SYNTH_SUB;

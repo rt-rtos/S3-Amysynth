@@ -7,6 +7,8 @@
 #include "custompatches/fm_voice.h"
 #include "custompatches/additive_voice.h"
 #include "custompatches/sample_rec.h"
+#include "custompatches/clip_bounce.h"
+#include "custompatches/clip_player.h"
 #include "priv_i2c_u8g2.h"   /* i2c_u8g2_service - absent-panel recovery */
 #include "display_seq.h"
 #include "display_drone.h"
@@ -75,6 +77,8 @@ static void synth_ui_task(void *pvParameters)
         drone_std_core_service();
         sequencer_core_lfo_service();
         sequencer_core_progression_service();
+        clip_bounce_service();
+        clip_player_service();
 #if CONFIG_SEQ_OOM_RESYNC
         /* Re-emit schedules once an AMY OOM burst settles (dropped wire
          * events otherwise leave tracks mute); cheap counter poll otherwise. */
@@ -135,6 +139,10 @@ static void synth_ui_task(void *pvParameters)
         projects_menu_service();
 #endif
 
+        /* Bounce page redraw pump: the recorder and the clip slots advance on
+         * the render task, so the page polls them here. No-op while closed. */
+        bounce_menu_service();
+
 #if CONFIG_SYNTH_WIRELESS
         /* Radio session start/stop queued by the Wireless page. Must run here:
          * NimBLE init/teardown blocks briefly and needs this task's 8192-byte
@@ -180,6 +188,8 @@ static void synth_ui_task(void *pvParameters)
             /* The watchdog badge participates in the render gate so it
              * appears/clears without needing any other screen change. */
             sig ^= (uint32_t)output_wd_state() * 0x9E3779B9u;
+            /* REC badge: a bounce arming, recording or folding its tail. */
+            sig ^= (uint32_t)clip_bounce_get_state() * 0xC2B2AE35u;
 #if CONFIG_SYNTH_WIRELESS
             /* BLE badge participates too: appears/changes on session or
              * connection state without any other screen change. */
@@ -241,6 +251,12 @@ static void synth_ui_task(void *pvParameters)
                                        radio_manager_connected());
                 }
 #endif
+                /* Loop-bounce REC badge while a bounce is armed, recording or
+                 * folding its tail; placed by the same top-row rules as the
+                 * BLE rune, so it steps aside from header text and the rune. */
+                if (clip_bounce_get_state() != CLIP_BOUNCE_IDLE) {
+                    display_badge_draw_text(s_u8g2, ui_view_table[view].badge_x, "REC");
+                }
                 u8g2_SendBuffer(s_u8g2);
                 last_sig = sig;
                 last_view = view;
@@ -294,6 +310,8 @@ void synth_ui_init(u8g2_t *u8g2)
     additive_voice_default(&s_additive_voice);
 #endif
     sample_rec_init();
+    clip_player_init();
+    clip_bounce_init();
     DIAG_HEAP_CHECK("ui_init: after sample_rec_init");
 
     /* Add drum layer (index 0). */

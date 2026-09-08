@@ -20,6 +20,7 @@
 #include "seq_core_config.h"  /* AMY sequencer tag-space layout */
 #include "amy_helpers.h"   /* amy_helpers_set_render_task */
 #include "custompatches/sample_rec.h"
+#include "custompatches/clip_bounce.h"
 #include "filter_scope.h"
 #include "usb_audio.h"
 #include "esp_timer.h"
@@ -76,6 +77,9 @@ static volatile bool s_drum_select_held = false;
 // task reads it for the Shift+Turn gesture (same as s_patch_held).
 static volatile bool s_shift_held = false;
 static bool s_shift_chord_latched[MY_BUTTON_MAX] = { false };
+/* SHIFT+0 bounce chord in flight: PRESS_DOWN seen with SHIFT held, waiting
+ * for the release (press) or the long-press threshold (discard). */
+static bool s_bounce_chord = false;
 
 static QueueHandle_t s_button_queue = NULL;
 
@@ -147,6 +151,8 @@ static void amy_usb_render_task(void *arg) {
             // Runtime PCM sampler: non-blocking no-op unless a recording is
             // armed. Must run after amy_update() releases amy_queue_lock.
             sample_rec_render_tick(block, AMY_BLOCK_SIZE);
+            // Loop bounce: same rule, no-op while idle.
+            clip_bounce_render_tick(block, AMY_BLOCK_SIZE);
 
 #if CONFIG_FILTER_SCOPE
             // Filter-editor overlay: reads msynth[]/synth[], so it too must
@@ -277,7 +283,28 @@ static void dispatch_button_event(my_button_id_t button_id, button_event_t event
         return;
     }
 
+    /* SHIFT+0 loop-bounce chord: latched on PRESS_DOWN like the others, but
+     * it acts on the release (a press: start / cancel / quantized stop) or on
+     * LONG_PRESS_START (discard a running take), so one hand runs the
+     * bounce from any screen. The latch below swallows the SINGLE_CLICK that
+     * follows the release, so button 0's own tap gesture never fires. */
+    if (button_id == MY_BUTTON_0 && s_bounce_chord) {
+        if (event == BUTTON_LONG_PRESS_START) {
+            s_bounce_chord = false;
+            synth_ui_bounce_chord(true);
+            return;
+        }
+        if (event == BUTTON_PRESS_UP) {
+            s_bounce_chord = false;
+            synth_ui_bounce_chord(false);
+            return;
+        }
+        if (event != BUTTON_PRESS_DOWN) return;
+        s_bounce_chord = false;
+    }
+
     /* SHIFT chords, fired on the digit's PRESS_DOWN:
+     *   SHIFT+0 -> loop bounce transport (see above)
      *   SHIFT+1 -> open the ADSR/graph editor, or close+commit an open one
      *   SHIFT+2 -> toggle the step probability/trig editor; inside an
      *              effects editor: release the open tab to the patch
@@ -291,6 +318,11 @@ static void dispatch_button_event(my_button_id_t button_id, button_event_t event
         } else {
             return;                                    /* swallow the chorded press */
         }
+    }
+    if (s_shift_held && event == BUTTON_PRESS_DOWN && button_id == MY_BUTTON_0) {
+        s_shift_chord_latched[MY_BUTTON_0] = true;
+        s_bounce_chord = true;
+        return;
     }
     if (s_shift_held && event == BUTTON_PRESS_DOWN &&
         (button_id == MY_BUTTON_1 || button_id == MY_BUTTON_2 ||
@@ -874,6 +906,8 @@ void app_main(void)
     amy_cfg.platform.multicore = 0;
     amy_cfg.platform.multithread = 0;
     amy_cfg.amy_external_sequencer_hook = main_sequencer_tick_hook;
+    /* Loop bounce capture: sums the source buses post-FX, under the lock. */
+    amy_cfg.amy_external_bus_postprocess_hook = clip_bounce_bus_hook;
     /* Every AMY arena gets an explicit cap: CONFIG_SPIRAM_USE_MALLOC is off,
      * so plain malloc never reaches PSRAM and nothing auto-places by size -
      * the caps below are the placement decision. Render-hot state stays
@@ -904,13 +938,14 @@ void app_main(void)
     amy_cfg.ram_caps_sample = MALLOC_CAP_SPIRAM;
     /* Default 256 covers only layer 0. The tag space is laid out in
      * seq_core_config.h (sequencer, arp, ratchet trigs, chord one-shots, chord
-     * previews) and its top depends on SEQ_CHORD_MAX_NOTES, so this is derived
+     * previews, clip starts) and its top depends on SEQ_CHORD_MAX_NOTES and
+     * CLIP_SLOT_COUNT, so this is derived
      * rather than a literal - a wider chord silently moved the ceiling past a
      * hardcoded 1730 once. sequencer_add_wire rejects tag >= this, and the
      * layout comment requires two above the top tag. */
-    amy_cfg.max_sequencer_tags = SEQ_CHORD_PREVIEW_TAG_MAX + 2;
-    /* Slot map lives in synth_slots.h: statics pack 1..10, melodic is the
-     * open-ended arena 11..SYNTH_SLOT_COUNT-1. This is the polyphony knob. */
+    amy_cfg.max_sequencer_tags = SEQ_CLIP_TAG_MAX + 2;
+    /* Slot map lives in synth_slots.h: statics pack 1..SEQ_MEL_SYNTH_BASE-1, melodic is the
+     * open-ended arena SEQ_MEL_SYNTH_BASE..SYNTH_SLOT_COUNT-1. This is the polyphony knob. */
     amy_cfg.max_synths = SYNTH_SLOT_COUNT;
     /* One bus per synth group (fx_bus.h): the buses beyond 0 carry a group
      * only while its Split toggle is on, but the tables are preallocated

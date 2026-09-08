@@ -1,4 +1,5 @@
 #include "sequencer_core/seq_core_internal.h"
+#include "custompatches/clip_player.h"
 #include "voice_config.h"                   /* SEQ_LFO_PITCH_BASE_HZ */
 #include "custompatches/drone_std_core.h"   /* drone_std_core_refresh_lfo_freq */
 #include "seq_clamp.h"
@@ -119,6 +120,7 @@ void sequencer_core_set_bpm(uint16_t new_bpm)
 #if CONFIG_SYNTH_WIRELESS
     live_play_refresh_lfo_freq();
 #endif
+    clip_player_on_tempo_change(s_bpm);
 }
 
 uint16_t sequencer_core_get_bpm(void) { return s_bpm; }

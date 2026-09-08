@@ -267,10 +267,11 @@ amplitude, so:
 | **3** | **drone sub** (`DRONE_SYNTH_SUB`) |
 | 4 / 5 | free-running drone main / sub (`drone_std_core.c`) |
 | 6–9 | drum layer (one per track) |
-| 11–62 | melodic layers |
+| 11–12 | bounce clip players |
+| 13–64 | melodic layers |
 
 The full map lives in `synth_slots.h` (statics at the bottom, melodic arena on
-top). `main/main.c` sets `amy_cfg.max_synths = SYNTH_SLOT_COUNT` (63). AMY's
+top). `main/main.c` sets `amy_cfg.max_synths = SYNTH_SLOT_COUNT` (65). AMY's
 instrument table is sized
 from config (`instruments_init(config.max_synths)`). AMY's default 250 oscs leave
 ample headroom (5-voice main × 2 oscs + sub × 2 = ~12 oscs).

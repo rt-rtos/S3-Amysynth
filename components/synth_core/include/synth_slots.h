@@ -3,7 +3,7 @@
 /* ── AMY synth slot map - single source of truth ─────────────────────────
  * Static consumers pack the bottom of the slot space; the melodic sequencer
  * is an open-ended arena on top. Growing melodic capacity is one edit:
- * raise SYNTH_SLOT_COUNT (the real ceiling is AMY's osc pool, max_oscs).
+ * raise SEQ_MEL_SLOT_COUNT (the real ceiling is AMY's osc pool, max_oscs).
  *
  * Contract:
  * - Slot 0 is reserved as a sentinel: sequencer row lookups use synth id 0
@@ -22,7 +22,10 @@
 #define DRONE_STD_SYNTH_SUB    5    /* normal drone, sub tone                */
 #define SEQ_DRUM_SYNTH_BASE    6    /* 4 drum tracks: 6..9                   */
 #define LIVE_SYNTH             10   /* live-play (BLE/USB MIDI) voice        */
-#define SEQ_MEL_SYNTH_BASE     11   /* first melodic slot; arena from here up */
+#define CLIP_SYNTH_BASE        11   /* bounce clip players: 11..11+CLIP_SLOT_COUNT-1 */
+#define CLIP_SLOT_COUNT        2    /* clip slots; the melodic arena is unaffected */
+#define SEQ_MEL_SYNTH_BASE     (CLIP_SYNTH_BASE + CLIP_SLOT_COUNT)   /* first melodic slot; arena from here up */
 
-#define SYNTH_SLOT_COUNT       63   /* == amy_cfg.max_synths; THE polyphony knob */
+#define SEQ_MEL_SLOT_COUNT     52   /* melodic arena size; THE polyphony knob */
+#define SYNTH_SLOT_COUNT       (SEQ_MEL_SYNTH_BASE + SEQ_MEL_SLOT_COUNT)   /* == amy_cfg.max_synths */
 #define SEQ_MAX_SYNTH          (SYNTH_SLOT_COUNT - 1)   /* melodic ceiling   */

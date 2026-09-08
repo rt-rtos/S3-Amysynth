@@ -1,5 +1,8 @@
 #include "sequencer_core/seq_core_internal.h"
 #include "seq_clamp.h"
+#include "custompatches/clip_player.h"
+#include "custompatches/drone_core.h"
+#include "custompatches/drone_std_core.h"
 
 /* ── State definitions — owns step cache, source notes, bar baseline ── */
 uint8_t  s_cached_step[MAX_LAYERS];
@@ -17,6 +20,109 @@ uint32_t sequencer_bars_elapsed(void)
     uint32_t t = sequencer_ticks();
     if (t < s_bar_baseline) return 0;
     return (t - s_bar_baseline) / SEQ_TICKS_PER_BAR;
+}
+
+uint32_t sequencer_core_next_bar_tick(void)
+{
+    if (!s_playing) return 0;
+    uint32_t t = sequencer_ticks();
+    return (t / SEQ_TICKS_PER_BAR + 1u) * SEQ_TICKS_PER_BAR;
+}
+
+_Atomic uint32_t s_freeze_tick = 0;
+_Atomic bool     s_freeze_set  = false;
+
+void sequencer_core_freeze_set(uint32_t end_tick)
+{
+    atomic_store_explicit(&s_freeze_tick, end_tick, memory_order_relaxed);
+    atomic_store_explicit(&s_freeze_set, true, memory_order_release);
+    sequencer_set_periodic_horizon(end_tick);
+}
+
+void sequencer_core_freeze_clear(void)
+{
+    sequencer_clear_periodic_horizon();
+    atomic_store_explicit(&s_freeze_set, false, memory_order_release);
+}
+
+/* Pump task. The note-offs apply at the next block start, one block after
+ * the horizon: notes sounding across the bar line release there, the same
+ * cut a mute makes. Drone slots are included on purpose (unlike the
+ * transport stop): the bounce's commit disables them right after. */
+void sequencer_core_freeze_release_apply(void)
+{
+    for (uint8_t i = 0; i < s_num_layers; i++) {
+        seq_layer_t *layer = &s_layers[i];
+        for (uint8_t t = 0; t < layer->num_tracks; t++) {
+            sequencer_kill_synth_voices(layer->synth_id[t]);
+        }
+    }
+    sequencer_kill_synth_voices(SEQ_ARP_SYNTH);
+    sequencer_kill_synth_voices(DRONE_SYNTH_MAIN);
+    sequencer_kill_synth_voices(DRONE_SYNTH_SUB);
+    sequencer_kill_synth_voices(DRONE_STD_SYNTH_MAIN);
+    sequencer_kill_synth_voices(DRONE_STD_SYNTH_SUB);
+}
+
+void sequencer_core_mute_all_tracks(void)
+{
+    for (uint8_t i = 0; i < s_num_layers; i++) {
+        uint8_t n = s_layers[i].num_tracks;
+        for (uint8_t t = 0; t < n; t++) {
+            sequencer_core_set_track_mute(i, t, true);
+        }
+    }
+}
+
+void sequencer_core_get_mute_masks(uint8_t out[MAX_LAYERS])
+{
+    for (uint8_t i = 0; i < MAX_LAYERS; i++) {
+        uint8_t m = 0;
+        if (i < s_num_layers) {
+            for (uint8_t t = 0; t < s_layers[i].num_tracks && t < 8; t++) {
+                if (s_layers[i].mute[t]) m |= (uint8_t)(1u << t);
+            }
+        }
+        out[i] = m;
+    }
+}
+
+void sequencer_core_set_mute_masks(const uint8_t in[MAX_LAYERS])
+{
+    for (uint8_t i = 0; i < s_num_layers && i < MAX_LAYERS; i++) {
+        for (uint8_t t = 0; t < s_layers[i].num_tracks && t < 8; t++) {
+            sequencer_core_set_track_mute(i, t, (in[i] & (1u << t)) != 0);
+        }
+    }
+}
+
+uint8_t sequencer_core_pattern_period_bars(void)
+{
+    uint32_t bars = 0;
+    if (sequencer_core_progression_get_enabled()) {
+        uint8_t n = sequencer_core_progression_get_count();
+        for (uint8_t i = 0; i < n; i++) {
+            uint8_t root, dur;
+            chord_type_t ct;
+            sequencer_core_progression_get_entry(i, &root, &ct, &dur);
+            bars += dur;
+        }
+    }
+    if (bars == 0) {
+        for (uint8_t i = 0; i < s_num_layers; i++) {
+            const seq_layer_t *layer = &s_layers[i];
+            uint32_t step_bars = ((uint32_t)layer->num_steps + 15u) / 16u;
+            if (step_bars == 0) step_bars = 1;
+            for (uint8_t t = 0; t < layer->num_tracks; t++) {
+                uint32_t rr = (layer->repeat_rate[t] >= SEQ_REPEAT_2)
+                              ? (uint32_t)layer->repeat_rate[t] : 1u;
+                if (step_bars * rr > bars) bars = step_bars * rr;
+            }
+        }
+    }
+    if (bars == 0) bars = 1;
+    if (bars > 255) bars = 255;
+    return (uint8_t)bars;
 }
 
 /* ── Tag helpers ─────────────────────────────────────────────────────── */
@@ -484,6 +590,32 @@ void sequencer_core_set_step(uint8_t layer_idx, uint8_t track,
     sequencer_emit_step(layer_idx, track, step);
 }
 
+void sequencer_core_clear_track_pattern(uint8_t layer_idx, uint8_t track)
+{
+    if (layer_idx >= s_num_layers) return;
+    seq_layer_t *layer = &s_layers[layer_idx];
+    if (track >= layer->num_tracks) return;
+    /* The full width, not num_steps: a later 16 -> 32 resize must not
+     * uncover stale decorations. Neutral values as add_layer sets them. */
+    for (uint8_t s = 0; s < SEQ_MAX_STEPS; s++) {
+        layer->grid[track][s]               = false;
+        layer->step_pitch_ofs[track][s]     = 0;
+        layer->step_prob[track][s]          = 100;
+        layer->step_ratchet[track][s]       = 1;
+        layer->step_every[track][s]         = 1;
+        layer->step_prev[track][s]          = 0;
+        layer->step_transform[track][s]     = SEQ_STEP_TRANSFORM_NONE;
+        layer->step_quant_bypass[track][s]  = 0;
+        layer->step_nudge[track][s]         = 0;
+        layer->step_velocity_adj[track][s]  = 0;
+        layer->step_ratchet_taper[track][s] = 0;
+    }
+    for (uint8_t s = 0; s < layer->num_steps; s++) {
+        sequencer_emit_step(layer_idx, track, s);
+    }
+    sequencer_kill_synth_voices(layer->synth_id[track]);
+}
+
 /* Derive the playing step from AMY's free-running tick counter. When paused,
  * return the value captured at pause time so the UI playhead stops in place. */
 uint8_t sequencer_core_get_current_step(uint8_t layer_idx)
@@ -560,6 +692,7 @@ void sequencer_core_set_playing(bool p)
          * s_playing-gated, so nothing re-armed it while stopped - request a
          * coalesced re-emit (drained by arp_core_service() on the UI task). */
         arp_core_mark_dirty();
+        clip_player_on_transport(true);
     } else {
         /* Clear arp scheduled events FIRST so repeating arp tags don't keep
          * firing while the sequencer is paused. */
@@ -587,6 +720,7 @@ void sequencer_core_set_playing(bool p)
             }
         }
         sequencer_kill_synth_voices(SEQ_ARP_SYNTH);
+        clip_player_on_transport(false);
     }
 }
 

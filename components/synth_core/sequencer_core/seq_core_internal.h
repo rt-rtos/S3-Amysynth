@@ -1,4 +1,5 @@
 #pragma once
+#include <stdatomic.h>
 
 /* Public and standard headers — order mirrors original sequencer_core.c includes */
 #include "sequencer_core.h"
@@ -100,6 +101,17 @@ typedef struct {
 extern seq_layer_t   *s_layers;
 extern uint8_t        s_num_layers;
 extern bool           s_playing;
+/* Freeze horizon (sequencer_core_freeze_set): set from the UI task, read on
+ * the render task by the trig engine. */
+extern _Atomic uint32_t s_freeze_tick;
+extern _Atomic bool     s_freeze_set;
+static inline bool seq_freeze_blocks(uint32_t now_ticks)
+{
+    if (!atomic_load_explicit(&s_freeze_set, memory_order_acquire)) return false;
+    return (int32_t)(now_ticks - atomic_load_explicit(&s_freeze_tick, memory_order_relaxed)) >= 0;
+}
+/* Pump-task side of sequencer_core_freeze_release_enqueue(). */
+void sequencer_core_freeze_release_apply(void);
 extern uint8_t        s_next_melodic_synth;
 /* Global melodic patch DEFAULT, NOT an authoritative global. Two writers:
  * set_melodic_patch() writes it as the global selection and fans it out to

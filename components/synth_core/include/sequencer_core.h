@@ -172,6 +172,36 @@ float lfo_rate_to_hz(lfo_rate_t rate, uint16_t bpm);
 /* ── Core lifecycle ── */
 void sequencer_core_init(void);
 void sequencer_core_set_playing(bool playing);
+/* Absolute tick of the next bar line on the sequencer's bar grid (a multiple
+ * of SEQ_TICKS_PER_BAR strictly after now), or 0 while the transport is
+ * stopped. UI task. */
+uint32_t sequencer_core_next_bar_tick(void);
+
+/* ── Freeze (loop bounce) ────────────────────────────────────────────────
+ * From end_tick on, nothing periodic fires: AMY's repeating entries (every
+ * sequencer track and the arp) and the trig engine's decorated one-shots
+ * both stop on that tick exactly, wherever the UI task happens to be.
+ * Already-scheduled one-shots still fire. Set at arm, cleared by the commit
+ * or a cancel; clearing lets the entries resume at their next due tick.
+ * UI task. */
+void sequencer_core_freeze_set(uint32_t end_tick);
+void sequencer_core_freeze_clear(void);
+/* Render task, non-blocking: queue a release of every source voice (all
+ * layer tracks, the arp, the four drone synths) on the trig pump; the pump
+ * task sends the note-offs one block later. */
+void sequencer_core_freeze_release_enqueue(void);
+/* Mute every track of every layer (the ordinary per-track mute; visible and
+ * reversible in Trackopts). UI task. */
+void sequencer_core_mute_all_tracks(void);
+/* Snapshot / restore of every track's mute flag, one bit per track per
+ * layer (bit t of out[layer]). Restore applies through the ordinary setter,
+ * only to layers and tracks that exist now. UI task. */
+void sequencer_core_get_mute_masks(uint8_t out[MAX_LAYERS]);
+void sequencer_core_set_mute_masks(const uint8_t in[MAX_LAYERS]);
+/* The pattern's period in bars: the progression's pass length while one is
+ * enabled, else the longest track period (steps x repeat rate) over every
+ * layer; never 0. What a loop must be a multiple of to stay in step. */
+uint8_t sequencer_core_pattern_period_bars(void);
 void sequencer_core_set_bpm(uint16_t bpm);
 uint16_t sequencer_core_get_bpm(void);
 void sequencer_core_set_quantizer_enabled(bool enabled);
@@ -481,6 +511,13 @@ bool sequencer_core_import_layer(uint8_t layer_idx, const seq_layer_t *src);
 /* ── Per-layer step / note control ── */
 void    sequencer_core_set_step(uint8_t layer_idx, uint8_t track,
                                 uint8_t step, bool state);
+/* Empty one track's pattern: every step off, every per-step decoration and
+ * offset back to neutral (pitch offset, prob/ratchet/every/prev, transform,
+ * nudge, velocity, taper). The track's pitch lane (step_note), patch, voice
+ * block, repeat rate, mute and solo stay. Re-emits every step and releases
+ * the track's voices, since a sounding note's off tag goes with the step.
+ * Applier-task only. */
+void    sequencer_core_clear_track_pattern(uint8_t layer_idx, uint8_t track);
 void    sequencer_core_set_track_midi_note(uint8_t layer_idx, uint8_t track,
                                            uint8_t midi_note);
 uint8_t sequencer_core_get_track_midi_note(uint8_t layer_idx, uint8_t track);
