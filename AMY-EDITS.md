@@ -31,6 +31,7 @@ flowchart TD
     Active --> HZN["Periodic-entry horizon<br/>src/sequencer.c, src/sequencer.h"]
     Active --> POS["pcm_osc_frame() accessor<br/>src/pcm.c, src/amy.h"]
     Active --> SHR["pcm_shrink_preset() trim<br/>src/pcm.c, src/amy.h"]
+    Active --> MAP["gamma9001 map read accessors<br/>src/pcm.c, src/amy.h"]
     Active --> SEQ["sequencer_init OOM guard<br/>src/sequencer.c"]
     Active --> CAPS["ram_caps_sequencer knob + pool fallbacks<br/>src/amy.h, src/api.c, src/parse.c, src/sequencer.c"]
     Active --> PROF["COARSE profiler mode<br/>src/amy.h, src/amy.c"]
@@ -376,7 +377,15 @@ sequencer tracks' periodic tags and the arp's) stops on the bar line exactly,
 wherever the UI task is; the commit clears it after the mute flags are set.
 Generic enough for any host that freezes a loop on a beat.
 
-### `pcm.c` + `amy.h` — `pcm_osc_frame()` read accessor (LOCAL EDIT)
+Upstream standing (2026-09-08): viable. A looper primitive with one byte
+test per periodic hit when set and nothing when clear. It is a C-only setter
+with no wire form, unusual for AMY but not unprecedented; a wire code would
+widen the PR and is left out. Expected review question: "why not clear the
+entries?" - because clearing from a host task cannot be tick-exact against
+the tick walk, and the horizon is. Bundle with `pcm_osc_frame()` as one
+"keep a looping sample on the grid" PR.
+
+### `pcm.c` + `amy.h` — `pcm_osc_frame()` read accessor (upstream PR candidate)
 
 A PCM osc's source position in frames: the stretcher's input timeline while
 it is engaged, else the plain playhead (`INT_OF_P(phase, PCM_INDEX_BITS)`,
@@ -385,7 +394,10 @@ loop bounce's drift guard compares it with the frame the tick grid implies on
 every bar line. Read only, guarded for out-of-range and unallocated oscs;
 same shape as the `amy_voice_base_osc()` accessor.
 
-### `pcm.c` + `amy.h` — `pcm_shrink_preset()` (LOCAL EDIT)
+Upstream standing (2026-09-08): viable but too small to stand alone; ships in
+the periodic-horizon PR as its read side.
+
+### `pcm.c` + `amy.h` — `pcm_shrink_preset()` (upstream PR candidate)
 
 Trims a memory preset to its final frame count once known: the loop bounce
 records open-ended against a reserved maximum and cuts the block down at the
@@ -394,6 +406,13 @@ shrink is an in-place trim in the ESP heap (TLSF) and in libc, so no copy and
 no move, but the list link and internal pointers are re-pointed if an
 allocator ever did move it. Under the AMY lock like `pcm_load()`; loopend
 capped to the new length.
+
+Upstream standing (2026-09-08): viable and in line with the sampler work
+upstream is doing (fit, tempo lock, sample offsets). The vendored form
+branches on `ESP_PLATFORM` for `heap_caps_realloc`; the PR form adds a
+`realloc_caps()` beside `malloc_caps()` in `amy.c` with a malloc-copy-free
+fallback for platforms without a realloc (Daisy's `qspi_malloc`). Second PR,
+after the horizon one.
 
 ### `src/amy.h` + `src/amy.c` — COARSE profiler mode
 
@@ -472,14 +491,34 @@ PCM preset numbering differs between banks; the sequencer drum defaults in
 `pcm_wavetable_base`). Cost ≈ +268 KB flash `.rodata` (XIP-cached, never
 RAM-copied); zero DRAM/PSRAM/IRAM.
 
+### `pcm.c` + `amy.h` — gamma9001 map read accessors (upstream PR candidate)
+
+`amy_gamma9001_preset_span(preset, &span)` returns a map entry (blob offset,
+length, loop points, midinote, sample rate); `_preset_base()` / `_preset_count()`
+give the range. The map lives only in `pcm_gamma9001.h`, which defines the
+array and so cannot be included twice. With these a platform that cannot
+afford the 3.6 MB blob in RAM or mapped (PSRAM XIP leaves the S3 MMU no
+57-page run) keeps the blob in flash and loads single presets with
+`pcm_load()` under their gamma numbers, which shadow the blob entries in
+`get_preset_for_preset_number()` - upstream's own mechanism, no lookup
+change. Consumer: `components/synth_core/custompatches/drum_cache.c`
+(windows the drum layers' presets into PSRAM on demand, unloads deferred
+past the osc reset). A first cut carried a per-preset window table in the
+lookup; withdrawn the same day once the shadowing was noticed.
+
+Upstream standing (2026-09-08): viable, same family as the blob-size
+accessor below; platform-neutral read side only. Third PR, or folded into
+the blob-size one.
+
 ### `pcm.c` + `amy.h` — `amy_gamma9001_pcm_bytes()` accessor (LOCAL EDIT)
 
 Two-line helper returning `GAMMA9001_BIN_FRAMES * 2`. The constant lives only
 in `pcm_gamma9001.h`, which also defines the map array and so cannot be
 included a second time; the ESP32-S3 mount code (`main.c
-gamma9001_pcm_mount()`) needs the exact blob size to flash-mmap it (a whole-
-partition mmap exhausts data-cache MMU pages under PSRAM XIP) or to size the
-PSRAM fallback copy. Upstream PR candidate (tiny, platform-neutral).
+gamma9001_pcm_mount()`) checks the blob against the partition size with it.
+(It used to size a flash mmap or a PSRAM fallback copy; since 2026-09-08 the
+blob stays in flash and `drum_cache.c` loads presets singly, see the map
+accessors above.) Upstream PR candidate (tiny, platform-neutral).
 
 ## Deferred / needs porting
 

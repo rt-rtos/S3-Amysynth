@@ -52,6 +52,28 @@ void amy_set_gamma9001_pcm(const int16_t * data) {
 // LOCAL EDIT: expose the blob size (GAMMA9001_BIN_FRAMES lives only in
 // pcm_gamma9001.h, which defines the map array and so cannot be included
 // twice) so the ESP32-S3 port can mmap or PSRAM-copy exactly the blob.
+// LOCAL EDIT (S3-Amysynth): read accessors for the gamma9001 map, which lives
+// only in pcm_gamma9001.h (it defines the array, so it cannot be included a
+// second time). A platform that cannot afford the whole blob in RAM or mapped
+// can read one preset's frames from wherever it keeps the blob and load them
+// as a memory preset under the same number, which shadows the blob entry in
+// get_preset_for_preset_number(). See AMY-EDITS.md.
+uint16_t amy_gamma9001_preset_base(void)  { return GAMMA9001_PRESET_BASE; }
+uint16_t amy_gamma9001_preset_count(void) { return GAMMA9001_NUM_SAMPLES; }
+
+bool amy_gamma9001_preset_span(uint16_t preset_number, amy_gamma9001_span_t *out) {
+    if (out == NULL || preset_number < GAMMA9001_PRESET_BASE ||
+        preset_number >= GAMMA9001_PRESET_BASE + GAMMA9001_NUM_SAMPLES) return false;
+    const pcm_map_t *g = &gamma9001_map[preset_number - GAMMA9001_PRESET_BASE];
+    out->offset     = g->offset;
+    out->length     = g->length;
+    out->loopstart  = g->loopstart;
+    out->loopend    = g->loopend;
+    out->midinote   = g->midinote;
+    out->samplerate = GAMMA9001_SAMPLE_RATE;
+    return true;
+}
+
 uint32_t amy_gamma9001_pcm_bytes(void) {
     return (uint32_t)GAMMA9001_BIN_FRAMES * sizeof(int16_t);
 }

@@ -1,4 +1,5 @@
 #include "sequencer_core/seq_core_internal.h"
+#include "custompatches/drum_cache.h"
 #include "voice_config.h"
 #include "seq_clamp.h"
 #include "display_seq.h"   /* DISPLAY_ALGO_BANNER_CUSTOM */
@@ -159,12 +160,12 @@ static const seq_drum_bank_t *drum_bank_for_preset(uint16_t preset)
  * presets are the persisted truth and cycle freely across banks). */
 static uint8_t s_drum_bank = 0;
 
-/* Gamma9001 banks are selectable only while their sample blob is mounted
- * (main.c maps the 'drums' partition and calls amy_set_gamma9001_pcm). */
+/* Gamma9001 banks are selectable only while their partition is mounted
+ * (main.c binds it to the drum cache, which windows presets in on demand). */
 static inline bool drum_gamma_available(void)
 {
 #ifdef GAMMA9001
-    return gamma9001_pcm != NULL;
+    return drum_cache_available();
 #else
     return false;
 #endif
@@ -734,6 +735,8 @@ void sequencer_configure_synth(uint8_t layer_idx)
              * SAME emit path as synth mode, so hits keep accent/jitter dynamics
              * and midi_note tunes the sample (render_pcm). PCM carries no
              * global EQ/chorus, so no reassert is owed. */
+            (void)drum_pcm_preset_for(layer_idx, 0);   /* seed defaults first */
+            drum_cache_sync();                          /* windows before the preset events */
             for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
                 /* Allocate/realloc the slot as a 1-osc voice (clears old patch). */
                 amy_event *e = amy_helpers_event_begin();
@@ -1136,6 +1139,9 @@ void sequencer_core_set_drum_pcm_preset(uint8_t layer_idx, uint8_t track,
 
     (void)drum_pcm_preset_for(layer_idx, track);   /* seed defaults first */
     s_drum_pcm_preset[layer_idx][track] = preset_number;
+    /* Window the new preset in (and let the old one go) before the osc is
+     * pointed at it; the reset below stops the osc reading the old one. */
+    drum_cache_sync();
 
     if (s_drum_engine == SEQ_DRUM_PCM) {
         /* Reset the osc before reconfiguring, so any stray coefficient state

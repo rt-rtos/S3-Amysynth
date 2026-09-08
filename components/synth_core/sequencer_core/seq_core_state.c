@@ -1,4 +1,5 @@
 #include "sequencer_core/seq_core_internal.h"
+#include "custompatches/drum_cache.h"
 #include "voice_config.h"
 #include "esp_heap_caps.h"
 #include <assert.h>
@@ -294,6 +295,7 @@ bool sequencer_core_delete_layer(uint8_t layer_idx)
     /* Table is fully compacted and the count updated; drop the guard. */
     s_layers_mutating = false;
     sequencer_core_trig_reset_all();  /* see rationale in sequencer_core_add_layer() */
+    drum_cache_sync();                /* the deleted layer's drum windows go */
 
     /* Resync all surviving layers so their note tags re-register correctly. */
     if (s_playing) {

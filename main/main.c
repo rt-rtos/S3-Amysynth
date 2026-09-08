@@ -21,6 +21,7 @@
 #include "amy_helpers.h"   /* amy_helpers_set_render_task */
 #include "custompatches/sample_rec.h"
 #include "custompatches/clip_bounce.h"
+#include "custompatches/drum_cache.h"
 #include "filter_scope.h"
 #include "usb_audio.h"
 #include "esp_timer.h"
@@ -153,6 +154,8 @@ static void amy_usb_render_task(void *arg) {
             sample_rec_render_tick(block, AMY_BLOCK_SIZE);
             // Loop bounce: same rule, no-op while idle.
             clip_bounce_render_tick(block, AMY_BLOCK_SIZE);
+            // Drum cache: counts released sample windows down to their free.
+            drum_cache_render_service();
 
 #if CONFIG_FILTER_SCOPE
             // Filter-editor overlay: reads msynth[]/synth[], so it too must
@@ -810,10 +813,11 @@ static void encoder_init_task(void *pvParameters)
 }
 
 #ifdef GAMMA9001
-/* Feed AMY the gamma9001 drum-bank blob (PCM presets 256-391) from the
- * 'drums' partition. Flash mmap preferred, but PSRAM XIP leaves too few MMU
- * pages for ~3.6 MB, so the fallback copies the blob into PSRAM heap. All
- * failure paths are non-fatal: those presets just stay disabled. */
+/* Bind the 'drums' partition (gamma9001 PCM presets 256-391) to the drum
+ * cache, which windows the presets in use into PSRAM on demand. The blob
+ * itself stays in flash: neither mapped (PSRAM XIP leaves the MMU no room
+ * for 3.6 MB) nor copied. All failure paths are non-fatal: those presets
+ * just stay disabled. */
 static void gamma9001_pcm_mount(void)
 {
     const esp_partition_t *part = esp_partition_find_first(
@@ -841,32 +845,8 @@ static void gamma9001_pcm_mount(void)
         return;
     }
 
-    const void *map = NULL;
-    esp_partition_mmap_handle_t handle;
-    if (esp_partition_mmap(part, 0, bytes, ESP_PARTITION_MMAP_DATA,
-                           &map, &handle) == ESP_OK) {
-        amy_set_gamma9001_pcm((const int16_t *)map);
-        diag_mem_track("drums-pcm", map, bytes);
-        ESP_LOGI(TAG, "gamma9001: drum banks flash-mapped (%u KB)",
-                 (unsigned)(bytes / 1024u));
-        return;
-    }
-
-    /* MMU pages exhausted: stage the blob in PSRAM instead. */
-    int16_t *buf = heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM);
-    if (buf == NULL) {
-        ESP_LOGW(TAG, "gamma9001: mmap failed and PSRAM alloc of %u KB failed; "
-                      "PCM presets 256+ unavailable", (unsigned)(bytes / 1024u));
-        return;
-    }
-    if (esp_partition_read(part, 0, buf, bytes) != ESP_OK) {
-        ESP_LOGW(TAG, "gamma9001: partition read failed; PCM presets 256+ unavailable");
-        free(buf);
-        return;
-    }
-    amy_set_gamma9001_pcm(buf);
-    diag_mem_track("drums-pcm", buf, bytes);
-    ESP_LOGI(TAG, "gamma9001: drum banks copied to PSRAM (%u KB; flash mmap unavailable)",
+    drum_cache_init(part);
+    ESP_LOGI(TAG, "gamma9001: 'drums' partition mounted (%u KB); presets window into PSRAM on demand",
              (unsigned)(bytes / 1024u));
 }
 #endif /* GAMMA9001 */

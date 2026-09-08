@@ -109,6 +109,19 @@ extern const uint32_t pcm_wavetable_len;
 // Until the pointer is set those presets are silently unavailable.
 extern const int16_t * gamma9001_pcm;
 extern void amy_set_gamma9001_pcm(const int16_t * data);
+// LOCAL EDIT: read accessors for the gamma9001 map (see pcm.c), so a platform
+// can load single presets as memory presets that shadow the blob entries.
+typedef struct {
+    uint32_t offset;      // first frame in the blob
+    uint32_t length;      // frames
+    uint32_t loopstart;
+    uint32_t loopend;
+    float    midinote;
+    uint32_t samplerate;
+} amy_gamma9001_span_t;
+extern uint16_t amy_gamma9001_preset_base(void);
+extern uint16_t amy_gamma9001_preset_count(void);
+extern bool amy_gamma9001_preset_span(uint16_t preset_number, amy_gamma9001_span_t *out);
 // LOCAL EDIT: blob size in bytes (GAMMA9001_BIN_FRAMES * 2) for the platform
 // mount code; see pcm.c.
 extern uint32_t amy_gamma9001_pcm_bytes(void);

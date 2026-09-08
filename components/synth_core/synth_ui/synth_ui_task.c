@@ -9,6 +9,7 @@
 #include "custompatches/sample_rec.h"
 #include "custompatches/clip_bounce.h"
 #include "custompatches/clip_player.h"
+#include "custompatches/drum_cache.h"
 #include "priv_i2c_u8g2.h"   /* i2c_u8g2_service - absent-panel recovery */
 #include "display_seq.h"
 #include "display_drone.h"
@@ -79,6 +80,7 @@ static void synth_ui_task(void *pvParameters)
         sequencer_core_progression_service();
         clip_bounce_service();
         clip_player_service();
+        drum_cache_service();
 #if CONFIG_SEQ_OOM_RESYNC
         /* Re-emit schedules once an AMY OOM burst settles (dropped wire
          * events otherwise leave tracks mute); cheap counter poll otherwise. */

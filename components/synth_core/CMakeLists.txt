@@ -66,6 +66,7 @@ idf_component_register(SRCS "live_play.c" "amy_helpers.c" "amy_fx.c" "fx_bus.c" 
                             "custompatches/sample_rec.c"
                             "custompatches/clip_bounce.c"
                             "custompatches/clip_player.c"
+                            "custompatches/drum_cache.c"
                             "project/project_snapshot.c"
                             ${fm_srcs}
                             ${additive_srcs}
@@ -73,7 +74,7 @@ idf_component_register(SRCS "live_play.c" "amy_helpers.c" "amy_fx.c" "fx_bus.c" 
                        INCLUDE_DIRS "include" "sequencer_core" "project"
                        PRIV_INCLUDE_DIRS "."
                        REQUIRES u8g2 display amy
-                       PRIV_REQUIRES seq_clamp project_store usb_audio wireless diagnostics esp_app_format)
+                       PRIV_REQUIRES seq_clamp project_store usb_audio wireless diagnostics esp_app_format esp_partition)
 # -Wstack-usage is GCC-only; clang rejects the unknown warning option under -Werror.
 if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
     target_compile_options(${COMPONENT_LIB} PRIVATE "-Wstack-usage=1024")
