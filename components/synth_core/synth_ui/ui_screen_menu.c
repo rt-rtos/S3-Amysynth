@@ -59,6 +59,7 @@ typedef enum {
     MI_REMOVE_LAYER,
     MI_CHORDS,
     MI_BOUNCE,
+    MI_PROGGEN,
     MI_FX_MENU,
 #if CONFIG_SYNTH_PROJECT_STORE
     MI_PROJECTS,
@@ -93,6 +94,8 @@ static bool    s_projects_page = false;
 static bool    s_chords_page = false;
 /* Loop-bounce page (item model in ui_screen_bounce.c). */
 static bool    s_bounce_page = false;
+/* Progression-generator page (item model in ui_screen_proggen.c). */
+static bool    s_proggen_page = false;
 #if CONFIG_SYNTH_WIRELESS
 /* BLE MIDI session page (item model in ui_screen_wireless.c). */
 static bool    s_wireless_page = false;
@@ -118,6 +121,7 @@ const char *menu_page_title(void)
 #endif
     if (s_chords_page) return chords_menu_title();
     if (s_bounce_page) return bounce_menu_title();
+    if (s_proggen_page) return proggen_menu_title();
 #if CONFIG_SYNTH_WIRELESS
     if (s_wireless_page) return "WIRELESS";
 #endif
@@ -188,6 +192,13 @@ void menu_build_view(menu_view_t *out)
     if (s_bounce_page) {
         out->items   = bounce_menu_build_items();
         out->count   = bounce_menu_item_count();
+        out->cursor  = seq_state.menu_cursor;
+        out->editing = seq_state.menu_editing;
+        return;
+    }
+    if (s_proggen_page) {
+        out->items   = proggen_menu_build_items();
+        out->count   = proggen_menu_item_count();
         out->cursor  = seq_state.menu_cursor;
         out->editing = seq_state.menu_editing;
         return;
@@ -293,6 +304,10 @@ void menu_build_view(menu_view_t *out)
         snprintf(s_menu_items[MI_BOUNCE].value, MENU_VALUE_LEN, "%u/%u",
                  loaded, (unsigned)CLIP_SLOT_COUNT);
     }
+
+    /* The progression generator lives on its own page (ui_screen_proggen.c). */
+    snprintf(s_menu_items[MI_PROGGEN].label, MENU_LABEL_LEN, "Prog Gen");
+    snprintf(s_menu_items[MI_PROGGEN].value, MENU_VALUE_LEN, ">");
 
     /* FX live on their own hub page, one row per bus (ui_screen_fxmenu.c). */
     snprintf(s_menu_items[MI_FX_MENU].label, MENU_LABEL_LEN, "FX");
@@ -464,6 +479,7 @@ void synth_ui_menu_toggle(void)
 #endif
         s_chords_page = false;
         s_bounce_page = false;
+        s_proggen_page = false;
 #if CONFIG_SYNTH_WIRELESS
         s_wireless_page = false;
 #endif
@@ -526,6 +542,8 @@ bool synth_ui_menu_handle_encoder(long delta)
             chords_menu_edit_value(seq_state.menu_cursor, (int)delta);
         } else if (s_bounce_page) {
             bounce_menu_edit_value(seq_state.menu_cursor, (int)delta);
+        } else if (s_proggen_page) {
+            proggen_menu_edit_value(seq_state.menu_cursor, (int)delta);
 #if CONFIG_SYNTH_WIRELESS
         } else if (s_wireless_page) {
             wireless_menu_edit_value(seq_state.menu_cursor, (int)delta);
@@ -542,6 +560,7 @@ bool synth_ui_menu_handle_encoder(long delta)
 #endif
                 s_chords_page ? (int)chords_menu_item_count() :
                 s_bounce_page ? (int)bounce_menu_item_count() :
+                s_proggen_page ? (int)proggen_menu_item_count() :
 #if CONFIG_SYNTH_WIRELESS
                 s_wireless_page ? (int)wireless_menu_item_count() :
 #endif
@@ -661,6 +680,19 @@ bool synth_ui_menu_handle_button(void)
         return true;
     }
 
+    if (s_proggen_page) {
+        uint8_t idx = seq_state.menu_cursor;
+        if (proggen_menu_item_is_back(idx)) {
+            s_proggen_page = false;
+            seq_state.menu_cursor  = s_main_cursor;
+            seq_state.menu_editing = false;
+        } else {
+            seq_state.menu_editing = proggen_menu_handle_click(idx);
+        }
+        s_force_redraw = true;
+        return true;
+    }
+
 #if CONFIG_SYNTH_WIRELESS
     if (s_wireless_page) {
         uint8_t idx = seq_state.menu_cursor;
@@ -743,6 +775,13 @@ bool synth_ui_menu_handle_button(void)
                 s_bounce_page = true;
                 seq_state.menu_cursor = 0;
                 bounce_menu_reset();
+                break;
+            case MI_PROGGEN:
+                /* Dive into the progression-generator page; the menu stays open. */
+                s_main_cursor = seq_state.menu_cursor;
+                s_proggen_page = true;
+                seq_state.menu_cursor = 0;
+                proggen_menu_reset();
                 break;
             case MI_FX_MENU:
                 /* Dive into the FX hub; the menu stays open. */

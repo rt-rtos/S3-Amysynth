@@ -43,6 +43,7 @@ static const char *TAG = "project_snapshot";
 #define TAG_PROG 0x474F5250u
 #define TAG_CHRD 0x44524843u
 #define TAG_CLIP 0x50494C43u
+#define TAG_PGEN 0x4E454750u
 
 #define PROJECT_SER_BUF_CAP (64 * 1024)
 
@@ -1037,6 +1038,45 @@ static void apply_prog(const staged_prog_t *p)
     sequencer_core_progression_set_enabled(p->enabled);
 }
 
+/* ── PGEN section ─────────────────────────────────────────────────────────── */
+
+/* The progression generator's settings. The chords they produced are the PROG
+ * section above; this is what the Prog Gen page shows for them. */
+typedef struct {
+    prog_gen_params_t params;
+} staged_pgen_t;
+
+static void ser_pgen(tlv_writer_t *w)
+{
+    size_t h = tlv_begin_section(w, TAG_PGEN, 1);
+    prog_gen_params_t p;
+    sequencer_core_progression_gen_params_get(&p);
+    tlv_put_u8(w, p.style);
+    tlv_put_u8(w, p.len);
+    tlv_put_u8(w, p.bars);
+    tlv_put_u8(w, p.ext);
+    tlv_put_u8(w, p.var);
+    tlv_put_u16(w, p.seed);
+    tlv_end_section(w, h);
+}
+
+/* No clamping here: the generator clamps every field on use. */
+static bool parse_pgen(tlv_reader_t *b, staged_pgen_t *g)
+{
+    if (!tlv_get_u8(b, &g->params.style)) return false;
+    if (!tlv_get_u8(b, &g->params.len))   return false;
+    if (!tlv_get_u8(b, &g->params.bars))  return false;
+    if (!tlv_get_u8(b, &g->params.ext))   return false;
+    if (!tlv_get_u8(b, &g->params.var))   return false;
+    if (!tlv_get_u16(b, &g->params.seed)) return false;
+    return true;
+}
+
+static void apply_pgen(const staged_pgen_t *g)
+{
+    sequencer_core_progression_gen_params_set(&g->params);
+}
+
 /* ── CHRD section (chord presets, seq_chords.h) ──────────────────────────
  * v1: u8 slot count, then per slot u8 tone count + SEQ_CHORD_MAX_NOTES note
  * bytes (fixed width; a wider voicing bumps the version). Old firmware skips
@@ -1107,6 +1147,7 @@ bool project_snapshot_save(uint8_t slot, const char *name)
     ser_prog(&w);
     ser_chrd(&w);
     ser_clip(&w);
+    ser_pgen(&w);
 
     bool ok = !w.err && project_store_write(slot, name, buf, w.len);
 
@@ -1137,11 +1178,12 @@ bool project_snapshot_load(uint8_t slot)
     staged_drone_t staged_drone; memset(&staged_drone, 0, sizeof staged_drone);
     staged_prog_t  staged_prog;  memset(&staged_prog, 0, sizeof staged_prog);
     staged_clip_t  staged_clip;  memset(&staged_clip, 0, sizeof staged_clip);
+    staged_pgen_t  staged_pgen;  memset(&staged_pgen, 0, sizeof staged_pgen);
     seq_chord_t    staged_chords[SEQ_CHORD_SLOTS];
     memset(staged_chords, 0, sizeof staged_chords);
     uint8_t staged_layer_count = 0;
     bool got_glob = false, got_arp = false, got_drone = false, got_prog = false;
-    bool got_chrd = false, got_clip = false;
+    bool got_chrd = false, got_clip = false, got_pgen = false;
 
     tlv_reader_t r;
     tlv_reader_init(&r, payload, len);
@@ -1186,6 +1228,11 @@ bool project_snapshot_load(uint8_t slot)
             if (got_clip || ver != 2) { ok = false; break; }
             ok = parse_clip(&body, &staged_clip);
             got_clip = ok;
+            break;
+        case TAG_PGEN:
+            if (got_pgen || ver != 1) { ok = false; break; }
+            ok = parse_pgen(&body, &staged_pgen);
+            got_pgen = ok;
             break;
         default:
             break;   /* unknown section: ignore (forward-compat) */
@@ -1236,6 +1283,7 @@ bool project_snapshot_load(uint8_t slot)
     if (got_arp)   apply_arp(&staged_arp);
     if (got_drone) apply_drone(&staged_drone);
     if (got_prog)  apply_prog(&staged_prog);
+    if (got_pgen)  apply_pgen(&staged_pgen);
     if (got_clip)  apply_clip(&staged_clip);
 
     /* The layer import writes solo[] wholesale rather than through the setter,

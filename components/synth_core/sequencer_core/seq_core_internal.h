@@ -169,6 +169,8 @@ void     sequencer_resync_layer(uint8_t layer_idx);
 void     sequencer_clear_layer_tags(uint8_t layer_idx);
 void     sequencer_refresh_melodic_layers(bool preview);
 uint32_t sequencer_bars_elapsed(void);
+/* Bars elapsed as they will read ahead_ticks from now. */
+uint32_t sequencer_bars_elapsed_ahead(uint32_t ahead_ticks);
 
 /* From seq_core_engine.c - chord expansion shared with seq_core_trig.c.
  * seq_track_fire_notes resolves what a stored (possibly sentinel) note fires:

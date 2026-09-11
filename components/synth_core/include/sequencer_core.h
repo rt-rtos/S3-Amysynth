@@ -6,6 +6,7 @@
 #include "seq_model.h"     /* seq_layer_type_t, seq_layer_t, SEQ_* defines */
 #include "chord_types.h"
 #include "seq_chords.h"    /* chord presets: seq_chord_t + sentinel macros */
+#include "prog_gen.h"      /* prog_gen_params_t - the progression generator */
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h" /* TaskHandle_t — layers-applier registration below */
 
@@ -755,6 +756,14 @@ uint8_t sequencer_core_progression_bars_in_current(void);
 bool    sequencer_core_progression_add_entry(void);
 void    sequencer_core_progression_delete_entry(uint8_t idx);
 void    sequencer_core_progression_service(void);
+
+/* The generator's parameters, stored beside the progression they generated so
+ * a project carries both. Plain struct copies; a NULL argument is ignored.
+ * Callable from any task: the writers are the input tasks and project load,
+ * the reader is the UI item build, and a torn read shows one stale display
+ * value for one frame and nothing else - so no lock. */
+void    sequencer_core_progression_gen_params_set(const prog_gen_params_t *p);
+void    sequencer_core_progression_gen_params_get(prog_gen_params_t *out);
 
 /* Manual per-layer chord override (used when global progression is off). */
 void sequencer_core_progression_set_layer_chord(uint8_t layer_idx,

@@ -11,6 +11,16 @@ chord_progression_t s_prog = {
     .enabled = false,
 };
 
+/* The generator writes whole progressions into s_prog.entries, so its output
+ * cap and the entry array must be the same size. */
+_Static_assert(PROG_GEN_MAX_ENTRIES == CHORD_PROG_MAX_ENTRIES,
+               "prog_gen output must fit the progression entry array");
+
+/* Settings that produced the current progression; persisted alongside it. */
+static prog_gen_params_t s_prog_gen_params = {
+    .style = 0, .len = 4, .bars = 1, .ext = PROG_GEN_EXT_TRIAD, .var = 0, .seed = 0
+};
+
 /* Set by input-task entry points that change chord state, consumed once per
  * tick by sequencer_core_progression_service() on synth_ui_task. That makes
  * synth_ui_task the SINGLE task calling chord_progression_apply_current(), so
@@ -23,8 +33,26 @@ volatile bool s_prog_apply_pending = false;
 volatile bool s_prog_apply_immediate = false;
 
 /* BAR launch mode: bar index at which a held pending apply was armed;
- * UINT32_MAX = not armed. Drains once bars_elapsed moves past this value. */
+ * UINT32_MAX = not armed. Drains once the lead-adjusted bar count moves past
+ * this value. */
 static uint32_t s_apply_armed_bar = UINT32_MAX;
+
+/* Chord changes are applied this far ahead of the bar line. A step's pitch is
+ * baked into its periodic AMY entry, and step 0 fires one tick after the
+ * line, so an apply that waits for the line lands after the downbeat has
+ * already played the old chord. The lead covers one 50 ms service period
+ * plus the trip through AMY's event queue. The ending bar's last 16th fires
+ * 11 ticks before the line, so it takes the new chord early from about
+ * 211 BPM (a tick of 5.9 ms or less), or sooner with swing or nudge; the
+ * lead stays uncapped, because a cap brings back the late downbeat at those
+ * same tempos. */
+#define PROG_APPLY_LEAD_US 65000u
+
+static uint32_t prog_apply_lead_ticks(void)
+{
+    uint32_t upt = amy_global.us_per_tick;
+    return upt ? (PROG_APPLY_LEAD_US + upt - 1u) / upt : 0u;
+}
 
 /* ── Private helpers ─────────────────────────────────────────────────── */
 
@@ -86,15 +114,21 @@ void chord_progression_apply_current(void)
  * only one writer. */
 void sequencer_core_progression_service(void)
 {
+    /* Bar count as it will read at the next bar line's lead point: every
+     * bar-quantized apply below keys on this, so it lands just before the
+     * line instead of just after it. */
+    uint32_t bars_ahead = sequencer_bars_elapsed_ahead(prog_apply_lead_ticks());
+
     /* Drain deferred applies first, regardless of playing/enabled state. In BAR
      * launch mode a musical edit holds until the next bar line while playing;
      * corrections and drains while stopped bypass the hold. */
     if (s_prog_apply_pending) {
         bool drain_now = true;
         if (s_prog.apply_at_bar && s_playing && !s_prog_apply_immediate) {
-            uint32_t bars = sequencer_bars_elapsed();
-            if (s_apply_armed_bar == UINT32_MAX) s_apply_armed_bar = bars; /* arm */
-            drain_now = (bars != s_apply_armed_bar); /* crossed a bar line */
+            /* Arm on the bar the edit was made in, so an edit inside the lead
+             * window still lands on the upcoming line. */
+            if (s_apply_armed_bar == UINT32_MAX) s_apply_armed_bar = sequencer_bars_elapsed();
+            drain_now = (bars_ahead != s_apply_armed_bar); /* reached the lead point */
         }
         if (drain_now) {
             s_apply_armed_bar = UINT32_MAX;
@@ -115,7 +149,7 @@ void sequencer_core_progression_service(void)
 
     if (!s_prog.enabled || s_prog.count == 0 || !s_playing) return;
 
-    uint32_t bars = sequencer_bars_elapsed();
+    uint32_t bars = bars_ahead;
     /* Mid-session anchors point at the NEXT bar line (entry_start_bar = bars+1),
      * and the unsigned subtraction below would wrap until it passes. */
     if (bars < s_prog.entry_start_bar) return;
@@ -293,6 +327,18 @@ void sequencer_core_progression_delete_entry(uint8_t idx)
         s_prog.entry_start_bar = sequencer_bars_elapsed() + 1;
         if (s_prog.enabled) s_prog_apply_pending = true;
     }
+}
+
+void sequencer_core_progression_gen_params_set(const prog_gen_params_t *p)
+{
+    if (p == NULL) return;
+    s_prog_gen_params = *p;
+}
+
+void sequencer_core_progression_gen_params_get(prog_gen_params_t *out)
+{
+    if (out == NULL) return;
+    *out = s_prog_gen_params;
 }
 
 void sequencer_core_progression_set_layer_chord(uint8_t layer_idx,

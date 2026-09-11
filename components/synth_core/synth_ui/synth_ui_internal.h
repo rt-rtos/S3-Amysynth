@@ -240,6 +240,18 @@ void     bounce_menu_service(void);
  * ui_screen_menu.c), which is what scopes the service above. */
 bool     menu_bounce_page_open(void);
 
+/* ─── Prog Gen page: the chord-progression generator (item model in
+ *     ui_screen_proggen.c; page state and input routing in ui_screen_menu.c).
+ *     Generator parameters on top, then Generate and a one-level Undo. ──── */
+const menu_item_view_t *proggen_menu_build_items(void);
+uint8_t  proggen_menu_item_count(void);
+bool     proggen_menu_item_is_back(uint8_t idx);
+bool     proggen_menu_item_is_value(uint8_t idx);
+bool     proggen_menu_handle_click(uint8_t idx);
+void     proggen_menu_edit_value(uint8_t idx, int delta);
+void     proggen_menu_reset(void);
+const char *proggen_menu_title(void);
+
 /* Editor live-preview service: flushes any pending throttled apply (the graph
  * editor's amp trim, whose melodic apply re-emits the track's steps). Called
  * from synth_ui_task's 50 ms loop; no-op when nothing is pending. */

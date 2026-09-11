@@ -15,11 +15,16 @@ uint8_t  s_track_prev_plain[MAX_LAYERS][SEQ_TRACKS];
 /* ── Bar counter ─────────────────────────────────────────────────────────
  * sequencer_ticks() is monotonic (never resets on play/stop in normal use).
  * Capture a baseline at play-start; compute bars elapsed from the delta. */
-uint32_t sequencer_bars_elapsed(void)
+uint32_t sequencer_bars_elapsed_ahead(uint32_t ahead_ticks)
 {
-    uint32_t t = sequencer_ticks();
+    uint32_t t = sequencer_ticks() + ahead_ticks;
     if (t < s_bar_baseline) return 0;
     return (t - s_bar_baseline) / SEQ_TICKS_PER_BAR;
+}
+
+uint32_t sequencer_bars_elapsed(void)
+{
+    return sequencer_bars_elapsed_ahead(0);
 }
 
 uint32_t sequencer_core_next_bar_tick(void)
