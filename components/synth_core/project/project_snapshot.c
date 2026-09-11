@@ -292,7 +292,7 @@ typedef struct {
 
 static void ser_glob(tlv_writer_t *w)
 {
-    size_t h = tlv_begin_section(w, TAG_GLOB, 3);  /* v3: bus order Main/Drums/Drones/Clips */
+    size_t h = tlv_begin_section(w, TAG_GLOB, 4);  /* v4: per-bus chorus_delay appended */
     tlv_put_u16(w, sequencer_core_get_bpm());
     tlv_put_f32(w, amy_fx_get_master_volume());
     tlv_put_u8(w, sequencer_core_get_quantizer_enabled() ? 1 : 0);
@@ -329,6 +329,7 @@ static void ser_glob(tlv_writer_t *w)
         tlv_put_u8(w,  f->bus_dist_rate);
         tlv_put_u8(w,  f->bus_dist_mix);
         tlv_put_u8(w,  f->level);
+        tlv_put_i16(w, f->chorus_delay);
     }
     tlv_end_section(w, h);
 }
@@ -385,6 +386,9 @@ static bool parse_glob(tlv_reader_t *b, staged_glob_t *g)
         if (!tlv_get_u8(b, &f->bus_dist_mix))     return true;
         if (!tlv_get_u8(b, &f->level))            return true;
         if (f->level > 200) f->level = 200;
+        if (!tlv_get_i16(b, &f->chorus_delay))    return true;
+        if (f->chorus_delay != FX_PARAM_UNSET)
+            f->chorus_delay = (int16_t)SEQ_CLAMP_INT(f->chorus_delay, 16, 512);
     }
     return true;
 }
@@ -1192,7 +1196,7 @@ bool project_snapshot_load(uint8_t slot)
     while (ok && tlv_next_section(&r, &tag, &ver, &body)) {
         switch (tag) {
         case TAG_GLOB:
-            if (got_glob || ver != 3) { ok = false; break; }
+            if (got_glob || ver != 4) { ok = false; break; }
             ok = parse_glob(&body, &staged_glob);
             got_glob = ok;
             break;

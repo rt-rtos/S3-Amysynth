@@ -357,6 +357,9 @@ void config_chorus(uint16_t bus, float level, uint16_t max_delay, float lfo_freq
     // nonzero level as "chorus is on".
     if (level < 0) level = 0;
     if (AMY_IS_UNSET(max_delay)) max_delay = amy_global.bus[bus]->chorus.max_delay;
+    // LOCAL EDIT (S3-Amysynth): chorus_max_delay bounds the sweep (upstream PR candidate).
+    // The sweep spans 0..max_delay samples, so it must fit in the delay line.
+    if (max_delay > DELAY_LINE_LEN) max_delay = DELAY_LINE_LEN;
     if (AMY_IS_UNSET(lfo_freq)) lfo_freq = amy_global.bus[bus]->chorus.lfo_freq;
     if (AMY_IS_UNSET(depth)) depth = amy_global.bus[bus]->chorus.depth;
     //fprintf(stderr, "config_chorus: osc %d level %.3f max_del %d lfo_freq %.3f depth %.3f\n",
@@ -371,7 +374,7 @@ void config_chorus(uint16_t bus, float level, uint16_t max_delay, float lfo_freq
             amy_global.bus[bus]->chorus.level = 0;
             return;
         }
-        // apply max_delay.
+        // Center the sweep on max_delay / 2.
         for (int chan=0; chan<AMY_NCHANS; ++chan) {
             //chorus_delay_lines[chan]->max_delay = max_delay;
             amy_global.bus[bus]->chorus.chorus_delay_lines[chan]->fixed_delay = (int)max_delay / 2;

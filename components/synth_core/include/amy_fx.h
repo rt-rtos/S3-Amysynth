@@ -39,6 +39,7 @@ typedef struct {
     int16_t reverb_xover_hz; /* 500..8000 Hz; unset -> AMY 3000 Hz        */
     int16_t chorus_rate;     /* centi-Hz (0.01 Hz); unset -> AMY 0.5 Hz   */
     int16_t chorus_depth;    /* 0..100 (%);  unset -> AMY 0.5             */
+    int16_t chorus_delay;    /* 16..512 samples, sweep 0..N; unset -> AMY 512 */
     /* Bus distortion. Concrete defaults, no sentinels: bus_reset()'s values
      * are known, unlike the factory FX above. */
     uint8_t bus_dist_type;   /* stage mask: bit0 CLIP, bit1 FOLD, bit2 CRUSH;

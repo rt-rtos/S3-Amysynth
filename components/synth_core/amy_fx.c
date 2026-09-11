@@ -45,6 +45,7 @@
     .reverb_xover_hz = FX_PARAM_UNSET, \
     .chorus_rate     = FX_PARAM_UNSET, \
     .chorus_depth    = FX_PARAM_UNSET, \
+    .chorus_delay    = FX_PARAM_UNSET, \
     .bus_dist_type   = 0, \
     .bus_dist_drive  = 1, \
     .bus_dist_bits   = 16, \
@@ -74,6 +75,7 @@ fx_state_t s_fx[FX_BUS_COUNT] = {
         .reverb_xover_hz = FX_PARAM_UNSET,
         .chorus_rate     = FX_PARAM_UNSET,
         .chorus_depth    = FX_PARAM_UNSET,
+        .chorus_delay    = FX_PARAM_UNSET,
         /* Stage off, unity drive, transparent crusher (mirrors bus_reset()).
          * Mix starts dry, diverging from the engine's wet default: at bus
          * scope the wet amount is small and dialed in deliberately. */
@@ -155,6 +157,8 @@ void fx_push_chorus(uint8_t bus)
         e->chorus_lfo_freq = (float)f->chorus_rate / 100.0f;   /* centi-Hz -> Hz */
     if (f->chorus_depth != FX_PARAM_UNSET)
         e->chorus_depth    = (float)f->chorus_depth / 100.0f;
+    if (f->chorus_delay != FX_PARAM_UNSET)
+        e->chorus_max_delay = (float)f->chorus_delay;
     amy_helpers_event_send(e);
 }
 

@@ -78,6 +78,19 @@ flowchart TD
 
 ## Active local edits
 
+### `delay.c` + `amy.c` + `amy.h` — `chorus_max_delay` bounds the chorus sweep (upstream PR candidate)
+
+`delay_line_in_out()` centers the modulated read tap on the line's
+`fixed_delay` and scales the sweep by it, so the delay runs
+`fixed_delay * (1 + mod)` = 0..`max_delay` samples; `config_chorus()` clamps
+`max_delay` to `DELAY_LINE_LEN`. Upstream's fixed-point port of delay.c
+(103337c, 2023-12) had pinned the center to half the line, which left
+`chorus_max_delay` with no effect and every setting sounding like 512.
+`CHORUS_DEFAULT_MAX_DELAY` moves 320 -> 512 so the default output is
+sample-identical to before; the FX menu's `Cho Delay` row is the knob.
+Retire on the sync that carries the upstream PR (either default variant:
+the app pins its own default through `fx_state_t.chorus_delay`).
+
 ### `amy.h` + `amy.c` + `oscillators.c` + `patches.c` + `api.c` — per-osc unison cluster (experimental, dev-only)
 
 An exploratory engine-side unison, kept to settle by measurement whether
