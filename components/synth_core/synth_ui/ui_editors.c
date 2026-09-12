@@ -19,8 +19,8 @@
 #include "filter_scope.h"
 #if CONFIG_FILTER_SCOPE
 #include "amy.h"              /* instrument_get_num_voices, amy_voice_base_osc */
-#include "seq_core_config.h"  /* SEQ_ARP_SYNTH */
 #endif
+#include "seq_core_config.h"  /* SEQ_SWING_MAX, SEQ_ARP_SYNTH */
 #include "seq_clamp.h"
 #include "voice_config.h"  /* shared voice constants incl. envelope bounds */
 #include "esp_log.h"
@@ -177,6 +177,13 @@ static bool s_graph_long_range = false;   /* false = SHORT, true = LONG (auto-sw
  * is committed to the target on close and shown in the topbar right slot. */
 static bool  s_graph_amp_mode = false;
 static float s_graph_amp_edit = 1.0f;   /* scratch 0..1, seeds from target on open */
+/* Swing sub-mode, the second stop on MY_BUTTON_2's cycle. Swing is per LAYER,
+ * so it is offered only on the EG0 page of a melodic row reading the layer's
+ * shared voice block - the same rows the badge marks L. Unlike the amp trim it
+ * has no separate store: the setter is the model, so the scratch exists purely
+ * to throttle and to cancel back to the open-time value. */
+static bool    s_graph_swing_mode = false;
+static uint8_t s_graph_swing_edit = 0;
 static bool  s_graph_env_dirty = false; /* set only when user moves an ADSR point */
 
 /* EG1 filter-env depth (melodic only): scratch octaves, seeded from the row's
@@ -224,6 +231,9 @@ static bool       s_amp_live_applied = false;/* a live amp apply landed       */
 static bool       s_amp_live_pending = false;
 static float      s_graph_amp_open  = 1.0f;  /* amp trim at open (cancel)     */
 static TickType_t s_amp_live_last_apply = 0;
+static bool       s_swing_live_pending = false;
+static uint8_t    s_graph_swing_open = 0;    /* layer swing at open (cancel)  */
+static TickType_t s_swing_live_last_apply = 0;
 
 /* log(1 + GRAPH_LONG_SQUASH): normaliser of the long-range squash curve,
  * cached so the mapping helpers don't recompute it per call. */
@@ -635,6 +645,13 @@ void synth_ui_graph_open_envelope(void)
     }
     s_graph_amp_open = s_graph_amp_edit;   /* cancel restores this value */
 
+    /* Swing scratch: layer-scoped, so it seeds from the row's layer regardless
+     * of target - graph_swing_available() decides whether it is reachable. */
+    s_graph_swing_mode   = false;
+    s_swing_live_pending = false;
+    s_graph_swing_edit   = sequencer_core_get_layer_swing(s_graph_layer);
+    s_graph_swing_open   = s_graph_swing_edit;
+
     graph_seed_from_env(&env);
 
     /* Seed the EG1 filter-env depth scratch (melodic rows + arp). */
@@ -830,6 +847,36 @@ static void graph_amp_live_flush(bool force)
     graph_amp_live_set(s_graph_amp_edit);
 }
 
+/* Does MY_BUTTON_2's cycle offer the swing stop here? Swing is a property of the
+ * layer, so only a melodic row reading the shared block (badge L) may edit it -
+ * from a row on its own block the control would silently reach past what the
+ * badge says the editor is touching. EG1 is the filter page and keeps the sweep
+ * depth in the right slot. */
+static bool graph_swing_available(void)
+{
+    return s_graph_target == GRAPH_TGT_MELODIC && s_graph_eg_index == 0 &&
+           editor_src_is_layer(s_graph_layer, s_graph_track);
+}
+
+/* Same leading-edge/trailing-flush shape as the amp trim, and for the same
+ * reason: sequencer_core_set_layer_swing() re-emits every step of the layer, so
+ * an un-throttled encoder spin would flood the ingest pump with re-emits. */
+static void graph_swing_live_flush(bool force)
+{
+    if (!s_swing_live_pending) return;
+    if (!graph_popup_is_active(&s_graph_popup)) {
+        s_swing_live_pending = false;
+        return;
+    }
+    if (!force && (int32_t)(xTaskGetTickCount() - s_swing_live_last_apply)
+                      < (int32_t)pdMS_TO_TICKS(GRAPH_AMP_LIVE_MS)) {
+        return;
+    }
+    s_swing_live_last_apply = xTaskGetTickCount();
+    s_swing_live_pending = false;
+    sequencer_core_set_layer_swing(s_graph_layer, s_graph_swing_edit);
+}
+
 /* Undo every live push on cancel: amp back to its open value, previewed
  * envelope/depth back to the store - or a full layer reload when a touched
  * melodic row was never authored (only the patch knows its state). */
@@ -839,6 +886,13 @@ static void graph_live_cancel_restore(void)
     if (s_amp_live_applied) {
         graph_amp_live_set(s_graph_amp_open);
         s_amp_live_applied = false;
+    }
+    /* Swing has no scratch store to re-push: the setter IS the model, so the
+     * open-time value going back through it is the whole restore. */
+    s_swing_live_pending = false;
+    if (s_graph_swing_edit != s_graph_swing_open) {
+        s_graph_swing_edit = s_graph_swing_open;
+        sequencer_core_set_layer_swing(s_graph_layer, s_graph_swing_open);
     }
     if (!s_graph_live_env && !s_graph_live_fenv) return;
 
@@ -964,6 +1018,13 @@ static void graph_commit_to_env(void)
     }
     s_graph_amp_mode = false;   /* clear mode so topbar reverts on next open */
 
+    /* Swing rides on the layer, not the target's voice block: flush the last
+     * throttled detent (the setter no-ops when unchanged) and drop the mode. */
+    if (s_graph_target == GRAPH_TGT_MELODIC) {
+        graph_swing_live_flush(true);
+    }
+    s_graph_swing_mode = false;
+
     /* Commit the EG1 depth only if edited. Read-modify-write through the public
      * filter API so the COEF_EG1 push, the EG1 breakpoints, the 0..8 clamp and
      * filter_authored all stay in the engine. Honors the layer/track scope. */
@@ -1049,14 +1110,26 @@ bool synth_ui_graph_toggle_range(void)
     return true;
 }
 
-/* Toggle amp-edit mode (MY_BUTTON_2): the encoder adjusts the target's
- * amplitude trim instead of moving ADSR points. Reset on editor open/close. */
+/* Cycle MY_BUTTON_2's topbar sub-modes: OFF -> AMP -> SWG -> OFF, with the SWG
+ * stop skipped where graph_swing_available() says swing is not this editor's to
+ * touch. In a sub-mode the encoder edits that value instead of moving ADSR
+ * points. Reset on editor open/close. (Name kept: main.c's press-down route and
+ * the header contract both call it.) */
 void synth_ui_graph_toggle_amp_mode(void)
 {
     if (!graph_popup_is_active(&s_graph_popup)) return;
-    s_graph_amp_mode = !s_graph_amp_mode;
+    if (s_graph_amp_mode) {
+        s_graph_amp_mode   = false;
+        s_graph_swing_mode = graph_swing_available();
+    } else if (s_graph_swing_mode) {
+        graph_swing_live_flush(true);
+        s_graph_swing_mode = false;
+    } else {
+        s_graph_amp_mode = true;
+    }
     s_force_redraw = true;
-    ESP_LOGI(TAG, "graph amp mode %s", s_graph_amp_mode ? "ON" : "OFF");
+    ESP_LOGI(TAG, "graph topbar mode -> %s",
+             s_graph_amp_mode ? "AMP" : (s_graph_swing_mode ? "SWG" : "OFF"));
 }
 
 /* Does the bound target expose an EG1 page? The free-running drone never sees
@@ -1092,6 +1165,12 @@ static void graph_toggle_eg_index(void)
 
     if (s_graph_env_dirty) {
         graph_write_points_to_env(s_graph_eg_index);
+    }
+    /* Swing belongs to the EG0 page: leave the sub-mode behind with it, or the
+     * right slot would fight the EG1 sweep-depth readout. */
+    if (s_graph_swing_mode) {
+        graph_swing_live_flush(true);
+        s_graph_swing_mode = false;
     }
 
     s_graph_eg_index = (s_graph_eg_index == 0) ? 1 : 0;
@@ -1221,6 +1300,18 @@ bool synth_ui_graph_handle_encoder(long delta)
 {
     if (!graph_popup_is_active(&s_graph_popup)) return false;
 
+    if (s_graph_swing_mode) {
+        /* Layer swing in 2% steps: fine enough to find the 54-58% pocket, and
+         * the whole 0..66 range is still a third of a turn. */
+        int v = (int)s_graph_swing_edit + (int)delta * 2;
+        v = SEQ_CLAMP_INT(v, 0, SEQ_SWING_MAX);
+        s_graph_swing_edit = (uint8_t)v;
+        s_swing_live_pending = true;
+        graph_swing_live_flush(false);
+        s_force_redraw = true;
+        return true;
+    }
+
     if (s_graph_amp_mode) {
         if (s_graph_eg_index == 1 && graph_target_has_eg1_depth()) {
             /* EG1->cutoff depth, 0.25 oct/detent. Bipolar -8..+8; negative =
@@ -1267,8 +1358,13 @@ bool synth_ui_graph_handle_button(bool is_long)
      * to the ADSR points - the same enter/exit symmetry every other editor
      * has. Without this, the press fell through to the popup widget and
      * toggled a hidden cursor flag while the sub-mode stayed stuck on. */
-    if (s_graph_amp_mode) {
-        synth_ui_graph_toggle_amp_mode();
+    if (s_graph_amp_mode || s_graph_swing_mode) {
+        /* Exit, never advance: the press is the sub-mode's own confirm, so it
+         * must not land on the next stop of MY_BUTTON_2's cycle. */
+        if (s_graph_swing_mode) graph_swing_live_flush(true);
+        s_graph_amp_mode   = false;
+        s_graph_swing_mode = false;
+        s_force_redraw = true;
         return true;
     }
 
@@ -1939,6 +2035,7 @@ bool synth_ui_filter_close_commit(void)
 void synth_ui_editors_live_service(void)
 {
     graph_amp_live_flush(false);
+    graph_swing_live_flush(false);
 
 #if CONFIG_FILTER_SCOPE
     /* Drain the live band once per UI frame, before the view signature is
@@ -2631,6 +2728,8 @@ uint32_t graph_view_signature(void)
     h = fnv1a_bytes(h, &s_graph_track, sizeof(s_graph_track));
     h = fnv1a_bytes(h, &s_graph_amp_mode, sizeof(s_graph_amp_mode));
     h = fnv1a_bytes(h, &s_graph_amp_edit, sizeof(s_graph_amp_edit));
+    h = fnv1a_bytes(h, &s_graph_swing_mode, sizeof(s_graph_swing_mode));
+    h = fnv1a_bytes(h, &s_graph_swing_edit, sizeof(s_graph_swing_edit));
     h = fnv1a_bytes(h, &s_graph_fenv_edit, sizeof(s_graph_fenv_edit));
     h = fnv1a_bytes(h, &s_graph_eg_index, sizeof(s_graph_eg_index));
     h = fnv1a_bytes(h, &s_graph_eg_type_disp, sizeof(s_graph_eg_type_disp));
@@ -2686,11 +2785,12 @@ static void graph_draw_topbar(u8g2_t *u8g2)
     uint8_t c = s_graph_popup.cursor;
     /* During the flash window the full type name takes the shared band. */
     bool type_flash = graph_type_flash_active();
-    bool mid_shown = (!type_flash && !s_graph_amp_mode && n >= 4 && c >= 1 && c <= 3);
+    bool mid_shown = (!type_flash && !s_graph_amp_mode && !s_graph_swing_mode &&
+                      n >= 4 && c >= 1 && c <= 3);
 
-    /* Right: amp indicator in amp mode. The melodic EG1 page shows the signed
-     * sweep depth instead whenever the middle readout is idle, so the
-     * shoulder-button polarity flip has a visible readout. */
+    /* Right: amp indicator in amp mode, layer swing in swing mode. The melodic
+     * EG1 page shows the signed sweep depth instead whenever the middle readout
+     * is idle, so the shoulder-button polarity flip has a visible readout. */
     uint8_t rw = 0;
     bool eg1_fenv = (s_graph_eg_index == 1 && graph_target_has_eg1_depth());
     if (type_flash) {
@@ -2702,6 +2802,12 @@ static void graph_draw_topbar(u8g2_t *u8g2)
         u8g2_SetDrawColor(u8g2, 0);
         u8g2_DrawStr(u8g2, (uint8_t)(128 - rw - 2), 8, tname);
         u8g2_SetDrawColor(u8g2, 1);
+    } else if (s_graph_swing_mode) {
+        char swg_buf[10];
+        snprintf(swg_buf, sizeof(swg_buf), "SWG%u%%", (unsigned)s_graph_swing_edit);
+        u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
+        rw = (uint8_t)u8g2_GetStrWidth(u8g2, swg_buf);
+        u8g2_DrawStr(u8g2, (uint8_t)(128 - rw - 2), 8, swg_buf);
     } else if (s_graph_amp_mode || (eg1_fenv && !mid_shown)) {
         char amp_buf[10];
         if (eg1_fenv) {

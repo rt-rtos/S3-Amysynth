@@ -1,12 +1,16 @@
 #include "display_stepedit.h"
 #include <stdio.h>
 
-/* Yellow header (rows 0..15) carries the STEP title; the 5 fixed fields fill
- * the blue region starting at y=24 so no row crosses the 16px seam. 9 px row
- * pitch fits all five baselines (24..60) with descent room inside 64. */
+/* Yellow header (rows 0..15) carries the STEP title; the visible field window
+ * fills the blue region starting at y=24 so no row crosses the 16px seam. 9 px
+ * row pitch fits SE_VISIBLE_ROWS baselines (24..60) with descent room inside
+ * 64 - which is what caps the window at five of the eight fields. */
 #define SE_TITLE_Y   8
 #define SE_ROW_H     9
 #define SE_FIRST_ROW 24
+/* Scroll cues share the cursor marker's 3 px size, parked clear of the widest
+ * value string. */
+#define SE_CUE_X     124
 
 /* Mirrors display_trackopts.c's to_draw_row select/adjust phases: triangle
  * marker when merely selected (turn navigates), box+invert when in adjust
@@ -32,6 +36,51 @@ static void se_draw_row(u8g2_t *u8g2, uint8_t y, const char *label,
     }
 }
 
+/* One field's label and value text. Signed fields print an explicit + and a
+ * bare 0 when neutral, so "off" reads differently from a set value. */
+static void se_field_text(const stepedit_view_t *view, uint8_t field,
+                          const char **label_out, char *value_out, size_t value_sz)
+{
+    switch (field) {
+        case SE_FIELD_PITCH:
+            *label_out = "Pitch";
+            if (view->pitch_ofs != 0) snprintf(value_out, value_sz, "%+d", (int)view->pitch_ofs);
+            else                      snprintf(value_out, value_sz, "0");
+            break;
+        case SE_FIELD_PROB:
+            *label_out = "Prob";
+            snprintf(value_out, value_sz, "%u%%", (unsigned)view->prob);
+            break;
+        case SE_FIELD_RATCHET:
+            *label_out = "Ratchet";
+            snprintf(value_out, value_sz, "%u", (unsigned)view->ratchet);
+            break;
+        case SE_FIELD_EVERY:
+            *label_out = "Every";
+            snprintf(value_out, value_sz, "%u", (unsigned)view->every);
+            break;
+        case SE_FIELD_PREV:
+            *label_out = "Prev";
+            snprintf(value_out, value_sz, "%s", view->prev ? "ON" : "OFF");
+            break;
+        case SE_FIELD_VEL:
+            *label_out = "Vel";
+            if (view->vel_adj != 0) snprintf(value_out, value_sz, "%+d", (int)view->vel_adj);
+            else                    snprintf(value_out, value_sz, "0");
+            break;
+        case SE_FIELD_NUDGE:
+            *label_out = "Nudge";
+            if (view->nudge != 0) snprintf(value_out, value_sz, "%+d", (int)view->nudge);
+            else                  snprintf(value_out, value_sz, "0");
+            break;
+        default:
+            *label_out = "Taper";
+            if (view->taper != 0) snprintf(value_out, value_sz, "%+d%%", (int)view->taper);
+            else                  snprintf(value_out, value_sz, "0");
+            break;
+    }
+}
+
 void display_stepedit_draw_frame(u8g2_t *u8g2, const stepedit_view_t *view)
 {
     u8g2_ClearBuffer(u8g2);
@@ -47,30 +96,32 @@ void display_stepedit_draw_frame(u8g2_t *u8g2, const stepedit_view_t *view)
     u8g2_DrawStr(u8g2, 2, SE_TITLE_Y, title);
     u8g2_DrawHLine(u8g2, 0, 15, 128);
 
+    uint8_t first = view->first_row;
+    if (first > SE_FIELD_COUNT - SE_VISIBLE_ROWS) first = SE_FIELD_COUNT - SE_VISIBLE_ROWS;
+
     uint8_t y = SE_FIRST_ROW;
     char val[8];
 
-    /* Signed with explicit +, bare 0 when neutral. */
-    if (view->pitch_ofs != 0)
-        snprintf(val, sizeof(val), "%+d", (int)view->pitch_ofs);
-    else
-        snprintf(val, sizeof(val), "0");
-    se_draw_row(u8g2, y, "Pitch", val, view->field_cursor == SE_FIELD_PITCH, view->editing);
-    y = (uint8_t)(y + SE_ROW_H);
+    for (uint8_t i = 0; i < SE_VISIBLE_ROWS; i++) {
+        uint8_t field = (uint8_t)(first + i);
+        const char *label = "";
+        se_field_text(view, field, &label, val, sizeof(val));
+        /* Prev is click-toggled and has no adjust phase - never inverted. */
+        bool editing = view->editing && field != SE_FIELD_PREV;
+        se_draw_row(u8g2, y, label, val, view->field_cursor == field, editing);
+        y = (uint8_t)(y + SE_ROW_H);
+    }
 
-    snprintf(val, sizeof(val), "%u%%", (unsigned)view->prob);
-    se_draw_row(u8g2, y, "Prob", val, view->field_cursor == SE_FIELD_PROB, view->editing);
-    y = (uint8_t)(y + SE_ROW_H);
-
-    snprintf(val, sizeof(val), "%u", (unsigned)view->ratchet);
-    se_draw_row(u8g2, y, "Ratchet", val, view->field_cursor == SE_FIELD_RATCHET, view->editing);
-    y = (uint8_t)(y + SE_ROW_H);
-
-    snprintf(val, sizeof(val), "%u", (unsigned)view->every);
-    se_draw_row(u8g2, y, "Every", val, view->field_cursor == SE_FIELD_EVERY, view->editing);
-    y = (uint8_t)(y + SE_ROW_H);
-
-    /* Prev is click-toggled and has no adjust phase - never inverted. */
-    se_draw_row(u8g2, y, "Prev", view->prev ? "ON" : "OFF",
-                view->field_cursor == SE_FIELD_PREV, false);
+    /* Scroll cues: which way the hidden fields lie, on the first/last row. */
+    if (first > 0) {
+        u8g2_DrawTriangle(u8g2, SE_CUE_X,     (int16_t)(SE_FIRST_ROW - 2),
+                                SE_CUE_X + 3, (int16_t)(SE_FIRST_ROW - 2),
+                                SE_CUE_X + 1, (int16_t)(SE_FIRST_ROW - 7));
+    }
+    if (first + SE_VISIBLE_ROWS < SE_FIELD_COUNT) {
+        int16_t ly = (int16_t)(SE_FIRST_ROW + (SE_VISIBLE_ROWS - 1) * SE_ROW_H);
+        u8g2_DrawTriangle(u8g2, SE_CUE_X,     (int16_t)(ly - 7),
+                                SE_CUE_X + 3, (int16_t)(ly - 7),
+                                SE_CUE_X + 1, (int16_t)(ly - 2));
+    }
 }

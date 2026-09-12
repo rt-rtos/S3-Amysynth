@@ -508,11 +508,20 @@ bool sequencer_core_export_layer(uint8_t layer_idx, seq_layer_t *out);
 
 /* Overwrite the layer's persistable fields from *src, re-push
  * patches/envelopes/filters/LFO, and resync scheduled steps. Runtime-owned
- * fields (synth_id, num_tracks) keep their live values; step_page resets to 0.
+ * fields (synth_id, num_tracks) keep their live values.
  * Applier-task only. */
 bool sequencer_core_import_layer(uint8_t layer_idx, const seq_layer_t *src);
 
 /* ── Per-layer step / note control ── */
+/* Resize a layer's loop to 16 or 32 steps. Growing copies each track's first
+ * half over its second so the layer keeps sounding the same until edited;
+ * shrinking cancels the upper half's schedule and releases voices it may be
+ * holding, but keeps its data for a later grow. Every step is re-emitted,
+ * since the loop period changed; a playing layer's playhead may jump once.
+ * False for an out-of-range layer or a count other than 16/32.
+ * Call context: Core 0 input/UI path only; events go through the ingest pump,
+ * never call from the render task. */
+bool    sequencer_core_set_layer_steps(uint8_t layer_idx, uint8_t num_steps);
 void    sequencer_core_set_step(uint8_t layer_idx, uint8_t track,
                                 uint8_t step, bool state);
 /* Empty one track's pattern: every step off, every per-step decoration and
@@ -554,6 +563,28 @@ void    sequencer_core_set_step_pitch_ofs(uint8_t layer_idx, uint8_t track,
                                           uint8_t step, int8_t ofs);
 int8_t  sequencer_core_get_step_pitch_ofs(uint8_t layer_idx, uint8_t track,
                                           uint8_t step);
+/* Per-step velocity offset in signed percentage points of full scale, clamped
+ * to +-SEQ_STEP_VEL_ADJ_MAX; 0 is neutral. Added after the track's amp_trim on
+ * both emit paths, the sum clamped to silence..full. Re-emits the step. */
+void    sequencer_core_set_step_velocity_adj(uint8_t layer_idx, uint8_t track,
+                                             uint8_t step, int8_t pts);
+int8_t  sequencer_core_get_step_velocity_adj(uint8_t layer_idx, uint8_t track,
+                                             uint8_t step);
+/* Per-step micro-timing in signed sequencer ticks, clamped to
+ * +-SEQ_STEP_NUDGE_MAX; 0 is on-grid. Folded into the step's absolute tick on
+ * the plain and decorated paths alike. Re-emits the step. */
+void    sequencer_core_set_step_nudge(uint8_t layer_idx, uint8_t track,
+                                      uint8_t step, int8_t ticks);
+int8_t  sequencer_core_get_step_nudge(uint8_t layer_idx, uint8_t track,
+                                      uint8_t step);
+/* Ratchet velocity taper in signed percent per sub-hit, clamped to
+ * +-SEQ_STEP_TAPER_MAX; 0 is flat, positive decays toward the tail, negative
+ * ramps up. Only the decorated path reads it (a ratchet of 1 hears nothing),
+ * but the setter re-emits the step like its neighbours. */
+void    sequencer_core_set_step_ratchet_taper(uint8_t layer_idx, uint8_t track,
+                                              uint8_t step, int8_t pct);
+int8_t  sequencer_core_get_step_ratchet_taper(uint8_t layer_idx, uint8_t track,
+                                              uint8_t step);
 void    sequencer_core_set_step_prob(uint8_t layer_idx, uint8_t track,
                                      uint8_t step, uint8_t prob_pct);
 uint8_t sequencer_core_get_step_prob(uint8_t layer_idx, uint8_t track,
@@ -666,7 +697,8 @@ seq_repeat_rate_t sequencer_core_get_track_repeat_rate(uint8_t layer_idx,
 /* ── Per-layer swing / shuffle ────────────────────────────────────────────
  * Delays odd 16th-steps by swing_pct% of one step (0..SEQ_SWING_MAX), whole
  * layer, 0 = straight. Re-emits the layer so AMY reschedules every step at its
- * swung tick. Mirrors drone_set_swing. Engine + API only; no UI wiring yet. */
+ * swung tick; applies to plain and decorated steps alike. Mirrors
+ * drone_set_swing. */
 void    sequencer_core_set_layer_swing(uint8_t layer_idx, uint8_t swing_pct);
 uint8_t sequencer_core_get_layer_swing(uint8_t layer_idx);
 

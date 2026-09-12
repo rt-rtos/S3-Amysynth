@@ -382,7 +382,6 @@ uint8_t synth_ui_add_layer(seq_layer_type_t type, uint8_t num_steps)
     layer->type       = type;
     layer->num_steps  = (num_steps == SEQ_MAX_STEPS) ? SEQ_MAX_STEPS : SEQ_STEPS;
     layer->num_tracks = SEQ_TRACKS;
-    layer->step_page  = 0;
 
     if (type == SEQ_LAYER_MELODIC) {
         layer->patch = sequencer_core_get_layer_patch(li);
@@ -479,13 +478,22 @@ void synth_ui_handle_encoder(long delta)
                 (uint8_t)((seq_state.selected_track + 1) % SEQ_TRACKS);
         }
         seq_state.selected_step = (uint8_t)new_step;
-
-        /* 32-step layers show 16 steps per page: select the page holding the
-         * new step so the cursor stays visible. */
-        if (num_steps == SEQ_MAX_STEPS) {
-            seq_state.layers[li].step_page = (uint8_t)(new_step / 16);
-        }
     }
+}
+
+bool synth_ui_set_layer_steps(uint8_t li, uint8_t num_steps)
+{
+    if (li >= seq_state.num_layers) return false;
+    seq_layer_t *layer = &seq_state.layers[li];
+    if (layer->num_steps == num_steps) return true;
+    if (!sequencer_core_set_layer_steps(li, num_steps)) return false;
+    /* Mirror what the core did to its own copy. */
+    if (num_steps == SEQ_MAX_STEPS) {
+        for (uint8_t t = 0; t < SEQ_TRACKS; t++) seq_layer_copy_first_half(layer, t);
+    }
+    layer->num_steps = num_steps;
+    if (seq_state.selected_step >= num_steps) seq_state.selected_step = (uint8_t)(num_steps - 1);
+    return true;
 }
 
 /* Toggle the grid step under the cursor and mirror it to the core. Gated on

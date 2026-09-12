@@ -48,11 +48,30 @@
 /* A musical bar = 16 steps. Fixed regardless of layer length so the bar
  * counter and repeat-rate are independent of which layers are active. */
 #define SEQ_TICKS_PER_BAR     (16u * SEQ_TICKS_PER_STEP)
-/* Per-step micro-timing range in sequencer ticks, folded in only at the
- * step->absolute-tick conversion in sequencer_emit_step(). +-6 is half a step -
- * a strong but musical push/drag, safely below the smallest loop period. A
- * chosen range, not a spec; the step_nudge setter clamps to +-this. */
+/* Per-step micro-timing range in sequencer ticks, folded in at the
+ * step->absolute-tick conversion on both emit paths (sequencer_emit_step() and
+ * trig_schedule_ratchets()). +-6 is half a step - a strong but musical
+ * push/drag, safely below the smallest loop period. A chosen range, not a
+ * spec; the step_nudge setter clamps to +-this. */
 #define SEQ_STEP_NUDGE_MAX    6
+/* Per-step velocity offset range in signed percentage points of full scale,
+ * added after the track's amp_trim on both emit paths; the sum is clamped to
+ * 0..1 there, so +-100 spans silence to full without the setter needing a
+ * wider range. */
+#define SEQ_STEP_VEL_ADJ_MAX  100
+/* Ratchet taper range: percent of full velocity removed per sub-hit, so sub-hit
+ * k scales by (1 - taper*k%). Positive decays toward the tail, negative ramps
+ * up; +-100 lets the second sub-hit already reach silence or full. */
+#define SEQ_STEP_TAPER_MAX    100
+/* How far ahead of the sequencer clock sequencer_core_service_tick() evaluates
+ * decorated steps, so an early nudge can be honoured: the step is detected
+ * when the advanced clock crosses its grid boundary and its sub-hits are
+ * scheduled at the absolute grid tick + 1 + swing + nudge. Detection lags the
+ * boundary by r ticks (0 or 1 per block below ~230 BPM, 2 after a skipped
+ * tick), so the earliest fire tick is now + LOOKAHEAD - r + 1 - NUDGE_MAX,
+ * which stays >= now + 1 for r <= 2 - the same pump deadline the old
+ * "fire at now + 1" gave. */
+#define SEQ_TRIG_LOOKAHEAD_TICKS (SEQ_STEP_NUDGE_MAX + 2)
 /* Tempo-synced LFO frequency ceilings. NATIVE keeps AMY-carrier LFOs
  * sub-audible - fast rates at high BPM would otherwise cross 20 Hz into
  * AM/sideband territory. SW also protects the 20 Hz software stepper: under ~4

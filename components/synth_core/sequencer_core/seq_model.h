@@ -419,7 +419,6 @@ typedef struct {
                                         no UI writer yet.                       */
     uint32_t synth_flags;            /* shared flags across the layer's rows  */
     uint8_t  num_voices;             /* per-synth voice count                 */
-    uint8_t  step_page;                              /* display page 0|1 (32-step) */
 
     /* ── Per-step probability / ratchet / conditional trig ──
      * A step with prob==100 && ratchet==1 && every<=1 && !prev is "plain" and
@@ -445,10 +444,32 @@ typedef struct {
      * 0 is each field's neutral value (on-grid, unchanged velocity, flat
      * ratchet), so add_layer's memset suffices - unlike step_prob/step_ratchet,
      * whose neutral values are 100/1 and must be initialised explicitly. */
-    int8_t   step_nudge[SEQ_TRACKS][SEQ_MAX_STEPS];        /* signed ticks, +-SEQ_STEP_NUDGE_MAX; plain-step only */
+    int8_t   step_nudge[SEQ_TRACKS][SEQ_MAX_STEPS];        /* signed ticks, +-SEQ_STEP_NUDGE_MAX, both emit paths */
     int8_t   step_velocity_adj[SEQ_TRACKS][SEQ_MAX_STEPS]; /* signed percentage points added to velocity (0=none) */
     int8_t   step_ratchet_taper[SEQ_TRACKS][SEQ_MAX_STEPS];/* %-per-sub-hit velocity decay across a ratchet (0=flat) */
 } seq_layer_t;
+
+/* Copy one track's first 16 steps over its second 16 (every per-step array),
+ * so a layer grown from 16 to 32 steps keeps sounding as it did until edited.
+ * Pure data; the caller re-emits the schedule. */
+static inline void seq_layer_copy_first_half(seq_layer_t *layer, uint8_t track)
+{
+    for (uint8_t s = 0; s < SEQ_STEPS; s++) {
+        uint8_t d = (uint8_t)(s + SEQ_STEPS);
+        layer->grid[track][d]               = layer->grid[track][s];
+        layer->step_note[track][d]          = layer->step_note[track][s];
+        layer->step_pitch_ofs[track][d]     = layer->step_pitch_ofs[track][s];
+        layer->step_prob[track][d]          = layer->step_prob[track][s];
+        layer->step_ratchet[track][d]       = layer->step_ratchet[track][s];
+        layer->step_every[track][d]         = layer->step_every[track][s];
+        layer->step_prev[track][d]          = layer->step_prev[track][s];
+        layer->step_transform[track][d]     = layer->step_transform[track][s];
+        layer->step_quant_bypass[track][d]  = layer->step_quant_bypass[track][s];
+        layer->step_nudge[track][d]         = layer->step_nudge[track][s];
+        layer->step_velocity_adj[track][d]  = layer->step_velocity_adj[track][s];
+        layer->step_ratchet_taper[track][d] = layer->step_ratchet_taper[track][s];
+    }
+}
 
 #ifdef __cplusplus
 }

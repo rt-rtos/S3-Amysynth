@@ -44,6 +44,20 @@ static inline uint8_t seq_playhead_step(const seq_layer_t *layer, uint32_t ticks
     return (uint8_t)((ticks % bar_ticks) / SEQ_TICKS_PER_STEP);
 }
 
+/* Swing: delay ODD 16th-steps by swing_pct% of one step so off-beats land late.
+ * Pure function of step index + swing_pct, expressed in ticks, so the schedule
+ * stays beat-locked and tempo-independent (same as the drone stutter-grid swing
+ * in drone_core.c). Integer math only: shared by the Core-0 plain emit path
+ * (sequencer_emit_step) and the render-task trig service.
+ * swing_pct is clamped to SEQ_SWING_MAX (<100), so the offset is always a
+ * fraction of one step and never crosses into the next. */
+static inline uint32_t sequencer_step_swing_offset(const seq_layer_t *layer,
+                                                   uint8_t step)
+{
+    if ((step & 1u) == 0u || layer->swing_pct == 0) return 0;
+    return ((uint32_t)SEQ_TICKS_PER_STEP * (uint32_t)layer->swing_pct) / 100u;
+}
+
 /* Note-hold in ticks for the plain (non-subdivided) trig of `step`. Off-beat
  * 8ths are shortened a touch so accented downbeats feel legato while
  * in-between notes detach. Only ever shortens, so the note-off always lands
@@ -279,9 +293,11 @@ void sequencer_core_trig_reset_all(void);            /* called on layer add/dele
 void sequencer_core_trig_clear_track_chord(uint8_t layer_idx, uint8_t track);
 /* One-shot schedule step_ratchet sub-hits for a decorated fire: velocity,
  * pitch/chord/transform resolve, tag emission via amy_helpers_note_send().
+ * grid_tick is the step's absolute grid boundary; sub-hit k lands at
+ * grid_tick + 1 + swing + nudge + k*sub_ticks, the same law as the plain path.
  * MUST NOT be called from the render task - see seq_trig_pump.c. */
 void trig_schedule_ratchets(uint8_t layer_idx, const seq_layer_t *layer,
-                            uint8_t track, uint8_t step, uint32_t now_ticks);
+                            uint8_t track, uint8_t step, uint32_t grid_tick);
 
 /* From seq_trig_pump.c - moves trig_schedule_ratchets() off the render task.
  * sequencer_core_service_tick() runs on amy_usb_render_task and must never
@@ -293,4 +309,4 @@ void trig_schedule_ratchets(uint8_t layer_idx, const seq_layer_t *layer,
  * unchanged - only the AMY-facing emission tail moves. */
 void sequencer_core_trig_pump_init(void);
 void sequencer_core_trig_enqueue(uint8_t layer_idx, uint8_t track, uint8_t step,
-                                 uint32_t now_ticks);
+                                 uint32_t grid_tick);

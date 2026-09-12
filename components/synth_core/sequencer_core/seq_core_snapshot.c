@@ -45,7 +45,6 @@ bool sequencer_core_import_layer(uint8_t layer_idx, const seq_layer_t *src)
     *dst = *src;
     memcpy(dst->synth_id, synth_id, sizeof synth_id);
     dst->num_tracks = num_tracks;
-    dst->step_page  = 0;
 
     /* Rebuild the per-track source notes from the loaded resolved notes.
      * s_track_source_note is not persisted, and keeping the pre-load values

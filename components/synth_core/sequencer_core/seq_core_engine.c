@@ -225,19 +225,6 @@ uint8_t seq_track_fire_notes(const seq_layer_t *layer, uint8_t stored_note,
                               sequencer_chord_transpose(layer), out);
 }
 
-/* Swing: delay ODD 16th-steps by swing_pct% of one step so off-beats land late.
- * Pure function of step index + swing_pct, expressed in ticks, so the schedule
- * stays beat-locked and tempo-independent (same as the drone stutter-grid swing
- * in drone_core.c). Integer math only - this is the Core-0 emit path.
- * swing_pct is clamped to SEQ_SWING_MAX (<100), so the offset is always a
- * fraction of one step and never crosses into the next. */
-static inline uint32_t sequencer_step_swing_offset(const seq_layer_t *layer,
-                                                   uint8_t step)
-{
-    if ((step & 1u) == 0u || layer->swing_pct == 0) return 0;
-    return ((uint32_t)SEQ_TICKS_PER_STEP * (uint32_t)layer->swing_pct) / 100u;
-}
-
 float sequencer_step_velocity(const seq_layer_t *layer,
                               uint8_t track, uint8_t step)
 {
@@ -593,6 +580,35 @@ void sequencer_core_set_step(uint8_t layer_idx, uint8_t track,
     if (layer->grid[track][step] == state) return;
     layer->grid[track][step] = state;
     sequencer_emit_step(layer_idx, track, step);
+}
+
+bool sequencer_core_set_layer_steps(uint8_t layer_idx, uint8_t num_steps)
+{
+    if (layer_idx >= s_num_layers) return false;
+    if (num_steps != SEQ_STEPS && num_steps != SEQ_MAX_STEPS) return false;
+    seq_layer_t *layer = &s_layers[layer_idx];
+    if (layer->num_steps == num_steps) return true;
+
+    if (num_steps == SEQ_MAX_STEPS) {
+        for (uint8_t t = 0; t < layer->num_tracks; t++) {
+            seq_layer_copy_first_half(layer, t);
+        }
+    } else {
+        for (uint8_t t = 0; t < layer->num_tracks; t++) {
+            bool sounding = false;
+            for (uint8_t s = SEQ_STEPS; s < SEQ_MAX_STEPS; s++) {
+                sounding |= layer->grid[t][s];
+                sequencer_emit_clear_tag(seq_tag_on(layer_idx, t, s));
+                sequencer_emit_clear_tag(seq_tag_off(layer_idx, t, s));
+            }
+            /* A note held by an upper-half step loses its off tag with it. */
+            if (sounding) sequencer_kill_synth_voices(layer->synth_id[t]);
+        }
+    }
+    layer->num_steps = num_steps;
+    /* The loop period is part of every step's schedule: re-emit them all. */
+    sequencer_resync_layer(layer_idx);
+    return true;
 }
 
 void sequencer_core_clear_track_pattern(uint8_t layer_idx, uint8_t track)

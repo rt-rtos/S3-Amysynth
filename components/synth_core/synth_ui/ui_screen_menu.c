@@ -57,6 +57,7 @@ typedef enum {
     MI_DRUM_ENGINE,
     MI_ADD_LAYER,
     MI_REMOVE_LAYER,
+    MI_LAYER_STEPS,       /* active layer: 16 or 32 steps */
     MI_CHORDS,
     MI_BOUNCE,
     MI_PROGGEN,
@@ -286,6 +287,10 @@ void menu_build_view(menu_view_t *out)
                      "L%u", (unsigned)(li + 1));
         else
             snprintf(s_menu_items[MI_REMOVE_LAYER].value, MENU_VALUE_LEN, "--");
+        snprintf(s_menu_items[MI_LAYER_STEPS].label, MENU_LABEL_LEN, "L%u Steps",
+                 (unsigned)(li + 1));
+        snprintf(s_menu_items[MI_LAYER_STEPS].value, MENU_VALUE_LEN, "%u",
+                 (unsigned)seq_state.layers[li].num_steps);
     }
 
     /* Chord presets live on their own page (ui_screen_chords.c). */
@@ -389,6 +394,7 @@ static bool menu_item_is_value(menu_item_id_t id)
         case MI_DRONE_ENABLED:
         case MI_STUTTER_ENABLED:
         case MI_DRUM_ENGINE:
+        case MI_LAYER_STEPS:
         case MI_VOLUME:
             return true;
         default:
@@ -451,6 +457,13 @@ static void menu_edit_value(menu_item_id_t id, int delta)
                             sequencer_core_get_drum_pcm_preset(i, t);
                     }
                 }
+            }
+            break;
+        case MI_LAYER_STEPS:
+            if (dir != 0) {
+                uint8_t li  = seq_state.active_layer_idx;
+                uint8_t cur = seq_state.layers[li].num_steps;
+                synth_ui_set_layer_steps(li, (cur == SEQ_MAX_STEPS) ? SEQ_STEPS : SEQ_MAX_STEPS);
             }
             break;
         case MI_VOLUME: {

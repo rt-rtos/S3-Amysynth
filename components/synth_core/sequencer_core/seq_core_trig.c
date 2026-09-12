@@ -209,7 +209,7 @@ static bool trig_roll_probability(uint8_t prob_pct)
  * amy_helpers_note_send(), which asserts if called from the render task and
  * would block that task even if it didn't. */
 void trig_schedule_ratchets(uint8_t layer_idx, const seq_layer_t *layer,
-                            uint8_t track, uint8_t step, uint32_t now_ticks)
+                            uint8_t track, uint8_t step, uint32_t grid_tick)
 {
     uint8_t n = layer->step_ratchet[track][step];
     n = SEQ_CLAMP_U8(n, 1, SEQ_MAX_RATCHET);
@@ -276,11 +276,17 @@ void trig_schedule_ratchets(uint8_t layer_idx, const seq_layer_t *layer,
      * positive decays toward the tail, negative ramps up; k==0 is always
      * full velocity. */
     int8_t taper = layer->step_ratchet_taper[track][step];
+    /* Same tick law as sequencer_emit_step(): grid boundary + 1, swung and
+     * nudged. The lookahead in sequencer_core_service_tick() guarantees this
+     * base is still ahead of the sequencer clock for the earliest nudge. */
+    int32_t base = (int32_t)grid_tick + 1
+                 + (int32_t)sequencer_step_swing_offset(layer, step)
+                 + (int32_t)layer->step_nudge[track][step];
     for (uint8_t k = 0; k < n; k++) {
         float scale = 1.0f - (float)taper * 0.01f * (float)k;
         scale = SEQ_CLAMP_F32(scale, 0.0f, 1.0f);
         float v = velocity * scale;
-        uint32_t tick_on  = now_ticks + 1u + (uint32_t)k * sub_ticks;
+        uint32_t tick_on  = (uint32_t)base + (uint32_t)k * sub_ticks;
         uint32_t tick_off = tick_on + gate;
         amy_helpers_note_send(synth, (float)tones[0], v,
                             ratchet_on_tag(layer_idx, track, k), tick_on, 0);
@@ -306,11 +312,12 @@ void sequencer_core_service_tick(void)
      * engine tolerates skipped ticks - trig_reset_all runs after the edit - so
      * a dropped tick is inaudible. */
     if (s_layers_mutating) return;
-    uint32_t now_ticks = sequencer_ticks();
-    /* Loop-bounce freeze: past the horizon nothing new fires, matching the
-     * periodic entries AMY holds back. Evaluation continues so PREV/condition
-     * state stays coherent for the unfreeze. */
-    bool frozen = seq_freeze_blocks(now_ticks);
+    /* Decorated steps are evaluated on a clock run SEQ_TRIG_LOOKAHEAD_TICKS
+     * ahead of the sequencer, so a step can be scheduled at its absolute grid
+     * tick plus swing plus a negative nudge and still land in the future.
+     * Everything below - edge detection, loop count, conditions, repeat-rate
+     * window, mute/solo - is consistent on this one advanced clock. */
+    uint32_t eval_ticks = sequencer_ticks() + SEQ_TRIG_LOOKAHEAD_TICKS;
 
     for (uint8_t li = 0; li < s_num_layers; li++) {
         seq_layer_t *layer = &s_layers[li];
@@ -318,13 +325,16 @@ void sequencer_core_service_tick(void)
          * derivation goes through the shared helper. */
         uint32_t bar_ticks = (uint32_t)layer->num_steps * SEQ_TICKS_PER_STEP;
         if (bar_ticks == 0) continue;
-        uint8_t cur_step = seq_playhead_step(layer, now_ticks);
+        uint8_t cur_step = seq_playhead_step(layer, eval_ticks);
         if (cur_step == s_layer_last_step[li]) continue;  /* still mid-step: O(1) exit */
 
         if (cur_step == 0 && s_layer_last_step[li] != 0xFF) {
             s_layer_loop_count[li]++;
         }
         s_layer_last_step[li] = cur_step;
+        /* Absolute tick of this step's grid boundary: the fire law needs the
+         * boundary, not the (slightly later) detection tick. */
+        uint32_t grid_tick = eval_ticks - ((eval_ticks % bar_ticks) % SEQ_TICKS_PER_STEP);
 
         for (uint8_t tr = 0; tr < layer->num_tracks; tr++) {
             bool on        = layer->grid[tr][cur_step];
@@ -346,7 +356,16 @@ void sequencer_core_service_tick(void)
                  * condition/probability state keeps evaluating every bar. */
                 uint32_t rr = (layer->repeat_rate[tr] >= SEQ_REPEAT_2)
                               ? (uint32_t)layer->repeat_rate[tr] : 1u;
-                bool rr_bar = ((now_ticks / bar_ticks) % rr) == 0;
+                bool rr_bar = ((eval_ticks / bar_ticks) % rr) == 0;
+                /* Loop-bounce freeze: past the horizon nothing new fires,
+                 * matching the periodic entries AMY holds back. Judged at the
+                 * k==0 fire tick (swung and nudged), not the detection tick.
+                 * Evaluation continues so PREV/condition state stays coherent
+                 * for the unfreeze. */
+                int32_t fire_tick = (int32_t)grid_tick + 1
+                                  + (int32_t)sequencer_step_swing_offset(layer, cur_step)
+                                  + (int32_t)layer->step_nudge[tr][cur_step];
+                bool frozen = seq_freeze_blocks((uint32_t)fire_tick);
                 /* Mute/solo silences output only: fire and s_track_last_played
                  * keep evaluating, so a track resumes its rhythmic position
                  * seamlessly on unmute instead of freezing. */
@@ -358,7 +377,7 @@ void sequencer_core_service_tick(void)
                      * descriptor to the ingest pump's urgent source instead
                      * (seq_trig_pump.c); the non-blocking enqueue + doorbell
                      * is the render task's entire touch on this path. */
-                    sequencer_core_trig_enqueue(li, tr, cur_step, now_ticks);
+                    sequencer_core_trig_enqueue(li, tr, cur_step, grid_tick);
                 }
             }
             s_track_last_played[li][tr] = fire;
@@ -435,6 +454,69 @@ int8_t sequencer_core_get_step_pitch_ofs(uint8_t layer_idx, uint8_t track, uint8
     const seq_layer_t *layer = &s_layers[layer_idx];
     if (track >= layer->num_tracks || step >= layer->num_steps) return 0;
     return layer->step_pitch_ofs[track][step];
+}
+
+/* Velocity offset, nudge and ratchet taper: the same shape as pitch_ofs minus
+ * the kill event - none of them changes the emitted pitch, so a sounding note's
+ * pending off tag still matches after the re-emit. */
+void sequencer_core_set_step_velocity_adj(uint8_t layer_idx, uint8_t track, uint8_t step,
+                                          int8_t pts)
+{
+    if (layer_idx >= s_num_layers) return;
+    seq_layer_t *layer = &s_layers[layer_idx];
+    if (track >= layer->num_tracks || step >= layer->num_steps) return;
+    pts = (int8_t)SEQ_CLAMP_INT(pts, -SEQ_STEP_VEL_ADJ_MAX, SEQ_STEP_VEL_ADJ_MAX);
+    if (layer->step_velocity_adj[track][step] == pts) return;
+    layer->step_velocity_adj[track][step] = pts;
+    sequencer_emit_step(layer_idx, track, step);
+}
+
+int8_t sequencer_core_get_step_velocity_adj(uint8_t layer_idx, uint8_t track, uint8_t step)
+{
+    if (layer_idx >= s_num_layers) return 0;
+    const seq_layer_t *layer = &s_layers[layer_idx];
+    if (track >= layer->num_tracks || step >= layer->num_steps) return 0;
+    return layer->step_velocity_adj[track][step];
+}
+
+void sequencer_core_set_step_nudge(uint8_t layer_idx, uint8_t track, uint8_t step,
+                                   int8_t ticks)
+{
+    if (layer_idx >= s_num_layers) return;
+    seq_layer_t *layer = &s_layers[layer_idx];
+    if (track >= layer->num_tracks || step >= layer->num_steps) return;
+    ticks = (int8_t)SEQ_CLAMP_INT(ticks, -SEQ_STEP_NUDGE_MAX, SEQ_STEP_NUDGE_MAX);
+    if (layer->step_nudge[track][step] == ticks) return;
+    layer->step_nudge[track][step] = ticks;
+    sequencer_emit_step(layer_idx, track, step);
+}
+
+int8_t sequencer_core_get_step_nudge(uint8_t layer_idx, uint8_t track, uint8_t step)
+{
+    if (layer_idx >= s_num_layers) return 0;
+    const seq_layer_t *layer = &s_layers[layer_idx];
+    if (track >= layer->num_tracks || step >= layer->num_steps) return 0;
+    return layer->step_nudge[track][step];
+}
+
+void sequencer_core_set_step_ratchet_taper(uint8_t layer_idx, uint8_t track, uint8_t step,
+                                           int8_t pct)
+{
+    if (layer_idx >= s_num_layers) return;
+    seq_layer_t *layer = &s_layers[layer_idx];
+    if (track >= layer->num_tracks || step >= layer->num_steps) return;
+    pct = (int8_t)SEQ_CLAMP_INT(pct, -SEQ_STEP_TAPER_MAX, SEQ_STEP_TAPER_MAX);
+    if (layer->step_ratchet_taper[track][step] == pct) return;
+    layer->step_ratchet_taper[track][step] = pct;
+    sequencer_emit_step(layer_idx, track, step);
+}
+
+int8_t sequencer_core_get_step_ratchet_taper(uint8_t layer_idx, uint8_t track, uint8_t step)
+{
+    if (layer_idx >= s_num_layers) return 0;
+    const seq_layer_t *layer = &s_layers[layer_idx];
+    if (track >= layer->num_tracks || step >= layer->num_steps) return 0;
+    return layer->step_ratchet_taper[track][step];
 }
 
 void sequencer_core_set_step_every(uint8_t layer_idx, uint8_t track, uint8_t step,

@@ -20,11 +20,13 @@
  * velocity/pitch/tag-emission work on the pump task, where a send applies
  * inline - ahead of whatever parse backlog the event FIFO holds.
  *
- * Deadline: a ratchet's k==0 sub-hit is scheduled for now_ticks+1 - the very
- * next sequencer tick (single-digit ms at typical tempos) - and AMY silently
- * drops any event whose tick has already passed. The urgent-before-FIFO drain
- * order bounds the wait to at most one in-flight amy_add_event() (worst case
- * a patch-string parse), not the whole backlog.
+ * Deadline: a ratchet's k==0 sub-hit is scheduled for grid_tick + 1 + swing +
+ * nudge, which the service tick's SEQ_TRIG_LOOKAHEAD_TICKS evaluation keeps at
+ * least one sequencer tick ahead (single-digit ms at typical tempos) even for
+ * the earliest nudge - and AMY silently drops any event whose tick has already
+ * passed. The urgent-before-FIFO drain order bounds the wait to at most one
+ * in-flight amy_add_event() (worst case a patch-string parse), not the whole
+ * backlog.
  */
 
 #define SEQ_TRIG_QUEUE_DEPTH 32
@@ -39,7 +41,7 @@ typedef struct {
     uint8_t  layer_idx;
     uint8_t  track;
     uint8_t  step;
-    uint32_t now_ticks;
+    uint32_t grid_tick;   /* absolute grid boundary of the step (see service tick) */
 } seq_trig_job_t;
 
 static QueueHandle_t s_trig_queue = NULL;
@@ -75,7 +77,7 @@ static bool seq_trig_drain_one(void)
         return true;
     }
     trig_schedule_ratchets(job.layer_idx, &s_layers[job.layer_idx],
-                           job.track, job.step, job.now_ticks);
+                           job.track, job.step, job.grid_tick);
     return true;
 }
 
@@ -93,9 +95,9 @@ void sequencer_core_trig_pump_init(void)
 }
 
 void sequencer_core_trig_enqueue(uint8_t layer_idx, uint8_t track, uint8_t step,
-                                 uint32_t now_ticks)
+                                 uint32_t grid_tick)
 {
-    seq_trig_job_t job = { SEQ_TRIG_JOB_STEP, layer_idx, track, step, now_ticks };
+    seq_trig_job_t job = { SEQ_TRIG_JOB_STEP, layer_idx, track, step, grid_tick };
     /* Zero timeout: the render task must never block here. A full queue means
      * the consumer has stalled or this tick produced more decorated fires
      * than the queue was sized for - drop and count, never wait. */

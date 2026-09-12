@@ -74,7 +74,6 @@ typedef struct {
     uint16_t track_pcm_preset[SEQ_TRACKS];        // per-track PCM preset (drum/PCM)
     uint32_t synth_flags;
     uint8_t  num_voices;
-    uint8_t  step_page;                           // display page 0|1 (32-step only)
     uint8_t  fm_algo_override;                    // melodic FM patches: live algorithm
                                                   // shadowing the patch's baked one;
                                                   // SEQ_FM_ALGO_NONE (0xFF) = follow patch
@@ -398,7 +397,7 @@ CBl  □□□□ □□□□ □□□□ □□□□           y=50
 [hint strip: current button roles]  y=57..63
 ```
 
-- Header: `BPM NNN` | `LN TYP` (layer index + DRM/MEL) | ▶/▮▮ | `P1`/`P2` (32-step only)
+- Header: `BPM NNN` | `LN TYP` (layer index + DRM/MEL) | ▶/▮▮ 
 - Track labels: per-track patch number (drum layer) or note name e.g. "C4", "C#4" (melodic layer)
 - Label inverts (white-on-black) while MY_BUTTON_2 is held for the selected track
 - Step cells: 5×5 px filled = active, outline = inactive

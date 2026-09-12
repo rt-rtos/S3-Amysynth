@@ -132,7 +132,6 @@ uint32_t seq_view_signature(void)
         h = fnv1a_bytes(h, &L->patch, sizeof(L->patch));
         h = fnv1a_bytes(h, L->track_patch, sizeof(L->track_patch));
         h = fnv1a_bytes(h, &L->num_steps, sizeof(L->num_steps));
-        h = fnv1a_bytes(h, &L->step_page, sizeof(L->step_page));
         h = fnv1a_bytes(h, L->track_base_note, sizeof(L->track_base_note));
         h = fnv1a_bytes(h, L->grid, sizeof(L->grid));
     }

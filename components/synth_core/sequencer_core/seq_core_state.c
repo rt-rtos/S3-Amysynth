@@ -128,7 +128,6 @@ uint8_t sequencer_core_add_layer(seq_layer_type_t type, uint8_t num_steps)
     layer->type       = type;
     layer->num_steps  = (num_steps == SEQ_MAX_STEPS) ? SEQ_MAX_STEPS : SEQ_STEPS;
     layer->num_tracks = SEQ_TRACKS;
-    layer->step_page  = 0;
     /* NoteFX defaults. Required after the memset: a 0% gate would silence
      * every note and a 0% groove would flatten dynamics. */
     layer->gate_pct       = SEQ_MELODIC_GATE_DEFAULT_PCT;

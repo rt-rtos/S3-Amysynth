@@ -34,8 +34,6 @@ void display_seq_draw_frame(u8g2_t *u8g2, const display_seq_state_t *state, uint
 
     const seq_layer_t *layer     = &state->layers[state->active_layer_idx];
     const uint8_t      num_steps = layer->num_steps;
-    const uint8_t      page      = layer->step_page;
-    const uint8_t      step_start = (uint8_t)(page * 16);
 
     u8g2_ClearBuffer(u8g2);
 
@@ -76,20 +74,17 @@ void display_seq_draw_frame(u8g2_t *u8g2, const display_seq_state_t *state, uint
         u8g2_DrawBox(u8g2, 111, 2, 2, 6);                  /* ▮▮ */
     }
 
-    /* Page indicator for 32-step layers ("P1" / "P2") */
-    if (num_steps == SEQ_MAX_STEPS) {
-        snprintf(buf, sizeof(buf), "Pg%d", page + 1);
-        u8g2_SetFont(u8g2, u8g2_font_5x7_tr);
-        u8g2_DrawStr(u8g2, 120, 8, buf);
-        u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
-    }
-
     u8g2_DrawHLine(u8g2, 0, 10, 128);
 
     /* === GRID === */
     u8g2_SetFont(u8g2, u8g2_font_5x7_tr);
+    /* The whole loop in one row: 16 steps at a 6 px pitch, 32 at 3 px. Both
+     * end at x=122; cells keep their 5 px height. A frame needs 3 px of width
+     * to have an unlit interior, so at 2 px an empty cell is drawn as a
+     * centered dash instead. */
     const int grid_x    = 26;
-    const int col_w     = 6;
+    const int col_w     = (num_steps == SEQ_MAX_STEPS) ? 3 : 6;
+    const int cell_w    = col_w - 1;
     const int cell_size = 5;
     const int row_h     = 10;
     const int grid_top  = 20;
@@ -116,29 +111,28 @@ void display_seq_draw_frame(u8g2_t *u8g2, const display_seq_state_t *state, uint
             u8g2_DrawStr(u8g2, 2, y + 6, label);
         }
 
-        /* 16-cell window for the current page */
-        for (int s = 0; s < 16; s++) {
-            int abs_step = (int)step_start + s;
-            int x        = grid_x + s * col_w;
-            if (layer->grid[t][abs_step]) {
-                u8g2_DrawBox(u8g2, x + 1, y, cell_size, cell_size);
+        for (int s = 0; s < (int)num_steps; s++) {
+            int x = grid_x + s * col_w;
+            if (layer->grid[t][s]) {
+                u8g2_DrawBox(u8g2, x + 1, y, cell_w, cell_size);
+            } else if (cell_w >= 3) {
+                u8g2_DrawFrame(u8g2, x + 1, y, cell_w, cell_size);
             } else {
-                u8g2_DrawFrame(u8g2, x + 1, y, cell_size, cell_size);
+                u8g2_DrawHLine(u8g2, x + 1, y + cell_size / 2, cell_w);
             }
         }
     }
 
-    /* Beat separators (every 4 visible steps) */
-    for (int b = 1; b < 4; b++) {
+    /* Beat separators (every 4 steps) */
+    for (int b = 1; b < (int)num_steps / 4; b++) {
         int x = grid_x + (b * 4) * col_w - 1;
         u8g2_DrawVLine(u8g2, x, grid_top - 3, SEQ_TRACKS * row_h + 2);
     }
 
     /* === PLAYHEAD (XOR highlight) === */
     uint8_t cur_step = state->current_step;
-    if ((state->playing || state->edit_mode) &&
-        cur_step >= step_start && cur_step < step_start + 16) {
-        int ph_x = grid_x + (cur_step - step_start) * col_w - 1;
+    if ((state->playing || state->edit_mode) && cur_step < num_steps) {
+        int ph_x = grid_x + cur_step * col_w - 1;
         u8g2_SetDrawColor(u8g2, 2);
         u8g2_DrawBox(u8g2, ph_x, grid_top - 3, col_w + 1, SEQ_TRACKS * row_h + 2);
         u8g2_SetDrawColor(u8g2, 1);
@@ -146,11 +140,11 @@ void display_seq_draw_frame(u8g2_t *u8g2, const display_seq_state_t *state, uint
 
     /* === SELECTION CURSOR === */
     if (state->edit_mode) {
-        uint8_t sel_abs = state->selected_step;
-        if (sel_abs >= step_start && sel_abs < step_start + 16) {
+        uint8_t sel = state->selected_step;
+        if (sel < num_steps) {
             int sel_y = grid_top + state->selected_track * row_h - 1;
-            int sel_x = grid_x + (sel_abs - (int)step_start) * col_w;
-            u8g2_DrawRFrame(u8g2, sel_x, sel_y, cell_size + 2, cell_size + 2, 1);
+            int sel_x = grid_x + sel * col_w;
+            u8g2_DrawRFrame(u8g2, sel_x, sel_y, cell_w + 2, cell_size + 2, 1);
         }
     }
 

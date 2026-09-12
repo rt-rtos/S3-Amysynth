@@ -20,6 +20,9 @@ void synth_ui_init(u8g2_t *u8g2);
 uint8_t synth_ui_add_layer(seq_layer_type_t type, uint8_t num_steps);
 void    synth_ui_request_add_layer(void);
 void    synth_ui_request_delete_to_layer(void);
+/* Resize layer li to 16 or 32 steps: core first, then the UI mirror; the
+ * step cursor is clamped into the new range. Input/UI path only. */
+bool    synth_ui_set_layer_steps(uint8_t li, uint8_t num_steps);
 
 /* Advance the active layer displayed/edited on screen.
  * Resets the cursor to track 0, step 0, edit_mode = true. */
