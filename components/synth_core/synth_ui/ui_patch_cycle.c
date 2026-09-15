@@ -95,12 +95,29 @@ void synth_ui_cycle_melodic_patch(int delta)
     if (seq_state.layers[li].type != SEQ_LAYER_MELODIC) return;
 
     int dir = (delta > 0) ? 1 : -1;
-    uint16_t next = patch_domain_step(&s_melodic_domain, sequencer_core_get_layer_patch(li), dir);
+    uint16_t applied;
 
-    sequencer_core_set_layer_patch(li, next);
-
-    uint16_t applied = sequencer_core_get_layer_patch(li);
-    seq_state.layers[li].patch = applied;
+    /* TRACK scope routes the same gesture to the cursor row; LAYER keeps the
+     * whole layer on one timbre. The UI mirror carries both stores, so the
+     * header and the grid labels read the right one either way. */
+    if (sequencer_core_get_patch_scope(li) == SEQ_PATCH_SCOPE_TRACK) {
+        uint8_t track = seq_state.selected_track;
+        if (track >= SEQ_TRACKS) return;
+        uint16_t next = patch_domain_step(
+            &s_melodic_domain, sequencer_core_get_melodic_track_patch(li, track), dir);
+        sequencer_core_set_melodic_track_patch(li, track, next);
+        applied = sequencer_core_get_melodic_track_patch(li, track);
+        seq_state.layers[li].track_patch[track] = applied;
+        if (track == 0) seq_state.layers[li].patch = applied;
+    } else {
+        uint16_t next = patch_domain_step(
+            &s_melodic_domain, sequencer_core_get_layer_patch(li), dir);
+        sequencer_core_set_layer_patch(li, next);
+        applied = sequencer_core_get_layer_patch(li);
+        seq_state.layers[li].patch = applied;
+        for (uint8_t t = 0; t < SEQ_TRACKS; t++)
+            seq_state.layers[li].track_patch[t] = applied;
+    }
 
     const char *name = patch_name_for(applied);
     if (name) {

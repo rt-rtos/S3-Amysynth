@@ -16,8 +16,8 @@ extern "C" {
 
 /* ── Built-in AMY patch banks (real patch strings, 0..256) ──────────────────
  * Named so FM-aware code (algorithm stepping) can range-check the DX7 bank
- * without magic numbers; the full bank map is the comment in
- * sequencer_core_set_melodic_patch(). */
+ * without magic numbers; the full bank map is the comment above
+ * sequencer_core_get_layer_patch(). */
 #define SEQ_PATCH_DX7_BASE    128
 #define SEQ_PATCH_DX7_MAX     255
 
@@ -235,8 +235,36 @@ void sequencer_core_set_quantizer_scale(uint8_t scale_index);
 bool sequencer_core_get_quantizer_enabled(void);
 uint8_t sequencer_core_get_quantizer_root_note(void);
 uint8_t sequencer_core_get_quantizer_scale(void);
+/* ── Melodic patch, per layer and per row ──
+ * A melodic layer's patch_scope decides which store the patch gesture writes;
+ * track_patch[] is what the configure path reads in either scope, so LAYER
+ * scope simply holds all four rows on the same number.
+ *
+ * Obligations for the whole group: UI task only (they reconfigure layer
+ * topology and send AMY events - never the render task, never an ISR); the
+ * setters reject a non-melodic or out-of-range layer and clamp the patch to
+ * SEQ_PATCH_ROUTABLE_MAX.
+ * Guarantees: an unchanged value is a no-op (no note kill); any real change
+ * clears the layer's fm_algo_override, updates the new-layer seed, and
+ * reconfigures the layer with its schedule paused, so no note-on resolves
+ * against a half-rebuilt osc pool.
+ *
+ * set_layer_patch writes `patch` AND every track_patch[], so it is both the
+ * LAYER-scope writer and the TRACK -> LAYER re-apply; get_layer_patch returns
+ * the header value. The per-row setter writes one row and mirrors row 0 into
+ * `patch` (the display fallback, the drum convention); it reconfigures the
+ * whole layer, per-row rebuild being a later optimisation. Setting the scope
+ * to LAYER re-fans the header patch over all four rows - per-row choices are
+ * not remembered across the round trip. */
 void     sequencer_core_set_layer_patch(uint8_t layer_idx, uint16_t patch_number);
 uint16_t sequencer_core_get_layer_patch(uint8_t layer_idx);
+void     sequencer_core_set_melodic_track_patch(uint8_t layer_idx, uint8_t track,
+                                                uint16_t patch_number);
+uint16_t sequencer_core_get_melodic_track_patch(uint8_t layer_idx, uint8_t track);
+/* seq_patch_scope_t (seq_model.h); the getter answers LAYER for a drum or
+ * out-of-range layer. */
+void     sequencer_core_set_patch_scope(uint8_t layer_idx, uint8_t scope);
+uint8_t  sequencer_core_get_patch_scope(uint8_t layer_idx);
 
 /* Re-push the live custom FM voice (s_fm_voice) to every melodic row on
  * SEQ_PATCH_FM_CUSTOM (and the arp). `what` is an FM_PUSH_* scope or an
@@ -244,15 +272,17 @@ uint16_t sequencer_core_get_layer_patch(uint8_t layer_idx);
  * editor after any edit. UI task only. */
 void sequencer_core_fm_voice_changed(uint8_t what);
 
-/* Step the FM algorithm of layer_idx's patch by dir (+1/-1), wrapping over
- * AMY's full algorithm table (amy_num_algorithms), and push it live to every
- * row of the layer - operator setup untouched, audible on the next render
- * block even mid-note. Returns the applied algorithm index, or -1 when the
- * layer is not melodic or its patch has no ALGO osc (only the DX7 bank and the
- * FM range qualify). The value shadows the patch (fm_algo_override) and is
- * re-pushed after every reconfigure; changing the layer's patch clears it. On
- * SEQ_PATCH_FM_CUSTOM it instead steps s_fm_voice.algorithm - the voice store
- * is the source of truth there, shared with the FM screen and the arp.
+/* Step the FM algorithm of layer_idx by dir (+1/-1), wrapping over AMY's full
+ * algorithm table (amy_num_algorithms), and push it live - operator setup
+ * untouched, audible on the next render block even mid-note. There is ONE
+ * override per layer, applied to every ALGO row: the layer acts if any row has
+ * an ALGO osc (only the DX7 bank and the FM range qualify), the first such row
+ * supplies the baked baseline, and rows on other patches are skipped. Returns
+ * the applied algorithm index, or -1 when the layer is not melodic or no row
+ * qualifies. The value shadows the patch (fm_algo_override) and is re-pushed
+ * after every reconfigure; any patch change on the layer clears it. With a row
+ * on SEQ_PATCH_FM_CUSTOM it instead steps s_fm_voice.algorithm - the voice
+ * store is the source of truth there, shared with the FM screen and the arp.
  * Call context: Core 0 input/UI path only; events go through the ingest pump,
  * never call from the render task. */
 int sequencer_core_cycle_layer_fm_algo(uint8_t layer_idx, int dir);
@@ -507,7 +537,7 @@ uint8_t sequencer_core_get_current_step(uint8_t layer_idx);
  * add_layer/delete_layer must run on ONE task (synth_ui_task, which drains the
  * UI's deferred requests) - the same discipline s_prog_apply_pending uses.
  * Other contexts go through synth_ui_request_add_layer() /
- * synth_ui_request_delete_to_layer(). Registering the applier here lets debug
+ * synth_ui_request_delete_active_layer(). Registering the applier here lets debug
  * builds assert the contract; before registration the assert is skipped. */
 void             sequencer_core_set_layers_applier(TaskHandle_t applier);
 

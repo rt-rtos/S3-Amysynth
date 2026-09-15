@@ -42,7 +42,6 @@ typedef enum {
     MI_SCREEN_ARP,
     MI_SCREEN_DRONE,
     MI_SCREEN_PROG,
-    MI_SCREEN_TRACKOPTS,
 #if CONFIG_SYNTH_CUSTOM_FM
     MI_SCREEN_FM,
 #endif
@@ -50,14 +49,13 @@ typedef enum {
     MI_QUANT_ENABLED,
     MI_QUANT_SCALE,
     MI_QUANT_ROOT,
-    MI_ARP_QUANT,         /* arp scale source: own scale vs global quantizer */
     MI_ARP_ENABLED,
     MI_DRONE_ENABLED,     /* normal drone (drone_std_core) */
     MI_STUTTER_ENABLED,   /* stutter drone (drone_core)    */
     MI_DRUM_ENGINE,
     MI_ADD_LAYER,
     MI_REMOVE_LAYER,
-    MI_LAYER_STEPS,       /* active layer: 16 or 32 steps */
+    MI_LAYER_MENU,        /* dive row: everything scoped to the active layer */
     MI_CHORDS,
     MI_BOUNCE,
     MI_PROGGEN,
@@ -80,14 +78,12 @@ static menu_item_view_t s_menu_items[MI_COUNT];
  * main-page cursor is parked here while the hub is open so Back restores it. */
 static bool    s_fx_page = false;
 static uint8_t s_main_cursor = 0;
-/* NoteFX is a sub-page of the hub (per-layer gate/glide). The hub cursor is
- * parked here while it is open so Back restores it. */
-static bool    s_notefx_page = false;
-static uint8_t s_fx_cursor = 0;
-/* The per-bus FX page is the hub's other sub-page; it parks the hub cursor
- * separately so a Back from either sub-page lands on the row it came from. */
+/* The per-bus FX page is the hub's sub-page; it parks the hub cursor so Back
+ * lands on the bus row it came from. */
 static bool    s_fxbus_page = false;
 static uint8_t s_fxhub_cursor = 0;
+/* Per-layer page (item model in ui_screen_layermenu.c). */
+static bool    s_layer_page = false;
 #if CONFIG_SYNTH_PROJECT_STORE
 static bool    s_projects_page = false;
 #endif
@@ -105,16 +101,7 @@ static bool    s_wireless_page = false;
 /* Title for the menu overlay's header bar (drawn by ui_view_resolve.c). */
 const char *menu_page_title(void)
 {
-    if (s_notefx_page) {
-        /* NoteFX is bound to the ACTIVE layer, so the title names it - always,
-         * even at "L1/1", so it stays discoverable that each layer has its own
-         * Gate/Glide values. */
-        static char s_nfx_title[20];
-        snprintf(s_nfx_title, sizeof(s_nfx_title), "NOTE FX  L%u/%u",
-                 (unsigned)(seq_state.active_layer_idx + 1u),
-                 (unsigned)seq_state.num_layers);
-        return s_nfx_title;
-    }
+    if (s_layer_page) return layermenu_menu_title();
     if (s_fxbus_page) return fx_menu_title();
     if (s_fx_page) return "GLOBAL FX";
 #if CONFIG_SYNTH_PROJECT_STORE
@@ -153,10 +140,14 @@ bool synth_ui_wireless_page_is_open(void)
 /* Format the current value of each menu item into the flat view array. */
 void menu_build_view(menu_view_t *out)
 {
-    if (s_notefx_page) {
-        out->items   = notefx_menu_build_items();
-        out->count   = notefx_menu_item_count();
-        out->cursor  = seq_state.menu_cursor;
+    if (s_layer_page) {
+        out->items   = layermenu_menu_build_items();
+        out->count   = layermenu_menu_item_count();
+        /* Clamped on the view only: this path must stay side-effect-free, and
+         * the row list shrinks when the last solo is cleared elsewhere. The
+         * input handlers pull seq_state.menu_cursor itself back into range. */
+        out->cursor  = (seq_state.menu_cursor < out->count)
+                       ? seq_state.menu_cursor : (uint8_t)(out->count - 1u);
         out->editing = seq_state.menu_editing;
         return;
     }
@@ -225,7 +216,6 @@ void menu_build_view(menu_view_t *out)
     snprintf(s_menu_items[MI_SCREEN_ARP].label, MENU_LABEL_LEN, "Screen: Arp");
     snprintf(s_menu_items[MI_SCREEN_DRONE].label, MENU_LABEL_LEN, "Screen: Drone");
     snprintf(s_menu_items[MI_SCREEN_PROG].label, MENU_LABEL_LEN, "Screen: Prog");
-    snprintf(s_menu_items[MI_SCREEN_TRACKOPTS].label, MENU_LABEL_LEN, "Screen: TrackOpts");
 #if CONFIG_SYNTH_CUSTOM_FM
     snprintf(s_menu_items[MI_SCREEN_FM].label, MENU_LABEL_LEN, "Screen: FM");
 #endif
@@ -251,12 +241,6 @@ void menu_build_view(menu_view_t *out)
      * so showing "C4" would imply a choice that does nothing. */
     snprintf(s_menu_items[MI_QUANT_ROOT].value, MENU_VALUE_LEN, "%s",
              chord_root_name(sequencer_core_get_quantizer_root_note() % 12));
-
-    /* GLOB = arp snaps to the Quant/Scale/Root above (chromatic while Quant is
-     * OFF; progression chords still win). OWN = the arp's private scale. */
-    snprintf(s_menu_items[MI_ARP_QUANT].label, MENU_LABEL_LEN, "ArpQ");
-    snprintf(s_menu_items[MI_ARP_QUANT].value, MENU_VALUE_LEN, "%s",
-             arp_get_follow_quant() ? "GLOB" : "OWN");
 
     snprintf(s_menu_items[MI_ARP_ENABLED].label, MENU_LABEL_LEN, "Arp");
     snprintf(s_menu_items[MI_ARP_ENABLED].value, MENU_VALUE_LEN, "%s",
@@ -287,10 +271,10 @@ void menu_build_view(menu_view_t *out)
                      "L%u", (unsigned)(li + 1));
         else
             snprintf(s_menu_items[MI_REMOVE_LAYER].value, MENU_VALUE_LEN, "--");
-        snprintf(s_menu_items[MI_LAYER_STEPS].label, MENU_LABEL_LEN, "L%u Steps",
-                 (unsigned)(li + 1));
-        snprintf(s_menu_items[MI_LAYER_STEPS].value, MENU_VALUE_LEN, "%u",
-                 (unsigned)seq_state.layers[li].num_steps);
+        /* Everything else scoped to this layer lives on its own page
+         * (ui_screen_layermenu.c). */
+        snprintf(s_menu_items[MI_LAYER_MENU].label, MENU_LABEL_LEN, "Layer");
+        snprintf(s_menu_items[MI_LAYER_MENU].value, MENU_VALUE_LEN, ">");
     }
 
     /* Chord presets live on their own page (ui_screen_chords.c). */
@@ -389,12 +373,10 @@ static bool menu_item_is_value(menu_item_id_t id)
         case MI_QUANT_ENABLED:
         case MI_QUANT_SCALE:
         case MI_QUANT_ROOT:
-        case MI_ARP_QUANT:
         case MI_ARP_ENABLED:
         case MI_DRONE_ENABLED:
         case MI_STUTTER_ENABLED:
         case MI_DRUM_ENGINE:
-        case MI_LAYER_STEPS:
         case MI_VOLUME:
             return true;
         default:
@@ -431,9 +413,6 @@ static void menu_edit_value(menu_item_id_t id, int delta)
             sequencer_core_set_quantizer_root_note((uint8_t)(60 + pc));
             break;
         }
-        case MI_ARP_QUANT:
-            if (dir != 0) arp_set_follow_quant(!arp_get_follow_quant());
-            break;
         case MI_ARP_ENABLED:
             if (dir != 0) arp_set_enabled(!arp_get_enabled());
             break;
@@ -459,13 +438,6 @@ static void menu_edit_value(menu_item_id_t id, int delta)
                 }
             }
             break;
-        case MI_LAYER_STEPS:
-            if (dir != 0) {
-                uint8_t li  = seq_state.active_layer_idx;
-                uint8_t cur = seq_state.layers[li].num_steps;
-                synth_ui_set_layer_steps(li, (cur == SEQ_MAX_STEPS) ? SEQ_STEPS : SEQ_MAX_STEPS);
-            }
-            break;
         case MI_VOLUME: {
             /* 5% steps; the setter clamps and writes amy_global.volume[]. */
             amy_fx_set_master_volume(amy_fx_get_master_volume() + (float)dir * 0.05f);
@@ -486,7 +458,7 @@ void synth_ui_menu_toggle(void)
         /* Always reopen on the main page so the menu lands somewhere known. */
         s_fx_page = false;
         s_fxbus_page = false;
-        s_notefx_page = false;
+        s_layer_page = false;
 #if CONFIG_SYNTH_PROJECT_STORE
         s_projects_page = false;
 #endif
@@ -541,8 +513,8 @@ bool synth_ui_menu_handle_encoder(long delta)
     if (delta == 0) return true;
 
     if (seq_state.menu_editing) {
-        if (s_notefx_page) {
-            notefx_menu_edit_value(seq_state.menu_cursor, (int)delta);
+        if (s_layer_page) {
+            layermenu_menu_edit_value(seq_state.menu_cursor, (int)delta);
         } else if (s_fxbus_page) {
             fx_menu_edit_value(seq_state.menu_cursor, (int)delta);
         } else if (s_fx_page) {
@@ -565,7 +537,7 @@ bool synth_ui_menu_handle_encoder(long delta)
             menu_edit_value((menu_item_id_t)seq_state.menu_cursor, (int)delta);
         }
     } else {
-        int n = s_notefx_page ? (int)notefx_menu_item_count() :
+        int n = s_layer_page ? (int)layermenu_menu_item_count() :
                 s_fxbus_page ? (int)fx_menu_item_count() :
                 s_fx_page ? (int)fxhub_item_count() :
 #if CONFIG_SYNTH_PROJECT_STORE
@@ -593,16 +565,16 @@ bool synth_ui_menu_handle_button(void)
 {
     if (!seq_state.menu_open) return false;
 
-    if (s_notefx_page) {
+    if (s_layer_page) {
+        layermenu_menu_clamp_cursor();
         uint8_t idx = seq_state.menu_cursor;
-        if (notefx_menu_item_is_value(idx)) {
-            seq_state.menu_editing = !seq_state.menu_editing;
-        } else if (notefx_menu_item_is_back(idx)) {
-            /* Back returns to the FX hub it was dived from. */
-            s_notefx_page = false;
-            s_fx_page = true;
-            seq_state.menu_cursor  = s_fx_cursor;
+        if (layermenu_menu_item_is_back(idx)) {
+            s_layer_page = false;
+            seq_state.menu_cursor  = s_main_cursor;
             seq_state.menu_editing = false;
+        } else {
+            seq_state.menu_editing = layermenu_menu_handle_click(idx);
+            layermenu_menu_clamp_cursor();   /* ClrSolo may have just vanished */
         }
         s_force_redraw = true;
         return true;
@@ -632,13 +604,6 @@ bool synth_ui_menu_handle_button(void)
             fx_menu_set_bus(bus);
             s_fx_page = false;
             s_fxbus_page = true;
-            seq_state.menu_cursor  = 0;
-            seq_state.menu_editing = false;
-        } else if (fxhub_item_is_notefx(idx)) {
-            /* Dive into the per-layer NoteFX page; park the hub cursor. */
-            s_fx_cursor = seq_state.menu_cursor;
-            s_fx_page = false;
-            s_notefx_page = true;
             seq_state.menu_cursor  = 0;
             seq_state.menu_editing = false;
         } else if (fxhub_item_is_value(idx)) {
@@ -747,12 +712,6 @@ bool synth_ui_menu_handle_button(void)
                 seq_state.ui_mode = UI_MODE_PROG;
                 seq_state.menu_open = false;
                 break;
-            case MI_SCREEN_TRACKOPTS:
-                seq_state.ui_mode = UI_MODE_TRACKOPTS;
-                seq_state.menu_open = false;
-                s_to_layer = seq_state.active_layer_idx;
-                s_to_track = seq_state.selected_track;
-                break;
 #if CONFIG_SYNTH_DEV_MENU
             case MI_DEV:
                 seq_state.ui_mode = UI_MODE_DEV;
@@ -771,9 +730,15 @@ bool synth_ui_menu_handle_button(void)
                 seq_state.menu_open = false;
                 break;
             case MI_REMOVE_LAYER:
-                s_to_layer = seq_state.active_layer_idx;
-                synth_ui_request_delete_to_layer();
+                synth_ui_request_delete_active_layer();
                 seq_state.menu_open = false;
+                break;
+            case MI_LAYER_MENU:
+                /* Dive into the per-layer page; the menu stays open. */
+                s_main_cursor = seq_state.menu_cursor;
+                s_layer_page = true;
+                seq_state.menu_cursor = 0;
+                layermenu_menu_reset();
                 break;
             case MI_CHORDS:
                 /* Dive into the chord-preset page; the menu stays open. */

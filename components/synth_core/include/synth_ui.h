@@ -19,7 +19,7 @@ void synth_ui_init(u8g2_t *u8g2);
  * or 0xFF if the layer table is full. Safe to call after init. */
 uint8_t synth_ui_add_layer(seq_layer_type_t type, uint8_t num_steps);
 void    synth_ui_request_add_layer(void);
-void    synth_ui_request_delete_to_layer(void);
+void    synth_ui_request_delete_active_layer(void);
 /* Resize layer li to 16 or 32 steps: core first, then the UI mirror; the
  * step cursor is clamped into the new range. Input/UI path only. */
 bool    synth_ui_set_layer_steps(uint8_t li, uint8_t num_steps);
@@ -116,12 +116,6 @@ bool synth_ui_prog_handle_encoder(int delta);
 bool synth_ui_prog_handle_button(void);
 bool synth_ui_prog_add_entry(void);
 bool synth_ui_prog_delete_entry(void);
-
-/* Track Options screen — per-track repeat rate + per-layer manual chord mode.
- * Active when seq_state.ui_mode == UI_MODE_TRACKOPTS and no overlay is up. */
-bool synth_ui_trackopts_is_active(void);
-bool synth_ui_trackopts_handle_encoder(int delta);
-bool synth_ui_trackopts_handle_button(void);
 
 /* DEV menu screen (CONFIG_SYNTH_DEV_MENU) — temporary controls / diagnostics.
  * Active when seq_state.ui_mode == UI_MODE_DEV and no overlay is up. */
@@ -292,7 +286,6 @@ typedef enum {
     UI_VIEW_DRONE,
     UI_VIEW_DRONE_STD,
     UI_VIEW_PROG,
-    UI_VIEW_TRACKOPTS,
     UI_VIEW_FM,
     UI_VIEW_DEV,
     UI_VIEW_SEQ,

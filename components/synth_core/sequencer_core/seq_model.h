@@ -332,6 +332,19 @@ typedef enum {
     SEQ_VP_GROUP_COUNT,
 } seq_vp_group_t;
 
+/* ── Melodic patch scope (seq_layer_t.patch_scope) ──
+ * Which store the patch gesture writes on a melodic layer. LAYER keeps the
+ * whole layer on one timbre: `patch` and every track_patch[] hold the same
+ * number. TRACK lets each row carry its own, with `patch` mirroring
+ * track_patch[0] as the header/display fallback - the drum convention.
+ * track_patch[] is authoritative for melodic rows in BOTH scopes; switching
+ * back to LAYER re-fans `patch` over all four rows (per-row choices are not
+ * remembered). Drum layers are always per-track and ignore this. */
+typedef enum {
+    SEQ_PATCH_SCOPE_LAYER = 0,
+    SEQ_PATCH_SCOPE_TRACK = 1,
+} seq_patch_scope_t;
+
 /* ── Per-layer data (display + audio shared) ── */
 typedef struct {
     seq_layer_type_t type;
@@ -393,10 +406,12 @@ typedef struct {
                                             memset 0 flattens dynamics.        */
     uint8_t  synth_id[SEQ_TRACKS];   /* one AMY synth per row, melodic and drum
                                         alike                                   */
-    uint16_t patch;                  /* melodic: timbre shared by the layer's
-                                        rows. Drums use track_patch[]; `patch`
-                                        mirrors track_patch[0] as a display
-                                        fallback only.                          */
+    uint16_t patch;                  /* the layer's header timbre. In LAYER
+                                        scope every melodic row plays it; in
+                                        TRACK scope (and on drums) it mirrors
+                                        track_patch[0] as a display fallback.   */
+    uint8_t  patch_scope;            /* seq_patch_scope_t, melodic only;
+                                        memset 0 = LAYER (today's behaviour).   */
     uint8_t  fm_algo_override;       /* melodic, FM patches only: live FM
                                         algorithm shadowing the patch's baked
                                         one (Shift+Turn on the SEQ screen).
@@ -405,8 +420,10 @@ typedef struct {
                                         add_layer - memset 0 is a real
                                         algorithm. Cleared on patch change,
                                         re-pushed after every reconfigure.      */
-    uint16_t track_patch[SEQ_TRACKS];/* drum layer: per-track timbre. Unused by
-                                        melodic layers.                         */
+    uint16_t track_patch[SEQ_TRACKS];/* per-track timbre, authoritative for
+                                        every row of both layer kinds. The
+                                        configure path reads THIS, never
+                                        `patch`.                                */
     uint16_t track_pcm_preset[SEQ_TRACKS]; /* drum layer, PCM engine: UI mirror
                                         of the core's per-track selection,
                                         refreshed each frame by

@@ -422,7 +422,7 @@ static void apply_glob(const staged_glob_t *g)
 
 static void ser_layer(tlv_writer_t *w, const seq_layer_t *L)
 {
-    size_t h = tlv_begin_section(w, TAG_LAYR, 14); /* v2: LFO target bitmask;
+    size_t h = tlv_begin_section(w, TAG_LAYR, 15); /* v2: LFO target bitmask;
                                                     * v3: +gate_pct, +portamento_ms;
                                                     * v4: +groove_pct;
                                                     * v5: LFO +wob_rate/+wob_depth;
@@ -436,7 +436,8 @@ static void ser_layer(tlv_writer_t *w, const seq_layer_t *L)
                                                     * v11: +step_pitch_ofs;
                                                     * v12: vp +dist/+dist_authored;
                                                     * v13: +fm_algo_override;
-                                                    * v14: +vp_src[], +vp_layer */
+                                                    * v14: +vp_src[], +vp_layer;
+                                                    * v15: +patch_scope */
     tlv_put_u8(w, (uint8_t)L->type);
     tlv_put_u8(w, L->num_steps);
     tlv_put_u16(w, L->patch);
@@ -479,6 +480,9 @@ static void ser_layer(tlv_writer_t *w, const seq_layer_t *L)
     /* v14: voice-block source selector per row + the layer's shared block. */
     for (int t = 0; t < SEQ_TRACKS; t++) tlv_put_u8(w, L->vp_src[t]);
     ser_vp(w, &L->vp_layer);
+    /* v15: melodic patch scope. track_patch[] above already carries the per-row
+     * patches in both scopes, so this one byte is all the scope needs. */
+    tlv_put_u8(w, L->patch_scope);
     tlv_end_section(w, h);
 }
 
@@ -648,6 +652,18 @@ static bool parse_layer(tlv_reader_t *b, seq_layer_t *L, uint8_t ver)
             L->vp_layer.env  = seq_default_melodic_env();
             L->vp_layer.env1 = seq_default_melodic_env1();
         }
+    }
+
+    /* v15: melodic patch scope. */
+    if (!tlv_get_u8(b, &L->patch_scope)) return false;
+    if (L->patch_scope > SEQ_PATCH_SCOPE_TRACK)
+        L->patch_scope = SEQ_PATCH_SCOPE_LAYER;
+    if (L->type != SEQ_LAYER_MELODIC) L->patch_scope = SEQ_PATCH_SCOPE_LAYER;
+    /* Invariant repair: in LAYER scope every melodic row plays `patch`, and
+     * the configure path reads track_patch[] only. Cheap enough to do
+     * unconditionally rather than trust the file. */
+    if (L->type == SEQ_LAYER_MELODIC && L->patch_scope == SEQ_PATCH_SCOPE_LAYER) {
+        for (int t = 0; t < SEQ_TRACKS; t++) L->track_patch[t] = L->patch;
     }
 
     return true;
@@ -1201,9 +1217,10 @@ bool project_snapshot_load(uint8_t slot)
             got_glob = ok;
             break;
         case TAG_LAYR:
-            /* Ceiling must track ser_layer()'s version or the firmware
-             * rejects its own files. */
-            if (ver < 1 || ver > 13 || staged_layer_count >= MAX_LAYERS) { ok = false; break; }
+            /* Exactly ser_layer()'s version: older files are rejected outright
+             * (no migration), and the ceiling must track the writer or the
+             * firmware rejects its own files. */
+            if (ver != 15 || staged_layer_count >= MAX_LAYERS) { ok = false; break; }
             ok = parse_layer(&body, &staged_layers[staged_layer_count], ver);
             if (ok) staged_layer_count++;
             break;

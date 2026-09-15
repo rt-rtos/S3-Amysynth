@@ -6,7 +6,7 @@
 #define DEV_FIRST_ROW  25
 #define DEV_VIS_ROWS   3    /* roomy rows below the 16px yellow seam (25/37/49) */
 
-/* Same row idiom as display_trackopts: invert the row when selected+editing,
+/* Same row idiom as display_stepedit: invert the row when selected+editing,
  * arrow marker when merely selected. */
 static void dev_draw_row(u8g2_t *u8g2, uint8_t y, const dev_row_view_t *row,
                          bool selected, bool editing)

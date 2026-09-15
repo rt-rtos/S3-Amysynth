@@ -471,32 +471,6 @@ static void dispatch_button_event(my_button_id_t button_id, button_event_t event
         }
     }
 
-    /* Track Options: same isolation; 1 click = add melodic layer, 2 click =
-     * delete shown layer (no-op on drum/last), 0 long = play/pause. */
-    if (synth_ui_trackopts_is_active()) {
-        switch (button_id) {
-            case MY_BUTTON_1:
-                if (event == BUTTON_SINGLE_CLICK) {
-                    synth_ui_request_add_layer();
-                }
-                return;
-            case MY_BUTTON_2:
-                s_drum_select_held = false;
-                synth_ui_set_drum_select_mode(false);
-                if (event == BUTTON_SINGLE_CLICK) {
-                    synth_ui_request_delete_to_layer();
-                }
-                return;
-            case MY_BUTTON_0:
-                if (event == BUTTON_LONG_PRESS_START) {
-                    synth_ui_toggle_playing();
-                }
-                return;
-            default:
-                break;
-        }
-    }
-
     /* Drone screens: same isolation as the arp guard above. */
     if (synth_ui_drone_is_active() || synth_ui_drone_std_is_active()) {
         switch (button_id) {
@@ -603,9 +577,6 @@ static void dispatch_button_event(my_button_id_t button_id, button_event_t event
                 return;
             case UI_VIEW_PROG:
                 if (event == BUTTON_PRESS_DOWN) synth_ui_prog_handle_button();
-                return;
-            case UI_VIEW_TRACKOPTS:
-                if (event == BUTTON_PRESS_DOWN) synth_ui_trackopts_handle_button();
                 return;
 #if CONFIG_SYNTH_DEV_MENU
             case UI_VIEW_DEV:
@@ -716,8 +687,6 @@ static void encoder_process_steps(long steps)
         synth_ui_arp_handle_encoder(steps);
     } else if (v == UI_VIEW_PROG) {
         synth_ui_prog_handle_encoder((int)steps);
-    } else if (v == UI_VIEW_TRACKOPTS) {
-        synth_ui_trackopts_handle_encoder((int)steps);
 #if CONFIG_SYNTH_DEV_MENU
     } else if (v == UI_VIEW_DEV) {
         synth_ui_dev_handle_encoder((int)steps);

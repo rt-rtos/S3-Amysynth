@@ -12,7 +12,7 @@
  * value string. */
 #define SE_CUE_X     124
 
-/* Mirrors display_trackopts.c's to_draw_row select/adjust phases: triangle
+/* Select/adjust phases in one row: triangle
  * marker when merely selected (turn navigates), box+invert when in adjust
  * mode (turn changes the value). */
 static void se_draw_row(u8g2_t *u8g2, uint8_t y, const char *label,

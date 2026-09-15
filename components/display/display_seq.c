@@ -51,10 +51,15 @@ void display_seq_draw_frame(u8g2_t *u8g2, const display_seq_state_t *state, uint
 
     if (layer->type == SEQ_LAYER_MELODIC) {
         /* Patch number, right-aligned and in 5x7 so 1-3 digits always fit the
-         * 84..102 budget and never grow into the play-icon column at x=105. */
+         * 84..102 budget and never grow into the play-icon column at x=105.
+         * In TRACK scope it is the cursor row's patch, so it follows the
+         * cursor; the field has no room for a row marker. */
         const uint8_t patch_right = 102;   /* last column the digits may touch */
-        snprintf(buf, sizeof(buf), "%u", (unsigned)layer->patch);
+        uint16_t shown = (layer->patch_scope == SEQ_PATCH_SCOPE_TRACK)
+                       ? layer->track_patch[state->selected_track]
+                       : layer->patch;
         u8g2_SetFont(u8g2, u8g2_font_5x7_tr);
+        snprintf(buf, sizeof(buf), "%u", (unsigned)shown);
         uint8_t pw = (uint8_t)u8g2_GetStrWidth(u8g2, buf);
         uint8_t px = (pw < patch_right) ? (uint8_t)(patch_right - pw) : 0;
         if (state->patch_select_mode) {
@@ -155,7 +160,11 @@ void display_seq_draw_frame(u8g2_t *u8g2, const display_seq_state_t *state, uint
     if (state->patch_select_mode) {
         const char *pname;
         if (layer->type == SEQ_LAYER_MELODIC) {
-            pname = patch_name_for(layer->patch);
+            /* TRACK scope browses the cursor row's timbre, so name that one. */
+            pname = patch_name_for(
+                (layer->patch_scope == SEQ_PATCH_SCOPE_TRACK)
+                    ? layer->track_patch[state->selected_track]
+                    : layer->patch);
         } else if (state->drum_pcm) {
             /* Drum layer, PCM engine: the selected track's ROM sample. */
             pname = pcm_preset_name_for(layer->track_pcm_preset[state->selected_track]);

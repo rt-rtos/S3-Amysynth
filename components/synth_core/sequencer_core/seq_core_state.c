@@ -187,6 +187,9 @@ uint8_t sequencer_core_add_layer(seq_layer_type_t type, uint8_t num_steps)
             s_track_source_note[idx][t] = mel_notes[t];
             s_track_prev_plain[idx][t]  = mel_notes[t];
             layer->track_base_note[t] = mel_notes[t];
+            /* LAYER scope (the memset default) means every row carries the
+             * layer patch; the configure path reads track_patch[] only. */
+            layer->track_patch[t] = s_melodic_patch;
             for (uint8_t s = 0; s < SEQ_MAX_STEPS; s++) {
                 layer->step_note[t][s] = mel_notes[t];
             }

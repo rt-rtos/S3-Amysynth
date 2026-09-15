@@ -33,7 +33,6 @@ typedef enum {
     FXH_BUS2,
     FXH_BUS3,
     FXH_PRESET_GLOBAL_FX,
-    FXH_NOTEFX,     /* dive row: opens the per-layer NoteFX (gate/glide) page */
     FXH_BACK,
     FXH_COUNT
 } fxhub_item_id_t;
@@ -72,11 +71,6 @@ const menu_item_view_t *fxhub_build_items(void)
     snprintf(s_hub_items[FXH_PRESET_GLOBAL_FX].value, MENU_VALUE_LEN, "%s",
              s_fx_presets_alter_global ? "ON" : "OFF");
 
-    /* Per-layer note controls (gate/glide) live on their own page:
-     * ui_screen_notefx.c. */
-    snprintf(s_hub_items[FXH_NOTEFX].label, MENU_LABEL_LEN, "NoteFX");
-    snprintf(s_hub_items[FXH_NOTEFX].value, MENU_VALUE_LEN, ">");
-
     snprintf(s_hub_items[FXH_BACK].label, MENU_LABEL_LEN, "< Back");
 
     return s_hub_items;
@@ -92,11 +86,6 @@ bool fxhub_item_is_bus(uint8_t idx, uint8_t *bus_out)
 bool fxhub_item_is_value(uint8_t idx)
 {
     return idx == FXH_PRESET_GLOBAL_FX;
-}
-
-bool fxhub_item_is_notefx(uint8_t idx)
-{
-    return idx == FXH_NOTEFX;
 }
 
 bool fxhub_item_is_back(uint8_t idx)

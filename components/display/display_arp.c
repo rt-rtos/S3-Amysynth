@@ -50,16 +50,19 @@ void display_arp_draw_frame(u8g2_t *u8g2, const arp_view_t *view)
         draw_field(u8g2, rx, 8, buf, view->cursor == ARP_CUR_RATE, view->editing);
     }
 
-    /* ── Macro row 2 (blue): GATE | PATCH | GLIDE ──
-     * Cursor order 4..5 left-to-right. Baseline 25 clears the 16px yellow/blue
-     * seam so text and cursor frames stay in the blue region. */
-    snprintf(buf, sizeof(buf), "GATE:%u%%", (unsigned)view->gate_pct);
+    /* ── Macro row 2 (blue): GATE | PATCH | QUANT | GLIDE ──
+     * Cursor order 4..6 left-to-right. Baseline 25 clears the 16px yellow/blue
+     * seam so text and cursor frames stay in the blue region. Four fields at
+     * 5 px/char leave no slack: GATE is abbreviated to "GT:" and the patch
+     * indicator sits right after it, which is what buys the quant field its
+     * room between the patch number and the right-aligned glide. */
+    snprintf(buf, sizeof(buf), "GT:%u%%", (unsigned)view->gate_pct);
     draw_field(u8g2, 2, 25, buf, view->cursor == ARP_CUR_GATE, view->editing);
 
     /* Patch indicator: number always, framed during the hold+turn gesture
      * (full name banners over the slot grid), as on the sequencer view. */
     {
-        const uint8_t ix = 52;
+        const uint8_t ix = 41;
         char ibuf[12];
         snprintf(ibuf, sizeof(ibuf), "P%u", (unsigned)view->patch);
         if (view->patch_select) {
@@ -71,6 +74,7 @@ void display_arp_draw_frame(u8g2_t *u8g2, const arp_view_t *view)
 
     /* GLIDE (portamento), right-aligned: raw ms ("GL:200") or "GL:off" at
      * zero. Selected on the PORTA cursor. */
+    uint8_t glide_x;
     {
         char gbuf[12];
         uint16_t ms = view->portamento_ms;
@@ -80,8 +84,18 @@ void display_arp_draw_frame(u8g2_t *u8g2, const arp_view_t *view)
             snprintf(gbuf, sizeof(gbuf), "GL:%u", (unsigned)ms);
         }
         uint8_t gw = (uint8_t)u8g2_GetStrWidth(u8g2, gbuf);
-        uint8_t gx = (gw < 126u) ? (uint8_t)(126u - gw) : 0u;
-        draw_field(u8g2, gx, 25, gbuf, view->cursor == ARP_CUR_PORTA, view->editing);
+        glide_x = (gw < 126u) ? (uint8_t)(126u - gw) : 0u;
+        draw_field(u8g2, glide_x, 25, gbuf, view->cursor == ARP_CUR_PORTA, view->editing);
+    }
+
+    /* Scale source: GLOB snaps to the global quantizer, OWN to the arp's
+     * private scale. Right-aligned against the glide field so the widest value
+     * keeps clear of it whatever the glide time reads. */
+    {
+        snprintf(buf, sizeof(buf), "Q:%s", view->follow_quant ? "GLOB" : "OWN");
+        uint8_t qw = (uint8_t)u8g2_GetStrWidth(u8g2, buf);
+        uint8_t qx = (glide_x > (uint8_t)(qw + 3u)) ? (uint8_t)(glide_x - qw - 3u) : 0u;
+        draw_field(u8g2, qx, 25, buf, view->cursor == ARP_CUR_QUANT, view->editing);
     }
 
     u8g2_DrawHLine(u8g2, 0, 28, 128);

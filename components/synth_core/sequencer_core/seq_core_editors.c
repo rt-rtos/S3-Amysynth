@@ -317,7 +317,7 @@ static void melodic_filter_push_osc(uint8_t layer_idx, uint8_t track,
     }
     /* KS string decay: the authored feedback, pushed directly. 0 = never
      * authored, so leave AMY's build-time 0.9 default in place. */
-    if (layer->patch == SEQ_PATCH_KS && f->feedback > 0.0f) {
+    if (layer->track_patch[track] == SEQ_PATCH_KS && f->feedback > 0.0f) {
         e->feedback = SEQ_CLAMP_F32(f->feedback, 0.0f, 1.0f);
     }
     amy_helpers_event_send(e);
@@ -508,10 +508,11 @@ static void melodic_lfo_apply_runtime(uint8_t layer_idx, uint8_t track,
     /* Native topology is melodic-only: it writes voice-relative oscs 1 and 2,
      * and AMY applies the base_osc offset without a bounds check, so on a
      * 1-osc-per-voice synth (a PCM drum slot) those events would land on the
-     * NEXT synth's oscillators. A drum layer's `patch` is only the stored
+     * NEXT synth's oscillators. A drum row's stored patch is only its
      * SYNTH-mode selection, so it must never enable the native path. */
     bool is_native = layer->type == SEQ_LAYER_MELODIC &&
-                     sequencer_core_lfo_native_layout(layer->patch, NULL, NULL);
+                     sequencer_core_lfo_native_layout(layer->track_patch[track],
+                                                      NULL, NULL);
     if (is_native) {
         melodic_native_lfo_apply(layer, track, lfo);
         /* Restore the static target value when disabled: native clears COEF_MOD
@@ -643,7 +644,8 @@ void __attribute__((optimize("O3", "unroll-loops", "fast-math"))) sequencer_core
              * track ever armed, stepping its rails here would double-modulate. */
             bool native_track =
                 s_layers[li].type == SEQ_LAYER_MELODIC &&
-                sequencer_core_lfo_native_layout(s_layers[li].patch, NULL, NULL);
+                sequencer_core_lfo_native_layout(s_layers[li].track_patch[tr],
+                                                 NULL, NULL);
 #else
             const bool native_track = false;
 #endif
@@ -708,14 +710,17 @@ void __attribute__((optimize("O3", "unroll-loops", "fast-math"))) sequencer_core
  * Called after a patch/synth rebuild and after BPM changes, so native LFO
  * carrier state stays consistent with the layer's patch and tempo. */
 
-/* Re-apply the authored native LFO for every track in a layer whose patch
- * reserves a carrier pair. No-op otherwise - the software loop handles those. */
+/* Re-apply the authored native LFO for every row whose patch reserves a
+ * carrier pair. Skipped rows fall to the software loop. */
 void sequencer_configure_melodic_lfo(uint8_t layer_idx)
 {
 #if CONFIG_SEQ_MELODIC_AMY_NATIVE_LFO
     const seq_layer_t *layer = &s_layers[layer_idx];
-    if (!sequencer_core_lfo_native_layout(layer->patch, NULL, NULL)) return;
     for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
+        /* Per row: a mixed layer can have wave rows next to string rows, and
+         * only the former reserve a carrier pair. */
+        if (!sequencer_core_lfo_native_layout(layer->track_patch[t], NULL, NULL))
+            continue;
         if (!seq_track_vp(layer_idx, t)->lfo_authored) continue;
         melodic_configure_native_lfo_track(layer_idx, t);
         /* Keep s_lfo_hz in sync so the service loop skips native tracks. DIST
@@ -739,9 +744,9 @@ void melodic_lfo_refresh_native_freq(void)
          * carrier oscs don't exist on non-melodic (1-osc) synths. */
         if (layer->type != SEQ_LAYER_MELODIC)
             continue;
-        if (!sequencer_core_lfo_native_layout(layer->patch, NULL, NULL))
-            continue;
         for (int tr = 0; tr < SEQ_TRACKS; tr++) {
+            if (!sequencer_core_lfo_native_layout(layer->track_patch[tr], NULL, NULL))
+                continue;
             const voice_params_t *vp = seq_track_vp((uint8_t)li, (uint8_t)tr);
             if (!vp->lfo_authored) continue;
             const seq_lfo_t *lfo = &vp->lfo;

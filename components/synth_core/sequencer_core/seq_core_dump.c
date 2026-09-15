@@ -57,9 +57,14 @@ void sequencer_core_dump_state(void)
             DP("L%u DRUM steps=%u swing=%u groove=%u",
                li + 1u, L->num_steps, L->swing_pct, L->groove_pct);
         } else {
-            DP("L%u MELODIC steps=%u patch=%u voices=%u swing=%u gate=%u"
+            DP("L%u MELODIC steps=%u patch=%u scope=%s rows=%u/%u/%u/%u"
+               " voices=%u swing=%u gate=%u"
                " porta=%u groove=%u chord=%s root=%u type=%u",
-               li + 1u, L->num_steps, L->patch, L->num_voices, L->swing_pct,
+               li + 1u, L->num_steps, L->patch,
+               L->patch_scope == SEQ_PATCH_SCOPE_TRACK ? "TRACK" : "LAYER",
+               L->track_patch[0], L->track_patch[1],
+               L->track_patch[2], L->track_patch[3],
+               L->num_voices, L->swing_pct,
                L->gate_pct, L->portamento_ms, L->groove_pct,
                L->chord_mode ? "on" : "off", L->chord_root,
                (unsigned)L->chord_type);

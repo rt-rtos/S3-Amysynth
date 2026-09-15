@@ -25,7 +25,7 @@ extern "C" {
  * the window scrolls with the cursor and a triangle at the right edge marks the
  * hidden direction. The first five are the opening screen, unchanged.
  *
- * Select/adjust workflow, matching trackopts: encoder turns navigate the
+ * Select/adjust workflow, as on the DEV screen: encoder turns navigate the
  * field cursor (triangle marker), short-press enters adjust mode (row
  * inverted), turns change the value, short-press confirms. Prev is a boolean
  * and click-toggles directly, with no adjust phase. Every and Prev are

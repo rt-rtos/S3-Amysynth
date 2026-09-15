@@ -35,7 +35,6 @@ only draws the flat view structs it is handed)
 | `display_drone.{c,h}` | drone parameter-list renderer + the drone visualizer |
 | `display_menu.{c,h}` | menu overlay renderer (scrollable label:value list, also reused by the FX and FM pages) |
 | `display_prog.{c,h}` | chord-progression screen renderer |
-| `display_trackopts.{c,h}` | per-track options screen renderer (repeat/mute/solo/chord) |
 | `display_stepedit.{c,h}` | per-step probability / ratchet / conditional-trig popup |
 | `display_hint.{c,h}` | bottom hint-strip compositor (rows 57–63) |
 | `display_lfo.{c,h}` | LFO editor overlay renderer |

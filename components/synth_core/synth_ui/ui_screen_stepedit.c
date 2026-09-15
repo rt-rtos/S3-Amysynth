@@ -14,7 +14,7 @@
 
 static bool    s_se_active  = false;
 static uint8_t s_se_field   = SE_FIELD_PITCH;
-/* Select/adjust phases, same workflow as trackopts and the LFO editor: turn
+/* Select/adjust phases, the same workflow as the LFO editor: turn
  * navigates fields, click enters adjust mode (inverted row), turn changes the
  * value, click confirms back to navigation. Prev is a boolean and follows the
  * LFO editor's checkbox convention: click toggles it directly, no adjust

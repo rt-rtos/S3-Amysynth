@@ -5,7 +5,6 @@
 #include "synth_ui.h"          /* synth_ui_state_t, seq_layer_type_t */
 #include "display_drone.h"     /* drone_view_t */
 #include "display_prog.h"      /* prog_view_t */
-#include "display_trackopts.h" /* trackopts_view_t */
 #include "display_dev.h"       /* dev_view_t (CONFIG_SYNTH_DEV_MENU) */
 #include "display_menu.h"      /* menu_view_t */
 #include "display_arp.h"       /* arp_view_t */
@@ -30,10 +29,6 @@ extern bool              s_filter_active;  /* owner: ui_editors.c; task reads fo
 extern bool              s_lfo_active;     /* owner: ui_editors.c; task reads for cascade */
 extern bool              s_dist_active;    /* owner: ui_editors.c; task reads for cascade */
 extern bool              s_drone_vis_open; /* owner: ui_screen_drone.c; task reads for V_DRONE_VIS */
-extern uint8_t           s_to_layer;       /* owner: ui_screen_trackopts.c; task + menu write it */
-extern uint8_t           s_to_track;       /* owner: ui_screen_trackopts.c; menu sets it */
-
-/* NOTE: s_to_cursor and s_to_editing are trackopts-internal — NOT extern. */
 
 /* ─── FNV-1a render-on-change (all view signature functions use this) ── */
 #define FNV1A_OFFSET 2166136261u
@@ -74,7 +69,6 @@ uint32_t menu_view_signature(menu_view_t *out);
 uint32_t drone_view_signature(drone_view_t *out);
 uint32_t drone_std_view_signature(drone_view_t *out);
 uint32_t prog_view_signature(prog_view_t *out);
-uint32_t trackopts_view_signature(trackopts_view_t *out);
 uint32_t stepedit_view_signature(stepedit_view_t *out);
 uint32_t fm_view_signature(fm_view_t *out);
 uint32_t dev_view_signature(dev_view_t *out);       /* CONFIG_SYNTH_DEV_MENU */
@@ -106,7 +100,6 @@ typedef union {
     arp_view_t       arp;
     drone_view_t     drone;      /* DRONE and DRONE_VIS */
     prog_view_t      prog;
-    trackopts_view_t trackopts;
     stepedit_view_t  stepedit;
     dev_view_t       dev;
 } ui_view_vw_t;
@@ -137,7 +130,6 @@ const char *synth_ui_graph_hint_b2(void);
 void     drone_build_view(drone_view_t *out);
 void     drone_std_build_view(drone_view_t *out);
 void     prog_build_view(prog_view_t *out);
-void     trackopts_build_view(trackopts_view_t *out);
 void     menu_build_view(menu_view_t *out);
 void     arp_build_view(arp_view_t *out);
 void     stepedit_build_view(stepedit_view_t *out);
@@ -150,7 +142,6 @@ const menu_item_view_t *fxhub_build_items(void);
 uint8_t  fxhub_item_count(void);
 bool     fxhub_item_is_bus(uint8_t idx, uint8_t *bus_out);  /* dive into a bus */
 bool     fxhub_item_is_value(uint8_t idx);
-bool     fxhub_item_is_notefx(uint8_t idx);    /* dive row into the NoteFX page */
 bool     fxhub_item_is_back(uint8_t idx);
 void     fxhub_edit_value(uint8_t idx, int delta);
 
@@ -166,14 +157,21 @@ uint8_t  fx_menu_current_bus(void);
 const char *fx_menu_title(void);     /* header-bar title for the bus page */
 const char *menu_page_title(void);   /* header-bar title for the active page */
 
-/* ─── NoteFX page: per-layer melodic gate + glide (item model in
- *     ui_screen_notefx.c; page state and input routing live in
- *     ui_screen_menu.c). Reached from a dive row on the FX hub. ────────── */
-const menu_item_view_t *notefx_menu_build_items(void);
-uint8_t  notefx_menu_item_count(void);
-bool     notefx_menu_item_is_value(uint8_t idx);
-bool     notefx_menu_item_is_back(uint8_t idx);
-void     notefx_menu_edit_value(uint8_t idx, int delta);
+/* ─── Layer page: everything scoped to the active layer - steps, melodic patch
+ *     scope, gate/glide/groove, the manual chord, and the per-track
+ *     repeat/mute/solo block (item model in ui_screen_layermenu.c; page state
+ *     and input routing live in ui_screen_menu.c). Reached from the `Layer >`
+ *     dive row on the main list. The visible row list is dynamic (ClrSolo
+ *     comes and goes with the global solo state), so the count is a call, not
+ *     a constant, and the handlers clamp the shared menu cursor. ─────────── */
+const menu_item_view_t *layermenu_menu_build_items(void);
+uint8_t  layermenu_menu_item_count(void);
+bool     layermenu_menu_item_is_back(uint8_t idx);
+bool     layermenu_menu_handle_click(uint8_t idx);
+void     layermenu_menu_edit_value(uint8_t idx, int delta);
+void     layermenu_menu_reset(void);
+void     layermenu_menu_clamp_cursor(void);
+const char *layermenu_menu_title(void);
 
 /* ─── Projects storage page (item model in ui_screen_projects.c; page state
  *     and input routing live in ui_screen_menu.c). Declared unconditionally:

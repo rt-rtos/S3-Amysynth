@@ -127,12 +127,11 @@ static inline bool seq_freeze_blocks(uint32_t now_ticks)
 /* Pump-task side of sequencer_core_freeze_release_enqueue(). */
 void sequencer_core_freeze_release_apply(void);
 extern uint8_t        s_next_melodic_synth;
-/* Global melodic patch DEFAULT, NOT an authoritative global. Two writers:
- * set_melodic_patch() writes it as the global selection and fans it out to
- * every melodic layer; set_layer_patch() writes it as a side-effect so the
- * display fallback tracks the last-touched layer. Readers must treat
- * s_layers[i].patch as the per-layer truth - this is only the seed for new
- * layers plus the display fallback. */
+/* Global melodic patch DEFAULT, NOT an authoritative global. The patch setters
+ * (layer and per-track) write it as a side-effect so the display fallback
+ * tracks the last-touched layer. Readers must treat s_layers[i].track_patch[]
+ * as the per-row truth - this is only the seed for new layers plus the display
+ * fallback. */
 extern uint16_t       s_melodic_patch;
 extern volatile bool  s_layers_mutating;   /* guards delete_layer's compaction vs. the tick */
 

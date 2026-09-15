@@ -1488,7 +1488,10 @@ static bool filter_target_is_feedback(void)
     if (filter_tgt_is_drone() || filter_tgt_is_drone_std()) {
         return false;
     }
-    return sequencer_core_get_layer_patch(seq_state.active_layer_idx) == SEQ_PATCH_KS;
+    /* Per-row patch: key on the cursor row, as the drum branches already do. */
+    return sequencer_core_get_melodic_track_patch(seq_state.active_layer_idx,
+                                                  seq_state.selected_track)
+           == SEQ_PATCH_KS;
 }
 
 #if CONFIG_FILTER_SCOPE
@@ -2076,7 +2079,8 @@ uint32_t lfo_view_signature(void)
         native = sequencer_core_get_layer_type(s_lfo_view.layer_idx)
                      == SEQ_LAYER_MELODIC
               && sequencer_core_lfo_native_layout(
-                     sequencer_core_get_layer_patch(s_lfo_view.layer_idx),
+                     sequencer_core_get_melodic_track_patch(s_lfo_view.layer_idx,
+                                                            s_lfo_view.track_idx),
                      NULL, NULL);
     s_lfo_view.wob_native = native;
 

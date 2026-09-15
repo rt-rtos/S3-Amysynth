@@ -289,7 +289,8 @@ uint8_t seq_track_num_voices(const seq_layer_t *layer, uint8_t track)
      * layer's setting intact for when the patch changes back, and covers chord
      * rows too - a chord row on a KS layer sounds one note, the accepted
      * trade for staying inside the ring budget. */
-    if (layer->type == SEQ_LAYER_MELODIC && layer->patch == SEQ_PATCH_KS) return 1;
+    if (layer->type == SEQ_LAYER_MELODIC &&
+        layer->track_patch[track] == SEQ_PATCH_KS) return 1;
     uint8_t v = layer->num_voices;
     if (layer->type == SEQ_LAYER_MELODIC &&
         SEQ_NOTE_IS_CHORD(layer->track_base_note[track])) {
@@ -375,15 +376,16 @@ uint8_t seq_track_unison_copies(uint8_t layer_idx, uint8_t track)
     uint8_t voices = s_voices_applied[layer_idx][track];
     if (voices == 0u) voices = seq_track_num_voices(layer, track);
     voice_unison_t u = sequencer_core_get_unison(layer_idx);
-    return unison_copies_for(layer->patch, u.count, voices, u.layout);
+    return unison_copies_for(layer->track_patch[track], u.count, voices, u.layout);
 }
 
 bool seq_track_voice_layout(uint8_t layer_idx, uint8_t track,
                             seq_voice_layout_t *out)
 {
     uint8_t c = 0, m = 0;
-    if (layer_idx >= s_num_layers) return false;
-    if (!sequencer_core_lfo_native_layout(s_layers[layer_idx].patch, &c, &m))
+    if (layer_idx >= s_num_layers || track >= SEQ_TRACKS) return false;
+    if (!sequencer_core_lfo_native_layout(s_layers[layer_idx].track_patch[track],
+                                          &c, &m))
         return false;
     seq_voice_layout_t l = { .carrier    = c,
                              .pitch_mask = m,
@@ -429,7 +431,13 @@ void sequencer_core_set_unison(uint8_t layer_idx, const voice_unison_t *u)
     if (layer_idx >= s_num_layers) return;         /* applies when it exists */
     seq_layer_t *layer = &s_layers[layer_idx];
     if (layer->type != SEQ_LAYER_MELODIC) return;
-    if (!sequencer_core_is_wave_patch(layer->patch)) return; /* next wave build */
+    /* Per-row patches: unison reaches only the wave rows of a mixed layer.
+     * With none, the spec is stored and lands on the next wave build. */
+    bool any_wave = false;
+    for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
+        if (sequencer_core_is_wave_patch(layer->track_patch[t])) { any_wave = true; break; }
+    }
+    if (!any_wave) return;
     if (v.count != old.count || v.layout != old.layout) {
         /* A copy-count or layout change moves the pool shape (oscs_per_voice
          * and the index map): full rebuild under the ringing discipline, which
@@ -440,6 +448,7 @@ void sequencer_core_set_unison(uint8_t layer_idx, const voice_unison_t *u)
     }
     /* Same shape: re-send only the per-copy CONST fields, no note kill. */
     for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
+        if (!sequencer_core_is_wave_patch(layer->track_patch[t])) continue;
         voice_unison_t eff = v;
         eff.count = seq_track_unison_copies(layer_idx, t);
         voice_push_unison_live(layer->synth_id[t], &eff, 1.0f);
@@ -540,8 +549,8 @@ static void sequencer_configure_melodic_envelope(uint8_t layer_idx)
      * pause, which both silence voices via that same note-off. Force the
      * default envelope onto every such unauthored row. (KS/NOISE also get their
      * sustain floor in sequencer_configure_melodic_envelope_track.) */
-    bool force_wave = sequencer_core_is_wave_patch(layer->patch);
     for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
+        bool force_wave = sequencer_core_is_wave_patch(layer->track_patch[t]);
         if (seq_track_vp(layer_idx, t)->env_authored || force_wave) {
             sequencer_configure_melodic_envelope_track(layer_idx, t);
         }
@@ -785,8 +794,10 @@ void sequencer_configure_synth(uint8_t layer_idx)
         return;
     }
 
-    /* Melodic: push the shared patch/flags to each row's own synth. Voice count
-     * is per-track - layer->num_voices, widened to the chord tone count on rows
+    /* Melodic: push each row's own patch/flags to its own synth. In LAYER
+     * scope all four track_patch[] hold the layer patch, so the loop is the
+     * same work it always was; in TRACK scope the rows differ. Voice count is
+     * per-track - layer->num_voices, widened to the chord tone count on rows
      * carrying a chord preset, so voices are spent only where chords play. */
     bool string_patch = false;
     for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
@@ -794,10 +805,10 @@ void sequencer_configure_synth(uint8_t layer_idx)
         sequencer_kill_synth_voices(layer->synth_id[t]);
         const voice_params_t *vp = seq_track_vp(layer_idx, t);
         voice_unison_t uni = sequencer_core_get_unison(layer_idx);
-        uni.count = unison_copies_for(layer->patch, uni.count, voices,
+        uni.count = unison_copies_for(layer->track_patch[t], uni.count, voices,
                                       uni.layout);
         string_patch |= seq_apply_patch(layer->synth_id[t],
-                                        layer->patch,
+                                        layer->track_patch[t],
                                         voices,
                                         layer->synth_flags,
                                         vp->filter_authored,
@@ -845,38 +856,10 @@ void sequencer_reconfigure_layer_paused(uint8_t layer_idx)
     sequencer_resync_layer(layer_idx);
 }
 
-void sequencer_core_set_melodic_patch(uint16_t patch_number)
-{
-    /* 0..127 Juno, 128..255 DX7, 256 piano, 257..263 raw waves, 264..266 bass
-     * presets, 267..271 wavetables (AMY_WAVETABLE only), 272..276 FM/ALGO,
-     * 277..279 additive - SEQ_PATCH_ADDITIVE_MAX is the true ceiling. */
-    patch_number = SEQ_CLAMP_U16(patch_number, 0, SEQ_PATCH_ROUTABLE_MAX);
-    if (s_melodic_patch == patch_number) {
-        return;
-    }
-
-    s_melodic_patch = patch_number;
-    for (uint8_t i = 0; i < s_num_layers; i++) {
-        seq_layer_t *layer = &s_layers[i];
-        if (layer->type != SEQ_LAYER_MELODIC) {
-            continue;
-        }
-        layer->patch = s_melodic_patch;
-        layer->fm_algo_override = SEQ_FM_ALGO_NONE;  /* see set_layer_patch */
-        sequencer_reconfigure_layer_paused(i);
-    }
-
-    ESP_LOGI(TAG, "melodic patch -> %u", (unsigned)s_melodic_patch);
-}
-
-uint16_t sequencer_core_get_melodic_patch(void)
-{
-    return s_melodic_patch;
-}
-
-/* Per-layer patch access: one melodic layer, unlike
- * sequencer_core_set_melodic_patch which hits them all. Lets the UI
- * patch-cycle widget step each layer independently. */
+/* Per-layer patch access. The patch numbering the clamp below rides on:
+ * 0..127 Juno, 128..255 DX7, 256 piano, 257..263 raw waves, 264..266 bass
+ * presets, 267..271 wavetables (AMY_WAVETABLE only), 272..276 FM/ALGO,
+ * 277..279 additive - SEQ_PATCH_ADDITIVE_MAX is the true ceiling. */
 
 uint16_t sequencer_core_get_layer_patch(uint8_t layer_idx)
 {
@@ -890,8 +873,15 @@ void sequencer_core_set_layer_patch(uint8_t layer_idx, uint16_t patch_number)
     seq_layer_t *layer = &s_layers[layer_idx];
     if (layer->type != SEQ_LAYER_MELODIC) return;
     patch_number = SEQ_CLAMP_U16(patch_number, 0, SEQ_PATCH_ROUTABLE_MAX);
-    if (layer->patch == patch_number) return;
-    layer->patch    = patch_number;
+    bool fanned = false;
+    for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
+        if (layer->track_patch[t] != patch_number) fanned = true;
+    }
+    if (layer->patch == patch_number && !fanned) return;
+    layer->patch = patch_number;
+    /* The whole layer onto one timbre: track_patch[] is what configure reads,
+     * so the fan-out IS the apply. Also the TRACK -> LAYER re-apply. */
+    for (uint8_t t = 0; t < SEQ_TRACKS; t++) layer->track_patch[t] = patch_number;
     /* New patch = new baked-algorithm baseline; a stale override from the
      * previous patch must not ride the reconfigure below. */
     layer->fm_algo_override = SEQ_FM_ALGO_NONE;
@@ -901,6 +891,54 @@ void sequencer_core_set_layer_patch(uint8_t layer_idx, uint16_t patch_number)
                                         seq_core_internal.h) */
     sequencer_reconfigure_layer_paused(layer_idx);
     ESP_LOGI(TAG, "L%u patch -> %u", (unsigned)layer_idx + 1u, (unsigned)patch_number);
+}
+
+uint16_t sequencer_core_get_melodic_track_patch(uint8_t layer_idx, uint8_t track)
+{
+    if (layer_idx >= s_num_layers || track >= SEQ_TRACKS) return s_melodic_patch;
+    return s_layers[layer_idx].track_patch[track];
+}
+
+void sequencer_core_set_melodic_track_patch(uint8_t layer_idx, uint8_t track,
+                                            uint16_t patch_number)
+{
+    if (layer_idx >= s_num_layers || track >= SEQ_TRACKS) return;
+    seq_layer_t *layer = &s_layers[layer_idx];
+    if (layer->type != SEQ_LAYER_MELODIC) return;
+    patch_number = SEQ_CLAMP_U16(patch_number, 0, SEQ_PATCH_ROUTABLE_MAX);
+    if (layer->track_patch[track] == patch_number) return;
+    layer->track_patch[track] = patch_number;
+    if (track == 0) layer->patch = patch_number;  /* header/display fallback */
+    /* One override per layer, so a new patch on ANY row invalidates it. */
+    layer->fm_algo_override = SEQ_FM_ALGO_NONE;
+    s_melodic_patch = patch_number;
+    /* Whole-layer reconfigure: the known-good path. Rebuilding one row alone
+     * is a later optimisation, not a correctness requirement. */
+    sequencer_reconfigure_layer_paused(layer_idx);
+    ESP_LOGI(TAG, "L%u T%u patch -> %u", (unsigned)layer_idx + 1u,
+             (unsigned)track + 1u, (unsigned)patch_number);
+}
+
+uint8_t sequencer_core_get_patch_scope(uint8_t layer_idx)
+{
+    if (layer_idx >= s_num_layers) return SEQ_PATCH_SCOPE_LAYER;
+    return s_layers[layer_idx].patch_scope;
+}
+
+void sequencer_core_set_patch_scope(uint8_t layer_idx, uint8_t scope)
+{
+    if (layer_idx >= s_num_layers) return;
+    seq_layer_t *layer = &s_layers[layer_idx];
+    if (layer->type != SEQ_LAYER_MELODIC) return;
+    if (scope > SEQ_PATCH_SCOPE_TRACK) return;
+    layer->patch_scope = scope;
+    /* Back to LAYER: the header patch wins, re-fanned over every row. Per-row
+     * choices are deliberately not remembered. */
+    if (scope == SEQ_PATCH_SCOPE_LAYER) {
+        sequencer_core_set_layer_patch(layer_idx, layer->patch);
+    }
+    ESP_LOGI(TAG, "L%u patch scope -> %s", (unsigned)layer_idx + 1u,
+             scope == SEQ_PATCH_SCOPE_TRACK ? "TRACK" : "LAYER");
 }
 
 /* Re-apply the layer's patch and every authored parameter to its synth slots.
@@ -922,8 +960,8 @@ void sequencer_core_fm_voice_changed(uint8_t what)
     for (uint8_t i = 0; i < s_num_layers; i++) {
         seq_layer_t *layer = &s_layers[i];
         if (layer->type != SEQ_LAYER_MELODIC) continue;
-        if (layer->patch != SEQ_PATCH_FM_CUSTOM) continue;
         for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
+            if (layer->track_patch[t] != SEQ_PATCH_FM_CUSTOM) continue;
             fm_voice_push(layer->synth_id[t], &s_fm_voice, what);
         }
     }
@@ -965,21 +1003,23 @@ static bool seq_layer_patch_has_algo(uint16_t patch)
     return false;
 }
 
-/* Send one algorithm value to osc 0 (the ALGO control osc) of every row of the
- * layer; AMY resolves e->synth + e->osc to each voice's base_osc + 0. The
- * FM-preset voices author ENVELOPE_NORMAL on osc 0, which the ALGORITHM delta
- * force-switches to DX7 curves - re-assert it in the same event (the eg_type
- * delta applies after the algorithm one). DX7-bank patches keep the DX7 curves
- * their own patch load installs, so nothing to re-assert there. */
+/* Send one algorithm value to osc 0 (the ALGO control osc) of every ALGO-capable
+ * row of the layer; AMY resolves e->synth + e->osc to each voice's base_osc + 0.
+ * One override per layer, applied to every ALGO row - rows on some other patch
+ * have no control osc for it to land on and are skipped. The FM-preset voices
+ * author ENVELOPE_NORMAL on osc 0, which the ALGORITHM delta force-switches to
+ * DX7 curves - re-assert it in the same event (the eg_type delta applies after
+ * the algorithm one). DX7-bank patches keep the DX7 curves their own patch load
+ * installs, so nothing to re-assert there. */
 static void seq_push_layer_fm_algo(const seq_layer_t *layer, uint8_t algo)
 {
-    bool preset_env = (layer->patch >= SEQ_PATCH_FM_BASE);
     for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
+        if (!seq_layer_patch_has_algo(layer->track_patch[t])) continue;
         amy_event *e = amy_helpers_event_begin();
         e->synth     = layer->synth_id[t];
         e->osc       = 0;
         e->algorithm = algo;
-        if (preset_env) e->eg_type[0] = ENVELOPE_NORMAL;
+        if (layer->track_patch[t] >= SEQ_PATCH_FM_BASE) e->eg_type[0] = ENVELOPE_NORMAL;
         amy_helpers_event_send(e);
     }
 }
@@ -990,7 +1030,6 @@ static void seq_push_layer_fm_algo(const seq_layer_t *layer, uint8_t algo)
 static void seq_reassert_layer_fm_algo(const seq_layer_t *layer)
 {
     if (layer->fm_algo_override == SEQ_FM_ALGO_NONE) return;
-    if (!seq_layer_patch_has_algo(layer->patch)) return;
     seq_push_layer_fm_algo(layer, layer->fm_algo_override);
 }
 
@@ -1002,20 +1041,32 @@ int sequencer_core_cycle_layer_fm_algo(uint8_t layer_idx, int dir)
 
     int n = (int)amy_num_algorithms;
     int step = (dir > 0) ? 1 : -1;
-    uint16_t p = layer->patch;
 
 #if CONFIG_SYNTH_CUSTOM_FM
-    if (p == SEQ_PATCH_FM_CUSTOM) {
+    for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
+        if (layer->track_patch[t] != SEQ_PATCH_FM_CUSTOM) continue;
         /* The custom voice's algorithm is an authored field: step the voice
-         * store itself (shared with the FM screen and the arp), no shadow.
-         * The ring is rows 1..N-1 then the authored custom topology, which
-         * the banner shows as DISPLAY_ALGO_BANNER_CUSTOM. */
+         * store itself (shared with the FM screen and the arp), no shadow. One
+         * row on the patch is enough - the voice is global. The ring is rows
+         * 1..N-1 then the authored custom topology, which the banner shows as
+         * DISPLAY_ALGO_BANNER_CUSTOM. */
         uint8_t a = fm_voice_step_algorithm(&s_fm_voice, step);
         sequencer_core_fm_voice_changed(FM_PUSH_ROUTING);
         return (a == FM_ALGO_CUSTOM) ? DISPLAY_ALGO_BANNER_CUSTOM : (int)a;
     }
 #endif
-    if (!seq_layer_patch_has_algo(p)) return -1;
+    /* The layer acts if ANY row is ALGO-capable; the first such row supplies
+     * the baked baseline, since the override itself is one per layer. */
+    uint16_t p = 0;
+    bool has_algo = false;
+    for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
+        if (seq_layer_patch_has_algo(layer->track_patch[t])) {
+            p = layer->track_patch[t];
+            has_algo = true;
+            break;
+        }
+    }
+    if (!has_algo) return -1;
 
     int base;
     if (layer->fm_algo_override != SEQ_FM_ALGO_NONE) {
@@ -1040,8 +1091,8 @@ void sequencer_core_additive_voice_changed(void)
     for (uint8_t i = 0; i < s_num_layers; i++) {
         seq_layer_t *layer = &s_layers[i];
         if (layer->type != SEQ_LAYER_MELODIC) continue;
-        if (layer->patch != SEQ_PATCH_ADDITIVE_CUSTOM) continue;
         for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
+            if (layer->track_patch[t] != SEQ_PATCH_ADDITIVE_CUSTOM) continue;
             additive_voice_push_live(layer->synth_id[t], &s_additive_voice);
         }
     }

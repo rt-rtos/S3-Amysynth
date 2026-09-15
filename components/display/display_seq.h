@@ -15,7 +15,8 @@ typedef enum {
     UI_MODE_ARP       = 1,
     UI_MODE_DRONE     = 2,   /* stutter drone screen */
     UI_MODE_PROG      = 3,
-    UI_MODE_TRACKOPTS = 4,
+    /* 4 was UI_MODE_TRACKOPTS; the screen is gone, the numbering is not
+     * reused so the remaining values stay where they were. */
     UI_MODE_FM        = 5,
     UI_MODE_DRONE_STD = 6,   /* normal (free-running) drone screen */
     UI_MODE_DEV       = 7,   /* DEV menu (CONFIG_SYNTH_DEV_MENU) */

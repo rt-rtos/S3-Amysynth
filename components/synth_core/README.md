@@ -28,7 +28,7 @@ drum Synth/PCM engines), `seq_core_editors.c` (envelope/filter/LFO commits),
 `seq_core_tempo.c` (BPM), `seq_core_progression.c` (chord progression).
 
 **`synth_ui/`** — the 20 Hz UI task (`synth_ui_task.c`), the per-screen input
-handlers (`ui_screen_menu/arp/drone/prog/trackopts/stepedit/fxmenu/fm.c`),
+handlers (`ui_screen_menu/arp/drone/prog/layermenu/stepedit/fxmenu/fm.c`),
 the modal editors (`ui_editors.c`: ADSR graph, filter, LFO), the screen/overlay
 precedence resolver (`ui_view_resolve.c`), patch cycling
 (`ui_patch_cycle.c`), and the bottom hint strip (`synth_ui_hint.c`).

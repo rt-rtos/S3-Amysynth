@@ -97,16 +97,19 @@ void sequencer_core_set_bpm(uint16_t new_bpm)
     s_bpm = sequencer_clamp_bpm(new_bpm);
     sequencer_push_tempo(s_bpm);
     for (int li = 0; li < s_num_layers; li++) {
-#if CONFIG_SEQ_MELODIC_AMY_NATIVE_LFO
-        /* Native-LFO tracks must keep s_lfo_hz == 0: their carrier is retuned
-         * by melodic_lfo_refresh_native_freq() below, and a nonzero value would
-         * start the software stepper double-modulating on top of it. Only
-         * melodic layers can be native - a drum layer's `patch` is just its
-         * stored SYNTH-mode selection and must not shadow the software rate. */
-        if (s_layers[li].type == SEQ_LAYER_MELODIC &&
-            sequencer_core_lfo_native_layout(s_layers[li].patch, NULL, NULL)) continue;
-#endif
         for (int tr = 0; tr < SEQ_TRACKS; tr++) {
+#if CONFIG_SEQ_MELODIC_AMY_NATIVE_LFO
+            /* Native-LFO rows must keep s_lfo_hz == 0: their carrier is retuned
+             * by melodic_lfo_refresh_native_freq() below, and a nonzero value
+             * would start the software stepper double-modulating on top of it.
+             * Per row, since a melodic layer can mix wave and string patches.
+             * Only melodic rows can be native - a drum row's stored patch is
+             * just its SYNTH-mode selection and must not shadow the software
+             * rate. */
+            if (s_layers[li].type == SEQ_LAYER_MELODIC &&
+                sequencer_core_lfo_native_layout(s_layers[li].track_patch[tr],
+                                                 NULL, NULL)) continue;
+#endif
             const voice_params_t *vp = seq_track_vp((uint8_t)li, (uint8_t)tr);
             if (vp->lfo_authored && vp->lfo.enabled)
                 s_lfo_hz[li][tr] = seq_lfo_sw_hz(vp->lfo.rate, s_bpm);

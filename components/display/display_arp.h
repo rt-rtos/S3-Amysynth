@@ -14,11 +14,12 @@ extern "C" {
  *
  * Layout (everything visible at once, no multiplexed slots):
  *   ARP:ON | MODE | OCT:2 |      R:1/16   <- macro row 1 (cursor 0..3, L->R)
- *   GATE:75% |    P12     |      GL:200   <- macro row 2 (cursor 4..5, L->R)
+ *   GT:75% | P12 | Q:GLOB |      GL:200   <- macro row 2 (cursor 4..6, L->R)
  *   [C3]  E3   G3   B3   --   --  ...      <- 8 note slots
  *
  * Cursor index space:
- *   0=ARP enable, 1=MODE, 2=OCT, 3=RATE, 4=GATE, 5=GLIDE, 6..13 = slots 0..7.
+ *   0=ARP enable, 1=MODE, 2=OCT, 3=RATE, 4=GATE, 5=GLIDE, 6=QUANT source,
+ *   7..14 = slots 0..7.
  *
  * The row-2 centre indicator shows the patch number (full catalog, as on the
  * sequencer view); the patch changes via the hold+turn gesture, not a cursor. */
@@ -31,7 +32,8 @@ extern "C" {
 #define ARP_CUR_RATE    3
 #define ARP_CUR_GATE    4
 #define ARP_CUR_PORTA   5   /* portamento/glide time, ms             */
-#define ARP_CUR_SLOT0   6
+#define ARP_CUR_QUANT   6   /* scale source: global quantizer vs own  */
+#define ARP_CUR_SLOT0   7
 #define ARP_CUR_COUNT   (ARP_CUR_SLOT0 + ARP_VIEW_SLOTS)
 
 typedef struct {
@@ -49,6 +51,8 @@ typedef struct {
     uint8_t     cursor;       /* 0..ARP_CUR_COUNT-1   */
     bool        editing;      /* value being adjusted */
     uint16_t    portamento_ms;/* glide time, ms (0 = off)                   */
+    bool        follow_quant; /* true = snap to the global quantizer, false =
+                                 the arp's own scale                        */
     /* Patch indicator (mirrors the sequencer view): the number shows top-right
      * in PATCH mode; while the select button is held, a non-NULL patch_name is
      * drawn as a centred banner. */

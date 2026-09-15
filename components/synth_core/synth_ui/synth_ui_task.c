@@ -14,7 +14,6 @@
 #include "display_seq.h"
 #include "display_drone.h"
 #include "display_prog.h"
-#include "display_trackopts.h"
 #include "display_menu.h"
 #include "display_arp.h"
 #include "display_hint.h"
@@ -112,8 +111,6 @@ static void synth_ui_task(void *pvParameters)
                     seq_state.active_layer_idx = (uint8_t)(seq_state.num_layers - 1);
                 if (s_graph_layer >= seq_state.num_layers)
                     s_graph_layer = (uint8_t)(seq_state.num_layers - 1);
-                if (s_to_layer >= seq_state.num_layers)
-                    s_to_layer = (uint8_t)(seq_state.num_layers - 1);
                 /* Drop the Step Trig overlay: after compaction its cached
                  * (layer,track,step) may name a different layer's steps. */
                 synth_ui_stepedit_close();
@@ -367,7 +364,7 @@ void synth_ui_init(u8g2_t *u8g2)
     xTaskCreatePinnedToCore(synth_ui_task, "seq_ui", 8192, NULL, 5, &ui_task, 0);
     /* From here this task is the single applier for structural s_layers edits;
      * debug builds assert any add/delete_layer from another task. Other
-     * contexts use synth_ui_request_add_layer()/_delete_to_layer(). */
+     * contexts use synth_ui_request_add_layer()/_delete_active_layer(). */
     sequencer_core_set_layers_applier(ui_task);
     ESP_LOGI(TAG_TASK, "Sequencer UI + Core initialized");
 }
@@ -384,11 +381,15 @@ uint8_t synth_ui_add_layer(seq_layer_type_t type, uint8_t num_steps)
     layer->num_tracks = SEQ_TRACKS;
 
     if (type == SEQ_LAYER_MELODIC) {
-        layer->patch = sequencer_core_get_layer_patch(li);
+        layer->patch       = sequencer_core_get_layer_patch(li);
+        layer->patch_scope = sequencer_core_get_patch_scope(li);
         /* Default: Cmaj7 voicing — C4 E4 G4 B4 */
         static const uint8_t mel_notes[SEQ_TRACKS] = {60, 64, 67, 71};
         for (int t = 0; t < SEQ_TRACKS; t++) {
             layer->track_base_note[t] = mel_notes[t];
+            /* track_patch[] is the per-row store in both scopes; mirror it so
+             * the header and the patch overlay read the row the cursor is on. */
+            layer->track_patch[t] = sequencer_core_get_melodic_track_patch(li, t);
             for (int s = 0; s < SEQ_MAX_STEPS; s++) {
                 layer->step_note[t][s] = mel_notes[t];
             }
@@ -423,12 +424,11 @@ void synth_ui_request_add_layer(void)
     s_layer_add_pending = true;
 }
 
-/* Schedule a delete of the layer targeted by the Track Options screen
- * (s_to_layer). The pending flag serializes array compaction on Core 0 against
- * the other seq_state readers. */
-void synth_ui_request_delete_to_layer(void)
+/* Schedule a delete of the layer the grid is showing. The pending flag
+ * serializes array compaction on Core 0 against the other seq_state readers. */
+void synth_ui_request_delete_active_layer(void)
 {
-    uint8_t layer_idx = s_to_layer;
+    uint8_t layer_idx = seq_state.active_layer_idx;
     /* Drum layer (0) is permanent; must always keep at least one layer. */
     if (layer_idx == 0 || seq_state.num_layers <= 1) return;
     if (layer_idx >= seq_state.num_layers) return;
