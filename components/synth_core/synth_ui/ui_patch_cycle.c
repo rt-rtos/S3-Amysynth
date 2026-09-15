@@ -54,6 +54,9 @@ static const uint16_t s_patch_catalog[] = {
     277, /* Add Organ (BYO_PARTIALS, 8 harmonics) */
     278, /* Add Bell (inharmonic partial ratios)  */
     279, /* Add Custom - live-editable additive voice (editor screen TBD) */
+    /* App wavetable bank slots (280-287): the ones past wavetable_bank_count()
+     * are skipped by sequencer_core_patch_compiled_out() like a gated range. */
+    280, 281, 282, 283, 284, 285, 286, 287,
 };
 #define SEQ_RUNTIME_PATCH_COUNT ((int)(sizeof(s_patch_catalog) / sizeof(s_patch_catalog[0])))
 #endif
@@ -196,15 +199,22 @@ void synth_ui_arp_cycle_patch(int delta)
  * groups: WAVE = the contiguous raw-wave / bass / wavetable block, PATCH = the
  * string/FM/additive presets. Both route through the same kind dispatch; only
  * the cycling domain differs. */
+/* Raw waves, bass and both wavetable ranges. */
+static bool live_wave_group_member(uint16_t p)
+{
+    return (p >= SEQ_PATCH_WAVE_BASE && p <= SEQ_PATCH_BASS_MAX)
+        || sequencer_core_is_wavetable_patch(p);
+}
+
 static bool live_wave_group_excluded(uint16_t p)
 {
-    if (p < SEQ_PATCH_WAVE_BASE || p > SEQ_PATCH_WAVETABLE_MAX) return true;
+    if (!live_wave_group_member(p)) return true;
     return sequencer_core_patch_compiled_out(p);
 }
 
 static bool live_patch_group_excluded(uint16_t p)
 {
-    if (p >= SEQ_PATCH_WAVE_BASE && p <= SEQ_PATCH_WAVETABLE_MAX) return true;
+    if (live_wave_group_member(p)) return true;
     return sequencer_core_patch_compiled_out(p);
 }
 

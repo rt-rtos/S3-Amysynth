@@ -1,5 +1,6 @@
 #include "sequencer_core/seq_core_internal.h"
 #include "custompatches/drum_cache.h"
+#include "custompatches/wavetable_bank.h"
 #include "voice_config.h"
 #include "seq_clamp.h"
 #include "display_seq.h"   /* DISPLAY_ALGO_BANNER_CUSTOM */
@@ -464,9 +465,9 @@ static void sequencer_configure_melodic_wave_track(uint8_t synth_id,
         SINE, SAW_DOWN, SAW_UP, PULSE, TRIANGLE, NOISE, KS,
     };
 #if CONFIG_AMY_WAVETABLE
-    bool is_wavetable = (patch >= SEQ_PATCH_WAVETABLE_BASE && patch <= SEQ_PATCH_WAVETABLE_MAX);
+    bool is_wavetable = sequencer_core_is_wavetable_patch(patch);
     uint16_t wave = WAVETABLE;
-    uint16_t wt_preset = pcm_wavetable_base + (uint16_t)(patch - SEQ_PATCH_WAVETABLE_BASE);
+    uint16_t wt_preset = wavetable_bank_preset_for_patch(patch);
     if (!is_wavetable) {
         uint16_t widx = (uint16_t)(patch - SEQ_PATCH_WAVE_BASE);
         if (widx >= (uint16_t)(sizeof(s_wave_for_patch) / sizeof(s_wave_for_patch[0])))

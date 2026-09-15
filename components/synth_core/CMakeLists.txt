@@ -68,6 +68,7 @@ idf_component_register(SRCS "live_play.c" "amy_helpers.c" "amy_fx.c" "fx_bus.c" 
                             "custompatches/clip_bounce.c"
                             "custompatches/clip_player.c"
                             "custompatches/drum_cache.c"
+                            "custompatches/wavetable_bank.c"
                             "project/project_snapshot.c"
                             ${fm_srcs}
                             ${additive_srcs}

@@ -11,6 +11,7 @@
  */
 
 #include "patch_names.h"
+#include "custompatches/wavetable_bank.h"
 
 #if CONFIG_SEQ_PATCH_SHOW_NAMES
 
@@ -334,7 +335,8 @@ static const char *const s_patch_names[SEQ_PATCH_NAME_COUNT] = {
 const char *patch_name_for(uint16_t patch)
 {
     if (patch >= SEQ_PATCH_NAME_COUNT) {
-        return (const char *)0;
+        /* App wavetable bank: names live with the tables, not in this table. */
+        return wavetable_bank_patch_name(patch);
     }
     return s_patch_names[patch];
 }

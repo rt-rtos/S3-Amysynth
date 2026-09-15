@@ -22,6 +22,7 @@
 #include "custompatches/sample_rec.h"
 #include "custompatches/clip_bounce.h"
 #include "custompatches/drum_cache.h"
+#include "custompatches/wavetable_bank.h"
 #include "filter_scope.h"
 #include "usb_audio.h"
 #include "esp_timer.h"
@@ -961,6 +962,11 @@ void app_main(void)
     DIAG_HEAP_CHECK("before amy_start");
     amy_start(amy_cfg);
     DIAG_HEAP_CHECK("after amy_start");
+
+    /* App wavetables become AMY memory presets; pcm_init() inside amy_start
+     * empties that list, so this must follow it. */
+    wavetable_bank_init();
+    DIAG_HEAP_CHECK("after wavetable_bank_init");
 
     // Characterize profiler timestamp cost before the dumps below; compiles
     // out unless AMY profiling is on.

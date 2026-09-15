@@ -31,7 +31,8 @@ static bool     s_ready = false;
  * Pure browse state with per-group last-patch memory - configuration stays
  * patch-number driven through the kind dispatch. */
 static bool s_wave_mode =
-    (SEQ_MEL_PATCH >= SEQ_PATCH_WAVE_BASE && SEQ_MEL_PATCH <= SEQ_PATCH_WAVETABLE_MAX);
+    (SEQ_MEL_PATCH >= SEQ_PATCH_WAVE_BASE && SEQ_MEL_PATCH <= SEQ_PATCH_WAVETABLE_MAX) ||
+    (SEQ_MEL_PATCH >= SEQ_PATCH_WAVETABLE_APP_BASE && SEQ_MEL_PATCH <= SEQ_PATCH_WAVETABLE_APP_MAX);
 static uint16_t s_patch_mem_wave  = SEQ_PATCH_WAVE_BASE;  /* SINE */
 static uint16_t s_patch_mem_patch = 138;                  /* DX7 E.PIANO 1 */
 

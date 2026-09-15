@@ -8,6 +8,7 @@
  * All AMY interaction goes through amy_helpers deltas - never amy_queue_lock,
  * never direct synth[] access. Callers are FreeRTOS tasks, never ISRs. */
 
+#include "custompatches/wavetable_bank.h"
 #include "custompatches/drone_std_core.h"
 #include "synth_ui.h"          /* seq_get_bpm() */
 #include "amy_fx.h"            /* synth_ui_fx_reassert() */
@@ -161,9 +162,9 @@ static void drone_std_rebuild(void)
         uint16_t wave = SAW_DOWN;
         int16_t  wt_preset = -1;
 #if CONFIG_AMY_WAVETABLE
-        if (s_ds.patch >= SEQ_PATCH_WAVETABLE_BASE && s_ds.patch <= SEQ_PATCH_WAVETABLE_MAX) {
+        if (sequencer_core_is_wavetable_patch(s_ds.patch)) {
             wave = WAVETABLE;
-            wt_preset = (int16_t)(pcm_wavetable_base + (s_ds.patch - SEQ_PATCH_WAVETABLE_BASE));
+            wt_preset = (int16_t)wavetable_bank_preset_for_patch(s_ds.patch);
         } else
 #endif
         {

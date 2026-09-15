@@ -8,6 +8,7 @@
  * amy_event is ~800 bytes: use the shared mutex-guarded module scratch event,
  * never a task stack. All callers here are FreeRTOS tasks, never ISRs. */
 
+#include "custompatches/wavetable_bank.h"
 #include "custompatches/drone_core.h"
 #include "synth_ui.h"      /* seq_get_bpm() (live global BPM) */
 #include "amy_fx.h"        /* synth_ui_fx_reassert() */
@@ -337,9 +338,9 @@ static void drone_rebuild(void)
         uint16_t wave = SAW_DOWN;
         int16_t  wt_preset = -1;
 #if CONFIG_AMY_WAVETABLE
-        if (s_d.patch >= SEQ_PATCH_WAVETABLE_BASE && s_d.patch <= SEQ_PATCH_WAVETABLE_MAX) {
+        if (sequencer_core_is_wavetable_patch(s_d.patch)) {
             wave = WAVETABLE;
-            wt_preset = (int16_t)(pcm_wavetable_base + (s_d.patch - SEQ_PATCH_WAVETABLE_BASE));
+            wt_preset = (int16_t)wavetable_bank_preset_for_patch(s_d.patch);
         } else
 #endif
         {
@@ -707,7 +708,11 @@ bool drone_patch_excluded(uint16_t patch)
     /* Kconfig-gated ranges are excluded here too, on top of the drone's own
      * rules. */
     if (sequencer_core_patch_compiled_out(patch)) return true;
+#if CONFIG_AMY_WAVETABLE
+    if (patch > DRONE_PATCH_MAX && !sequencer_core_is_wavetable_patch(patch)) return true;
+#else
     if (patch > DRONE_PATCH_MAX) return true;   /* incl. bass/FM/additive w/o wavetable */
+#endif
 #if CONFIG_AMY_WAVETABLE
     /* NOISE/KS/bass (262-266) sit below the supported wavetable range, so
      * they need excluding individually. */

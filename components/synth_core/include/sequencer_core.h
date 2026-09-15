@@ -64,6 +64,8 @@ extern "C" {
 #define SEQ_PATCH_WAVETABLE_4     271   /* VIRAL.WAV    */
 #define SEQ_PATCH_WAVETABLE_MAX   271
 
+static inline bool sequencer_core_is_wavetable_patch(uint16_t patch);
+
 /* True for any raw-waveform virtual patch (SINE..KS, plus the wavetable banks
  * when AMY_WAVETABLE is compiled in). Shared by the melodic synth/LFO
  * configurators so both ranges route the same way: direct oscillator config,
@@ -72,7 +74,7 @@ static inline bool sequencer_core_is_wave_patch(uint16_t patch)
 {
     if (patch >= SEQ_PATCH_WAVE_BASE && patch <= SEQ_PATCH_WAVE_MAX) return true;
 #if CONFIG_AMY_WAVETABLE
-    if (patch >= SEQ_PATCH_WAVETABLE_BASE && patch <= SEQ_PATCH_WAVETABLE_MAX) return true;
+    if (sequencer_core_is_wavetable_patch(patch)) return true;
 #endif
     return false;
 }
@@ -133,7 +135,26 @@ static inline bool sequencer_core_lfo_native_layout(uint16_t patch,
 #define SEQ_PATCH_ADDITIVE_BELL    278   /* inharmonic free-bar bell ratios  */
 #define SEQ_PATCH_ADDITIVE_CUSTOM  279   /* live-editable additive voice     */
 #define SEQ_PATCH_ADDITIVE_MAX     279
-#define SEQ_PATCH_ROUTABLE_MAX SEQ_PATCH_ADDITIVE_MAX
+
+/* ── App-side wavetable bank (custompatches/wavetable_bank.h) ─────────────
+ * Tables generated from Vital exports, served as AMY memory presets. A fixed
+ * block of slots so the numbering space stays positional; slots past
+ * wavetable_bank_count() are permanent holes skipped like a compiled-out
+ * range. Numbered above additive so nothing below moves. */
+#define SEQ_PATCH_WAVETABLE_APP_BASE  280
+#define SEQ_PATCH_WAVETABLE_APP_SLOTS 8
+#define SEQ_PATCH_WAVETABLE_APP_MAX   (SEQ_PATCH_WAVETABLE_APP_BASE + SEQ_PATCH_WAVETABLE_APP_SLOTS - 1)
+#define SEQ_PATCH_ROUTABLE_MAX SEQ_PATCH_WAVETABLE_APP_MAX
+uint8_t wavetable_bank_count(void);   /* custompatches/wavetable_bank.c */
+
+/* True for a wavetable virtual patch in either range (vendored or app bank),
+ * regardless of whether the feature is compiled in - pair with
+ * sequencer_core_patch_compiled_out() for routability. */
+static inline bool sequencer_core_is_wavetable_patch(uint16_t patch)
+{
+    return (patch >= SEQ_PATCH_WAVETABLE_BASE && patch <= SEQ_PATCH_WAVETABLE_MAX)
+        || (patch >= SEQ_PATCH_WAVETABLE_APP_BASE && patch <= SEQ_PATCH_WAVETABLE_APP_MAX);
+}
 
 /* True when `patch` falls in a virtual range whose feature is NOT compiled in.
  * The single compile-awareness point for the whole patch space: browse domains
@@ -144,7 +165,10 @@ static inline bool sequencer_core_lfo_native_layout(uint16_t patch,
 static inline bool sequencer_core_patch_compiled_out(uint16_t patch)
 {
 #if !CONFIG_AMY_WAVETABLE
-    if (patch >= SEQ_PATCH_WAVETABLE_BASE && patch <= SEQ_PATCH_WAVETABLE_MAX) return true;
+    if (sequencer_core_is_wavetable_patch(patch)) return true;
+#else
+    if (patch >= SEQ_PATCH_WAVETABLE_APP_BASE && patch <= SEQ_PATCH_WAVETABLE_APP_MAX &&
+        patch - SEQ_PATCH_WAVETABLE_APP_BASE >= wavetable_bank_count()) return true;
 #endif
 #if !CONFIG_SYNTH_CUSTOM_FM
     if (patch >= SEQ_PATCH_FM_BASE && patch <= SEQ_PATCH_FM_MAX) return true;
