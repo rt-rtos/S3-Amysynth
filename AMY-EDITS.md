@@ -43,6 +43,7 @@ flowchart TD
     Active --> CUST["Custom operator programs + algorithm_ops accessor<br/>src/algorithms.c, src/amy.h"]
     Active --> BUILD["Kconfig + CMakeLists: fixed-point, profiler, wavetable, gamma808 flags; NDEBUG hot files; drums-flash<br/>Kconfig, CMakeLists.txt"]
     Active --> UNI["Experimental per-osc unison cluster<br/>src/amy.h, src/amy.c, src/oscillators.c, src/patches.c, src/api.c"]
+    Active --> FTR["Filter state reset on filter_type change<br/>src/amy.c"]
 ```
 
 ## Dropped (merged upstream)
@@ -90,6 +91,20 @@ flowchart TD
 sample-identical to before; the FX menu's `Cho Delay` row is the knob.
 Retire on the sync that carries the upstream PR (either default variant:
 the app pins its own default through `fx_state_t.chorus_delay`).
+
+### `amy.c` — filter state reset on a `FILTER_TYPE` change (upstream PR candidate)
+
+`play_delta` calls `reset_filter()` when a `FILTER_TYPE` delta carries a
+different type than the osc holds. The filter kernels store different things
+in `filter_delay` (the 12 dB biquad raw input history, LPF24 b0-scaled
+history in six words, the phaser an allpass chain), so a type change on a
+sounding osc handed the new kernel a foreign state: into LPF24 the raw
+history reads about 1/b0 too large and rings both resonant stages to full
+scale for several blocks; out of the phaser into any biquad bursts the same
+way at a lower level. Same-type re-sends (patch strings, per-detent editor
+pushes) are unaffected by the compare. The filter editor's type cursor hits
+this on every sounding voice. Same shape as the upstream branch
+`fix/filter-type-switch-reset`; retire on the sync that carries it.
 
 ### `amy.h` + `amy.c` + `oscillators.c` + `patches.c` + `api.c` — per-osc unison cluster (experimental, dev-only)
 

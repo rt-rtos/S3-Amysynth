@@ -7,6 +7,7 @@
 
 #include "nimble/nimble_port.h"
 #include "nimble/nimble_port_freertos.h"
+#include "host/ble_gatt.h"
 #include "esp_heap_caps.h"
 #include "nvs_flash.h"
 #include "esp_log.h"
@@ -134,6 +135,17 @@ static void radio_session_stop(void)
          * never-built stack state (ble_att_svr ctx). Leaking the session's
          * heap is the safe failure; a power cycle reclaims it. */
         ESP_LOGE(TAG, "nimble_port_stop rc=%d - stack left allocated", rc);
+        s_state = RADIO_FAILED_ERR;
+        return;
+    }
+    /* ble_hs_deinit() unregisters the ATT server's entry pool before
+     * ble_gatts_stop() returns the registered attributes to it, and with
+     * BT_NIMBLE_MEMPOOL_RUNTIME_ALLOC the unregister asserts that no block
+     * is still out. Return them first; esp-nimble 1a714b03d moves this reset
+     * into ble_att_svr_deinit(), after which the call here is a no-op. */
+    rc = ble_gatts_reset();
+    if (rc != 0) {
+        ESP_LOGE(TAG, "ble_gatts_reset rc=%d - stack left allocated", rc);
         s_state = RADIO_FAILED_ERR;
         return;
     }

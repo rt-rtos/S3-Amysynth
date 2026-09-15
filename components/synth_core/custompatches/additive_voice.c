@@ -2,20 +2,22 @@
 #include "amy.h"           /* BYO_PARTIALS, PARTIAL, COEF_*, ENVELOPE_* */
 #include "amy_helpers.h"   /* amy_helpers_event_begin/send */
 #include "seq_clamp.h"
-#include <math.h>          /* log2f */
+#include "voice_config.h"  /* SEQ_LFO_PITCH_BASE_HZ */
 
 /* The live-editable "custom" additive voice; ownership convention in
  * additive_voice.h (mirrors s_fm_voice / amy_fx.h's s_fx). */
 additive_voice_t s_additive_voice;
 
-/* Ratios must be strictly positive before log2f() - 0 would put -inf into the
- * child's freq_coefs. At or below this floor plays as ratio 1. */
+/* At or below this floor a ratio plays as 1. */
 #define ADD_MIN_RATIO 0.01f
 
-static float add_ratio_octaves(float ratio)
+/* freq CONST for a partial at `ratio` above the note. The event field is Hz,
+ * anchored so SEQ_LFO_PITCH_BASE_HZ is the note-neutral value (voice_config.h),
+ * which puts the partial log2(ratio) octaves above the parent. */
+static float add_ratio_hz(float ratio)
 {
-    if (!(ratio > ADD_MIN_RATIO)) return 0.0f;   /* also catches NaN */
-    return log2f(ratio);
+    if (!(ratio > ADD_MIN_RATIO)) return SEQ_LFO_PITCH_BASE_HZ;   /* also catches NaN */
+    return SEQ_LFO_PITCH_BASE_HZ * ratio;
 }
 
 void additive_voice_default(additive_voice_t *v)
@@ -75,7 +77,7 @@ void additive_voice_configure_track(uint8_t synth_id, uint16_t num_voices,
         e->osc                    = (uint16_t)(i + 1);
         e->wave                   = PARTIAL;
         e->freq_coefs[COEF_NOTE]  = 1.0f;
-        e->freq_coefs[COEF_CONST] = add_ratio_octaves(voice->ratio[i]);
+        e->freq_coefs[COEF_CONST] = add_ratio_hz(voice->ratio[i]);
         e->amp_coefs[COEF_CONST]  = voice->level[i];
         e->amp_coefs[COEF_VEL]    = 1.0f;   /* receives parent amp each block */
         if (voice->decay_ms[i] > 0.0f) {
@@ -101,7 +103,7 @@ void additive_voice_push_live(uint8_t synth_id, const additive_voice_t *voice)
         amy_event *e = amy_helpers_event_begin();
         e->synth                  = synth_id;
         e->osc                    = (uint16_t)(i + 1);
-        e->freq_coefs[COEF_CONST] = add_ratio_octaves(voice->ratio[i]);
+        e->freq_coefs[COEF_CONST] = add_ratio_hz(voice->ratio[i]);
         e->amp_coefs[COEF_CONST]  = voice->level[i];
         amy_helpers_event_send(e);
     }
