@@ -173,11 +173,12 @@ static void arp_kill_voices(void)
     amy_helpers_event_send(e);
 }
 
-/* Push the arp filter including the bipolar EG1->cutoff sweep depth
- * (filter_env_amount, -8..+8 octaves, as on melodic rows). Mirrors
- * melodic_filter_apply(): wire the coef only when the filter is enabled with a
- * nonzero amount, and push EG1 breakpoints alongside it - AMY treats a
- * never-configured breakpoint set as an always-open unity gate. */
+/* Push the arp filter plus its envelope routing matrix (eg_depth, the same
+ * eight bipolar depths melodic rows carry). Mirrors melodic_filter_apply(): the
+ * depths go out in their own event - all eight slots once the arp's filter
+ * block is authored, so a 0 clears the rail, the nonzero ones only before that
+ * - and EG1 breakpoints ride along whenever an EG1 rail is live, since AMY
+ * treats a never-configured breakpoint set as an always-open unity gate. */
 static void arp_apply_filter(const seq_filter_t *f)
 {
     if (!f) return;
@@ -187,9 +188,6 @@ static void arp_apply_filter(const seq_filter_t *f)
         e->filter_type = f->filter_type;
         e->filter_freq_coefs[COEF_CONST] = f->cutoff_hz;
         e->resonance = f->resonance;
-        if (f->filter_env_amount != 0.0f) {
-            e->filter_freq_coefs[COEF_EG1] = f->filter_env_amount;
-        }
     } else {
         e->filter_type = FILTER_NONE;
     }
@@ -200,7 +198,10 @@ static void arp_apply_filter(const seq_filter_t *f)
     }
     amy_helpers_event_send(e);
 
-    if (f->enabled && f->filter_env_amount != 0.0f) {
+    sequencer_core_push_eg_depths(sequencer_core_arp_synth(), -1, f,
+                                  s_arp.vp.filter_authored);
+
+    if (seq_filter_eg1_live(f)) {
         sequencer_core_push_envelope_eg1(sequencer_core_arp_synth(), 0,
                                          &s_arp.vp.env1);
     }
@@ -281,8 +282,8 @@ static void arp_rebuild(void)
                                     sequencer_core_get_bpm(),
                                     carrier, coupled, coupled);
     }
-    /* arp_apply_filter also pushes the EG1 breakpoints whenever it wires the
-     * sweep coef. */
+    /* arp_apply_filter also pushes the routing matrix, and the EG1 breakpoints
+     * whenever an EG1 rail is live. */
     if (s_arp.vp.filter_authored) {
         arp_apply_filter(&s_arp.vp.filter);
     }
@@ -311,7 +312,7 @@ void arp_core_init(void)
     /* Seed the bipolar EG1->cutoff sweep so an enabled arp filter has its
      * plucky-sweep character; the graph editor's EG1 page edits it
      * (-8..+8 oct, 0 = no sweep). */
-    s_arp.vp.filter.filter_env_amount = ARP_FILTER_EG1_DEPTH_OCT;
+    s_arp.vp.filter.eg_depth[1][SEQ_EGT_CUTOFF] = ARP_FILTER_EG1_DEPTH_OCT;
     s_arp.enabled     = CONFIG_SEQ_ARP_DEFAULT_ENABLED;
     s_arp.dir         = ARP_UP;
     s_arp.octaves     = CONFIG_SEQ_ARP_DEFAULT_OCTAVES;

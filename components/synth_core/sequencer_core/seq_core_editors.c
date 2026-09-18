@@ -61,7 +61,7 @@ static uint8_t melodic_heads_mask(uint8_t layer_idx, uint8_t track)
 
 /* Push one EG1 breakpoint set to every osc that can carry a filter-env rail.
  * AMY reads a never-configured breakpoint set as a constant 1.0, so an osc
- * left out would sit at the full filter_env_amount offset instead of sweeping.
+ * left out would sit at the full EG1 depth offset instead of sweeping.
  * voice_mask is where the per-voice stages live: the SILENT heads on a headed
  * row, the two cluster oscs on an engine row, the copies on a fan row, osc 0
  * on a plain wave row. */
@@ -82,18 +82,73 @@ static void melodic_eg1_push(uint8_t layer_idx, uint8_t track,
 static void melodic_filter_apply(uint8_t layer_idx, uint8_t track,
                                  const seq_filter_t *f);
 
-/* Push one dist block where the row's layout carries the stage. */
+/* Write the row's eight envelope-routing depths into a pending event, one per
+ * target coef vector and envelope slot. An owning row writes every slot, so
+ * dialling a depth back to 0 clears the rail instead of leaving the last value
+ * in AMY - skip-on-zero would make a depth sticky until the next patch load.
+ * A row owns the matrix when it is a drum row (nothing else authors these
+ * rails on a drum voice) or once its filter block has been authored: from then
+ * on the app's matrix is the only source of truth for these rails, the same way
+ * an authored filter type overrides the patch's. Every other row writes only
+ * the nonzero slots, so a never-authored row keeps its patch string's routing.
+ * The dist push and this one never clobber each other - amy_event slots start
+ * at the unset sentinel and voice_apply_dist_osc() authors CONST only. The
+ * cutoff rails ride the filter and go out only while it is enabled. */
+static void filter_push_eg_depths(amy_event *e, bool own, const seq_filter_t *f)
+{
+    for (uint8_t eg = 0; eg < 2u; eg++) {
+        uint8_t slot = (eg == 0u) ? COEF_EG0 : COEF_EG1;
+        for (uint8_t t = 0; t < SEQ_EGT_COUNT; t++) {
+            if (t == SEQ_EGT_CUTOFF && !f->enabled) continue;
+            float d = f->eg_depth[eg][t];
+            if (!own && d == 0.0f) continue;
+            switch (t) {
+                case SEQ_EGT_PITCH:  e->freq_coefs[slot]        = d; break;
+                case SEQ_EGT_CUTOFF: e->filter_freq_coefs[slot] = d; break;
+                case SEQ_EGT_DRIVE:  e->dist_drive_coefs[slot]  = d; break;
+                case SEQ_EGT_MIX:    e->dist_mix_coefs[slot]    = d; break;
+                default: break;
+            }
+        }
+    }
+}
+
+void sequencer_core_push_eg_depths(uint8_t synth, int osc,
+                                   const seq_filter_t *f, bool own)
+{
+    if (!f) return;
+    amy_event *e = amy_helpers_event_begin();
+    e->synth = synth;
+    if (osc >= 0) e->osc = (uint8_t)osc;
+    filter_push_eg_depths(e, own, f);
+    amy_helpers_event_send(e);
+}
+
+/* Push one dist block where the row's layout carries the stage. Every owning
+ * row re-sends its routing depths behind each dist push, so the Kconfig-global
+ * EG0->drive depth voice_apply_dist_osc() carries reaches only never-authored
+ * rows and the drones. */
 static void melodic_dist_apply(uint8_t layer_idx, uint8_t track,
                                const seq_dist_t *d)
 {
     uint8_t synth = s_layers[layer_idx].synth_id[track];
     uint8_t heads = melodic_heads_mask(layer_idx, track);
+    bool drum = (s_layers[layer_idx].type == SEQ_LAYER_DRUM);
+    bool own = drum || seq_track_vp(layer_idx, track)->filter_authored;
     if (!heads) {
         voice_apply_dist(synth, d);
+        if (own) sequencer_core_push_eg_depths(synth, -1,
+                                               &seq_track_vp(layer_idx, track)->filter,
+                                               true);
         return;
     }
     for (uint8_t o = 0; (uint8_t)(heads >> o) != 0u; o++)
-        if (heads & (uint8_t)(1u << o)) voice_apply_dist_osc(synth, o, d);
+        if (heads & (uint8_t)(1u << o)) {
+            voice_apply_dist_osc(synth, o, d);
+            if (own) sequencer_core_push_eg_depths(synth, (int)o,
+                                                   &seq_track_vp(layer_idx, track)->filter,
+                                                   true);
+        }
 }
 
 /* Restore the resting coefficient for every target the LFO was driving, so
@@ -298,6 +353,11 @@ static void melodic_filter_push_osc(uint8_t layer_idx, uint8_t track,
                                     const seq_filter_t *f, int osc)
 {
     const seq_layer_t *layer = &s_layers[layer_idx];
+    /* Ownership per filter_push_eg_depths(). A preview on a never-authored
+     * row therefore pushes nonzero slots only, until the commit authors the
+     * block and re-applies with the row owning its rails. */
+    bool own = (layer->type == SEQ_LAYER_DRUM) ||
+               seq_track_vp(layer_idx, track)->filter_authored;
     amy_event *e = amy_helpers_event_begin();
     e->synth       = layer->synth_id[track];
     if (osc >= 0) e->osc = (uint8_t)osc;
@@ -305,16 +365,10 @@ static void melodic_filter_push_osc(uint8_t layer_idx, uint8_t track,
         e->filter_type = f->filter_type;
         e->filter_freq_coefs[COEF_CONST] = f->cutoff_hz;
         e->resonance = f->resonance;
-        /* EG1 -> cutoff depth in octaves, wired only for a non-zero amount so a
-         * plain melodic filter is unchanged. Nothing routes COEF_EG1 to
-         * amplitude on melodic tracks, so there is no double-use to arbitrate
-         * and the amount==0 gate is the only guard needed (as in arp_core.c). */
-        if (f->filter_env_amount != 0.0f) {
-            e->filter_freq_coefs[COEF_EG1] = f->filter_env_amount;
-        }
     } else {
         e->filter_type = FILTER_NONE;
     }
+    filter_push_eg_depths(e, own, f);
     /* KS string decay: the authored feedback, pushed directly. 0 = never
      * authored, so leave AMY's build-time 0.9 default in place. */
     if (layer->track_patch[track] == SEQ_PATCH_KS && f->feedback > 0.0f) {
@@ -338,11 +392,12 @@ static void melodic_filter_apply(uint8_t layer_idx, uint8_t track,
                 melodic_filter_push_osc(layer_idx, track, f, (int)o);
     }
 
-    /* Guarantee valid EG1 breakpoints whenever the filter env is live, so
-     * filter_freq_coefs[COEF_EG1] modulates a real ramp: AMY treats a
-     * never-configured breakpoint set as a permanent 1.0. Uses the row's stored
-     * EG1 (authored shape or the zeroed default). */
-    if (f->enabled && f->filter_env_amount != 0.0f) {
+    /* Guarantee valid EG1 breakpoints whenever any EG1 depth is live, so
+     * the COEF_EG1 rails modulate a real ramp: AMY treats a never-configured
+     * breakpoint set as a permanent 1.0 (a pitch depth would park the note at
+     * the full offset instead of dropping). Uses the row's stored EG1
+     * (authored shape or the seeded default). */
+    if (seq_filter_eg1_live(f)) {
         melodic_eg1_push(layer_idx, track, seq_layer_env1(layer_idx, track));
     }
 }
@@ -371,8 +426,12 @@ void sequencer_core_set_melodic_filter(uint8_t layer_idx, uint8_t track,
     dst->cutoff_hz   = SEQ_CLAMP_F32(f->cutoff_hz,  65.0f, 8000.0f);
     dst->resonance   = SEQ_CLAMP_F32(f->resonance,  0.51f, 8.0f);
     dst->enabled     = f->enabled;
-    dst->filter_env_amount = SEQ_CLAMP_F32(f->filter_env_amount, -8.0f, 8.0f);
     dst->feedback    = SEQ_CLAMP_F32(f->feedback, 0.0f, 1.0f);
+    for (uint8_t eg = 0; eg < 2u; eg++)
+        for (uint8_t t = 0; t < SEQ_EGT_COUNT; t++)
+            dst->eg_depth[eg][t] = SEQ_CLAMP_F32(f->eg_depth[eg][t],
+                                                 -seq_eg_depth_max(t),
+                                                 seq_eg_depth_max(t));
 
     vp->filter_authored = true;
     melodic_push_peers(layer_idx, track, sequencer_configure_melodic_filter_track);
@@ -846,8 +905,12 @@ void sequencer_core_preview_melodic_filter(uint8_t layer_idx, uint8_t track,
     tmp.filter_type       = (f->filter_type < SEQ_FILTER_COUNT) ? f->filter_type : FILTER_NONE;
     tmp.cutoff_hz         = SEQ_CLAMP_F32(f->cutoff_hz,  65.0f, 8000.0f);
     tmp.resonance         = SEQ_CLAMP_F32(f->resonance,  0.51f, 8.0f);
-    tmp.filter_env_amount = SEQ_CLAMP_F32(f->filter_env_amount, -8.0f, 8.0f);
     tmp.feedback          = SEQ_CLAMP_F32(f->feedback, 0.0f, 1.0f);
+    for (uint8_t eg = 0; eg < 2u; eg++)
+        for (uint8_t t = 0; t < SEQ_EGT_COUNT; t++)
+            tmp.eg_depth[eg][t] = SEQ_CLAMP_F32(f->eg_depth[eg][t],
+                                                -seq_eg_depth_max(t),
+                                                seq_eg_depth_max(t));
     /* Register the scratch so the software-LFO service sweeps around the
      * in-progress cutoff instead of stomping it from the store. */
     s_preview_gen++;

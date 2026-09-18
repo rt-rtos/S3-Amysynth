@@ -91,6 +91,20 @@ typedef enum {
 #define SEQ_FILTER_PHASER 6
 #define SEQ_FILTER_COUNT 7   /* first invalid value — range guards use this */
 
+/* Envelope modulation targets: one AMY control-coef vector each. */
+typedef enum {
+    SEQ_EGT_PITCH  = 0,   /* freq_coefs[]         octaves, -4..+4 */
+    SEQ_EGT_CUTOFF = 1,   /* filter_freq_coefs[]  octaves, -8..+8 */
+    SEQ_EGT_DRIVE  = 2,   /* dist_drive_coefs[]   octaves, -4..+4 */
+    SEQ_EGT_MIX    = 3,   /* dist_mix_coefs[]     linear,  -1..+1 */
+    SEQ_EGT_COUNT
+} seq_eg_target_t;
+
+static inline float seq_eg_depth_max(seq_eg_target_t t)
+{
+    return (t == SEQ_EGT_CUTOFF) ? 8.0f : (t == SEQ_EGT_MIX) ? 1.0f : 4.0f;
+}
+
 /* ── Per-voice filter state (stored alongside the ADSR envelope) ──
  * enabled=false sends FILTER_NONE (bypass). cutoff_hz is in Hz, the same unit
  * as amy_event.filter_freq_coefs; AMY converts to log-freq internally. */
@@ -99,12 +113,6 @@ typedef struct {
     float   cutoff_hz;     /* 65..8000 Hz */
     float   resonance;     /* 0.51..8.0 (Q factor) */
     bool    enabled;       /* false = bypass (FILTER_NONE sent) */
-    float   filter_env_amount; /* EG1 -> cutoff depth in octaves, bipolar -8..+8
-                                  (negative = downward sweep). 0.0 (memset
-                                  default) = inert, cutoff tracks COEF_CONST
-                                  only; non-zero routes the row's EG1 through
-                                  filter_freq_coefs[COEF_EG1], same convention
-                                  as bass_presets.c and arp_core.c. */
     float   feedback;      /* KS string decay, 0..1 (1.0 = lossless infinite
                               sustain; above 1 the KS buffer diverges). Only
                               meaningful on feedback waves, where the filter
@@ -112,7 +120,36 @@ typedef struct {
                               still-editable biquad resonance. 0.0 (memset
                               default) = never authored, so apply paths leave
                               AMY's build-time 0.9 default untouched. */
+    float   eg_depth[2][SEQ_EGT_COUNT];
+                           /* Envelope routing depths, [0]=EG0 / [1]=EG1 by
+                              seq_eg_target_t. 0.0 (memset default) = inert,
+                              the target tracks COEF_CONST only; non-zero
+                              routes that envelope through the target's
+                              COEF_EG0/COEF_EG1 slot. Signs: negative cutoff =
+                              downward sweep, positive pitch = starts high and
+                              drops to the note. Lives in the filter block
+                              because the depths ride its authored/preview/
+                              snapshot plumbing. [1][SEQ_EGT_CUTOFF] is the
+                              former filter_env_amount and keeps that meaning on
+                              every row type (same convention as bass_presets.c
+                              and arp_core.c). A row that owns the matrix - a
+                              drum row, or any row whose filter block has been
+                              authored - writes all eight slots, so a 0 clears
+                              the rail; every other row writes the nonzero ones
+                              only, leaving its patch string's own routing
+                              intact (see melodic_filter_push_osc). */
 } seq_filter_t;
+
+/* Is any EG1 rail live? The cutoff slot counts only while the filter is on,
+ * because that is the only state in which it is pushed. */
+static inline bool seq_filter_eg1_live(const seq_filter_t *f)
+{
+    for (uint8_t t = 0; t < SEQ_EGT_COUNT; t++) {
+        if (t == SEQ_EGT_CUTOFF && !f->enabled) continue;
+        if (f->eg_depth[1][t] != 0.0f) return true;
+    }
+    return false;
+}
 
 /* ── LFO (per-track tempo-synced software modulator) ── */
 typedef enum { LFO_MODE_FREE = 0, LFO_MODE_RETRIG = 1 } lfo_mode_t;

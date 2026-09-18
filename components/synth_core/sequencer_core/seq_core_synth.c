@@ -95,15 +95,14 @@ static const seq_env_t s_808_kick_eg1 =
       .release_ms = 249, .eg_type = ENVELOPE_DX7 };
 static const seq_filter_t s_808_kick_flt =
     { .filter_type = SEQ_FILTER_LPF24, .cutoff_hz = 279.0f,
-      .resonance = 1.75f, .enabled = true,
-      .filter_env_amount = -2.0f, .feedback = 0.0f };
+      .resonance = 1.75f, .enabled = true, .feedback = 0.0f,
+      .eg_depth = { [1] = { [SEQ_EGT_CUTOFF] = -2.0f } } };
 /* 808 hat: HPF strips low-end rumble, adds crispness. Formerly a hardcoded
  * every-bank track-2 rule; now 808 bank data like any other tuning block, so
  * untuned banks play their hats as sampled. */
 static const seq_filter_t s_808_hat_flt =
     { .filter_type = SEQ_FILTER_HPF, .cutoff_hz = 3000.0f,
-      .resonance = 0.5f, .enabled = true,
-      .filter_env_amount = 0.0f, .feedback = 0.0f };
+      .resonance = 0.5f, .enabled = true, .feedback = 0.0f };
 
 /* Transparent envelope: seeds unauthored rows whose bank authors no eg0. The
  * sample's own shape plays (sustain 100%, no decay); the release only matters
@@ -112,6 +111,14 @@ static const seq_filter_t s_808_hat_flt =
 static const seq_env_t s_drum_env_transparent =
     { .attack_ms = VOICE_ENV_ATTACK_MIN_MS, .decay_ms = 0, .sustain_pct = 100,
       .release_ms = 250, .eg_type = ENVELOPE_LINEAR };
+
+/* Sweep envelope: seeds unauthored EG1 on rows whose bank authors none. Inert
+ * until a depth routes it (filter or pitch), then a one-shot exponential drop
+ * over the decay - the kick pitch-drop shape - so a first depth turn sweeps
+ * instead of stepping through a zero-length envelope. */
+static const seq_env_t s_drum_env_sweep =
+    { .attack_ms = VOICE_ENV_ATTACK_MIN_MS, .decay_ms = 40, .sustain_pct = 0,
+      .release_ms = 40, .eg_type = ENVELOPE_TRUE_EXPONENTIAL };
 
 static const seq_drum_bank_t s_drum_banks[] = {
     /* ROM bank (gamma808) - ear-tuned */
@@ -215,8 +222,8 @@ static uint16_t drum_pcm_preset_for(uint8_t layer_idx, uint8_t track)
  * seeded from the bank's tuning blocks (or the transparent defaults when the
  * bank authors none), then the whole model is pushed through the same
  * appliers the graph editors use. One store sounds AND displays; bank blocks
- * get full apply fidelity (COEF_EG1 filter-env routing plus the EG1
- * breakpoint guarantee in melodic_filter_apply). Authored blocks are never
+ * get full apply fidelity (COEF_EG1 filter-env and pitch-env routing plus
+ * the EG1 breakpoint guarantee in melodic_filter_apply). Authored blocks are never
  * re-seeded, so user edits survive kit changes - the melodic deferred-
  * authority rule, minus the zeroed unauthored model melodic is stuck with. */
 static void sequencer_configure_drum_pcm_track_params(uint8_t layer_idx,
@@ -233,7 +240,7 @@ static void sequencer_configure_drum_pcm_track_params(uint8_t layer_idx,
     }
     if (!vp->env1_authored) {
         vp->env1 = (bank && bank->eg1[track]) ? *bank->eg1[track]
-                                              : (seq_env_t){0};
+                                              : s_drum_env_sweep;
     }
     if (!vp->filter_authored) {
         vp->filter = (bank && bank->flt[track]) ? *bank->flt[track]

@@ -186,11 +186,20 @@ static bool    s_graph_swing_mode = false;
 static uint8_t s_graph_swing_edit = 0;
 static bool  s_graph_env_dirty = false; /* set only when user moves an ADSR point */
 
-/* EG1 filter-env depth (melodic only): scratch octaves, seeded from the row's
- * seq_filter_t.filter_env_amount. Committed ONLY when dirty, so an untouched
- * editor session never authors the row's filter. */
-static float s_graph_fenv_edit  = 0.0f;
-static bool  s_graph_fenv_dirty = false;
+/* Envelope routing depths: scratch matrix seeded on open from the row's
+ * seq_filter_t.eg_depth, committed ONLY when dirty so an untouched editor
+ * session never authors the row's filter. [1][SEQ_EGT_CUTOFF] is the
+ * EG1->cutoff sweep every row type carries and the one the AMP stop edits on a
+ * non-drum EG1 page; the other seven slots are drum-row routing, each reached
+ * through its own MY_BUTTON_2 stop on either envelope page. */
+static float  s_graph_eg_edit[2][SEQ_EGT_COUNT]; /* scratch, seeded on open */
+static bool   s_graph_eg_dirty = false;          /* any slot edited        */
+static int8_t s_graph_eg_tgt = -1;               /* -1: no target stop up  */
+
+/* Target labels: topbar readout and log take the upper-case form, the hint
+ * strip the capitalised one its other labels use. */
+static const char *const s_eg_tgt_name[SEQ_EGT_COUNT] = { "PIT", "CUT", "DRV", "MIX" };
+static const char *const s_eg_tgt_hint[SEQ_EGT_COUNT] = { "Pit", "Cut", "Drv", "Mix" };
 
 /* Voice-block source. Which block a row reads and the editors write - its own
  * or the layer's shared one - is engine state (persisted per row, resolved by
@@ -616,6 +625,7 @@ void synth_ui_graph_open_envelope(void)
 
     /* Seed amp scratch from the target's current trim; reset amp mode and dirty flag. */
     s_graph_amp_mode  = false;
+    s_graph_eg_tgt    = -1;
     s_graph_env_dirty = false;
     switch (s_graph_target) {
         case GRAPH_TGT_DRONE:
@@ -654,23 +664,24 @@ void synth_ui_graph_open_envelope(void)
 
     graph_seed_from_env(&env);
 
-    /* Seed the EG1 filter-env depth scratch (melodic rows + arp). */
-    s_graph_fenv_dirty = false;
-    s_graph_fenv_edit  = 0.0f;
+    /* Seed the routing-depth scratch: the whole matrix on every row that
+     * carries one (melodic and drum rows, the arp, the live voice). */
+    s_graph_eg_dirty = false;
+    memset(s_graph_eg_edit, 0, sizeof(s_graph_eg_edit));
     if (s_graph_target == GRAPH_TGT_MELODIC) {
         seq_filter_t f;
         if (sequencer_core_get_melodic_filter(s_graph_layer, s_graph_track, &f)) {
-            s_graph_fenv_edit = f.filter_env_amount;
+            memcpy(s_graph_eg_edit, f.eg_depth, sizeof(s_graph_eg_edit));
         }
     } else if (s_graph_target == GRAPH_TGT_ARP) {
         seq_filter_t f;
         arp_get_filter(&f);
-        s_graph_fenv_edit = f.filter_env_amount;
+        memcpy(s_graph_eg_edit, f.eg_depth, sizeof(s_graph_eg_edit));
 #if CONFIG_SYNTH_WIRELESS
     } else if (s_graph_target == GRAPH_TGT_LIVE) {
         seq_filter_t f;
         live_play_get_filter(&f);
-        s_graph_fenv_edit = f.filter_env_amount;
+        memcpy(s_graph_eg_edit, f.eg_depth, sizeof(s_graph_eg_edit));
 #endif
     }
 
@@ -771,13 +782,15 @@ static void graph_live_push_env(void)
     s_graph_live_env = true;
 }
 
-/* EG1 sweep depth: stored filter + the scratch depth, previewed per row. */
-static void graph_live_push_fenv(void)
+/* Envelope routing depths: stored filter + the scratch matrix, previewed per
+ * row. A melodic row pushes the whole matrix - every slot is seeded from the
+ * row, so an untouched one re-sends the stored value. */
+static void graph_live_push_eg_depths(void)
 {
     if (s_graph_target == GRAPH_TGT_ARP) {
         seq_filter_t f;
         arp_get_filter(&f);
-        f.filter_env_amount = s_graph_fenv_edit;
+        memcpy(f.eg_depth, s_graph_eg_edit, sizeof(f.eg_depth));
         arp_preview_filter(&f);
         s_graph_live_fenv = true;
         return;
@@ -786,7 +799,7 @@ static void graph_live_push_fenv(void)
     if (s_graph_target == GRAPH_TGT_LIVE) {
         seq_filter_t f;
         live_play_get_filter(&f);
-        f.filter_env_amount = s_graph_fenv_edit;
+        memcpy(f.eg_depth, s_graph_eg_edit, sizeof(f.eg_depth));
         live_play_preview_filter(&f);
         s_graph_live_fenv = true;
         return;
@@ -798,7 +811,7 @@ static void graph_live_push_fenv(void)
     for (uint8_t i = 0; i < n; ++i) {
         seq_filter_t f;
         if (!sequencer_core_get_melodic_filter(s_graph_layer, peers[i], &f)) continue;
-        f.filter_env_amount = s_graph_fenv_edit;
+        memcpy(f.eg_depth, s_graph_eg_edit, sizeof(f.eg_depth));
         sequencer_core_preview_melodic_filter(s_graph_layer, peers[i], &f);
     }
     s_graph_live_fenv = true;
@@ -856,6 +869,16 @@ static bool graph_swing_available(void)
 {
     return s_graph_target == GRAPH_TGT_MELODIC && s_graph_eg_index == 0 &&
            editor_src_is_layer(s_graph_layer, s_graph_track);
+}
+
+static bool graph_target_has_eg1_depth(void);
+
+/* Rows carrying the envelope routing matrix: melodic and drum layer rows, the
+ * arp and the live voice. The drones and the FM ops have none.
+ * Page-independent - both envelope pages carry the per-target stops. */
+static bool graph_eg_targets_available(void)
+{
+    return graph_target_has_eg1_depth();
 }
 
 /* Same leading-edge/trailing-flush shape as the amp trim, and for the same
@@ -1017,6 +1040,7 @@ static void graph_commit_to_env(void)
             break;
     }
     s_graph_amp_mode = false;   /* clear mode so topbar reverts on next open */
+    s_graph_eg_tgt   = -1;
 
     /* Swing rides on the layer, not the target's voice block: flush the last
      * throttled detent (the setter no-ops when unchanged) and drop the mode. */
@@ -1025,32 +1049,33 @@ static void graph_commit_to_env(void)
     }
     s_graph_swing_mode = false;
 
-    /* Commit the EG1 depth only if edited. Read-modify-write through the public
-     * filter API so the COEF_EG1 push, the EG1 breakpoints, the 0..8 clamp and
-     * filter_authored all stay in the engine. Honors the layer/track scope. */
-    if (s_graph_fenv_dirty && s_graph_target == GRAPH_TGT_ARP) {
+    /* Commit the routing depths only if edited. Read-modify-write through the
+     * public filter API so the coef pushes, the EG1 breakpoints, the per-target
+     * clamps and filter_authored all stay in the engine. Honors the
+     * layer/track scope. */
+    if (s_graph_eg_dirty && s_graph_target == GRAPH_TGT_ARP) {
         seq_filter_t f;
         arp_get_filter(&f);
-        f.filter_env_amount = s_graph_fenv_edit;
+        memcpy(f.eg_depth, s_graph_eg_edit, sizeof(f.eg_depth));
         arp_set_filter(&f);
-        s_graph_fenv_dirty = false;
+        s_graph_eg_dirty = false;
     }
 #if CONFIG_SYNTH_WIRELESS
-    if (s_graph_fenv_dirty && s_graph_target == GRAPH_TGT_LIVE) {
+    if (s_graph_eg_dirty && s_graph_target == GRAPH_TGT_LIVE) {
         seq_filter_t f;
         live_play_get_filter(&f);
-        f.filter_env_amount = s_graph_fenv_edit;
+        memcpy(f.eg_depth, s_graph_eg_edit, sizeof(f.eg_depth));
         live_play_set_filter(&f);
-        s_graph_fenv_dirty = false;
+        s_graph_eg_dirty = false;
     }
 #endif
-    if (s_graph_fenv_dirty && s_graph_target == GRAPH_TGT_MELODIC) {
+    if (s_graph_eg_dirty && s_graph_target == GRAPH_TGT_MELODIC) {
         seq_filter_t f;
         if (sequencer_core_get_melodic_filter(s_graph_layer, s_graph_track, &f)) {
-            f.filter_env_amount = s_graph_fenv_edit;
+            memcpy(f.eg_depth, s_graph_eg_edit, sizeof(f.eg_depth));
             sequencer_core_set_melodic_filter(s_graph_layer, s_graph_track, &f);
         }
-        s_graph_fenv_dirty = false;
+        s_graph_eg_dirty = false;
     }
     sequencer_core_preview_melodic_clear();
 }
@@ -1112,24 +1137,37 @@ bool synth_ui_graph_toggle_range(void)
 
 /* Cycle MY_BUTTON_2's topbar sub-modes: OFF -> AMP -> SWG -> OFF, with the SWG
  * stop skipped where graph_swing_available() says swing is not this editor's to
- * touch. In a sub-mode the encoder edits that value instead of moving ADSR
- * points. Reset on editor open/close. (Name kept: main.c's press-down route and
- * the header contract both call it.) */
+ * touch. A row carrying the depth matrix appends one stop per routing target
+ * (PIT/CUT/DRV/MIX), editing the shown envelope's row of the matrix; its EG1
+ * page starts straight on them, having no amp trim of its own to edit there.
+ * In a sub-mode the encoder edits that value instead of moving ADSR points.
+ * Reset on editor open/close. (Name kept: main.c's press-down route and the header contract
+ * both call it.) */
 void synth_ui_graph_toggle_amp_mode(void)
 {
     if (!graph_popup_is_active(&s_graph_popup)) return;
+    bool targets = graph_eg_targets_available();
     if (s_graph_amp_mode) {
         s_graph_amp_mode   = false;
         s_graph_swing_mode = graph_swing_available();
+        if (!s_graph_swing_mode && targets) s_graph_eg_tgt = SEQ_EGT_PITCH;
+    } else if (s_graph_eg_tgt >= 0) {
+        s_graph_eg_tgt = (s_graph_eg_tgt + 1 < (int)SEQ_EGT_COUNT)
+                             ? (int8_t)(s_graph_eg_tgt + 1) : (int8_t)-1;
     } else if (s_graph_swing_mode) {
         graph_swing_live_flush(true);
         s_graph_swing_mode = false;
+        if (targets) s_graph_eg_tgt = SEQ_EGT_PITCH;
+    } else if (targets && s_graph_eg_index == 1) {
+        s_graph_eg_tgt = SEQ_EGT_PITCH;
     } else {
         s_graph_amp_mode = true;
     }
     s_force_redraw = true;
     ESP_LOGI(TAG, "graph topbar mode -> %s",
-             s_graph_amp_mode ? "AMP" : (s_graph_swing_mode ? "SWG" : "OFF"));
+             s_graph_amp_mode ? "AMP" :
+             (s_graph_eg_tgt >= 0 ? s_eg_tgt_name[s_graph_eg_tgt] :
+              (s_graph_swing_mode ? "SWG" : "OFF")));
 }
 
 /* Does the bound target expose an EG1 page? The free-running drone never sees
@@ -1144,8 +1182,9 @@ static bool graph_target_has_eg1(void)
 }
 
 /* Targets carrying an EG1->cutoff sweep DEPTH field (seq_filter_t's
- * filter_env_amount). The drones have none - their EG1 page edits the envelope
- * only. Gates the depth readout, the depth adjust and the polarity flip. */
+ * eg_depth[1][SEQ_EGT_CUTOFF]). The drones have none - their EG1 page edits the
+ * envelope only. Gates the depth readout, the depth adjust and the polarity
+ * flip. */
 static bool graph_target_has_eg1_depth(void)
 {
 #if CONFIG_SYNTH_WIRELESS
@@ -1172,6 +1211,7 @@ static void graph_toggle_eg_index(void)
         graph_swing_live_flush(true);
         s_graph_swing_mode = false;
     }
+    s_graph_eg_tgt = -1;          /* page-scoped stop, same reasoning */
 
     s_graph_eg_index = (s_graph_eg_index == 0) ? 1 : 0;
 
@@ -1268,30 +1308,50 @@ void synth_ui_graph_cycle_eg_type(void)
 }
 
 /* Hint-strip b2 label: MY_BUTTON_2's trim mode edits amplitude on the EG0 page
- * but the EG1->cutoff sweep depth on the melodic EG1 page. */
+ * but the EG1->cutoff sweep depth on the melodic EG1 page. A row carrying the
+ * depth matrix names the stop the next press enters, following the same cycle
+ * as synth_ui_graph_toggle_amp_mode(). */
 const char *synth_ui_graph_hint_b2(void)
 {
-    /* Deliberately narrower than graph_target_has_eg1_depth(): the arp keeps
-     * its "Amp" label here. */
-    bool env_slot = (s_graph_target == GRAPH_TGT_MELODIC);
-#if CONFIG_SYNTH_WIRELESS
-    env_slot = env_slot || (s_graph_target == GRAPH_TGT_LIVE);
-#endif
-    return (s_graph_eg_index == 1 && env_slot) ? "Env" : "Amp";
+    if (graph_eg_targets_available()) {
+        if (s_graph_amp_mode)
+            return graph_swing_available() ? "Swg" : s_eg_tgt_hint[SEQ_EGT_PITCH];
+        if (s_graph_eg_tgt >= 0)
+            return (s_graph_eg_tgt + 1 < (int)SEQ_EGT_COUNT)
+                       ? s_eg_tgt_hint[s_graph_eg_tgt + 1] : "Off";
+        if (s_graph_swing_mode) return s_eg_tgt_hint[SEQ_EGT_PITCH];
+        return (s_graph_eg_index == 1) ? s_eg_tgt_hint[SEQ_EGT_PITCH] : "Amp";
+    }
+    /* What is left carries no depth matrix at all: the drones and the FM ops. */
+    return "Amp";
 }
 
-/* Flip the sign of the EG1->cutoff sweep (MY_BUTTON_SHOULDER on the EG1 page).
- * No-op at 0.0 depth: nothing to invert, and it keeps -0.0 out of the readout. */
+/* Flip the sign of the depth the target stop is editing, on either envelope
+ * page, or of the EG1->cutoff sweep (MY_BUTTON_SHOULDER on the EG1 page) when
+ * no target stop is up. No-op at 0.0 depth: nothing to invert, and it keeps
+ * -0.0 out of the readout. */
 void synth_ui_graph_flip_eg1_polarity(void)
 {
     if (!graph_popup_is_active(&s_graph_popup)) return;
+    if (s_graph_eg_tgt >= 0) {
+        float *d = &s_graph_eg_edit[s_graph_eg_index][s_graph_eg_tgt];
+        if (*d == 0.0f) return;
+        *d = -*d;
+        s_graph_eg_dirty = true;
+        graph_live_push_eg_depths();
+        s_force_redraw = true;
+        ESP_LOGI(TAG, "EG%u %s depth -> %+.2f", s_graph_eg_index,
+                 s_eg_tgt_name[s_graph_eg_tgt], (double)*d);
+        return;
+    }
     if (s_graph_eg_index != 1) return;
     if (!graph_target_has_eg1_depth()) return;
-    if (s_graph_fenv_edit == 0.0f) return;
-    s_graph_fenv_edit  = -s_graph_fenv_edit;
-    s_graph_fenv_dirty = true;
+    if (s_graph_eg_edit[1][SEQ_EGT_CUTOFF] == 0.0f) return;
+    s_graph_eg_edit[1][SEQ_EGT_CUTOFF] = -s_graph_eg_edit[1][SEQ_EGT_CUTOFF];
+    s_graph_eg_dirty = true;
     s_force_redraw = true;
-    ESP_LOGI(TAG, "EG1 polarity -> %+.2f oct", (double)s_graph_fenv_edit);
+    ESP_LOGI(TAG, "EG1 polarity -> %+.2f oct",
+             (double)s_graph_eg_edit[1][SEQ_EGT_CUTOFF]);
 }
 
 /* Route an encoder delta to the pop-up. Returns true if the pop-up consumed it
@@ -1312,15 +1372,29 @@ bool synth_ui_graph_handle_encoder(long delta)
         return true;
     }
 
+    if (s_graph_eg_tgt >= 0) {
+        /* Routing depth of the shown envelope: 0.05/detent on the linear mix
+         * rail, 0.25 oct on the others, bipolar to the target's own maximum.
+         * Positive pitch = the hit starts high and drops to the note. */
+        seq_eg_target_t tgt = (seq_eg_target_t)s_graph_eg_tgt;
+        float step = (tgt == SEQ_EGT_MIX) ? 0.05f : 0.25f;
+        float lim  = seq_eg_depth_max(tgt);
+        float v = s_graph_eg_edit[s_graph_eg_index][tgt] + (float)delta * step;
+        s_graph_eg_edit[s_graph_eg_index][tgt] = SEQ_CLAMP_F32(v, -lim, lim);
+        s_graph_eg_dirty = true;
+        graph_live_push_eg_depths();
+        s_force_redraw = true;
+        return true;
+    }
+
     if (s_graph_amp_mode) {
         if (s_graph_eg_index == 1 && graph_target_has_eg1_depth()) {
             /* EG1->cutoff depth, 0.25 oct/detent. Bipolar -8..+8; negative =
              * downward sweep. Same field as the filter editor's EG cursor. */
-            float v = s_graph_fenv_edit + (float)delta * 0.25f;
-            v = SEQ_CLAMP_F32(v, -8.0f, 8.0f);
-            s_graph_fenv_edit  = v;
-            s_graph_fenv_dirty = true;
-            graph_live_push_fenv();
+            float v = s_graph_eg_edit[1][SEQ_EGT_CUTOFF] + (float)delta * 0.25f;
+            s_graph_eg_edit[1][SEQ_EGT_CUTOFF] = SEQ_CLAMP_F32(v, -8.0f, 8.0f);
+            s_graph_eg_dirty = true;
+            graph_live_push_eg_depths();
             s_force_redraw = true;
             return true;
         }
@@ -1358,12 +1432,13 @@ bool synth_ui_graph_handle_button(bool is_long)
      * to the ADSR points - the same enter/exit symmetry every other editor
      * has. Without this, the press fell through to the popup widget and
      * toggled a hidden cursor flag while the sub-mode stayed stuck on. */
-    if (s_graph_amp_mode || s_graph_swing_mode) {
+    if (s_graph_amp_mode || s_graph_swing_mode || s_graph_eg_tgt >= 0) {
         /* Exit, never advance: the press is the sub-mode's own confirm, so it
          * must not land on the next stop of MY_BUTTON_2's cycle. */
         if (s_graph_swing_mode) graph_swing_live_flush(true);
         s_graph_amp_mode   = false;
         s_graph_swing_mode = false;
+        s_graph_eg_tgt     = -1;
         s_force_redraw = true;
         return true;
     }
@@ -2734,7 +2809,8 @@ uint32_t graph_view_signature(void)
     h = fnv1a_bytes(h, &s_graph_amp_edit, sizeof(s_graph_amp_edit));
     h = fnv1a_bytes(h, &s_graph_swing_mode, sizeof(s_graph_swing_mode));
     h = fnv1a_bytes(h, &s_graph_swing_edit, sizeof(s_graph_swing_edit));
-    h = fnv1a_bytes(h, &s_graph_fenv_edit, sizeof(s_graph_fenv_edit));
+    h = fnv1a_bytes(h, s_graph_eg_edit, sizeof(s_graph_eg_edit));
+    h = fnv1a_bytes(h, &s_graph_eg_tgt, sizeof(s_graph_eg_tgt));
     h = fnv1a_bytes(h, &s_graph_eg_index, sizeof(s_graph_eg_index));
     h = fnv1a_bytes(h, &s_graph_eg_type_disp, sizeof(s_graph_eg_type_disp));
     /* Tick-derived: flips when the type-flash window closes, so the top bar
@@ -2790,7 +2866,7 @@ static void graph_draw_topbar(u8g2_t *u8g2)
     /* During the flash window the full type name takes the shared band. */
     bool type_flash = graph_type_flash_active();
     bool mid_shown = (!type_flash && !s_graph_amp_mode && !s_graph_swing_mode &&
-                      n >= 4 && c >= 1 && c <= 3);
+                      s_graph_eg_tgt < 0 && n >= 4 && c >= 1 && c <= 3);
 
     /* Right: amp indicator in amp mode, layer swing in swing mode. The melodic
      * EG1 page shows the signed sweep depth instead whenever the middle readout
@@ -2806,6 +2882,13 @@ static void graph_draw_topbar(u8g2_t *u8g2)
         u8g2_SetDrawColor(u8g2, 0);
         u8g2_DrawStr(u8g2, (uint8_t)(128 - rw - 2), 8, tname);
         u8g2_SetDrawColor(u8g2, 1);
+    } else if (s_graph_eg_tgt >= 0) {
+        char tgt_buf[12];
+        snprintf(tgt_buf, sizeof(tgt_buf), "%s%+.2f", s_eg_tgt_name[s_graph_eg_tgt],
+                 (double)s_graph_eg_edit[s_graph_eg_index][s_graph_eg_tgt]);
+        u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
+        rw = (uint8_t)u8g2_GetStrWidth(u8g2, tgt_buf);
+        u8g2_DrawStr(u8g2, (uint8_t)(128 - rw - 2), 8, tgt_buf);
     } else if (s_graph_swing_mode) {
         char swg_buf[10];
         snprintf(swg_buf, sizeof(swg_buf), "SWG%u%%", (unsigned)s_graph_swing_edit);
@@ -2815,7 +2898,8 @@ static void graph_draw_topbar(u8g2_t *u8g2)
     } else if (s_graph_amp_mode || (eg1_fenv && !mid_shown)) {
         char amp_buf[10];
         if (eg1_fenv) {
-            snprintf(amp_buf, sizeof(amp_buf), "ENV%+.2f", (double)s_graph_fenv_edit);
+            snprintf(amp_buf, sizeof(amp_buf), "ENV%+.2f",
+                     (double)s_graph_eg_edit[1][SEQ_EGT_CUTOFF]);
         } else {
             snprintf(amp_buf, sizeof(amp_buf), "AMP%d%%",
                      (int)(s_graph_amp_edit * 100.0f + 0.5f));
@@ -2824,6 +2908,26 @@ static void graph_draw_topbar(u8g2_t *u8g2)
         rw = (uint8_t)u8g2_GetStrWidth(u8g2, amp_buf);
         u8g2_DrawStr(u8g2, (uint8_t)(128 - rw - 2), 8, amp_buf);
     }
+    /* While a target stop is up, mark which targets the SHOWN envelope drives:
+     * one letter per nonzero depth, just right of the header. Skipped whole
+     * when it would run into the right readout. */
+    if (s_graph_eg_tgt >= 0) {
+        static const char act_ch[SEQ_EGT_COUNT] = { 'P', 'C', 'D', 'M' };
+        char act[SEQ_EGT_COUNT + 1];
+        uint8_t na = 0;
+        for (uint8_t t = 0; t < SEQ_EGT_COUNT; t++)
+            if (s_graph_eg_edit[s_graph_eg_index][t] != 0.0f) act[na++] = act_ch[t];
+        act[na] = '\0';
+        if (na) {
+            int x = (int)u8g2_GetStrWidth(u8g2, buf) + 2 + 2;   /* header at x=2 */
+            u8g2_SetFont(u8g2, u8g2_font_5x7_tf);
+            int aw = (int)u8g2_GetStrWidth(u8g2, act);
+            if (x + aw < (int)(128 - rw - 4))
+                u8g2_DrawStr(u8g2, (uint8_t)x, 8, act);
+            u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
+        }
+    }
+
     /* No idle-slot fallback: the point readout owns this band whenever the
      * cursor sits on a point (i.e. always), so the persistent curve-type code
      * lives in the plot corner instead - see synth_ui_graph_view_draw. */

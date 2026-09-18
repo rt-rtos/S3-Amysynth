@@ -107,11 +107,13 @@ static void live_note(uint8_t note, float velocity)
     amy_helpers_event_send(e);
 }
 
-/* Push the stored filter including the bipolar EG1->cutoff sweep depth.
- * Mirrors arp_apply_filter() minus its KS branch (the live slot is always a
- * patch voice). EG1 breakpoints go out alongside a nonzero sweep so
- * filter_freq_coefs[COEF_EG1] never reads AMY's never-configured
- * always-open unity gate. */
+/* Push the stored filter plus its envelope routing matrix (eg_depth, the same
+ * eight bipolar depths melodic rows carry). Mirrors arp_apply_filter() minus
+ * its KS branch (the live slot is always a patch voice): the depths go out in
+ * their own event - all eight slots once the voice's filter block is authored,
+ * so a 0 clears the rail, the nonzero ones only before that - and EG1
+ * breakpoints ride along whenever an EG1 rail is live, so a rail never reads
+ * AMY's never-configured always-open unity gate. */
 static void live_apply_filter(const seq_filter_t *f)
 {
     if (!f) return;
@@ -121,15 +123,14 @@ static void live_apply_filter(const seq_filter_t *f)
         e->filter_type = f->filter_type;
         e->filter_freq_coefs[COEF_CONST] = f->cutoff_hz;
         e->resonance = f->resonance;
-        if (f->filter_env_amount != 0.0f) {
-            e->filter_freq_coefs[COEF_EG1] = f->filter_env_amount;
-        }
     } else {
         e->filter_type = FILTER_NONE;
     }
     amy_helpers_event_send(e);
 
-    if (f->enabled && f->filter_env_amount != 0.0f) {
+    sequencer_core_push_eg_depths(LIVE_SYNTH, -1, f, s_vp.filter_authored);
+
+    if (seq_filter_eg1_live(f)) {
         sequencer_core_push_envelope_eg1(LIVE_SYNTH, 0, &s_vp.env1);
     }
 }

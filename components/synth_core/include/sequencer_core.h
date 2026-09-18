@@ -693,6 +693,17 @@ void sequencer_core_push_envelope(uint8_t synth, const seq_env_t *env);
  * only the timing - whatever coef is wired to COEF_EG1 is what moves. */
 void sequencer_core_push_envelope_eg1(uint8_t synth, uint8_t osc, const seq_env_t *env);
 
+/* Push f's envelope routing depths into one synth as a single event: osc < 0
+ * broadcasts to every osc of the synth, otherwise it addresses that one.
+ * `own` true writes all eight slots, so a 0 clears the rail; false writes the
+ * nonzero ones only, leaving a patch string's own routing alone. The cutoff
+ * slots go out only while f->enabled. Supplies the coef rails only - pair it
+ * with sequencer_core_push_envelope_eg1() whenever seq_filter_eg1_live(f), or
+ * AMY reads the never-configured EG1 breakpoints as a constant 1.0. Same
+ * execution context as sequencer_core_push_envelope_eg1(): it goes through the
+ * shared amy_helpers event buffer. */
+void sequencer_core_push_eg_depths(uint8_t synth, int osc, const seq_filter_t *f, bool own);
+
 /* ── Arpeggiator support ──────────────────────────────────────────────────
  * The arp lives in arp_core but routes all AMY traffic through these helpers,
  * so it shares the one event buffer + mutex and never races the sequencer. */

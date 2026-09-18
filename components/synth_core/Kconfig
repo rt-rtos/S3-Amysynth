@@ -302,9 +302,11 @@ config SEQ_DIST_DRIVE_AMP_EG
 		drive's contour is shared with amplitude (AMY has only two envelopes,
 		both already spoken for - amp and filter).
 
-		Off by default; adding the symbol needs a clean rebuild. TODO: if it
-		earns its keep, promote to a per-track amount with an EG0/EG1 source
-		choice (see the dist coef rail in AMY-EDITS.md).
+		Off by default; adding the symbol needs a clean rebuild. Melodic,
+		drum, arp and live rows carry their own per-track EG -> drive depths
+		(the envelope editor's target stops) and re-send them after every
+		dist apply once their filter block is authored, so this global depth
+		reaches only the drones and never-authored rows.
 
 config SEQ_DIST_DRIVE_AMP_EG_DEPTH_Q
 	int "  Drive EG depth (quarter-octaves, signed)"

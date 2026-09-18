@@ -176,14 +176,21 @@ bool synth_ui_graph_close_commit(void);
  * this is kept only for completeness; no button calls it. */
 bool synth_ui_graph_toggle_range(void);
 
-/* Toggle amp-edit mode while the graph editor is open (MY_BUTTON_2): the
- * encoder adjusts the target's amplitude trim (0..1) instead of moving ADSR
- * points. Committed on close (confirm), reset on every open. */
+/* Cycle the graph editor's MY_BUTTON_2 sub-modes: the encoder adjusts the
+ * target's amplitude trim (0..1) instead of moving ADSR points; on a melodic
+ * EG1 page the same stop edits the filter sweep depth. Every row carrying the
+ * depth matrix (melodic and drum rows, the arp, the live voice) adds one stop
+ * per envelope routing target (PIT/CUT/DRV/MIX) on both envelope pages, each
+ * editing the shown envelope's depth for that target; its EG1 page carries no
+ * AMP stop. Committed on close (confirm), reset on every open. */
 void synth_ui_graph_toggle_amp_mode(void);
 
-/* Flip the sign of the EG1->cutoff sweep depth (MY_BUTTON_SHOULDER on the
- * envelope editor's EG1 page). No-op on the EG0 page, for targets with no depth
- * field, and at 0.0 depth. */
+/* Flip the sign of the depth the target stop is editing, on either envelope
+ * page, or - with no target stop up - of the EG1->cutoff sweep depth
+ * (MY_BUTTON_SHOULDER on the envelope editor's EG1 page). The target stops
+ * exist on every row carrying the depth matrix (melodic and drum rows, the arp,
+ * the live voice). That fallback is a no-op on the EG0 page, for targets with
+ * no depth field, and at 0.0 depth. */
 void synth_ui_graph_flip_eg1_polarity(void);
 
 /* Cycle the shown EG's curve type Normal->Linear->DX7->TrueExp (AMY eg_type

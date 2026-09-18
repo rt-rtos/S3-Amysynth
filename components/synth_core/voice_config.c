@@ -461,7 +461,7 @@ void voice_apply_dist_osc(uint8_t synth, uint8_t osc, const seq_dist_t *d)
 #if CONFIG_SEQ_DIST_DRIVE_AMP_EG
     /* WIP PROTOTYPE (Kconfig-gated, default off): route the amp envelope (EG0)
      * into drive on the log2 rail - the unipolar 0..1 env times a signed octave
-     * depth, exactly the shape filter_env_amount uses to sweep cutoff. The
+     * depth, exactly the shape the EG1 cutoff depth uses to sweep cutoff. The
      * authored drive above is the release-tail floor; this adds up to DEPTH_Q/4
      * octaves at the envelope peak (COEF0_SPECIAL only remaps CONST, so the EG
      * slot is already in octaves). Shares EG0 with amplitude, so drive tracks
