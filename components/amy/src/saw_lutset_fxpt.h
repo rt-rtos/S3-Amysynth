@@ -13,7 +13,10 @@ typedef struct {
 } lut_entry_fxpt;
 #endif // LUTENTRY_FXPT_DEFINED
 
-const int16_t saw_fxpt_lutable_0[2048] PROGMEM = {
+// LOCAL EDIT: the whole saw set (~16 KB) is pinned to internal DRAM like the
+// sine table. render_lut_cub reads it four times per sample; served from flash
+// through the PSRAM data cache it was the suspected cost in the saw bench.
+AMY_DRAM_ATTR const int16_t saw_fxpt_lutable_0[2048] PROGMEM = {
 0,-13422,-24246,-30779,-32768,-31341,-28424,-25913,
 -24958,-25672,-27313,-28823,-29405,-28879,-27680,-26538,
 -26055,-26400,-27275,-28123,-28462,-28139,-27380,-26631,
@@ -272,7 +275,7 @@ const int16_t saw_fxpt_lutable_0[2048] PROGMEM = {
 24958,25913,28424,31341,32767,30779,24246,13422,
 };
 
-const int16_t saw_fxpt_lutable_1[2048] PROGMEM = {
+AMY_DRAM_ATTR const int16_t saw_fxpt_lutable_1[2048] PROGMEM = {
 0,-9680,-18396,-25357,-30080,-32461,-32768,-31558,
 -29546,-27445,-25831,-25039,-25135,-25944,-27128,-28297,
 -29119,-29397,-29108,-28386,-27474,-26641,-26109,-25997,
@@ -531,7 +534,7 @@ const int16_t saw_fxpt_lutable_1[2048] PROGMEM = {
 29546,31558,32767,32461,30080,25357,18396,9680,
 };
 
-const int16_t saw_fxpt_lutable_2[1024] PROGMEM = {
+AMY_DRAM_ATTR const int16_t saw_fxpt_lutable_2[1024] PROGMEM = {
 0,-13415,-24237,-30775,-32768,-31333,-28390,-25833,
 -24824,-25487,-27096,-28594,-29174,-28644,-27425,-26242,
 -25705,-26000,-26839,-27672,-28010,-27683,-26905,-26118,
@@ -662,7 +665,7 @@ const int16_t saw_fxpt_lutable_2[1024] PROGMEM = {
 24824,25833,28390,31333,32767,30775,24237,13415,
 };
 
-const int16_t saw_fxpt_lutable_3[1024] PROGMEM = {
+AMY_DRAM_ATTR const int16_t saw_fxpt_lutable_3[1024] PROGMEM = {
 0,-9730,-18483,-25459,-30169,-32514,-32768,-31500,
 -29435,-27296,-25659,-24860,-24957,-25764,-26936,-28079,
 -28860,-29086,-28742,-27970,-27020,-26165,-25625,-25511,
@@ -793,7 +796,7 @@ const int16_t saw_fxpt_lutable_3[1024] PROGMEM = {
 29435,31500,32767,32514,30169,25459,18483,9730,
 };
 
-const int16_t saw_fxpt_lutable_4[512] PROGMEM = {
+AMY_DRAM_ATTR const int16_t saw_fxpt_lutable_4[512] PROGMEM = {
 0,-13401,-24220,-30767,-32768,-31318,-28322,-25673,
 -24553,-25116,-26659,-28130,-28708,-28170,-26910,-25646,
 -25002,-25193,-25960,-26761,-27094,-26761,-25947,-25081,
@@ -860,7 +863,7 @@ const int16_t saw_fxpt_lutable_4[512] PROGMEM = {
 24553,25673,28322,31318,32767,30767,24220,13401,
 };
 
-const int16_t saw_fxpt_lutable_5[512] PROGMEM = {
+AMY_DRAM_ATTR const int16_t saw_fxpt_lutable_5[512] PROGMEM = {
 0,-9600,-18263,-25211,-29965,-32404,-32768,-31582,
 -29534,-27325,-25536,-24530,-24408,-25032,-26093,-27213,
 -28050,-28378,-28136,-27420,-26446,-25478,-24754,-24422,
@@ -927,7 +930,7 @@ const int16_t saw_fxpt_lutable_5[512] PROGMEM = {
 29534,31582,32767,32404,29965,25211,18263,9600,
 };
 
-const int16_t saw_fxpt_lutable_6[256] PROGMEM = {
+AMY_DRAM_ATTR const int16_t saw_fxpt_lutable_6[256] PROGMEM = {
 0,-13373,-24186,-30752,-32768,-31289,-28184,-25350,
 -24004,-24361,-25766,-27181,-27753,-27200,-25861,-24435,
 -23574,-23552,-24165,-24896,-25218,-24874,-23992,-22976,
@@ -962,7 +965,7 @@ const int16_t saw_fxpt_lutable_6[256] PROGMEM = {
 24004,25350,28184,31289,32767,30752,24186,13373,
 };
 
-const int16_t saw_fxpt_lutable_7[256] PROGMEM = {
+AMY_DRAM_ATTR const int16_t saw_fxpt_lutable_7[256] PROGMEM = {
 0,-9802,-18615,-25623,-30329,-32620,-32768,-31341,
 -29070,-26692,-24803,-23757,-23631,-24251,-25274,-26298,
 -26975,-27094,-26621,-25688,-24542,-23463,-22686,-22342,
@@ -997,7 +1000,7 @@ const int16_t saw_fxpt_lutable_7[256] PROGMEM = {
 29070,31341,32767,32620,30329,25623,18615,9802,
 };
 
-const int16_t saw_fxpt_lutable_8[128] PROGMEM = {
+AMY_DRAM_ATTR const int16_t saw_fxpt_lutable_8[128] PROGMEM = {
 0,-13316,-24119,-30721,-32768,-31229,-27906,-24693,
 -22880,-22802,-23908,-25193,-25746,-25167,-23681,-21937,
 -20632,-20155,-20426,-20986,-21273,-20919,-19924,-18622,
@@ -1016,7 +1019,7 @@ const int16_t saw_fxpt_lutable_8[128] PROGMEM = {
 22880,24693,27906,31229,32767,30721,24119,13316,
 };
 
-const int16_t saw_fxpt_lutable_9[128] PROGMEM = {
+AMY_DRAM_ATTR const int16_t saw_fxpt_lutable_9[128] PROGMEM = {
 0,-9287,-17732,-24627,-29495,-32164,-32768,-31706,
 -29555,-26956,-24496,-22619,-21558,-21327,-21748,-22518,
 -23292,-23764,-23737,-23150,-22087,-20737,-19342,-18136,
@@ -1035,7 +1038,7 @@ const int16_t saw_fxpt_lutable_9[128] PROGMEM = {
 29555,31706,32767,32164,29495,24627,17732,9287,
 };
 
-const int16_t saw_fxpt_lutable_10[64] PROGMEM = {
+AMY_DRAM_ATTR const int16_t saw_fxpt_lutable_10[64] PROGMEM = {
 0,-13204,-23984,-30659,-32768,-31107,-27335,-23326,
 -20510,-19462,-19863,-20806,-21293,-20689,-18957,-16600,
 -14361,-12851,-12269,-12344,-12507,-12184,-11078,-9298,
@@ -1046,7 +1049,7 @@ const int16_t saw_fxpt_lutable_10[64] PROGMEM = {
 20510,23326,27335,31107,32767,30659,23984,13204,
 };
 
-const int16_t saw_fxpt_lutable_11[64] PROGMEM = {
+AMY_DRAM_ATTR const int16_t saw_fxpt_lutable_11[64] PROGMEM = {
 0,-10023,-19010,-26098,-30737,-32768,-32426,-30267,
 -27046,-23557,-20481,-18276,-17111,-16873,-17235,-17758,
 -18012,-17680,-16630,-14927,-12807,-10597,-8628,-7150,
@@ -1057,19 +1060,19 @@ const int16_t saw_fxpt_lutable_11[64] PROGMEM = {
 27046,30267,32426,32767,30737,26098,19010,10023,
 };
 
-const int16_t saw_fxpt_lutable_12[32] PROGMEM = {
+AMY_DRAM_ATTR const int16_t saw_fxpt_lutable_12[32] PROGMEM = {
 0,-12982,-23715,-30534,-32768,-30852,-26115,-20326,
 -15141,-11635,-10056,-9869,-10057,-9551,-7656,-4291,
 0,4291,7656,9551,10057,9869,10056,11635,
 15141,20326,26115,30852,32767,30534,23715,12982,
 };
 
-const int16_t saw_fxpt_lutable_13[16] PROGMEM = {
+AMY_DRAM_ATTR const int16_t saw_fxpt_lutable_13[16] PROGMEM = {
 0,-18886,-30964,-32768,-25651,-14630,-5313,-747,
 0,747,5313,14630,25651,32767,30964,18886,
 };
 
-const int16_t saw_fxpt_lutable_14[8] PROGMEM = {
+AMY_DRAM_ATTR const int16_t saw_fxpt_lutable_14[8] PROGMEM = {
 0,-23170,-32768,-23170,0,23170,32767,23170,
 };
 

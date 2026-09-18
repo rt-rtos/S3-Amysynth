@@ -27,6 +27,8 @@ flowchart TD
     Active --> PIE["PIE block clears in amy_render<br/>src/algorithms.c, src/amy.c, src/amy.h"]
     Active --> POOL["Delta-pool PSRAM spill, no-abort cap<br/>src/amy.c"]
     Active --> HOT["Residual IRAM attrs upstream lacks<br/>src/filters.c x2, src/oscillators.c x1"]
+    Active --> SAW["Saw LUT set in internal DRAM<br/>src/saw_lutset_fxpt.h"]
+    Active --> ARITH["Render-path arithmetic: linear saw/pulse kernel, sized cubic kernels, KS ring wrap, folded divides<br/>src/oscillators.c"]
     Active --> TASK["IDF 6.0 task-signature fixes<br/>src/i2s.c, src/amy_midi.c"]
     Active --> HZN["Periodic-entry horizon<br/>src/sequencer.c, src/sequencer.h"]
     Active --> POS["pcm_osc_frame() accessor<br/>src/pcm.c, src/amy.h"]
@@ -129,6 +131,74 @@ above `NOTE_SOURCE_CHANNEL` (the ids below are auto-numbered and never cross
 the wire). Count 1 (the default) is the previous single render, one step and
 one amp pair per renderer. Waves without a LUT renderer (PCM, KS, ALGO,
 partials, noise) ignore the count.
+
+The terms that depend only on the cluster parameters - the copy ratios
+`2^(offset + i * spacing)` and the power-normalized weights - live in a
+one-entry cache (`unison_terms`, `unison_terms_fill()`) keyed on (count,
+spacing, offset, blend) and refilled only when a parameter changes, so
+`unison_prepare()` costs one float multiply and one `F2P` per copy per
+block instead of an `exp2_lut` and a soft divide per copy plus a `sqrtf`.
+Copy `i`'s frequency is the caller's `freq` times the ratio rather than
+`freq_of_logfreq(logfreq + d)`; the two differ by the LUT-exp2
+interpolation error only. One entry is correct because the render path is
+single-threaded here (`multicore=0`); a multicore build would need one per
+core.
+
+### `oscillators.c` — render-path arithmetic (2026-09-18 asmdiff probe)
+
+Codegen-driven edits from the per-function probe, each marked in place:
+
+- `render_lpf_lut` renders the detuned unison copies (1..n-1, both pulse
+  edges) through the linear `render_lut`; copy 0 keeps `render_lut_cub`, so
+  a plain count-1 saw or pulse is bit-identical to upstream. The saw LUT set
+  is chosen per period so the top harmonic stays under Nyquist, and a host
+  A/B put the cubic-vs-linear difference signal at -49 dB and below
+  (inaudible); `render_lut` is a 32-insn hardware loop, `render_lut_cub` a
+  74-insn plain loop whose spilled counter no flag rescues. On target a
+  cubic copy costs 20.6k cycles per block, a linear one 8.8k; going linear
+  on copy 0 as well would save a further 11.6k per plain saw/pulse osc and
+  was declined to keep plain voices unchanged.
+- `render_ks` keeps the ring index in a register for the block and wraps it
+  by compare (`if (next >= buflen) next = 0`) instead of the iterative
+  hardware `rems` twice per sample; `phase` is written once after the loop.
+  The peak tracker uses `|value|` for every sample; upstream's first-sample
+  special case took the signed value, a difference only when sample 0 is
+  negative and the reaper's threshold is at stake.
+- Constant divides folded to reciprocal multiplies (`freq * (1.0f / X)`
+  with X a compile-time constant): `freq / AMY_SAMPLE_RATE` in
+  `render_fm_sine`, `render_partial`, `unison_prepare`; `freq / mod_sr` in
+  all five `compute_mod_*`. The S3 FPU has no divide, so each was a
+  `__divsf3` libcall per block per osc; the product differs from the
+  quotient by at most 1 ulp. Upstream PR candidate together with the next
+  item.
+- `render_wavetable`: `floor(interp)` -> `floorf(interp)`; the double
+  promotion cost `__extendsfdf2` + `floor` + `__fixdfsi` per block per
+  wavetable osc.
+
+- `render_lut_cub_sized` dispatches copy 0 (and the pulse's second edge)
+  to one of six size-specialised cubic kernels (`RENDER_LUT_CUB_SIZED`,
+  2048..64-entry tables, `noinline` so each keeps its own loop) and falls
+  back to `render_lut_cub` for smaller tables. Same arithmetic; with the
+  table size a compile-time constant the shift amounts and the mask are
+  immediates, three registers free up and the loop compiles as a 60-insn
+  Xtensa hardware loop instead of the generic kernel's 74-insn plain loop
+  with five stack reloads. The table values stay at their 16-bit scale
+  inside the kernel (`MUL0_SS(L2S(x), f) == (x * (f >> 7)) >> 8` exactly),
+  which is where the last three instructions went. `render_lut_sized` does
+  the same for the detuned copies' linear kernel (32 -> 28). Host-sim saw
+  and pulse sweeps, single osc and 6-copy unison, are byte-identical to
+  the generic kernels. Upstream PR candidate (`render_lut_256` is the
+  precedent) once the bench prices it.
+
+- `render_lut_fm` dispatches to `render_lut_fm_256`, the same body with
+  `lut_bits = 8` baked in, for the 256-entry sine table the FM operators
+  always read (generic body kept for any other table): 65-insn plain loop
+  -> 32-insn hardware loop, no spills, bit-identical. This replaced an
+  `optimize("sched-pressure")` attribute (37 insns) and, before that, a
+  component-wide `-fsched-pressure` that cost five of the six sized cubic
+  kernels their hardware loop under LTO. Upstream PR candidate together
+  with the sized cubic kernels (`perf/sized-lut-kernels`).
+
 
 ### `oscillators.c` — Karplus-Strong ring-index init + sample-rate-derived buffer length (upstream PR candidate)
 
@@ -393,6 +463,16 @@ except for three functions it left unannotated: `dsps_biquad_f32_ansi`,
 `dsps_biquad_f32_ansi_split_fb` (filters.c) and `render_lut_fm_fb`
 (oscillators.c). All three sit in the per-block render loop, so the local
 annotations stay until upstream adds its own.
+### `src/saw_lutset_fxpt.h` — saw LUT set pinned to internal DRAM
+
+All 15 `saw_fxpt_lutable_N` tables carry `AMY_DRAM_ATTR`, the placement upstream
+already gives the sine table. Saw and pulse render through `render_lut_cub`,
+four table reads per sample (the detuned unison copies through `render_lut`,
+two); from flash the tables are served through the PSRAM data
+cache, and the 2026-09-18 feature-cost bench put a saw copy at 3.4x a sine copy.
+Costs ~16 KB of internal DRAM (the four sizes melodic notes reach, 2048 to 256
+entries, are ~7 KB of that). Rollback: drop the prefix; the header is otherwise
+identical to upstream.
 ### `src/i2s.c` — IDF 6.0 task signature
 
 `esp_fill_audio_buffer_task()` → `esp_fill_audio_buffer_task(void *pvParameters)`.
@@ -996,6 +1076,7 @@ Track local, project-specific changes made against the upstream AMY component he
   - LUT wavetable data placement in DRAM — `PROGMEM` (the tag) is shared with the 102KB
     `pcm` table + piano data, so a blanket redefine is unsafe; per-table `DRAM_ATTR` is
     broad/fragile; and with flash QIO + 32KB I/D-cache the ≤4KB LUTs cache well. Skipped.
+    (Revisited 2026-09-18: the saw set is now pinned per table, see "Active local edits".)
   - Active-oscillator index in `amy_render` — would require mutating an active set from the
     zero-amp reaper *inside* the render loop (amy.c:1544), the same mid-iteration mutation
     behind the 2026-06-17 LoadProhibited race. After the IRAM + internal-SRAM moves each

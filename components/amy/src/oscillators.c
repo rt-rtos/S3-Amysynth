@@ -169,6 +169,37 @@ AMY_IRAM_ATTR PHASOR render_lut_fb(SAMPLE* buf,
     return phase;
 }
 
+// LOCAL EDIT (S3-Amysynth, upstream PR candidate): render_lut with the mod
+// input for the 256-entry sine table the FM operators always read; shifts
+// and mask are immediates, so the loop fits the Xtensa register window as
+// a hardware loop (32 insns, no spills; the generic body is a 65-insn plain
+// loop). Same expressions as RENDER_LUT_GUTS(MOD_PART_MOD, NOTHING,
+// INTERP_LINEAR) with lut_bits = 8.
+static __attribute__((noinline)) AMY_IRAM_ATTR PHASOR render_lut_fm_256(SAMPLE* buf,
+                     PHASOR phase,
+                     PHASOR step,
+                     SAMPLE incoming_amp, SAMPLE ending_amp,
+                     const LUTSAMPLE* table,
+                     SAMPLE* mod,
+                     SAMPLE* pmax_value) {
+    SAMPLE sample = 0;
+    SAMPLE max_value = 0;
+    SAMPLE current_amp = incoming_amp;
+    SAMPLE incremental_amp = SHIFTR(ending_amp - incoming_amp, BLOCK_SIZE_BITS);
+    for(uint16_t i = 0; i < AMY_BLOCK_SIZE; i++) {
+        PHASOR total_phase = phase;
+        total_phase += S2P(mod[i]);
+        int16_t base_index = INT_OF_P(total_phase, 8);
+        SAMPLE frac = S_FRAC_OF_P(total_phase, 8);
+        SAMPLE b = L2S(table[base_index]);
+        SAMPLE c = L2S(table[(base_index + 1) & 255]);
+        sample = b + MUL0_SS(c - b, frac);
+        RENDER_LUT_LOOP_END
+    }
+    *pmax_value = max_value;
+    return phase;
+}
+
 AMY_IRAM_ATTR PHASOR render_lut_fm(SAMPLE* buf,
                      PHASOR phase,
                      PHASOR step,
@@ -177,6 +208,11 @@ AMY_IRAM_ATTR PHASOR render_lut_fm(SAMPLE* buf,
                      SAMPLE* mod,
                      SAMPLE* pmax_value) {
     AMY_PROFILE_START(RENDER_LUT_FM)
+    if (lut != NULL && lut->log_2_table_size == 8) {
+        phase = render_lut_fm_256(buf, phase, step, incoming_amp, ending_amp, lut->table, mod, pmax_value);
+        AMY_PROFILE_STOP(RENDER_LUT_FM)
+        return phase;
+    }
     RENDER_LUT_PREAMBLE
     for(uint16_t i = 0; i < AMY_BLOCK_SIZE; i++) {
         PHASOR total_phase = phase;
@@ -298,42 +334,70 @@ void unison_note_on(uint16_t osc) {
         synth[osc]->unison_phase[i - 1] = P_WRAPPED_SUM(synth[osc]->phase, F2P((float)i / (float)n));
 }
 
-// Per-block copy table: step and amp pair per copy.  n = 1 is exactly the
-// single step/amp pair the renderers used before, from the freq the caller
-// already has; the cluster path recomputes every copy's freq from logfreq.
-static uint8_t unison_prepare(uint16_t osc, unison_copy *c, float freq, SAMPLE last_amp, SAMPLE amp) {
-    uint8_t n = synth[osc]->unison_count;
-    if (n <= 1) {
-        c[0].step = F2P(freq / (float)AMY_SAMPLE_RATE);
-        c[0].last_amp = last_amp;
-        c[0].amp = amp;
-        return 1;
-    }
-    float spacing = synth[osc]->unison_spacing;
-    float offset = synth[osc]->unison_offset;
+// Terms that depend only on the cluster parameters: the copy ratios
+// 2^(offset + i * spacing) and the power-normalized weights.  Every osc
+// with the same (count, spacing, offset, blend) shares one entry, refilled
+// only when a parameter changes.  One entry suffices because the render
+// path is single-threaded here (multicore=0); a multicore build would need
+// one per core.
+typedef struct {
+    uint8_t count;   // 0: empty
+    float spacing;
+    float offset;
+    float blend;
+    float ratio[AMY_UNISON_MAX];
+    SAMPLE gain[AMY_UNISON_MAX];
+} unison_terms;
+
+static unison_terms unison_cache;
+
+static void unison_terms_fill(unison_terms *t, uint8_t n, float spacing, float offset, float blend) {
     float span = fabsf(offset);
     float last = fabsf(offset + (float)(n - 1) * spacing);
     if (last > span) span = last;
     // Position of a copy in -1..1 is its offset over the span; a cluster
     // with no detune has no positions, so every weight is 1.
-    float taper = (span > 0) ? (1.0f - synth[osc]->unison_blend) / span : 0;
+    float taper = (span > 0) ? (1.0f - blend) / span : 0;
     float w[AMY_UNISON_MAX];
     float sum = 0;
     for (uint8_t i = 0; i < n; ++i) {
         float d = offset + (float)i * spacing;
         w[i] = 1.0f - taper * fabsf(d);
         sum += w[i] * w[i];
-        c[i].step = F2P(freq_of_logfreq(msynth[osc]->logfreq + d) / (float)AMY_SAMPLE_RATE);
+        t->ratio[i] = exp2f(d);
     }
     // Blend 0 on a cluster with no center copy zeroes every weight; fall
     // back to equal weights rather than dividing by zero.
     float norm = 1.0f / sqrtf((float)n);
     if (sum > 1e-6f) norm = 1.0f / sqrtf(sum);
     else for (uint8_t i = 0; i < n; ++i) w[i] = 1.0f;
+    for (uint8_t i = 0; i < n; ++i) t->gain[i] = F2S(w[i] * norm);
+    t->count = n;
+    t->spacing = spacing;
+    t->offset = offset;
+    t->blend = blend;
+}
+
+// Per-block copy table: step and amp pair per copy.  n = 1 is exactly the
+// single step/amp pair the renderers used before; the cluster path scales
+// the caller's freq by each copy's ratio.
+static uint8_t unison_prepare(uint16_t osc, unison_copy *c, float freq, SAMPLE last_amp, SAMPLE amp) {
+    uint8_t n = synth[osc]->unison_count;
+    float base_step = freq * (1.0f / (float)AMY_SAMPLE_RATE);
+    if (n <= 1) {
+        c[0].step = F2P(base_step);
+        c[0].last_amp = last_amp;
+        c[0].amp = amp;
+        return 1;
+    }
+    unison_terms *t = &unison_cache;
+    if (n != t->count || synth[osc]->unison_spacing != t->spacing ||
+        synth[osc]->unison_offset != t->offset || synth[osc]->unison_blend != t->blend)
+        unison_terms_fill(t, n, synth[osc]->unison_spacing, synth[osc]->unison_offset, synth[osc]->unison_blend);
     for (uint8_t i = 0; i < n; ++i) {
-        SAMPLE g = F2S(w[i] * norm);
-        c[i].last_amp = SMULR7(last_amp, g);
-        c[i].amp = SMULR7(amp, g);
+        c[i].step = F2P(base_step * t->ratio[i]);
+        c[i].last_amp = SMULR7(last_amp, t->gain[i]);
+        c[i].amp = SMULR7(amp, t->gain[i]);
     }
     return n;
 }
@@ -382,6 +446,116 @@ void _pulse_note_on(uint16_t osc) {
     }
 }
 
+// LOCAL EDIT (S3-Amysynth): size-specialised cubic kernels. render_lut_cub
+// is generic over the table size, so its shift amounts and mask live in
+// registers; with the two SAR values, the counter, step and the amp
+// increment spilled, gcc demotes the loop to decrement-and-branch (74
+// insns per sample, 5 stack reloads). With the size a compile-time
+// constant the shifts and mask are immediates and the same arithmetic
+// compiles to a 63-insn hardware loop, output byte-identical. One
+// instantiation per saw table melodic notes reach (2048..64 entries,
+// fundamentals to ~4 kHz); smaller tables fall back to the generic kernel.
+#define RENDER_LUT_CUB_SIZED(NAME, BITS) \
+static __attribute__((noinline)) AMY_IRAM_ATTR PHASOR NAME(SAMPLE* buf, PHASOR phase, PHASOR step, \
+                                 SAMPLE incoming_amp, SAMPLE ending_amp, \
+                                 const LUTSAMPLE* table, SAMPLE* pmax_value) { \
+    SAMPLE max_value = 0; \
+    SAMPLE current_amp = incoming_amp; \
+    SAMPLE incremental_amp = SHIFTR(ending_amp - incoming_amp, BLOCK_SIZE_BITS); \
+    int lut_mask = (1 << (BITS)) - 1; \
+    for (uint16_t i = 0; i < AMY_BLOCK_SIZE; i++) { \
+        int base_index = INT_OF_P(phase, BITS); \
+        SAMPLE frac = S_FRAC_OF_P(phase, BITS); \
+        /* INTERP_CUBIC on the raw 16-bit taps: each MUL0_SS(L2S(x), f) is written */ \
+        /* as SHIFTR(x * SHIFTR(f, 7), 8), the same value with the L2S shift folded. */ \
+        int32_t a = table[(base_index - 1) & lut_mask]; \
+        int32_t b = table[base_index]; \
+        int32_t c = table[(base_index + 1) & lut_mask]; \
+        int32_t d = table[(base_index + 2) & lut_mask]; \
+        int32_t cminusb = c - b; \
+        SAMPLE frac7 = SHIFTR(frac, 7); \
+        SAMPLE fr_d_ma_m3cmb = SHIFTR((d - a - cminusb - SHIFTL(cminusb, 1)) * frac7, 8); \
+        SAMPLE next_bit = SHIFTR((SHIFTR(fr_d_ma_m3cmb, 8) + d + SHIFTL(a - b, 1) - b) * SHIFTR(MUL0_SS(F2S(1.0f) - frac, F2S(0.16666666666667f)), 7), 8); \
+        SAMPLE sample = L2S(b) + SHIFTR((cminusb + SHIFTR(-next_bit, 8)) * frac7, 8); \
+        SAMPLE value = buf[i] + MULA_SS(sample, current_amp); \
+        buf[i] = value; \
+        if (value < 0) value = -value; \
+        if (value > max_value) max_value = value; \
+        current_amp += incremental_amp; \
+        phase = P_WRAPPED_SUM(phase, step); \
+    } \
+    *pmax_value = max_value; \
+    return phase; \
+}
+RENDER_LUT_CUB_SIZED(render_lut_cub_11, 11)
+RENDER_LUT_CUB_SIZED(render_lut_cub_10, 10)
+RENDER_LUT_CUB_SIZED(render_lut_cub_9, 9)
+RENDER_LUT_CUB_SIZED(render_lut_cub_8, 8)
+RENDER_LUT_CUB_SIZED(render_lut_cub_7, 7)
+RENDER_LUT_CUB_SIZED(render_lut_cub_6, 6)
+
+static AMY_IRAM_ATTR PHASOR render_lut_cub_sized(SAMPLE* buf, PHASOR phase, PHASOR step,
+        SAMPLE incoming_amp, SAMPLE ending_amp, const LUT* lut, SAMPLE* pmax_value) {
+    if (lut == NULL) return phase;
+    switch (lut->log_2_table_size) {
+    case 11: return render_lut_cub_11(buf, phase, step, incoming_amp, ending_amp, lut->table, pmax_value);
+    case 10: return render_lut_cub_10(buf, phase, step, incoming_amp, ending_amp, lut->table, pmax_value);
+    case 9:  return render_lut_cub_9(buf, phase, step, incoming_amp, ending_amp, lut->table, pmax_value);
+    case 8:  return render_lut_cub_8(buf, phase, step, incoming_amp, ending_amp, lut->table, pmax_value);
+    case 7:  return render_lut_cub_7(buf, phase, step, incoming_amp, ending_amp, lut->table, pmax_value);
+    case 6:  return render_lut_cub_6(buf, phase, step, incoming_amp, ending_amp, lut->table, pmax_value);
+    default: return render_lut_cub(buf, phase, step, incoming_amp, ending_amp, lut, pmax_value);
+    }
+}
+
+
+// LOCAL EDIT (S3-Amysynth): the same size specialisation for the linear
+// kernel the detuned unison copies render through (render_lut, 32-insn
+// hardware loop generic); INTERP_LINEAR at the 16-bit table scale.
+#define RENDER_LUT_LIN_SIZED(NAME, BITS) \
+static __attribute__((noinline)) AMY_IRAM_ATTR PHASOR NAME(SAMPLE* buf, PHASOR phase, PHASOR step, \
+                                 SAMPLE incoming_amp, SAMPLE ending_amp, \
+                                 const LUTSAMPLE* table, SAMPLE* pmax_value) { \
+    SAMPLE max_value = 0; \
+    SAMPLE current_amp = incoming_amp; \
+    SAMPLE incremental_amp = SHIFTR(ending_amp - incoming_amp, BLOCK_SIZE_BITS); \
+    for (uint16_t i = 0; i < AMY_BLOCK_SIZE; i++) { \
+        int base_index = INT_OF_P(phase, BITS); \
+        SAMPLE frac = S_FRAC_OF_P(phase, BITS); \
+        int32_t b = table[base_index]; \
+        int32_t c = table[(base_index + 1) & ((1 << (BITS)) - 1)]; \
+        SAMPLE sample = L2S(b) + SHIFTR((c - b) * SHIFTR(frac, 7), 8); \
+        SAMPLE value = buf[i] + MULA_SS(sample, current_amp); \
+        buf[i] = value; \
+        if (value < 0) value = -value; \
+        if (value > max_value) max_value = value; \
+        current_amp += incremental_amp; \
+        phase = P_WRAPPED_SUM(phase, step); \
+    } \
+    *pmax_value = max_value; \
+    return phase; \
+}
+RENDER_LUT_LIN_SIZED(render_lut_11, 11)
+RENDER_LUT_LIN_SIZED(render_lut_10, 10)
+RENDER_LUT_LIN_SIZED(render_lut_9, 9)
+RENDER_LUT_LIN_SIZED(render_lut_8, 8)
+RENDER_LUT_LIN_SIZED(render_lut_7, 7)
+RENDER_LUT_LIN_SIZED(render_lut_6, 6)
+
+static AMY_IRAM_ATTR PHASOR render_lut_sized(SAMPLE* buf, PHASOR phase, PHASOR step,
+        SAMPLE incoming_amp, SAMPLE ending_amp, const LUT* lut, SAMPLE* pmax_value) {
+    if (lut == NULL) return phase;
+    switch (lut->log_2_table_size) {
+    case 11: return render_lut_11(buf, phase, step, incoming_amp, ending_amp, lut->table, pmax_value);
+    case 10: return render_lut_10(buf, phase, step, incoming_amp, ending_amp, lut->table, pmax_value);
+    case 9:  return render_lut_9(buf, phase, step, incoming_amp, ending_amp, lut->table, pmax_value);
+    case 8:  return render_lut_8(buf, phase, step, incoming_amp, ending_amp, lut->table, pmax_value);
+    case 7:  return render_lut_7(buf, phase, step, incoming_amp, ending_amp, lut->table, pmax_value);
+    case 6:  return render_lut_6(buf, phase, step, incoming_amp, ending_amp, lut->table, pmax_value);
+    default: return render_lut(buf, phase, step, incoming_amp, ending_amp, lut, pmax_value);
+    }
+}
+
 AMY_IRAM_ATTR SAMPLE render_lpf_lut(SAMPLE* buf, uint16_t osc, int8_t is_square, int8_t direction, SAMPLE dc_offset) {
     AMY_PROFILE_START(RENDER_LPF_LUT)
     // Common function for pulse and saw.
@@ -403,12 +577,22 @@ AMY_IRAM_ATTR SAMPLE render_lpf_lut(SAMPLE* buf, uint16_t osc, int8_t is_square,
     for (uint8_t i = 0; i < n; ++i) {
         PHASOR *phase = unison_phase(osc, i);
         PHASOR pwm_phase = *phase;
-        *phase = render_lut_cub(buf, *phase, copies[i].step, copies[i].last_amp, copies[i].amp, synth[osc]->lut, &max_value);
+        // LOCAL EDIT (S3-Amysynth): copy 0 keeps the cubic kernel, so a
+        // plain (count 1) saw or pulse renders exactly as upstream; the
+        // detuned copies use the linear kernel, 2.3x cheaper per sample and
+        // inaudibly different under the per-period LUT choice.
+        if (i == 0)
+            *phase = render_lut_cub_sized(buf, *phase, copies[i].step, copies[i].last_amp, copies[i].amp, synth[osc]->lut, &max_value);
+        else
+            *phase = render_lut_sized(buf, *phase, copies[i].step, copies[i].last_amp, copies[i].amp, synth[osc]->lut, &max_value);
         if (is_square) {  // For pulse only, add a second delayed negative LUT wave.
             pwm_phase = P_WRAPPED_SUM(pwm_phase, F2P(msynth[osc]->last_duty));
             // Second pulse is given some blockwise-constant FM to maintain phase continuity across blocks.
             PHASOR delta_phase_per_sample = F2P((duty - msynth[osc]->last_duty) / AMY_BLOCK_SIZE);
-            render_lut_cub(buf, pwm_phase, copies[i].step + delta_phase_per_sample, -copies[i].last_amp, -copies[i].amp, synth[osc]->lut, &max_value);
+            if (i == 0)
+                render_lut_cub_sized(buf, pwm_phase, copies[i].step + delta_phase_per_sample, -copies[i].last_amp, -copies[i].amp, synth[osc]->lut, &max_value);
+            else
+                render_lut_sized(buf, pwm_phase, copies[i].step + delta_phase_per_sample, -copies[i].last_amp, -copies[i].amp, synth[osc]->lut, &max_value);
         }
     }
     if (is_square) msynth[osc]->last_duty = duty;
@@ -442,7 +626,7 @@ SAMPLE compute_mod_pulse(uint16_t osc) {
     }
     float mod_sr = (float)AMY_SAMPLE_RATE / (float)AMY_BLOCK_SIZE;  // samples per sec / samples per call = calls per sec
     float freq = freq_of_logfreq(msynth[osc]->logfreq);
-    synth[osc]->phase = P_WRAPPED_SUM(synth[osc]->phase, F2P(freq / mod_sr));  // cycles per sec / calls per sec = cycles per call
+    synth[osc]->phase = P_WRAPPED_SUM(synth[osc]->phase, F2P(freq * (1.0f / mod_sr)));  // cycles per sec / calls per sec = cycles per call.  LOCAL EDIT: folded divide
     return MULA_SS(sample, F2S(msynth[osc]->amp));
 }
 
@@ -503,7 +687,7 @@ SAMPLE compute_mod_saw(uint16_t osc, int8_t direction) {
     SAMPLE sample = SHIFTL(P2S(synth[osc]->phase), 1) - F2S(1.0f);
     float mod_sr = (float)AMY_SAMPLE_RATE / (float)AMY_BLOCK_SIZE;  // samples per sec / samples per call = calls per sec
     float freq = freq_of_logfreq(msynth[osc]->logfreq);
-    synth[osc]->phase = P_WRAPPED_SUM(synth[osc]->phase, F2P(freq / mod_sr));  // cycles per sec / calls per sec = cycles per call
+    synth[osc]->phase = P_WRAPPED_SUM(synth[osc]->phase, F2P(freq * (1.0f / mod_sr)));  // cycles per sec / calls per sec = cycles per call.  LOCAL EDIT: folded divide
     return MULA_SS(sample, direction * F2S(msynth[osc]->amp));
 }
 
@@ -562,7 +746,7 @@ SAMPLE compute_mod_triangle(uint16_t osc) {
     sample -= F2S(1.0f);  // -1 .. 1
     float mod_sr = (float)AMY_SAMPLE_RATE / (float)AMY_BLOCK_SIZE;  // samples per sec / samples per call = calls per sec
     float freq = freq_of_logfreq(msynth[osc]->logfreq);
-    synth[osc]->phase = P_WRAPPED_SUM(synth[osc]->phase, F2P(freq / mod_sr));  // cycles per sec / calls per sec = cycles per call
+    synth[osc]->phase = P_WRAPPED_SUM(synth[osc]->phase, F2P(freq * (1.0f / mod_sr)));  // cycles per sec / calls per sec = cycles per call.  LOCAL EDIT: folded divide
     return MULA_SS(sample, F2S(msynth[osc]->amp));
 }
 
@@ -587,7 +771,7 @@ SAMPLE render_fm_sine(SAMPLE* buf, uint16_t osc, SAMPLE* mod, SAMPLE feedback_le
     }
     float freq = freq_of_logfreq(msynth[osc]->logfreq);
     _fm_sine_note_on(osc, freq);
-    PHASOR step = F2P(freq / (float)AMY_SAMPLE_RATE);  // cycles per sec / samples per sec -> cycles per sample
+    PHASOR step = F2P(freq * (1.0f / (float)AMY_SAMPLE_RATE));  // cycles per sec / samples per sec -> cycles per sample.  LOCAL EDIT: folded divide
     SAMPLE amp = MUL8_SS(F2S(msynth[osc]->amp), mod_amp);
     SAMPLE last_amp = MUL8_SS(F2S(msynth[osc]->last_amp), mod_amp);
     SAMPLE max_value;
@@ -667,7 +851,7 @@ SAMPLE compute_mod_sine(uint16_t osc) {
     LUTSAMPLE c = lut->table[(base_index + 1) & lut_mask];
     SAMPLE sample = L2S(b) + MUL0_SS(L2S(c - b), frac);
     float mod_sr = (float)AMY_SAMPLE_RATE / (float)AMY_BLOCK_SIZE;  // samples per sec / samples per call = calls per sec
-    synth[osc]->phase = P_WRAPPED_SUM(synth[osc]->phase, F2P(freq / mod_sr));  // cycles per sec / calls per sec = cycles per call
+    synth[osc]->phase = P_WRAPPED_SUM(synth[osc]->phase, F2P(freq * (1.0f / mod_sr)));  // cycles per sec / calls per sec = cycles per call.  LOCAL EDIT: folded divide
     return MULA_SS(sample, F2S(msynth[osc]->amp));
 }
 
@@ -740,7 +924,7 @@ SAMPLE render_noise(SAMPLE *buf, uint16_t osc) {
 SAMPLE compute_mod_noise(uint16_t osc) {
     float mod_sr = (float)AMY_SAMPLE_RATE / (float)AMY_BLOCK_SIZE;
     float freq = freq_of_logfreq(msynth[osc]->logfreq);
-    float fstep = freq / mod_sr;
+    float fstep = freq * (1.0f / mod_sr);  // LOCAL EDIT: folded divide
     SAMPLE amp = F2S(msynth[osc]->amp);
     PHASOR starting_phase = synth[osc]->phase;
     synth[osc]->phase = P_WRAPPED_SUM(synth[osc]->phase, F2P(fstep));  // cycles per sec / calls per sec = cycles per call
@@ -788,7 +972,7 @@ AMY_IRAM_ATTR SAMPLE render_partial(SAMPLE * buf, uint16_t osc) {
     float freq = freq_of_logfreq(msynth[osc]->logfreq);
     //_partial_note_on(osc, freq);
     //synth[osc]->lut = sine_fxpt_lutset[0];  // we know there's only one.
-    PHASOR step = F2P(freq / (float)AMY_SAMPLE_RATE);  // cycles per sec / samples per sec -> cycles per sample
+    PHASOR step = F2P(freq * (1.0f / (float)AMY_SAMPLE_RATE));  // cycles per sec / samples per sec -> cycles per sample.  LOCAL EDIT: folded divide
     SAMPLE amp = F2S(msynth[osc]->amp);
     SAMPLE last_amp = F2S(msynth[osc]->last_amp);
     //printf("render_partial: time %.3f logfreq %f freq %f last_amp %f amp %f step %f\n", (float)amy_global.total_blocks*AMY_BLOCK_SIZE/(float)AMY_SAMPLE_RATE, msynth[osc]->logfreq, freq, S2F(last_amp), S2F(amp), P2F(step) * synth[osc]->lut->table_size);
@@ -864,21 +1048,22 @@ SAMPLE render_ks(SAMPLE * buf, uint16_t osc) {
         uint16_t buflen = (uint16_t)(AMY_SAMPLE_RATE / freq);
         if(buflen > MAX_KS_BUFFER_LEN) buflen = MAX_KS_BUFFER_LEN;
         SAMPLE *ring = ks_buffer[synth[osc]->ks_index];
+        // LOCAL EDIT (S3-Amysynth): the ring index stays in a register for
+        // the block and wraps by compare instead of the iterative hardware
+        // remainder; an index past a shrunk buflen wraps to 0 as before.
+        uint16_t index = (uint16_t)synth[osc]->phase;
         for(uint16_t i = 0; i < AMY_BLOCK_SIZE; i++) {
-            uint16_t index = (uint16_t)synth[osc]->phase;
+            uint16_t next = index + 1;
+            if (next >= buflen) next = 0;
             SAMPLE sample = ring[index];
-            ring[index] =
-                SMULR7((ring[index] + ring[(index + 1) % buflen]), half);
-            synth[osc]->phase = (PHASOR)((index + 1) % buflen);
+            ring[index] = SMULR7((sample + ring[next]), half);
+            index = next;
             SAMPLE value = SMULR7(sample, amp);
             buf[i] += value;
-            if (i == 0) {
-                max_value = value;
-            } else {
-                if (value > max_value) max_value = value;
-                else if (-value > max_value) max_value = -value;
-            }
+            if (value < 0) value = -value;
+            if (value > max_value) max_value = value;
         }
+        synth[osc]->phase = (PHASOR)index;
     }
     //fprintf(stderr, "render_ks time %u osc %d freq %.1f amp %.3f maxval %.3f\n", amy_global.total_blocks*AMY_BLOCK_SIZE, osc, freq, S2F(amp), S2F(max_value));
     return max_value;
@@ -1000,7 +1185,7 @@ SAMPLE render_wavetable(SAMPLE* buf, uint16_t osc) {
                        MIN(cycles_this_table - 1,
                            (cycles_this_table - 1) * msynth[osc]->duty));
     // always need both this wavetable and the next one.
-    int cycle = MIN((int)floor(interp),
+    int cycle = MIN((int)floorf(interp),  // LOCAL EDIT: float, not double
                     cycles_this_table - 2);
     // fractional part, normally < 1.0, but == 1.0 for very end of table.
     interp = interp - cycle;
