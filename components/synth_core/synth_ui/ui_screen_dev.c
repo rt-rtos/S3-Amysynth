@@ -139,6 +139,54 @@ static void uni_adjust(int delta, int arg)
     sequencer_core_set_unison(s_uni_layer, &u);
 }
 
+/* Karplus-Strong loop allpass (ks_loop_set/ks_loop_get in oscillators.c):
+ * Tune runs the stage that completes the fractional period, so a KS note
+ * plays in tune instead of up to a semitone sharp; Stages/Coef add fixed
+ * allpasses that push the upper modes off the harmonic series. Volatile
+ * like everything else here - boot leaves Tune on and Stages 0. */
+enum { KSL_TUNE, KSL_STAGES, KSL_COEF };
+
+static void ksl_fmt(char *buf, size_t n, int arg)
+{
+    bool tune; uint8_t stages; float coef;
+    ks_loop_get(&tune, &stages, &coef);
+    switch (arg) {
+        case KSL_TUNE:   snprintf(buf, n, "%s", tune ? "on" : "off"); break;
+        case KSL_STAGES: snprintf(buf, n, "%u", (unsigned)stages);    break;
+        case KSL_COEF:   snprintf(buf, n, "%+.2f", (double)coef);     break;
+        default:         buf[0] = '\0';                               break;
+    }
+}
+
+static void ksl_fire(int arg)
+{
+    bool tune; uint8_t stages; float coef;
+    ks_loop_get(&tune, &stages, &coef);
+    if (arg == KSL_TUNE) ks_loop_set(!tune, stages, coef);
+}
+
+static void ksl_adjust(int delta, int arg)
+{
+    bool tune; uint8_t stages; float coef;
+    ks_loop_get(&tune, &stages, &coef);
+    switch (arg) {
+        case KSL_STAGES:
+            stages = (uint8_t)SEQ_CLAMP_INT((int)stages + delta,
+                                            0, KS_DISPERSION_MAX_STAGES);
+            break;
+        case KSL_COEF: {
+            float c = coef + (float)delta * 0.05f;
+            if (c < -0.9f) c = -0.9f;
+            if (c >  0.9f) c =  0.9f;
+            coef = c;
+            break;
+        }
+        default:
+            return;
+    }
+    ks_loop_set(tune, stages, coef);
+}
+
 /* One-shot sequencer state dump to the console (seq_core_dump.c). */
 static void seqdump_fire(int arg)
 {
@@ -331,9 +379,18 @@ static const dev_item_t s_uni_items[] = {
 static const dev_page_t s_page_uni = { "UNISON", s_uni_items,
                                        sizeof s_uni_items / sizeof *s_uni_items };
 
+static const dev_item_t s_ksloop_items[] = {
+    { .label = "Tune",   .fmt = ksl_fmt, .fire   = ksl_fire,   .arg = KSL_TUNE   },
+    { .label = "Stages", .fmt = ksl_fmt, .adjust = ksl_adjust, .arg = KSL_STAGES },
+    { .label = "Coef",   .fmt = ksl_fmt, .adjust = ksl_adjust, .arg = KSL_COEF   },
+};
+static const dev_page_t s_page_ksloop = { "KS LOOP", s_ksloop_items,
+                                          sizeof s_ksloop_items / sizeof *s_ksloop_items };
+
 static const dev_item_t s_root_items[] = {
     { .label = "PCM Mode L1", .sub = &s_page_pcm },
     { .label = "Unison",      .sub = &s_page_uni },
+    { .label = "KS loop",     .sub = &s_page_ksloop },
     { .label = "AMY OOM",     .fmt = oom_fmt },
     { .label = "Heap int",    .fmt = heap_fmt },
     { .label = "CPU c0/c1",   .fmt = cpu_fmt },
