@@ -475,6 +475,7 @@ static void sequencer_configure_melodic_wave_track(uint8_t synth_id,
                                                     uint16_t num_voices,
                                                     bool filter_authored,
                                                     float ks_feedback,
+                                                    float ks_duty_ofs,
                                                     const voice_unison_t *uni)
 {
     static const uint16_t s_wave_for_patch[] = {
@@ -518,6 +519,7 @@ static void sequencer_configure_melodic_wave_track(uint8_t synth_id,
         .osc0_amp_vel         = 1.0f,
         .ks_feedback_authored = filter_authored,
         .ks_feedback          = ks_feedback,
+        .ks_duty_ofs          = ks_duty_ofs,
 #if CONFIG_AMY_WAVETABLE
         .wt_preset            = is_wavetable ? (int16_t)wt_preset : -1,
 #else
@@ -673,7 +675,7 @@ static uint16_t seq_clamp_patch_voices(uint16_t patch, uint16_t num_voices)
 static bool sequencer_apply_patch_kind(uint8_t synth_id, uint16_t patch,
                                        uint16_t num_voices, uint32_t synth_flags,
                                        bool filter_authored, float ks_feedback,
-                                       const voice_unison_t *uni)
+                                       float ks_duty_ofs, const voice_unison_t *uni)
 {
     /* Virtual patch whose feature is compiled out (browse skips these, but
      * stored/programmatic values still arrive): snap to raw SINE rather than
@@ -681,13 +683,13 @@ static bool sequencer_apply_patch_kind(uint8_t synth_id, uint16_t patch,
     if (sequencer_core_patch_compiled_out(patch)) {
         sequencer_configure_melodic_wave_track(synth_id, SEQ_PATCH_SINE,
                                                num_voices, filter_authored,
-                                               ks_feedback, uni);
+                                               ks_feedback, ks_duty_ofs, uni);
         return false;
     }
     if (sequencer_core_is_wave_patch(patch)) {
         sequencer_configure_melodic_wave_track(synth_id, patch, num_voices,
                                                filter_authored, ks_feedback,
-                                               uni);
+                                               ks_duty_ofs, uni);
         return false;
     }
     /* Bass presets participate in the reserved-LFO-pair contract (they register
@@ -730,11 +732,11 @@ static bool sequencer_apply_patch_kind(uint8_t synth_id, uint16_t patch,
 static bool seq_apply_patch(uint8_t synth_id, uint16_t patch,
                             uint16_t num_voices, uint32_t synth_flags,
                             bool filter_authored, float ks_feedback,
-                            const voice_unison_t *uni)
+                            float ks_duty_ofs, const voice_unison_t *uni)
 {
     return sequencer_apply_patch_kind(synth_id, patch, num_voices,
                                       synth_flags, filter_authored, ks_feedback,
-                                      uni);
+                                      ks_duty_ofs, uni);
 }
 
 /* Reassert bus FX iff a patch STRING was applied since the last flush: those
@@ -820,6 +822,7 @@ void sequencer_configure_synth(uint8_t layer_idx)
                                         layer->synth_flags,
                                         vp->filter_authored,
                                         vp->filter.feedback,
+                                        vp->filter.ks_duty_ofs,
                                         &uni);
         s_voices_applied[layer_idx][t] = voices;
     }
@@ -1448,7 +1451,8 @@ void sequencer_core_push_melodic_portamento(uint8_t layer_idx)
 }
 
 void sequencer_core_arp_configure(uint16_t patch_number, uint8_t num_voices,
-                                  bool filter_authored, float ks_feedback)
+                                  bool filter_authored, float ks_feedback,
+                                  float ks_duty_ofs)
 {
     /* Full catalog, same kind dispatch as melodic. */
     patch_number = SEQ_CLAMP_U16(patch_number, 0, SEQ_PATCH_FULL_MAX);
@@ -1458,6 +1462,7 @@ void sequencer_core_arp_configure(uint16_t patch_number, uint8_t num_voices,
     bool string_patch = seq_apply_patch(SEQ_ARP_SYNTH, patch_number,
                                         num_voices, 0,
                                         filter_authored, ks_feedback,
+                                        ks_duty_ofs,
                                         NULL /* no unison: arp slot */);
     seq_flush_patch_fx(string_patch, SEQ_ARP_SYNTH);
     ESP_LOGI(TAG, "arp synth %u patch -> %u (%u voices)",
@@ -1484,7 +1489,7 @@ void sequencer_core_configure_synth_slot(uint8_t synth_id, uint16_t patch_number
     /* Kill sounding voices before the pool is rebuilt (as in the arp path). */
     sequencer_kill_synth_voices(synth_id);
     bool string_patch = seq_apply_patch(synth_id, patch_number, num_voices,
-                                        0, false, 0.0f,
+                                        0, false, 0.0f, 0.0f,
                                         NULL /* no unison: bare slot */);
     seq_flush_patch_fx(string_patch, synth_id);
     ESP_LOGI(TAG, "synth %u patch -> %u (%u voices)",

@@ -110,12 +110,13 @@ void sequencer_core_dump_state(void)
                    (unsigned long)vp->env1.release_ms, vp->env1.eg_type);
             }
             if (vp->filter_authored) {
-                DP("  T%u flt type=%u en=%u cut=%.0f res=%.2f fb=%.2f "
+                DP("  T%u flt type=%u en=%u cut=%.0f res=%.2f fb=%.2f dto=%.2f "
                    "eg0=%.2f/%.2f/%.2f/%.2f eg1=%.2f/%.2f/%.2f/%.2f",
                    t + 1u, vp->filter.filter_type,
                    (unsigned)vp->filter.enabled, (double)vp->filter.cutoff_hz,
                    (double)vp->filter.resonance,
                    (double)vp->filter.feedback,
+                   (double)vp->filter.ks_duty_ofs,
                    (double)vp->filter.eg_depth[0][SEQ_EGT_PITCH],
                    (double)vp->filter.eg_depth[0][SEQ_EGT_CUTOFF],
                    (double)vp->filter.eg_depth[0][SEQ_EGT_DRIVE],

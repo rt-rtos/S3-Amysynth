@@ -200,32 +200,6 @@ int8_t dsps_biquad_gen_notch_f32(SAMPLE *coeffs, float f, float qFactor)
     return 0;
 }
 
-// Stick to the faster mult for biquad, hpf etc, since the parameters aren't so sensitive, and parametric_eq was chewing major CPU.
-/* SMULR6 truncates both operands to 12 fractional bits.  At low cutoff the
- * split-feedback corrections e = 2 + a1 and f = 1 - a2 are ~2^-10, so they keep
- * only 2-3 significant bits and the pole lands well off target: HPF/BPF at
- * Q >= 2 rings up into clipping or loses its resonance, and the LPF numerator
- * rounds to zero.  Exact multiply, ~2 more instructions. */
-#ifdef AMY_HAS_MUL64
-#define FILT_MUL_SS(a, b) SMUL64R(a, b)
-#else
-#define FILT_MUL_SS(a, b) SMULR6(a, b)
-#endif
-
-// One sample through n first-order allpass stages sharing coefficient a;
-// s[0..n-1] are the per-stage memories.  One-multiply transposed form of
-// H(z) = (a + z^-1)/(1 + a z^-1): the same a feeds both multiplies, so each
-// stage is exactly allpass for any representable |a| < 1 - coefficient
-// quantization moves the phase curve but never the gain.
-static inline SAMPLE allpass1_chain(SAMPLE x0, SAMPLE a, SAMPLE *w, int n) {
-    for (int k = 0; k < n; ++k) {
-        SAMPLE y0 = FILT_MUL_SS(a, x0) + w[k];
-        w[k] = x0 - FILT_MUL_SS(a, y0);
-        x0 = y0;
-    }
-    return x0;
-}
-
 #define PHASER_STAGES 6
 
 // 6-stage phaser: global feedback around the allpass chain, 50/50 dry mix,

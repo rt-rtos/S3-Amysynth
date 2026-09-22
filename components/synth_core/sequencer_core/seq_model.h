@@ -120,6 +120,12 @@ typedef struct {
                               still-editable biquad resonance. 0.0 (memset
                               default) = never authored, so apply paths leave
                               AMY's build-time 0.9 default untouched. */
+    float   ks_duty_ofs;   /* KS pluck duty minus 0.5, -0.5..0.5 (AMY holds
+                              duty 0..1; d and 1-d sound the same). Stored as
+                              an offset so 0.0 (memset default) is AMY's 0.5
+                              burst with no sentinel; apply paths write it on
+                              every KS push, so returning to 0 restores the
+                              default. FB-style cursor on feedback waves. */
     float   eg_depth[2][SEQ_EGT_COUNT];
                            /* Envelope routing depths, [0]=EG0 / [1]=EG1 by
                               seq_eg_target_t. 0.0 (memset default) = inert,

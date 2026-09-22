@@ -33,14 +33,18 @@ typedef struct {
     uint8_t filter_type;     /* FGRAPH_FILTER_* */
     float   cutoff_norm;     /* 0..1 log-mapped over [FGRAPH_CUTOFF_HZ_MIN, MAX] */
     float   resonance_norm;  /* 0..1 mapped from [FGRAPH_RES_MIN, FGRAPH_RES_MAX] */
-    bool    has_feedback;    /* feedback wave (KS): the FB cursor exists and a
-                              * "FB:xx%" readout hangs under the Q readout. Q
-                              * stays editable - AMY applies the biquad to KS
-                              * oscs like any other wave. */
+    bool    has_feedback;    /* feedback wave (KS): the FB and DT cursors exist
+                              * and "FB:xx%" / "DT:x.xx" readouts hang under the
+                              * Q readout. Q stays editable - AMY applies the
+                              * biquad to KS oscs like any other wave. */
     float   feedback_norm;   /* KS string feedback 0..1; only drawn/edited when
                               * has_feedback */
-    uint8_t cursor;          /* 0=cutoff, 1=resonance, 2=feedback (KS targets
-                              * only — skipped otherwise), 3=type, 4=enable */
+    float   ks_duty;         /* KS pluck duty 0..1 as AMY holds it (0.5 =
+                              * default burst); only drawn/edited when
+                              * has_feedback */
+    uint8_t cursor;          /* 0=cutoff, 1=resonance, 2=feedback, 3=duty (2 and
+                              * 3 on KS targets only — skipped otherwise),
+                              * 4=type, 5=enable */
     bool    editing;         /* cursor is currently being adjusted */
     bool    enabled;         /* false → draw flat line + "OFF" */
     bool    show_toggles;    /* target exposes the type/enable cursors: true for

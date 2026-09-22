@@ -262,6 +262,7 @@ static void drone_configure_wave_synth(uint8_t synth, uint8_t voices, uint16_t w
         .osc0_amp_vel         = 0.0f,
         .ks_feedback_authored = false,   /* fixed 0.9 KS default */
         .ks_feedback          = 0.0f,
+        .ks_duty_ofs          = 0.0f,
         .wt_preset            = wt_preset,
     };
     voice_build_wave(&cfg);

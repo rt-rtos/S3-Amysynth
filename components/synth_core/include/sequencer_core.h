@@ -719,7 +719,8 @@ uint8_t sequencer_core_clamp_melodic_note(int32_t midi_note);
 
 /* (Re)configure the arp synth with a patch + voice count (flags = 0). */
 void sequencer_core_arp_configure(uint16_t patch_number, uint8_t num_voices,
-                                  bool filter_authored, float ks_feedback);
+                                  bool filter_authored, float ks_feedback,
+                                  float ks_duty_ofs);
 
 /* (Re)configure an out-of-band dedicated synth slot with any routable patch
  * (flags = 0, neutral filter/KS authoring). Kills sounding voices first and

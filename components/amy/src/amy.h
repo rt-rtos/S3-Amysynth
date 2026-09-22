@@ -1027,6 +1027,10 @@ typedef struct  {
     uint32_t ram_caps_sequencer;
     uint32_t ram_caps_sysex;
     uint32_t ram_caps_synth;
+    // LOCAL EDIT (S3-Amysynth): caps for the Karplus-Strong rings, which
+    // render_ks reads and writes every sample; defaults to ram_caps_synth.
+    // Upstream PR candidate, same shape as ram_caps_oscs.
+    uint32_t ram_caps_ks;
     uint32_t ram_caps_block;
     uint32_t ram_caps_fbl;
     uint32_t ram_caps_delay;
@@ -1539,6 +1543,21 @@ extern void algo_note_on(uint16_t osc, float freq);
 extern void algo_note_off(uint16_t osc);
 extern void ks_note_on(uint16_t osc, float freq);
 extern void ks_note_off(uint16_t osc);
+// Karplus-Strong loop allpass: the tuning stage that completes the fractional
+// period, plus up to KS_DISPERSION_MAX_STAGES fixed-coefficient stages that
+// make the upper modes inharmonic.  Set from a control task, read once per
+// block by the string.
+#define KS_DISPERSION_MAX_STAGES 3
+extern void ks_loop_set(bool tune, uint8_t stages, float coef);
+extern void ks_loop_get(bool *tune, uint8_t *stages, float *coef);
+// Karplus-Strong excitation shaping, applied to the burst at note-on: lowpass
+// cutoff in harmonics of the note from `soft` (velocity 0) to `hard`
+// (velocity 1), 0 = off; pick position `pick` of the string, 0..0.5, combing
+// the noise to depth `comb` (0..1) and setting the pulse width; `shape` mixes
+// noise (0) to pulse (1).  All zero = the unshaped noise burst.  Set from a
+// control task.
+extern void ks_excite_set(float soft, float hard, float pick, float shape, float comb);
+extern void ks_excite_get(float *soft, float *hard, float *pick, float *shape, float *comb);
 extern void sine_mod_trigger(uint16_t osc);
 extern void saw_down_mod_trigger(uint16_t osc);
 extern void saw_up_mod_trigger(uint16_t osc);
@@ -1577,6 +1596,33 @@ extern void reset_parametric(uint16_t bus);
 extern float dsps_sqrtf_f32_ansi(float f);
 extern int8_t dsps_biquad_gen_lpf_f32(SAMPLE *coeffs, float f, float qFactor);
 extern int8_t dsps_biquad_f32_ansi(const SAMPLE *input, SAMPLE *output, int len, SAMPLE *coef, SAMPLE *w);
+
+// Stick to the faster mult for biquad, hpf etc, since the parameters aren't so sensitive, and parametric_eq was chewing major CPU.
+/* SMULR6 truncates both operands to 12 fractional bits.  At low cutoff the
+ * split-feedback corrections e = 2 + a1 and f = 1 - a2 are ~2^-10, so they keep
+ * only 2-3 significant bits and the pole lands well off target: HPF/BPF at
+ * Q >= 2 rings up into clipping or loses its resonance, and the LPF numerator
+ * rounds to zero.  Exact multiply, ~2 more instructions. */
+#ifdef AMY_HAS_MUL64
+#define FILT_MUL_SS(a, b) SMUL64R(a, b)
+#else
+#define FILT_MUL_SS(a, b) SMULR6(a, b)
+#endif
+
+// One sample through n first-order allpass stages sharing coefficient a;
+// s[0..n-1] are the per-stage memories.  One-multiply transposed form of
+// H(z) = (a + z^-1)/(1 + a z^-1): the same a feeds both multiplies, so each
+// stage is exactly allpass for any representable |a| < 1 - coefficient
+// quantization moves the phase curve but never the gain.
+static inline SAMPLE allpass1_chain(SAMPLE x0, SAMPLE a, SAMPLE *w, int n) {
+    for (int k = 0; k < n; ++k) {
+        SAMPLE y0 = FILT_MUL_SS(a, x0) + w[k];
+        w[k] = x0 - FILT_MUL_SS(a, y0);
+        x0 = y0;
+    }
+    return x0;
+}
+
 extern SAMPLE scan_max(SAMPLE* block, int len);
 // Use the esp32 optimized biquad filter if available
 #ifdef ESP_PLATFORM

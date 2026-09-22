@@ -996,6 +996,10 @@ void partial_note_off(uint16_t osc) {
 // sample rate.  A literal sized for 44100 truncates the ring above it.
 #define MAX_KS_BUFFER_LEN (AMY_SAMPLE_RATE / KS_LOWEST_FREQ + 1)
 SAMPLE ** ks_buffer;
+// Loop-allpass memories, one row per ring, sized for the maximum stage count
+// so the count can change at runtime without an allocation.  Element 0 is the
+// tuning stage, 1..KS_DISPERSION_MAX_STAGES the dispersion chain.
+static SAMPLE *ks_ap_state;
 // Which osc each ring belongs to.  A ring is a physical string: two oscs
 // playing one ring damp each other's decay and re-excite each other on
 // note-on, so the mapping has to be per osc rather than a shared cursor.
@@ -1003,6 +1007,36 @@ SAMPLE ** ks_buffer;
 // -- so resetting or freeing an osc releases its ring with no explicit undo.
 static uint16_t *ks_row_owner;
 #define KS_ROW_UNOWNED 0xFFFF
+
+// The loop allpass, global to every string: one tuning stage completing the
+// fractional period, then `stages` stages sharing coefficient `coef` whose
+// phase delay falls with frequency, so the upper modes drift off the harmonic
+// series the way a stiff string's do.  Written by ks_loop_set() under the
+// lock, read once per block.
+static struct {
+    bool tune;          // run the fractional-period tuning stage
+    uint8_t stages;     // fixed-coefficient dispersion stages, 0..KS_DISPERSION_MAX_STAGES
+    float coef;         // their shared coefficient g
+    SAMPLE coef_s;      // F2S(coef)
+    float chain_delay;  // stages * (1 - g)/(1 + g), taken out of the ring
+} ks_loop = { true, 0, -0.5f, F2S(-0.5f), 0.0f };
+_Static_assert(KS_DISPERSION_MAX_STAGES == 3, "render_ks unrolls the chain to three stages");
+
+// Excitation shaping, global to every string.  The burst is a mix of the
+// noise, combed (to depth `comb`) to notch the harmonics a pluck at `pick` of
+// the string length leaves out, and a pulse `pick` of the period wide -- the force an ideal
+// pluck puts on the bridge, whose spectrum is the same notches on a 1/n
+// slope and is the same on every note.  A one-pole lowpass then follows velocity, its
+// cutoff in harmonics of the note running from `soft` at velocity 0 to `hard`
+// at velocity 1.  Zeros are the unshaped burst.  Written by ks_excite_set()
+// under the lock, read by ks_note_on.
+static struct {
+    float soft;         // lowpass cutoff at velocity 0, harmonics; 0 = no lowpass
+    float hard;         // at velocity 1
+    float pick;         // pick position, fraction of the ring, 0..0.5; 0 = no comb, no pulse
+    float shape;        // pulse share of the burst, 0 = noise .. 1 = pulse
+    float comb;         // comb depth, 0 = none .. 1 = full notches
+} ks_excite = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
 
 
 /* karplus-strong */
@@ -1038,6 +1072,21 @@ static uint8_t ks_alloc_row(uint16_t osc) {
     return quietest;
 }
 
+// Ring length for freq with the dispersion chain's low-frequency delay taken
+// out of the ring, so the loop still closes at one period.  *frac_period
+// receives P - chain_delay, the length the tuning stage completes.  If the
+// chain would leave fewer than two ring samples the chain is dropped for
+// this call (*stages = 0) and the ring holds the whole period.
+static uint16_t ks_ring_len(float freq, uint8_t *stages, float *frac_period) {
+    float P = (float)AMY_SAMPLE_RATE / freq;
+    float Pr = (*stages > 0) ? P - ks_loop.chain_delay : P;
+    if(*stages > 0 && Pr < 2.0f) { *stages = 0; Pr = P; }
+    uint16_t buflen = (uint16_t)Pr;
+    if(buflen > MAX_KS_BUFFER_LEN) buflen = MAX_KS_BUFFER_LEN;
+    *frac_period = Pr;
+    return buflen;
+}
+
 
 SAMPLE render_ks(SAMPLE * buf, uint16_t osc) {
     SAMPLE half = MUL0_SS(F2S(0.5f), F2S(synth[osc]->feedback));
@@ -1045,9 +1094,25 @@ SAMPLE render_ks(SAMPLE * buf, uint16_t osc) {
     float freq = freq_of_logfreq(msynth[osc]->logfreq);
     SAMPLE max_value = 0;
     if(freq >= KS_LOWEST_FREQ && synth[osc]->ks_index < AMY_KS_OSCS) {
-        uint16_t buflen = (uint16_t)(AMY_SAMPLE_RATE / freq);
-        if(buflen > MAX_KS_BUFFER_LEN) buflen = MAX_KS_BUFFER_LEN;
+        // ks_loop is written under the lock the render body already holds, so
+        // one read here fixes the settings for the whole block.
+        bool tune = ks_loop.tune;
+        uint8_t n = ks_loop.stages;
+        SAMPLE g = ks_loop.coef_s;
+        float Pr;
+        uint16_t buflen = ks_ring_len(freq, &n, &Pr);
         SAMPLE *ring = ks_buffer[synth[osc]->ks_index];
+        // The ring plus the two-tap average is buflen - 0.5 samples of delay,
+        // dropping the fraction of the period.  The tuning stage adds back
+        // D = Pr + 0.5 - buflen, in [0.5, 1.5) by construction, so the loop
+        // closes at Pr; a = (1 - D)/(1 + D) is its phase delay at DC.
+        SAMPLE a = 0;
+        if(tune) {
+            float D = Pr + 0.5f - (float)buflen;
+            a = F2S((1.0f - D) / (1.0f + D));
+        }
+        SAMPLE *w = ks_ap_state + synth[osc]->ks_index * (1 + KS_DISPERSION_MAX_STAGES);
+        SAMPLE w0 = w[0];
         // LOCAL EDIT (S3-Amysynth): the ring index stays in a register for
         // the block and wraps by compare instead of the iterative hardware
         // remainder; an index past a shrunk buflen wraps to 0 as before.
@@ -1056,7 +1121,16 @@ SAMPLE render_ks(SAMPLE * buf, uint16_t osc) {
             uint16_t next = index + 1;
             if (next >= buflen) next = 0;
             SAMPLE sample = ring[index];
-            ring[index] = SMULR7((sample + ring[next]), half);
+            SAMPLE v = SMULR7((sample + ring[next]), half);
+            if(tune) v = allpass1_chain(v, a, &w0, 1);
+            // Unrolled: a nested loop here costs the sample loop its
+            // hardware-loop form.
+            if(n) {
+                v = allpass1_chain(v, g, w + 1, 1);
+                if(n > 1) v = allpass1_chain(v, g, w + 2, 1);
+                if(n > 2) v = allpass1_chain(v, g, w + 3, 1);
+            }
+            ring[index] = v;
             index = next;
             SAMPLE value = SMULR7(sample, amp);
             buf[i] += value;
@@ -1064,9 +1138,118 @@ SAMPLE render_ks(SAMPLE * buf, uint16_t osc) {
             if (value > max_value) max_value = value;
         }
         synth[osc]->phase = (PHASOR)index;
+        w[0] = w0;
     }
     //fprintf(stderr, "render_ks time %u osc %d freq %.1f amp %.3f maxval %.3f\n", amy_global.total_blocks*AMY_BLOCK_SIZE, osc, freq, S2F(amp), S2F(max_value));
     return max_value;
+}
+
+// Pluck position from duty's constant coefficient, read at note-on.
+// b = |duty - 0.5| is the pluck point as a fraction of the string; duty and
+// 1 - duty pluck the same point from either end, and the reset default 0.5
+// leaves the plain noise burst.  The burst becomes the noise, combed to notch
+// the harmonics a pluck at b leaves out, mixed with a pulse b of the period
+// wide (an ideal pluck's force on the bridge: the same notches on a 1/n
+// slope, identical on every note).  Both ease in below KS_PICK_RAMP.
+#define KS_PICK_MIX  0.6f   // pulse share of the burst once eased in
+#define KS_PICK_RAMP 0.1f   // pick position below which pulse and comb ease in
+
+// One in-place pass: remove the mean, comb (circular, so the notches land on
+// harmonics), rescale and add the pulse.  Walking each cycle of i -> i - M
+// reads x[i - M] before it is overwritten; only the cycle's start is saved.
+// Scales come from the fill's expected RMS, so the per-sample work is fixed
+// point.
+static void ks_pluck(SAMPLE *ring, uint16_t buflen, uint16_t M, float b, SAMPLE mean) {
+    float r = (b < KS_PICK_RAMP) ? b / KS_PICK_RAMP : 1.0f;
+    float s = KS_PICK_MIX * r;              // pulse share
+    float g = r;                            // comb depth
+    float p = (float)M / (float)buflen;     // pulse duty as rendered
+    // The uniform +/-0.5 fill has RMS 1/sqrt(12); the comb scales it by
+    // sqrt(1 + g^2); a unit pulse of duty p has RMS sqrt(p (1 - p)).  d keeps
+    // the mix at the fill's RMS.
+    float d = sqrtf((1.0f - s) * (1.0f - s) + s * s);
+    float kn = (1.0f - s) / (sqrtf(1.0f + g * g) * d);
+    float kp = s * 0.28867513f / (sqrtf(p * (1.0f - p)) * d);
+    SAMPLE kn_s = F2S(kn), g_s = F2S(g);
+    SAMPLE hi = F2S(kp * (1.0f - p)), lo = F2S(-kp * p);
+    // (x[i] - mean) - g (x[i - M] - mean), with the mean term folded.
+    SAMPLE dc = FILT_MUL_SS(F2S(1.0f - g), mean);
+    uint16_t cycles = buflen, t = M;
+    while(t) { uint16_t u = cycles % t; cycles = t; t = u; }   // gcd
+    for(uint16_t c = 0; c < cycles; c++) {
+        SAMPLE first = ring[c];
+        uint16_t j = c;
+        for(;;) {
+            uint16_t k = (j >= M) ? j - M : j + buflen - M;
+            SAMPLE prev = (k == c) ? first : ring[k];
+            SAMPLE v = ring[j] - FILT_MUL_SS(g_s, prev) - dc;
+            ring[j] = FILT_MUL_SS(kn_s, v) + ((j < M) ? hi : lo);
+            if(k == c) break;
+            j = k;
+        }
+    }
+}
+
+// Shape a freshly filled zero-mean burst in place per ks_excite, then restore
+// its RMS so the shaping changes the spectrum and not the level; velocity
+// still scales the output tap.  Once per note-on, in float.
+static void ks_shape_burst(SAMPLE *ring, uint16_t buflen, float freq, float velocity) {
+    float rms_in = 0.0f;
+    for(uint16_t i = 0; i < buflen; i++) { float x = S2F(ring[i]); rms_in += x * x; }
+    // Pick comb e[i] = x[i] - g x[i - M], circular so the notches land
+    // exactly on harmonics.  In place with no scratch: walking each cycle of
+    // i -> i - M reads x[i - M] before overwriting it, except the cycle's
+    // start, which is saved.  A short M at full depth is close to a
+    // differentiator (gain 2 sin(n pi M/buflen)), so a shallow depth is how
+    // a pick near 0 stays close to the unshaped burst.
+    uint16_t M = (uint16_t)(ks_excite.pick * (float)buflen + 0.5f);
+    SAMPLE g = F2S(ks_excite.comb);
+    if(M > 0 && M < buflen && ks_excite.shape < 1.0f && ks_excite.comb > 0.0f) {
+        uint16_t cycles = buflen, r = M;
+        while(r) { uint16_t t = cycles % r; cycles = r; r = t; }   // gcd
+        for(uint16_t s = 0; s < cycles; s++) {
+            SAMPLE first = ring[s];
+            uint16_t j = s;
+            for(;;) {
+                uint16_t k = (j >= M) ? j - M : j + buflen - M;
+                if(k == s) { ring[j] -= FILT_MUL_SS(g, first); break; }
+                ring[j] -= FILT_MUL_SS(g, ring[k]);
+                j = k;
+            }
+        }
+    }
+    if(ks_excite.shape > 0.0f && M > 0 && M < buflen) {
+        // Zero-mean pulse, high for the first M samples, scaled to the
+        // noise's RMS before mixing; a unit pulse of duty b has RMS
+        // sqrt(b (1 - b)) about its mean.
+        float noise_rms = 0.0f;
+        for(uint16_t i = 0; i < buflen; i++) { float x = S2F(ring[i]); noise_rms += x * x; }
+        noise_rms = sqrtf(noise_rms / (float)buflen);
+        float b = (float)M / (float)buflen;
+        float scale = ks_excite.shape * noise_rms / sqrtf(b * (1.0f - b));
+        for(uint16_t i = 0; i < buflen; i++) {
+            float t = (i < M) ? 1.0f - b : -b;
+            ring[i] = F2S((1.0f - ks_excite.shape) * S2F(ring[i]) + scale * t);
+        }
+    }
+    if(ks_excite.soft > 0.0f) {
+        float v = velocity < 0.0f ? 0.0f : (velocity > 1.0f ? 1.0f : velocity);
+        // Geometric in velocity: equal velocity steps are equal brightness ratios.
+        float fc = freq * ks_excite.soft * powf(ks_excite.hard / ks_excite.soft, v);
+        if(fc > 0.45f * (float)AMY_SAMPLE_RATE) fc = 0.45f * (float)AMY_SAMPLE_RATE;
+        float k = 1.0f - expf(-6.2831853f * fc / (float)AMY_SAMPLE_RATE);
+        // Circular: one pass settles the state on the ring's own tail, the
+        // second writes, so no start-up transient sits at index 0.
+        float y = 0.0f;
+        for(uint16_t i = 0; i < buflen; i++) y += k * (S2F(ring[i]) - y);
+        for(uint16_t i = 0; i < buflen; i++) { y += k * (S2F(ring[i]) - y); ring[i] = F2S(y); }
+    }
+    float rms_out = 0.0f;
+    for(uint16_t i = 0; i < buflen; i++) { float x = S2F(ring[i]); rms_out += x * x; }
+    if(rms_out > 0.0f) {
+        float g = sqrtf(rms_in / rms_out);
+        for(uint16_t i = 0; i < buflen; i++) ring[i] = F2S(S2F(ring[i]) * g);
+    }
 }
 
 void ks_note_on(uint16_t osc, float freq) {
@@ -1079,8 +1262,16 @@ void ks_note_on(uint16_t osc, float freq) {
     synth[osc]->ks_index = row;
     ks_row_owner[row] = osc;
     SAMPLE *ring = ks_buffer[row];
-    uint16_t buflen = (uint16_t)(AMY_SAMPLE_RATE / freq);
-    if(buflen > MAX_KS_BUFFER_LEN) buflen = MAX_KS_BUFFER_LEN;
+    // A retrigger re-excites the string from clean state, so the loop allpass
+    // memories are cleared with the ring, including any stage the current
+    // setting does not run.
+    SAMPLE *w = ks_ap_state + row * (1 + KS_DISPERSION_MAX_STAGES);
+    for(uint8_t k = 0; k < 1 + KS_DISPERSION_MAX_STAGES; k++) w[k] = 0;
+    // ks_note_on runs on the render task under the lock, so a plain read of
+    // ks_loop agrees with the one render_ks makes for this block.
+    uint8_t n = ks_loop.stages;
+    float Pr;
+    uint16_t buflen = ks_ring_len(freq, &n, &Pr);
     // init KS buffer with noise up to max
     SAMPLE sum = 0;
     for(uint16_t i = 0; i < buflen; i++) {
@@ -1090,9 +1281,18 @@ void ks_note_on(uint16_t osc, float freq) {
     }
     // Remove dc, to avoid ending up with a dc-offset residual.
     SAMPLE mean = sum / buflen;
-    for(uint16_t i = 0; i < buflen; i++) {
-        ring[i] -= mean;
+    float b = fabsf(synth[osc]->duty_coefs[COEF_CONST] - 0.5f);
+    if(b > 0.5f) b = 0.5f;
+    uint16_t M = (uint16_t)(b * (float)buflen + 0.5f);
+    if(M > 0 && M < buflen) {
+        ks_pluck(ring, buflen, M, b, mean);
+    } else {
+        for(uint16_t i = 0; i < buflen; i++) {
+            ring[i] -= mean;
+        }
     }
+    if(ks_excite.soft > 0.0f || ks_excite.pick > 0.0f || ks_excite.shape > 0.0f)
+        ks_shape_burst(ring, buflen, freq, synth[osc]->velocity);
     //fprintf(stderr, "ks_note_on: osc %d buflen %d row %d\n", osc, buflen, row);
 }
 
@@ -1118,8 +1318,17 @@ void ks_init(void) {
         return;
     }
     for(int i=0;i<AMY_KS_OSCS;i++) ks_row_owner[i] = KS_ROW_UNOWNED;
+    ks_ap_state = (SAMPLE*) malloc_caps(sizeof(SAMPLE)*AMY_KS_OSCS*(1 + KS_DISPERSION_MAX_STAGES), amy_global.config.ram_caps_synth);
+    if(ks_ap_state == NULL) {
+        amy_oom("unable to alloc %d KS loop allpass states\n", (int)(AMY_KS_OSCS*(1 + KS_DISPERSION_MAX_STAGES)));
+        ks_deinit();
+        return;
+    }
+    for(int i=0;i<AMY_KS_OSCS*(1 + KS_DISPERSION_MAX_STAGES);i++) ks_ap_state[i] = 0;
+    // The rings are the bulk of KS memory and get their own caps; the tables
+    // above are a few bytes per ring and stay with ram_caps_synth.
     for(int i=0;i<AMY_KS_OSCS;i++) {
-        ks_buffer[i] = (SAMPLE*)malloc_caps(sizeof(SAMPLE)*MAX_KS_BUFFER_LEN, amy_global.config.ram_caps_synth);
+        ks_buffer[i] = (SAMPLE*)malloc_caps(sizeof(SAMPLE)*MAX_KS_BUFFER_LEN, amy_global.config.ram_caps_ks);
         if(ks_buffer[i] == NULL) {
             // All or nothing: a partly-filled table would let ks_alloc_row()
             // hand out a NULL ring, so KS goes silent instead of half-working.
@@ -1140,6 +1349,59 @@ void ks_deinit(void) {
     }
     free(ks_row_owner);
     ks_row_owner = NULL;
+    free(ks_ap_state);
+    ks_ap_state = NULL;
+}
+
+// Set the loop allpass.  Call from a control task, never from the render path:
+// the render body holds the lock this takes.  The settings take effect on the
+// next block.  Changing the stage count while a string sounds moves its ring
+// length by (1 - coef)/(1 + coef) samples, so the note steps in pitch; the
+// stage memories the change frees are cleared at the next note-on, not here.
+void ks_loop_set(bool tune, uint8_t stages, float coef) {
+    if(stages > KS_DISPERSION_MAX_STAGES) stages = KS_DISPERSION_MAX_STAGES;
+    if(coef < -0.9f) coef = -0.9f;
+    if(coef > 0.9f) coef = 0.9f;
+    float d_g = (1.0f - coef) / (1.0f + coef);
+    amy_grab_lock();
+    ks_loop.tune = tune;
+    ks_loop.stages = stages;
+    ks_loop.coef = coef;
+    ks_loop.coef_s = F2S(coef);
+    ks_loop.chain_delay = stages * d_g;
+    amy_release_lock();
+}
+
+void ks_loop_get(bool *tune, uint8_t *stages, float *coef) {
+    *tune = ks_loop.tune;
+    *stages = ks_loop.stages;
+    *coef = ks_loop.coef;
+}
+
+void ks_excite_set(float soft, float hard, float pick, float shape, float comb) {
+    if(soft < 0.0f) soft = 0.0f;
+    if(hard < soft) hard = soft;
+    if(pick < 0.0f) pick = 0.0f;
+    if(pick > 0.5f) pick = 0.5f;
+    if(shape < 0.0f) shape = 0.0f;
+    if(shape > 1.0f) shape = 1.0f;
+    if(comb < 0.0f) comb = 0.0f;
+    if(comb > 1.0f) comb = 1.0f;
+    amy_grab_lock();
+    ks_excite.soft = soft;
+    ks_excite.hard = hard;
+    ks_excite.pick = pick;
+    ks_excite.shape = shape;
+    ks_excite.comb = comb;
+    amy_release_lock();
+}
+
+void ks_excite_get(float *soft, float *hard, float *pick, float *shape, float *comb) {
+    *soft = ks_excite.soft;
+    *hard = ks_excite.hard;
+    *pick = ks_excite.pick;
+    *shape = ks_excite.shape;
+    *comb = ks_excite.comb;
 }
 
 // --------- wavetable ----------

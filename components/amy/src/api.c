@@ -75,6 +75,9 @@ amy_config_t amy_default_config() {
     c.ram_caps_sequencer = c.ram_caps_events;
     // Per-osc synth state follows the event pool unless a target overrides.
     c.ram_caps_oscs = c.ram_caps_events;
+    // LOCAL EDIT (S3-Amysynth): KS rings follow the synth pool unless a
+    // target overrides (see amy.h).
+    c.ram_caps_ks = c.ram_caps_synth;
 
     c.capture_device_id = -1;
     c.playback_device_id = -1;

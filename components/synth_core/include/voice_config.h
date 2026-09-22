@@ -151,6 +151,8 @@ typedef struct {
     bool     ks_feedback_authored; /* authored feedback drives KS decay    */
     float    ks_feedback;          /* seq_filter_t.feedback (0..1) when authored;
                                       <= 0 or unauthored -> fixed 0.9 default */
+    float    ks_duty_ofs;          /* seq_filter_t.ks_duty_ofs: KS pluck duty
+                                      = 0.5 + this; 0 = AMY's default burst */
     int16_t  wt_preset;            /* >=0 => e->preset (WAVETABLE); else -1 */
     const seq_dist_t *dist;        /* re-pushed on every build so a rebuild
                                       never drops the stage; NULL = leave the

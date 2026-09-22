@@ -1515,6 +1515,26 @@ static float filter_norm_to_q(float n)
            (FGRAPH_RES_MAX - FGRAPH_RES_MIN);
 }
 
+/* KS feedback steps on an integer detent grid over the loss 1 - fb: six
+ * detents per doubling of decay time (~12% decay change each), so the knob is
+ * finest near 100% where KS patches live. k = 1..FB_K_MAX spans 10.9%..99.90%;
+ * k = FB_K_MAX + 1 snaps to lossless 1.0. The floor at k = 1 keeps fb off 0.0,
+ * the never-authored sentinel. */
+#define FB_DETENTS_PER_DOUBLING 6
+#define FB_K_MAX                60
+
+static int filter_fb_to_detent(float fb)
+{
+    if (fb >= 1.0f) return FB_K_MAX + 1;
+    return (int)lroundf(-(float)FB_DETENTS_PER_DOUBLING * log2f(1.0f - fb));
+}
+
+static float filter_detent_to_fb(int k)
+{
+    return (k > FB_K_MAX) ? 1.0f
+                          : 1.0f - exp2f(-(float)k / (float)FB_DETENTS_PER_DOUBLING);
+}
+
 /* Which backend the FILTER editor is bound to. Unlike the graph editor (which
  * captures s_graph_target at open time) these are derived on every call off
  * seq_state.ui_mode. LIVE must be tested FIRST: the Wireless page is an
@@ -1550,7 +1570,8 @@ static bool filter_tgt_is_arp(void)
 }
 
 /* True when the target plays a feedback wave (KS): the editor then exposes the
- * extra FB cursor (slot 2) for string feedback 0..1. Q stays editable - AMY
+ * extra FB cursor (slot 2) for string feedback 0..1 and the DT cursor (slot 3)
+ * for the pluck duty. Q stays editable - AMY
  * runs the biquad on KS oscs like any other wave. Covers the melodic and arp
  * KS patch; the drones exclude KS from their cycles. */
 static bool filter_target_is_feedback(void)
@@ -1729,6 +1750,7 @@ static void filter_sync_fgraph(void)
     s_fgraph.has_feedback   = filter_target_is_feedback();
     s_fgraph.resonance_norm = filter_q_to_norm(s_filter_edit.resonance);
     s_fgraph.feedback_norm  = SEQ_CLAMP_F32(s_filter_edit.feedback, 0.0f, 1.0f);
+    s_fgraph.ks_duty        = SEQ_CLAMP_F32(0.5f + s_filter_edit.ks_duty_ofs, 0.0f, 1.0f);
     s_fgraph.enabled        = s_filter_edit.enabled;
     /* cursor and editing stay unchanged */
 }
@@ -1946,16 +1968,16 @@ bool synth_ui_filter_handle_encoder(long delta)
 
     if (!s_fgraph.editing) {
         /* Cursor map. Drone: 0=cutoff 1=resonance (type fixed, no EN).
-         * Arp/melodic: 0=cutoff 1=resonance 2=feedback 3=type 4=enable, where
-         * slot 2 exists on KS targets only. EG1 depth/polarity live on the
-         * envelope editor's EG1 page. */
-        uint8_t max_cursor = drone ? 1 : 4;
+         * Arp/melodic: 0=cutoff 1=resonance 2=feedback 3=duty 4=type
+         * 5=enable, where slots 2 and 3 exist on KS targets only. EG1
+         * depth/polarity live on the envelope editor's EG1 page. */
+        uint8_t max_cursor = drone ? 1 : 5;
         int dir = (delta > 0) ? 1 : ((delta < 0) ? -1 : 0);
         if (dir != 0) {
             uint8_t c = s_fgraph.cursor;
             do {
                 c = (uint8_t)((c + (uint8_t)(max_cursor + 1) + dir) % (max_cursor + 1));
-            } while (c == 2 && !s_fgraph.has_feedback);
+            } while ((c == 2 || c == 3) && !s_fgraph.has_feedback);
             s_fgraph.cursor = c;
         }
         s_force_redraw = true;
@@ -1980,12 +2002,20 @@ bool synth_ui_filter_handle_encoder(long delta)
             break;
         }
         case 2: {   /* KS string feedback (feedback targets only) */
-            float step = 0.02f * (float)delta;
-            s_fgraph.feedback_norm = SEQ_CLAMP_F32(s_fgraph.feedback_norm + step, 0.0f, 1.0f);
-            s_filter_edit.feedback = s_fgraph.feedback_norm;
+            /* An off-grid stored value re-quantizes to its nearest detent on
+             * the first touch; a batched delta is one integer add. */
+            int k = filter_fb_to_detent(s_filter_edit.feedback);
+            k = SEQ_CLAMP_INT(k + (int)delta, 1, FB_K_MAX + 1);
+            s_filter_edit.feedback = filter_detent_to_fb(k);
             break;
         }
-        case 3: {   /* type (melodic/arp only) */
+        case 3: {   /* KS pluck duty (feedback targets only), 0.01 per detent */
+            float duty = 0.5f + s_filter_edit.ks_duty_ofs + 0.01f * (float)delta;
+            duty = SEQ_CLAMP_F32(duty, 0.0f, 1.0f);
+            s_filter_edit.ks_duty_ofs = SEQ_CLAMP_F32(duty - 0.5f, -0.5f, 0.5f);
+            break;
+        }
+        case 4: {   /* type (melodic/arp only) */
             if (!drone) {
                 /* Step through the UI order table, not the raw enum; wrap
                  * both ways. An unknown stored value resolves to slot 0. */
@@ -2003,7 +2033,7 @@ bool synth_ui_filter_handle_encoder(long delta)
             }
             break;
         }
-        case 4: {   /* enable toggle (melodic/arp only; drone filter is always on) */
+        case 5: {   /* enable toggle (melodic/arp only; drone filter is always on) */
             if (!drone) {
                 s_filter_edit.enabled = !s_filter_edit.enabled;
                 s_fgraph.enabled      = s_filter_edit.enabled;

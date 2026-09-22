@@ -370,9 +370,13 @@ static void melodic_filter_push_osc(uint8_t layer_idx, uint8_t track,
     }
     filter_push_eg_depths(e, own, f);
     /* KS string decay: the authored feedback, pushed directly. 0 = never
-     * authored, so leave AMY's build-time 0.9 default in place. */
-    if (layer->track_patch[track] == SEQ_PATCH_KS && f->feedback > 0.0f) {
-        e->feedback = SEQ_CLAMP_F32(f->feedback, 0.0f, 1.0f);
+     * authored, so leave AMY's build-time 0.9 default in place. Pluck duty is
+     * written on every KS push: its zero offset IS the 0.5 default. */
+    if (layer->track_patch[track] == SEQ_PATCH_KS) {
+        if (f->feedback > 0.0f) {
+            e->feedback = SEQ_CLAMP_F32(f->feedback, 0.0f, 1.0f);
+        }
+        e->duty_coefs[COEF_CONST] = 0.5f + f->ks_duty_ofs;
     }
     amy_helpers_event_send(e);
 }
@@ -427,6 +431,7 @@ void sequencer_core_set_melodic_filter(uint8_t layer_idx, uint8_t track,
     dst->resonance   = SEQ_CLAMP_F32(f->resonance,  0.51f, 8.0f);
     dst->enabled     = f->enabled;
     dst->feedback    = SEQ_CLAMP_F32(f->feedback, 0.0f, 1.0f);
+    dst->ks_duty_ofs = SEQ_CLAMP_F32(f->ks_duty_ofs, -0.5f, 0.5f);
     for (uint8_t eg = 0; eg < 2u; eg++)
         for (uint8_t t = 0; t < SEQ_EGT_COUNT; t++)
             dst->eg_depth[eg][t] = SEQ_CLAMP_F32(f->eg_depth[eg][t],
@@ -505,9 +510,13 @@ void sequencer_core_push_filter(uint8_t synth, const seq_filter_t *f, bool is_ks
         e->filter_type = FILTER_NONE;
     }
     /* KS string decay from the authored feedback; 0 = never authored, so keep
-     * AMY's build-time 0.9 default. */
-    if (is_ks && f->feedback > 0.0f) {
-        e->feedback = SEQ_CLAMP_F32(f->feedback, 0.0f, 1.0f);
+     * AMY's build-time 0.9 default. Pluck duty is written on every KS push:
+     * its zero offset IS the 0.5 default. */
+    if (is_ks) {
+        if (f->feedback > 0.0f) {
+            e->feedback = SEQ_CLAMP_F32(f->feedback, 0.0f, 1.0f);
+        }
+        e->duty_coefs[COEF_CONST] = 0.5f + f->ks_duty_ofs;
     }
     amy_helpers_event_send(e);
 }
@@ -906,6 +915,7 @@ void sequencer_core_preview_melodic_filter(uint8_t layer_idx, uint8_t track,
     tmp.cutoff_hz         = SEQ_CLAMP_F32(f->cutoff_hz,  65.0f, 8000.0f);
     tmp.resonance         = SEQ_CLAMP_F32(f->resonance,  0.51f, 8.0f);
     tmp.feedback          = SEQ_CLAMP_F32(f->feedback, 0.0f, 1.0f);
+    tmp.ks_duty_ofs       = SEQ_CLAMP_F32(f->ks_duty_ofs, -0.5f, 0.5f);
     for (uint8_t eg = 0; eg < 2u; eg++)
         for (uint8_t t = 0; t < SEQ_EGT_COUNT; t++)
             tmp.eg_depth[eg][t] = SEQ_CLAMP_F32(f->eg_depth[eg][t],

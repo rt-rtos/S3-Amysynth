@@ -85,16 +85,17 @@ static void ser_filter(tlv_writer_t *w, const seq_filter_t *f)
     for (int eg = 0; eg < 2; eg++)
         for (int t = 0; t < SEQ_EGT_COUNT; t++)
             tlv_put_f32(w, f->eg_depth[eg][t]);
+    tlv_put_f32(w, f->ks_duty_ofs);   /* LAYR v18+ / ARP v12+: KS pluck duty - 0.5 */
 }
 
 /* Reads every field first (keeps the reader position correct), then bypasses
  * the whole sub-block if filter_type is out of range rather than passing a
  * bogus enum downstream. One fixed shape, no version gates: the sections that
- * carry this block reject anything older than LAYR v17 / ARP v11 outright. */
+ * carry this block reject anything older than LAYR v18 / ARP v12 outright. */
 static bool de_filter(tlv_reader_t *r, seq_filter_t *f)
 {
     uint8_t ft, en;
-    float cutoff, resonance, feedback;
+    float cutoff, resonance, feedback, duty_ofs;
     float depth[2][SEQ_EGT_COUNT];
     if (!tlv_get_u8(r, &ft))          return false;
     if (!tlv_get_f32(r, &cutoff))     return false;
@@ -110,6 +111,8 @@ static bool de_filter(tlv_reader_t *r, seq_filter_t *f)
                                          seq_eg_depth_max((seq_eg_target_t)t));
         }
     }
+    if (!tlv_get_f32(r, &duty_ofs))   return false;
+    duty_ofs = SEQ_CLAMP_F32(duty_ofs, -0.5f, 0.5f);
 
     if (ft >= SEQ_FILTER_COUNT) {
         *f = (seq_filter_t){0};
@@ -121,6 +124,7 @@ static bool de_filter(tlv_reader_t *r, seq_filter_t *f)
     f->enabled           = en != 0;
     f->feedback          = feedback;
     memcpy(f->eg_depth, depth, sizeof(f->eg_depth));
+    f->ks_duty_ofs       = duty_ofs;
     return true;
 }
 
@@ -427,7 +431,7 @@ static void apply_glob(const staged_glob_t *g)
 
 static void ser_layer(tlv_writer_t *w, const seq_layer_t *L)
 {
-    size_t h = tlv_begin_section(w, TAG_LAYR, 17); /* v2: LFO target bitmask;
+    size_t h = tlv_begin_section(w, TAG_LAYR, 18); /* v2: LFO target bitmask;
                                                     * v3: +gate_pct, +portamento_ms;
                                                     * v4: +groove_pct;
                                                     * v5: LFO +wob_rate/+wob_depth;
@@ -447,7 +451,9 @@ static void ser_layer(tlv_writer_t *w, const seq_layer_t *L)
                                                     * v17: filter block carries
                                                     *     eg_depth[2][4] after
                                                     *     feedback, filter_env_amount/
-                                                    *     pitch_env_amount folded in */
+                                                    *     pitch_env_amount folded in;
+                                                    * v18: filter +ks_duty_ofs (block
+                                                    *     tail, after eg_depth) */
     tlv_put_u8(w, (uint8_t)L->type);
     tlv_put_u8(w, L->num_steps);
     tlv_put_u16(w, L->patch);
@@ -702,7 +708,7 @@ typedef struct {
 
 static void ser_arp(tlv_writer_t *w)
 {
-    size_t h = tlv_begin_section(w, TAG_ARP, 11);  /* v2: LFO target is a bitmask;
+    size_t h = tlv_begin_section(w, TAG_ARP, 12);  /* v2: LFO target is a bitmask;
                                                    * v3: LFO +wob_rate/+wob_depth;
                                                    * v4: LFO +wob_depth_only;
                                                    * v5: filter +feedback (KS);
@@ -715,7 +721,9 @@ static void ser_arp(tlv_writer_t *w)
                                                    * v11: filter block carries
                                                    *     eg_depth[2][4] after
                                                    *     feedback, filter_env_amount/
-                                                   *     pitch_env_amount folded in */
+                                                   *     pitch_env_amount folded in;
+                                                   * v12: filter +ks_duty_ofs (block
+                                                   *     tail, after eg_depth) */
     tlv_put_u8(w, arp_get_enabled() ? 1 : 0);
     tlv_put_u16(w, arp_get_patch());
     tlv_put_u8(w, (uint8_t)arp_get_direction());
@@ -1235,13 +1243,13 @@ bool project_snapshot_load(uint8_t slot)
             /* Exactly ser_layer()'s version: older files are rejected outright
              * (no migration), and the ceiling must track the writer or the
              * firmware rejects its own files. */
-            if (ver != 17 || staged_layer_count >= MAX_LAYERS) { ok = false; break; }
+            if (ver != 18 || staged_layer_count >= MAX_LAYERS) { ok = false; break; }
             ok = parse_layer(&body, &staged_layers[staged_layer_count], ver);
             if (ok) staged_layer_count++;
             break;
         case TAG_ARP:
             /* Exactly ser_arp()'s version (see TAG_LAYR). */
-            if (got_arp || ver != 11) { ok = false; break; }
+            if (got_arp || ver != 12) { ok = false; break; }
             ok = parse_arp(&body, &staged_arp, ver);
             got_arp = ok;
             break;

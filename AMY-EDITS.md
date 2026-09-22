@@ -8,8 +8,8 @@ v1.2.104 `fd09bd2`, v1.2.31 `1e23c70`. The submodule tracks upstream `main`
 (`.gitmodules` `branch = main`; refresh with `git submodule update --remote amy`).
 
 Edits are marked `// LOCAL EDIT` in the source, except the Karplus-Strong rework
-(`oscillators.c`, `amy.h`, `amy.c`), which is written as upstream-shaped code for
-its PR and documented by its own comments. ESP32-S3-specific edits are
+(`oscillators.c`, `amy.h`, `amy.c`, `filters.c`), which is written as upstream-shaped
+code for its PR and documented by its own comments. ESP32-S3-specific edits are
 permanent (upstream has no concept of IRAM/DRAM placement or FreeRTOS task
 signatures); the fixes listed under "Dropped" were merged upstream and are no
 longer carried here.
@@ -37,7 +37,7 @@ flowchart TD
     Active --> SEQ["sequencer_init OOM guard<br/>src/sequencer.c"]
     Active --> CAPS["ram_caps_sequencer knob + pool fallbacks<br/>src/amy.h, src/api.c, src/parse.c, src/sequencer.c"]
     Active --> PROF["COARSE profiler mode<br/>src/amy.h, src/amy.c"]
-    Active --> KS["Per-osc Karplus-Strong ring binding<br/>src/oscillators.c, src/amy.c, src/amy.h"]
+    Active --> KS["Per-osc Karplus-Strong ring binding and ring caps, loop allpass, pluck position from duty, excitation shaping<br/>src/oscillators.c, src/amy.c, src/amy.h, src/api.c, src/filters.c"]
     Active --> PCM["PCM retrig fade-restart (gated)<br/>src/pcm.c"]
     Active --> DUAL["Skip the dead dual-core bus sum<br/>src/amy.c"]
     Active --> CLAMP["instrument_get_num_voices voice-list clamp<br/>src/instrument.c"]
@@ -259,11 +259,109 @@ bare `malloc`.
 After: 3 notes measure 1.48-1.65x (target 1.73x), a silent note-on moves the
 ringing voices +9.5% instead of +134%, and `ks_oscs = 4` renders correctly.
 
-`main/main.c` sets `ks_oscs = 4`, one KS voice per melodic track; see the
-comment there for what oversubscribes it.
+`main/main.c` sizes `ks_oscs` from Kconfig (`SEQ_KS_RINGS`, or derived from
+`SEQ_KS_LAYERS` x rows x `SEQ_KS_VOICES_MAX` plus arp and live voices when the
+rings are in PSRAM); see the comment there.
+
+`amy.h` + `api.c` + `oscillators.c`: `amy_config.ram_caps_ks` gives the rings
+their own caps, defaulting to `ram_caps_synth` (`// LOCAL EDIT` in amy.h and
+api.c). Only the rings move; the owner table and allpass state are a few bytes
+per ring and stay in `ram_caps_synth`. Upstream-PR candidate with the same
+shape as `ram_caps_oscs` (#1107).
 
 Universal AMY logic, no target assumptions - PR candidate, same track as
 `FILTER_NOTCH` #1000 and `FILTER_PHASER` #1020.
+
+### `oscillators.c` + `amy.h` + `filters.c` - Karplus-Strong loop allpass: fractional period (upstream PR candidate) and dispersion trial knobs (local)
+
+`render_ks` dropped the fraction of `AMY_SAMPLE_RATE / freq`: `buflen = floor(P)`
+and the two-tap average is centred half a sample ahead, so the loop closed at
+`buflen - 0.5` samples and every KS note played sharp. Host sim
+(`ks_pitch_sim.c`, KS minus a SINE control at the same MIDI note, 48 kHz):
++3.4 c at A2, +9.4 c at A4, +33.5 c at A5, +49.8 c at A6. A first-order allpass
+after the average now completes the period, `a = (1 - D)/(1 + D)` with
+`D = P + 0.5 - buflen` in [0.5, 1.5); `buflen` is unchanged. After: within
+0.4 c at every measurable note. A7 decays below the harness floor inside the
+first block (the average alone loses 2.7 % per pass there) and is unmeasured.
+One float divide per block per KS osc for `a`.
+
+Trial knobs, not for upstream: `ks_loop_set()` / `ks_loop_get()` (`amy.h`)
+bypass the tuning stage (off plus 0 stages is the old loop bit for bit) and
+add up to `KS_DISPERSION_MAX_STAGES` stages of `allpass1_chain` at a fixed
+coefficient, their low-frequency delay taken out of the ring by
+`ks_ring_len()`, which `ks_note_on` and `render_ks` share. Set from the app's
+DEV menu ("KS loop"); written under the render lock, read once per block.
+Measured with one stage at g = -0.5: fundamental +0.55 c at A5 and +6.3 c at
+A6 (predicted +0.8 / +6.3; the fixed stage is compensated by its DC delay,
+which is short of its phase delay at the fundamental above A5), mode 8 at A4
+about +5 c above 8 x f1, the stiff-string direction. The harness window
+(2048 samples) is too short for a direct mode read at A2 and A4.
+
+State: `ks_ap_state`, one row per ring sized for the maximum stage count,
+allocated with the rings from `ram_caps_synth` (all or nothing), cleared in
+`ks_note_on`. `allpass1_chain` and `FILT_MUL_SS` moved from `filters.c` to
+`amy.h`; the phaser is unchanged.
+
+Codegen (`asmdiff`, -O2 per TU): the sample loop was a plain 28-instruction
+span on main and stays a plain loop, 35 instructions on the default path;
+it was never a hardware loop. The chain is unrolled so no nested loop sits
+inside it.
+
+### `oscillators.c` - Karplus-Strong pluck position from `duty` (upstream PR candidate)
+
+KS ignored `duty`; every note started from the same kind of burst, flat on
+average and random per pluck (host sim, A2: harmonic 2 at +12 dB against
+harmonic 1 on one pluck, -7 dB on the next). `ks_note_on` now reads
+`duty_coefs[COEF_CONST]` as a pluck position `b = |duty - 0.5|`: the burst
+becomes a mix of the noise, combed to notch the harmonics a pluck at b leaves
+out, and a zero-mean pulse b of the period wide (an ideal pluck's bridge
+force: the same notches on a 1/n slope, identical on every note). Pulse
+share and comb depth ease in over b < `KS_PICK_RAMP` (0.1) to
+`KS_PICK_MIX` (0.6), so the first step off 0.5 stays near the plain burst
+(A2, duty 0.49: within 3.1 dB of it at harmonics 1-16).
+
+Default unchanged: the osc reset leaves duty at 0.5, b = 0, and the old
+mean-removal loop runs; the burst is bit-exact, and the fill consumes the
+random stream exactly as before. `duty` and `1 - duty` give the same pluck.
+`M < buflen` keeps a one-sample ring (freq above half the sample rate) at
+duty 0 or 1 off `ks_pluck`, where the pulse duty would be 1 and its scale
+divides by zero.
+
+Cost: note-on only, `render_ks` untouched. `ks_pluck()` folds the mean
+removal, comb, rescale and pulse into the one pass that already removed the
+mean (two passes over the ring, as before), fixed point per sample
+(`FILT_MUL_SS` twice); scales come from the fill's expected RMS, three
+`sqrtf` and a few divides per note. Against a float prototype that measured
+RMS per note: whole-file difference -29 to -43 dB, per-note level within
+1 dB (the short A5 ring varies most). Reads the constant coefficient on
+purpose: the pluck is a patch setting, and `msynth->duty` would also be
+stale at note-on (it is refreshed only for sounding oscs, so a duty change
+made while the voice is silent would reach the note after next).
+Harness: `ks_string_wav_sim.c -u <duty>`.
+
+### `oscillators.c` + `amy.h` - Karplus-Strong excitation shaping (local trial)
+
+`ks_note_on` fills the ring with uniform noise and removes its mean; the
+burst's spectrum is random per note (host sim, A2: harmonic 2 at +12 dB
+against harmonic 1 on one pluck, -7 dB on the next) and does not follow
+velocity. Trial knobs `ks_excite_set()` / `ks_excite_get()` (`amy.h`) shape
+the burst once per note-on in `ks_shape_burst()`: a circular comb
+`x[i] - g x[i - M]` at the pick position, depth `g` 0..1 (in place, walking
+the gcd cycles of `i -> i - M`; a short M at full depth is close to a
+differentiator, so a shallow depth keeps a pick near 0 close to the unshaped
+burst), a mix toward a zero-mean pulse `M` samples wide (an ideal
+pluck's bridge force: the same notches on a 1/n slope, identical on every
+note), and a circular one-pole lowpass whose cutoff, in harmonics of the
+note, runs geometrically from `soft` at velocity 0 to `hard` at velocity 1.
+The result is rescaled to the unshaped burst's RMS. All zero skips the call,
+so the default is the old note-on bit for bit. Measured against theory on
+A2: comb at 0.5 puts the even harmonics 25-38 dB down; the pulse at 0.2
+matches `sin(n pi b)/n` within 0.3 dB through harmonic 8.
+
+Cost: float, note-on only; about four passes over `buflen` (873 samples
+worst case) plus one `powf` and one `expf`. Nothing in `render_ks`.
+Written under the render lock, read by `ks_note_on`. Harness:
+`ks_string_wav_sim.c`.
 
 ### `algorithms.c` + `amy.h` — `amy_num_algorithms` count export (upstream PR candidate)
 

@@ -192,9 +192,13 @@ static void arp_apply_filter(const seq_filter_t *f)
         e->filter_type = FILTER_NONE;
     }
     /* KS string decay from the authored feedback field; 0 = never authored,
-     * keep AMY's build-time 0.9 default. */
-    if (s_arp.patch == SEQ_PATCH_KS && f->feedback > 0.0f) {
-        e->feedback = SEQ_CLAMP_F32(f->feedback, 0.0f, 1.0f);
+     * keep AMY's build-time 0.9 default. Pluck duty is written on every KS
+     * push: its zero offset IS the 0.5 default, so no authored gate. */
+    if (s_arp.patch == SEQ_PATCH_KS) {
+        if (f->feedback > 0.0f) {
+            e->feedback = SEQ_CLAMP_F32(f->feedback, 0.0f, 1.0f);
+        }
+        e->duty_coefs[COEF_CONST] = 0.5f + f->ks_duty_ofs;
     }
     amy_helpers_event_send(e);
 
@@ -264,7 +268,8 @@ static void arp_rebuild(void)
     arp_kill_voices();
 
     sequencer_core_arp_configure(s_arp.patch, sequencer_core_arp_voices(),
-                                 s_arp.vp.filter_authored, s_arp.vp.filter.feedback);
+                                 s_arp.vp.filter_authored, s_arp.vp.filter.feedback,
+                                 s_arp.vp.filter.ks_duty_ofs);
     /* Raw wave/wavetable patches have no built-in EG0; always push the
      * envelope so notes decay. Juno/DX7 strings and bass/FM presets carry
      * their own envelope as part of their character: only override when

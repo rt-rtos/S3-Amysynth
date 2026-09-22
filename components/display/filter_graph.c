@@ -166,37 +166,54 @@ static float norm_to_q(float norm)
     return FGRAPH_RES_MIN + norm * (FGRAPH_RES_MAX - FGRAPH_RES_MIN);
 }
 
-/* KS string-feedback readout, hanging under the Q readout below the header
- * divider. Only on feedback waves, so the header layout is unchanged for other
- * targets. Blanks the plot behind it, so call AFTER the curve (or OFF line).
- * Feedback is KS string decay, independent of the biquad, so it is drawn even
- * while the filter is OFF. */
-static void draw_feedback_box(u8g2_t *u8g2, const filter_graph_t *fg)
+/* One right-aligned KS readout box at row fy: blanked background, outline
+ * frame when selected, inverted fill while adjusting. */
+static void draw_ks_box(u8g2_t *u8g2, const char *buf, uint8_t fy, bool sel,
+                        bool editing)
 {
-    if (!fg->has_feedback) return;
-
-    char fb_buf[10];
-    snprintf(fb_buf, sizeof(fb_buf), "FB:%u%%",
-             (unsigned)(fg->feedback_norm * 100.0f + 0.5f));
-    u8g2_SetFont(u8g2, u8g2_font_5x7_tr);
-    uint8_t fw = (uint8_t)u8g2_GetStrWidth(u8g2, fb_buf);
+    uint8_t fw = (uint8_t)u8g2_GetStrWidth(u8g2, buf);
     uint8_t fx = (uint8_t)(126 - fw);
-    const uint8_t fy = FG_TOPBAR_H;   /* first row under the divider */
     const uint8_t fh = 11;
-    bool sel = (fg->cursor == 2);
 
     u8g2_SetDrawColor(u8g2, 0);
     u8g2_DrawBox(u8g2, (uint8_t)(fx - 2), fy, (uint8_t)(fw + 4), fh);
     u8g2_SetDrawColor(u8g2, 1);
-    if (sel && fg->editing) {
+    if (sel && editing) {
         u8g2_DrawBox(u8g2, (uint8_t)(fx - 2), fy, (uint8_t)(fw + 4), fh);
         u8g2_SetDrawColor(u8g2, 0);
-        u8g2_DrawStr(u8g2, fx, (uint8_t)(fy + 8), fb_buf);
+        u8g2_DrawStr(u8g2, fx, (uint8_t)(fy + 8), buf);
         u8g2_SetDrawColor(u8g2, 1);
     } else {
         if (sel) u8g2_DrawRFrame(u8g2, (uint8_t)(fx - 2), fy, (uint8_t)(fw + 4), fh, 1);
-        u8g2_DrawStr(u8g2, fx, (uint8_t)(fy + 8), fb_buf);
+        u8g2_DrawStr(u8g2, fx, (uint8_t)(fy + 8), buf);
     }
+}
+
+/* KS string-feedback and pluck-duty readouts, hanging under the Q readout
+ * below the header divider, DT directly under FB. Only on feedback waves, so
+ * the header layout is unchanged for other targets. Blanks the plot behind
+ * them, so call AFTER the curve (or OFF line). Both shape the KS string, not
+ * the biquad, so they are drawn even while the filter is OFF. FB shows two
+ * decimals from 99% up, where one detent is a fraction of a percent. */
+static void draw_feedback_box(u8g2_t *u8g2, const filter_graph_t *fg)
+{
+    if (!fg->has_feedback) return;
+
+    char buf[12];
+    float fb = fg->feedback_norm;
+    if (fb >= 1.0f) {
+        snprintf(buf, sizeof(buf), "FB:100%%");
+    } else if (fb >= 0.99f) {
+        snprintf(buf, sizeof(buf), "FB:%.2f%%", (double)(fb * 100.0f));
+    } else {
+        snprintf(buf, sizeof(buf), "FB:%.1f%%", (double)(fb * 100.0f));
+    }
+    u8g2_SetFont(u8g2, u8g2_font_5x7_tr);
+    const uint8_t fy = FG_TOPBAR_H;   /* first row under the divider */
+    draw_ks_box(u8g2, buf, fy, fg->cursor == 2, fg->editing);
+
+    snprintf(buf, sizeof(buf), "DT:%.2f", (double)fg->ks_duty);
+    draw_ks_box(u8g2, buf, (uint8_t)(fy + 11), fg->cursor == 3, fg->editing);
 }
 
 void filter_graph_draw(u8g2_t *u8g2, const filter_graph_t *fg)
@@ -260,8 +277,8 @@ void filter_graph_draw(u8g2_t *u8g2, const filter_graph_t *fg)
         uint8_t group_w = fg->show_toggles ? (uint8_t)(tw + CB_GAP + CB_W) : tw;
         uint8_t tx = (uint8_t)((128 - group_w) / 2);
 
-        /* Type name - cursor 3 highlight only where the type is selectable. */
-        if (fg->show_toggles && fg->cursor == 3) {
+        /* Type name - cursor 4 highlight only where the type is selectable. */
+        if (fg->show_toggles && fg->cursor == 4) {
             if (fg->editing) {
                 /* Inverted box = value is live. */
                 u8g2_DrawBox(u8g2, (uint8_t)(tx - 2), 0, (uint8_t)(tw + 4), 11);
@@ -276,12 +293,12 @@ void filter_graph_draw(u8g2_t *u8g2, const filter_graph_t *fg)
             u8g2_DrawStr(u8g2, tx, 8, type_name);
         }
 
-        /* Enable checkbox - filled = on; cursor 4 selects it (outline
+        /* Enable checkbox - filled = on; cursor 5 selects it (outline
          * highlight, inverted while toggling). */
         if (fg->show_toggles) {
             uint8_t bx = (uint8_t)(tx + tw + CB_GAP);
             const uint8_t by = 2, bh = 7;   /* checkbox rows 2..8, aligned to text */
-            bool sel = (fg->cursor == 4);
+            bool sel = (fg->cursor == 5);
 
             if (sel && fg->editing) {
                 u8g2_DrawBox(u8g2, (uint8_t)(bx - 2), 0, (uint8_t)(CB_W + 4), 11);

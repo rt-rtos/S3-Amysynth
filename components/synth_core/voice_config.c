@@ -339,6 +339,7 @@ void voice_build_wave(const voice_wave_cfg_t *cfg)
             float fb = cfg->ks_feedback;
             if (fb > 1.0f) fb = 1.0f;   /* > 1 would make the KS buffer diverge */
             e->feedback = (cfg->ks_feedback_authored && fb > 0.0f) ? fb : 0.9f;
+            e->duty_coefs[COEF_CONST] = 0.5f + cfg->ks_duty_ofs;
         }
         e->freq_coefs[COEF_NOTE] = 1.0f;
         if (headed) {
