@@ -37,7 +37,7 @@ flowchart TD
     Active --> SEQ["sequencer_init OOM guard<br/>src/sequencer.c"]
     Active --> CAPS["ram_caps_sequencer knob + pool fallbacks<br/>src/amy.h, src/api.c, src/parse.c, src/sequencer.c"]
     Active --> PROF["COARSE profiler mode<br/>src/amy.h, src/amy.c"]
-    Active --> KS["Per-osc Karplus-Strong ring binding and ring caps, loop allpass, pluck position from duty, excitation shaping<br/>src/oscillators.c, src/amy.c, src/amy.h, src/api.c, src/filters.c"]
+    Active --> KS["Per-osc Karplus-Strong ring binding and ring caps, loop allpass, pluck position from duty, excitation shaping, gain ramp, note-off release<br/>src/oscillators.c, src/amy.c, src/amy.h, src/api.c, src/filters.c"]
     Active --> PCM["PCM retrig fade-restart (gated)<br/>src/pcm.c"]
     Active --> DUAL["Skip the dead dual-core bus sum<br/>src/amy.c"]
     Active --> CLAMP["instrument_get_num_voices voice-list clamp<br/>src/instrument.c"]
@@ -287,15 +287,20 @@ One float divide per block per KS osc for `a`.
 
 Trial knobs, not for upstream: `ks_loop_set()` / `ks_loop_get()` (`amy.h`)
 bypass the tuning stage (off plus 0 stages is the old loop bit for bit) and
-add up to `KS_DISPERSION_MAX_STAGES` stages of `allpass1_chain` at a fixed
-coefficient, their low-frequency delay taken out of the ring by
-`ks_ring_len()`, which `ks_note_on` and `render_ks` share. Set from the app's
-DEV menu ("KS loop"); written under the render lock, read once per block.
-Measured with one stage at g = -0.5: fundamental +0.55 c at A5 and +6.3 c at
-A6 (predicted +0.8 / +6.3; the fixed stage is compensated by its DC delay,
-which is short of its phase delay at the fundamental above A5), mode 8 at A4
-about +5 c above 8 x f1, the stiff-string direction. The harness window
-(2048 samples) is too short for a direct mode read at A2 and A4.
+add up to `KS_DISPERSION_MAX_STAGES` stages of `allpass1_chain` for a string
+stiffness B (0..`KS_STIFFNESS_MAX`, mode k at k f sqrt(1 + B k^2)). The
+stage coefficient follows the note: `ks_loop_set()` fits one per semitone
+(least squares on delay over modes 2..8 below about 4 kHz, golden-section
+search) into a static scratch before taking the render lock, and
+`ks_ring_len()`, which `ks_note_on` and `render_ks` share, interpolates it
+and takes the chain's exact phase delay at the fundamental out of the ring.
+Set from the app's DEV menu ("KS loop", Stages and Stiff); read once per
+block. Host-measured, 3 stages: the fundamental stays within 0.1 c, and at
+B = 1e-4 modes 2..6 land within 0.5 c of the stiff-string target from A2 to
+A5, at B = 1e-3 within about 3 c. At 5e-3 a first-order stage can no longer
+follow the curve and the low modes overshoot (mode 2 +21 c against +13 c).
+Per block per KS osc with stages on: one `log2f`, `sinf`, `cosf` and two
+`atan2f`.
 
 State: `ks_ap_state`, one row per ring sized for the maximum stage count,
 allocated with the rings from `ram_caps_synth` (all or nothing), cleared in
@@ -362,6 +367,34 @@ Cost: float, note-on only; about four passes over `buflen` (873 samples
 worst case) plus one `powf` and one `expf`. Nothing in `render_ks`.
 Written under the render lock, read by `ks_note_on`. Harness:
 `ks_string_wav_sim.c`.
+
+### `oscillators.c` - Karplus-Strong gain ramp (upstream PR candidate)
+
+`render_ks` multiplied the whole block by `msynth->amp`, which
+`hold_and_modify()` has already advanced to the envelope's value at the end
+of the block, and never read or wrote `last_amp`. An amp envelope on a KS
+osc therefore moved in one step per block (187.5 Hz at 48 kHz, 256-sample
+blocks): a decay zippered and a note-on played its first block at the
+end-of-block level. The gain now ramps from `last_amp` to `amp` across the
+block with the `incremental_amp` idiom of `render_envelope()`, and
+`last_amp` advances at the end. A constant gain is bit-exact with before.
+Cost: one add per sample. Harness: `ks_gain_ramp_sim.c`.
+
+### `oscillators.c` + `amy.h` + `amy.c` - Karplus-Strong note-off release (local trial)
+
+`play_delta`'s note-off sets `note_off_clock` only in its default case, and
+KS has its own case, so a KS note-off never started the amp envelope's
+release: the gate and the release time did nothing, the string rang on at
+the sustain level, and since `OSC_IN_RELEASE()` gates the silence check, a
+KS osc with a sustain above zero rendered its loop every block until reset.
+Upstream excludes KS on purpose (an osc with no envelope of its own would go
+silent at note-off under the default `bp0`). `ks_note_off()` now returns
+whether to release, and the KS case then starts the release as the default
+case does. Trial knob `ks_release_set()` / `ks_release_get()` (`amy.h`),
+default on; off is the upstream behaviour bit for bit. Set from the app's
+DEV menu ("KS loop > Release"); written under the lock. An upstream version
+would release only when the osc has an explicit EG0. Harness:
+`ks_gain_ramp_sim.c -r off`.
 
 ### `algorithms.c` + `amy.h` — `amy_num_algorithms` count export (upstream PR candidate)
 

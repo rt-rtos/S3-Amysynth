@@ -1576,8 +1576,11 @@ static bool filter_tgt_is_arp(void)
  * KS patch; the drones exclude KS from their cycles. */
 static bool filter_target_is_feedback(void)
 {
-    /* Live voice is always a patch; KS feedback is not one of its cursors. */
-    if (filter_tgt_is_live()) return false;
+#if CONFIG_SYNTH_WIRELESS
+    if (filter_tgt_is_live()) {
+        return live_play_get_patch() == SEQ_PATCH_KS;
+    }
+#endif
     if (filter_tgt_is_arp()) {
         return arp_get_patch() == SEQ_PATCH_KS;
     }

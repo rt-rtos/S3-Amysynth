@@ -1542,14 +1542,21 @@ extern void partial_note_off(uint16_t osc);
 extern void algo_note_on(uint16_t osc, float freq);
 extern void algo_note_off(uint16_t osc);
 extern void ks_note_on(uint16_t osc, float freq);
-extern void ks_note_off(uint16_t osc);
+extern bool ks_note_off(uint16_t osc);
+// Karplus-Strong note-off: on (the default), note-off starts the amp
+// envelope's release like any other wave; off, the string rings on at the
+// sustain level.  Set from a control task.
+extern void ks_release_set(bool on);
+extern bool ks_release_get(void);
 // Karplus-Strong loop allpass: the tuning stage that completes the fractional
-// period, plus up to KS_DISPERSION_MAX_STAGES fixed-coefficient stages that
-// make the upper modes inharmonic.  Set from a control task, read once per
-// block by the string.
+// period, plus up to KS_DISPERSION_MAX_STAGES stages that make the upper modes
+// inharmonic like a string of stiffness B (0..KS_STIFFNESS_MAX, 0 = none), the
+// coefficient designed per note.  Set from one control task (the design takes
+// milliseconds), read once per block by the string.
 #define KS_DISPERSION_MAX_STAGES 3
-extern void ks_loop_set(bool tune, uint8_t stages, float coef);
-extern void ks_loop_get(bool *tune, uint8_t *stages, float *coef);
+#define KS_STIFFNESS_MAX 0.005f
+extern void ks_loop_set(bool tune, uint8_t stages, float stiffness);
+extern void ks_loop_get(bool *tune, uint8_t *stages, float *stiffness);
 // Karplus-Strong excitation shaping, applied to the burst at note-on: lowpass
 // cutoff in harmonics of the note from `soft` (velocity 0) to `hard`
 // (velocity 1), 0 = off; pick position `pick` of the string, 0..0.5, combing

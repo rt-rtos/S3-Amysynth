@@ -23,6 +23,11 @@ uint8_t live_play_synth_slot(void)
     return LIVE_SYNTH;
 }
 
+uint8_t live_play_num_voices(void)
+{
+    return LIVE_VOICES;
+}
+
 static uint16_t s_patch = SEQ_MEL_PATCH;
 static bool     s_ready = false;
 
@@ -108,8 +113,8 @@ static void live_note(uint8_t note, float velocity)
 }
 
 /* Push the stored filter plus its envelope routing matrix (eg_depth, the same
- * eight bipolar depths melodic rows carry). Mirrors arp_apply_filter() minus
- * its KS branch (the live slot is always a patch voice): the depths go out in
+ * eight bipolar depths melodic rows carry). Mirrors arp_apply_filter(),
+ * including its KS branch for the raw KS patch: the depths go out in
  * their own event - all eight slots once the voice's filter block is authored,
  * so a 0 clears the rail, the nonzero ones only before that - and EG1
  * breakpoints ride along whenever an EG1 rail is live, so a rail never reads
@@ -125,6 +130,15 @@ static void live_apply_filter(const seq_filter_t *f)
         e->resonance = f->resonance;
     } else {
         e->filter_type = FILTER_NONE;
+    }
+    /* KS string decay from the authored feedback field; 0 = never authored,
+     * keep AMY's build-time 0.9 default. Pluck duty is written on every KS
+     * push: its zero offset IS the 0.5 default, so no authored gate. */
+    if (s_patch == SEQ_PATCH_KS) {
+        if (f->feedback > 0.0f) {
+            e->feedback = SEQ_CLAMP_F32(f->feedback, 0.0f, 1.0f);
+        }
+        e->duty_coefs[COEF_CONST] = 0.5f + f->ks_duty_ofs;
     }
     amy_helpers_event_send(e);
 

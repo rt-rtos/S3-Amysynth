@@ -30,6 +30,9 @@ void live_play_all_notes_off(void);
  * (the filter overlay reads their modulated cutoff) never hard-codes it. */
 uint8_t  live_play_synth_slot(void);
 
+/* Voices on the live slot, for sizing shared pools (amy_cfg.ks_oscs). */
+uint8_t  live_play_num_voices(void);
+
 /* Patch selection (Wireless menu page; same catalog as melodic/arp). */
 uint16_t live_play_get_patch(void);
 void     live_play_set_patch(uint16_t patch_number);

@@ -141,50 +141,82 @@ static void uni_adjust(int delta, int arg)
 
 /* Karplus-Strong loop allpass (ks_loop_set/ks_loop_get in oscillators.c):
  * Tune runs the stage that completes the fractional period, so a KS note
- * plays in tune instead of up to a semitone sharp; Stages/Coef add fixed
- * allpasses that push the upper modes off the harmonic series. Volatile
- * like everything else here - boot leaves Tune on and Stages 0. */
-enum { KSL_TUNE, KSL_STAGES, KSL_COEF };
+ * plays in tune instead of up to a semitone sharp; Stages/Stiff add
+ * allpasses that push the upper modes sharp like a string of inharmonicity B
+ * (Stiff steps a 1-2-5 ladder, 0 = none). Release
+ * (ks_release_set) lets note-off start the amp release on KS voices, so the
+ * gate damps the string; off, strings ring on at sustain. Voices is
+ * the voice count of every KS row (sequencer_core_set_ks_voices), up to the
+ * CONFIG_SEQ_KS_VOICES_MAX ceiling the rings are sized for; a change rebuilds
+ * the layers holding KS rows. Volatile like everything else here - boot
+ * leaves Tune on, Stages 0, Stiff 1e-3, Release on and Voices 2 (or the
+ * ceiling, if lower). */
+enum { KSL_TUNE, KSL_STAGES, KSL_STIFF, KSL_RELEASE, KSL_VOICES };
+
+static const float s_ksl_stiff[] = {
+    0.0f, 1e-5f, 2e-5f, 5e-5f, 1e-4f, 2e-4f, 5e-4f, 1e-3f, 2e-3f, 5e-3f,
+};
+static const char *const s_ksl_stiff_name[] = {
+    "0", "1e-5", "2e-5", "5e-5", "1e-4", "2e-4", "5e-4", "1e-3", "2e-3", "5e-3",
+};
+#define KSL_STIFF_COUNT (int)(sizeof s_ksl_stiff / sizeof *s_ksl_stiff)
+
+/* Ladder index nearest to B. */
+static int ksl_stiff_index(float b)
+{
+    int best = 0;
+    for (int i = 1; i < KSL_STIFF_COUNT; i++)
+        if (fabsf(s_ksl_stiff[i] - b) < fabsf(s_ksl_stiff[best] - b)) best = i;
+    return best;
+}
 
 static void ksl_fmt(char *buf, size_t n, int arg)
 {
-    bool tune; uint8_t stages; float coef;
-    ks_loop_get(&tune, &stages, &coef);
+    bool tune; uint8_t stages; float stiff;
+    ks_loop_get(&tune, &stages, &stiff);
     switch (arg) {
         case KSL_TUNE:   snprintf(buf, n, "%s", tune ? "on" : "off"); break;
         case KSL_STAGES: snprintf(buf, n, "%u", (unsigned)stages);    break;
-        case KSL_COEF:   snprintf(buf, n, "%+.2f", (double)coef);     break;
+        case KSL_STIFF:  snprintf(buf, n, "%s",
+                                  s_ksl_stiff_name[ksl_stiff_index(stiff)]); break;
+        case KSL_RELEASE: snprintf(buf, n, "%s", ks_release_get() ? "on" : "off"); break;
+        case KSL_VOICES: snprintf(buf, n, "%u/%u",
+                                  (unsigned)sequencer_core_get_ks_voices(),
+                                  (unsigned)CONFIG_SEQ_KS_VOICES_MAX);  break;
         default:         buf[0] = '\0';                               break;
     }
 }
 
 static void ksl_fire(int arg)
 {
-    bool tune; uint8_t stages; float coef;
-    ks_loop_get(&tune, &stages, &coef);
-    if (arg == KSL_TUNE) ks_loop_set(!tune, stages, coef);
+    bool tune; uint8_t stages; float stiff;
+    ks_loop_get(&tune, &stages, &stiff);
+    if (arg == KSL_TUNE) ks_loop_set(!tune, stages, stiff);
+    if (arg == KSL_RELEASE) ks_release_set(!ks_release_get());
 }
 
 static void ksl_adjust(int delta, int arg)
 {
-    bool tune; uint8_t stages; float coef;
-    ks_loop_get(&tune, &stages, &coef);
+    if (arg == KSL_VOICES) {
+        int v = (int)sequencer_core_get_ks_voices() + delta;
+        sequencer_core_set_ks_voices((uint8_t)SEQ_CLAMP_INT(v, 1, CONFIG_SEQ_KS_VOICES_MAX));
+        return;
+    }
+    bool tune; uint8_t stages; float stiff;
+    ks_loop_get(&tune, &stages, &stiff);
     switch (arg) {
         case KSL_STAGES:
             stages = (uint8_t)SEQ_CLAMP_INT((int)stages + delta,
                                             0, KS_DISPERSION_MAX_STAGES);
             break;
-        case KSL_COEF: {
-            float c = coef + (float)delta * 0.05f;
-            if (c < -0.9f) c = -0.9f;
-            if (c >  0.9f) c =  0.9f;
-            coef = c;
+        case KSL_STIFF:
+            stiff = s_ksl_stiff[SEQ_CLAMP_INT(ksl_stiff_index(stiff) + delta,
+                                              0, KSL_STIFF_COUNT - 1)];
             break;
-        }
         default:
             return;
     }
-    ks_loop_set(tune, stages, coef);
+    ks_loop_set(tune, stages, stiff);
 }
 
 /* One-shot sequencer state dump to the console (seq_core_dump.c). */
@@ -382,7 +414,9 @@ static const dev_page_t s_page_uni = { "UNISON", s_uni_items,
 static const dev_item_t s_ksloop_items[] = {
     { .label = "Tune",   .fmt = ksl_fmt, .fire   = ksl_fire,   .arg = KSL_TUNE   },
     { .label = "Stages", .fmt = ksl_fmt, .adjust = ksl_adjust, .arg = KSL_STAGES },
-    { .label = "Coef",   .fmt = ksl_fmt, .adjust = ksl_adjust, .arg = KSL_COEF   },
+    { .label = "Stiff",  .fmt = ksl_fmt, .adjust = ksl_adjust, .arg = KSL_STIFF  },
+    { .label = "Release", .fmt = ksl_fmt, .fire  = ksl_fire,   .arg = KSL_RELEASE },
+    { .label = "Voices", .fmt = ksl_fmt, .adjust = ksl_adjust, .arg = KSL_VOICES },
 };
 static const dev_page_t s_page_ksloop = { "KS LOOP", s_ksloop_items,
                                           sizeof s_ksloop_items / sizeof *s_ksloop_items };

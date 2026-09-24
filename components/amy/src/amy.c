@@ -2023,7 +2023,15 @@ void play_delta(struct delta *d) {
                       || synth[osc]->wave == PARTIAL)) {
                     //synth[osc]->velocity = 0;
                     switch(synth[osc]->wave) {
-                    case KS: ks_note_off(osc); break;
+                    case KS:
+                        if (!ks_note_off(osc)) break;
+                        // Release as the default case does, so the gate damps
+                        // the string and a silent one stops rendering.
+                        AMY_UNSET(synth[osc]->note_on_clock);
+                        if (AMY_IS_UNSET(synth[osc]->note_off_clock)) {
+                            synth[osc]->note_off_clock = amy_global.total_samples;
+                        }
+                        break;
                     case ALGO: algo_note_off(osc); break;
                     case AMY_MIDI: amy_send_midi_note_off(osc); break;
                     case CUSTOM: custom_note_off(osc); break;

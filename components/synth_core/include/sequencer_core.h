@@ -366,6 +366,19 @@ void           sequencer_core_set_unison(uint8_t layer_idx,
                                          const voice_unison_t *u);
 voice_unison_t sequencer_core_get_unison(uint8_t layer_idx);
 
+/* KS voices per melodic row, 1..CONFIG_SEQ_KS_VOICES_MAX (clamped): every row
+ * whose patch is KS plays exactly this many voices, chord rows included,
+ * overriding the layer's own voice count. Default 1. A change rebuilds each
+ * layer holding a KS row (sounding notes on it stop, like a wave change).
+ * Volatile - not serialized. UI task only. */
+void    sequencer_core_set_ks_voices(uint8_t n);
+uint8_t sequencer_core_get_ks_voices(void);
+
+/* KS rings `layers` melodic layers need with every row KS at the voice
+ * ceiling: layers x SEQ_TRACKS x CONFIG_SEQ_KS_VOICES_MAX. Pure; for sizing
+ * amy_cfg.ks_oscs before amy_start(). */
+uint8_t sequencer_core_ks_row_demand(uint8_t layers);
+
 /* Step one drum track's PCM preset by `dir` through the combined drum sample
  * space: the ROM bank (0 .. pcm_wavetable_base-1) then the gamma9001 banks
  * (256..391) when their blob is mounted, wrapping, with wavetable and memory

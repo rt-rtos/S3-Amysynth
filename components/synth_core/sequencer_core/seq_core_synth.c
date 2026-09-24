@@ -285,19 +285,25 @@ void sequencer_kill_synth_voices(uint8_t synth_id)
  * (seq_core_state.c) can shift it with the other per-layer parallel arrays. */
 uint8_t s_voices_applied[MAX_LAYERS][SEQ_TRACKS];
 
+/* KS voices per row (DEV menu, volatile). Bounded by CONFIG_SEQ_KS_VOICES_MAX,
+ * which is what main.c sizes amy_cfg.ks_oscs for. Two by default, so a note's
+ * tail rings under the next note on the same row. */
+static uint8_t s_ks_voices = (CONFIG_SEQ_KS_VOICES_MAX < 2) ? CONFIG_SEQ_KS_VOICES_MAX : 2;
+
 uint8_t seq_track_num_voices(const seq_layer_t *layer, uint8_t track)
 {
-    /* KS is mono per row, whatever the layer asks for. Each sounding KS voice
-     * needs its own ring in AMY's ks_buffer pool (amy_cfg.ks_oscs = 4, one per
-     * row): voices sharing a ring damp each other and a note-on re-excites the
-     * ring under the tail still reading it. Measured on a 4x2 layer, that cost
-     * 4x the sustained level and let one inaudible note-on lift the rest of the
-     * layer 386%. Clamping here rather than at the stored num_voices keeps the
-     * layer's setting intact for when the patch changes back, and covers chord
-     * rows too - a chord row on a KS layer sounds one note, the accepted
-     * trade for staying inside the ring budget. */
+    /* A KS row plays s_ks_voices voices, whatever the layer asks for. Each
+     * sounding KS voice needs its own ring in AMY's ks_buffer pool: voices
+     * sharing a ring damp each other and a note-on re-excites the ring under
+     * the tail still reading it. Measured on a 4x2 layer over 4 rings, that
+     * cost 4x the sustained level and let one inaudible note-on lift the rest
+     * of the layer 386%. The ring count is sized for the ceiling, so the row
+     * count stays inside it. Clamping here rather than at the stored
+     * num_voices keeps the layer's setting intact for when the patch changes
+     * back, and covers chord rows too - a chord row on a KS layer sounds at
+     * most s_ks_voices notes. */
     if (layer->type == SEQ_LAYER_MELODIC &&
-        layer->track_patch[track] == SEQ_PATCH_KS) return 1;
+        layer->track_patch[track] == SEQ_PATCH_KS) return s_ks_voices;
     uint8_t v = layer->num_voices;
     if (layer->type == SEQ_LAYER_MELODIC &&
         SEQ_NOTE_IS_CHORD(layer->track_base_note[track])) {
@@ -318,6 +324,25 @@ bool sequencer_layer_voices_stale(uint8_t layer_idx)
         }
     }
     return false;
+}
+
+uint8_t sequencer_core_get_ks_voices(void) { return s_ks_voices; }
+
+void sequencer_core_set_ks_voices(uint8_t n)
+{
+    n = SEQ_CLAMP_U8(n, 1u, CONFIG_SEQ_KS_VOICES_MAX);
+    if (n == s_ks_voices) return;
+    s_ks_voices = n;
+    /* Only layers with a KS row go stale; the rebuild is the patch-cycling
+     * path, so sounding notes on those layers stop. */
+    for (uint8_t li = 0; li < s_num_layers; li++) {
+        if (sequencer_layer_voices_stale(li)) sequencer_reconfigure_layer_paused(li);
+    }
+}
+
+uint8_t sequencer_core_ks_row_demand(uint8_t layers)
+{
+    return (uint8_t)(layers * SEQ_TRACKS * CONFIG_SEQ_KS_VOICES_MAX);
 }
 
 /* ââ Melodic per-layer unison (PROTOTYPE - dev-menu backed, volatile) ââââââ

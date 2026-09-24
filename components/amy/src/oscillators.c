@@ -1009,17 +1009,20 @@ static uint16_t *ks_row_owner;
 #define KS_ROW_UNOWNED 0xFFFF
 
 // The loop allpass, global to every string: one tuning stage completing the
-// fractional period, then `stages` stages sharing coefficient `coef` whose
-// phase delay falls with frequency, so the upper modes drift off the harmonic
-// series the way a stiff string's do.  Written by ks_loop_set() under the
-// lock, read once per block.
+// fractional period, then `stages` stages sharing a coefficient g whose
+// phase delay falls with frequency, so the upper modes drift sharp of the
+// harmonic series the way a stiff string's do.  g follows the note:
+// ks_loop_set() designs one per semitone for the stiffness B (mode k of a
+// stiff string sits at k f sqrt(1 + B k^2)), and the string interpolates it.
+// Written by ks_loop_set() under the lock, read once per block.
+#define KS_DISP_NOTES 97        // semitones up from KS_LOWEST_FREQ
+#define KS_DISP_G_MIN -0.95f    // design limit; stiffer notes saturate here
 static struct {
     bool tune;          // run the fractional-period tuning stage
-    uint8_t stages;     // fixed-coefficient dispersion stages, 0..KS_DISPERSION_MAX_STAGES
-    float coef;         // their shared coefficient g
-    SAMPLE coef_s;      // F2S(coef)
-    float chain_delay;  // stages * (1 - g)/(1 + g), taken out of the ring
-} ks_loop = { true, 0, -0.5f, F2S(-0.5f), 0.0f };
+    uint8_t stages;     // dispersion stages, 0..KS_DISPERSION_MAX_STAGES
+    float stiffness;    // inharmonicity B; 0 runs no dispersion stage
+    float g[KS_DISP_NOTES];  // stage coefficient per semitone
+} ks_loop = { true, 0, 1e-3f, { 0 } };
 _Static_assert(KS_DISPERSION_MAX_STAGES == 3, "render_ks unrolls the chain to three stages");
 
 // Excitation shaping, global to every string.  The burst is a mix of the
@@ -1072,15 +1075,99 @@ static uint8_t ks_alloc_row(uint16_t osc) {
     return quietest;
 }
 
-// Ring length for freq with the dispersion chain's low-frequency delay taken
-// out of the ring, so the loop still closes at one period.  *frac_period
-// receives P - chain_delay, the length the tuning stage completes.  If the
-// chain would leave fewer than two ring samples the chain is dropped for
-// this call (*stages = 0) and the ring holds the whole period.
-static uint16_t ks_ring_len(float freq, uint8_t *stages, float *frac_period) {
+// Phase delay in samples of the allpass (g + z^-1)/(1 + g z^-1) at w
+// radians per sample, 0 < w < pi, with s and c its sine and cosine.
+static float ks_ap_delay_sc(float g, float w, float s, float c) {
+    return (atan2f(-g * s, 1.0f + g * c) - atan2f(-s, g + c)) / w;
+}
+
+static float ks_ap_delay(float g, float w) {
+    return ks_ap_delay_sc(g, w, sinf(w), cosf(w));
+}
+
+// Modes 1..n of one note, where a string of the design stiffness has them,
+// and the delay one stage must lose from mode 1 to each to put it there.
+#define KS_DISP_FIT_MODES 8
+typedef struct {
+    int n;
+    float w[KS_DISP_FIT_MODES], s[KS_DISP_FIT_MODES], c[KS_DISP_FIT_MODES];
+    float need[KS_DISP_FIT_MODES];
+} ks_disp_fit_t;
+
+static float ks_disp_misfit(float g, const ks_disp_fit_t *t) {
+    float d1 = ks_ap_delay_sc(g, t->w[0], t->s[0], t->c[0]);
+    float e = 0.0f;
+    for(int k = 1; k < t->n; k++) {
+        float d = d1 - ks_ap_delay_sc(g, t->w[k], t->s[k], t->c[k]) - t->need[k];
+        e += d * d;
+    }
+    return e;
+}
+
+// The coefficient of `stages` equal stages that best places modes 2..8 of a
+// note at f where a string of stiffness B has them, relative to the
+// fundamental (least squares on delay, which weighs every mode's cents about
+// equally).  Modes above about 4 kHz are left out: the loop's own lowpass
+// leaves little of them to hear.  A first-order stage cannot follow the
+// stiff-string curve far, so past B of a few 1e-3 the fit overshoots the low
+// modes, and at KS_DISP_G_MIN low notes saturate.
+static float ks_disp_design(float f, float B, uint8_t stages) {
+    ks_disp_fit_t t;
+    int K = (int)(4000.0f / f);
+    if(K > KS_DISP_FIT_MODES) K = KS_DISP_FIT_MODES;
+    if(K < 2) K = 2;
+    float P = (float)AMY_SAMPLE_RATE / f;
+    t.n = 0;
+    for(int k = 1; k <= K; k++) {
+        float stretch = sqrtf((1.0f + B * (float)(k * k)) / (1.0f + B));
+        float w = 2.0f * (float)M_PI * f * (float)k * stretch / (float)AMY_SAMPLE_RATE;
+        if(w >= (float)M_PI) break;
+        t.w[t.n] = w;
+        t.s[t.n] = sinf(w);
+        t.c[t.n] = cosf(w);
+        t.need[t.n] = P * (1.0f - 1.0f / stretch) / (float)stages;
+        t.n++;
+    }
+    if(t.n < 2) return 0.0f;
+    // Golden-section search over [KS_DISP_G_MIN, 0].
+    const float r = 0.618034f;
+    float a = KS_DISP_G_MIN, b = 0.0f;
+    float x1 = b - r * (b - a), x2 = a + r * (b - a);
+    float e1 = ks_disp_misfit(x1, &t), e2 = ks_disp_misfit(x2, &t);
+    for(int i = 0; i < 20; i++) {
+        if(e1 < e2) {
+            b = x2; x2 = x1; e2 = e1;
+            x1 = b - r * (b - a); e1 = ks_disp_misfit(x1, &t);
+        } else {
+            a = x1; x1 = x2; e1 = e2;
+            x2 = a + r * (b - a); e2 = ks_disp_misfit(x2, &t);
+        }
+    }
+    return 0.5f * (a + b);
+}
+
+// Ring length for freq with the dispersion chain's delay at the fundamental
+// taken out of the ring, so the loop still closes at one period.  *frac_period
+// receives what is left, the length the tuning stage completes, and *coef the
+// chain's coefficient for this note.  If the chain would leave fewer than two
+// ring samples, or the stiffness is 0, the chain is dropped for this call
+// (*stages = 0) and the ring holds the whole period.
+static uint16_t ks_ring_len(float freq, uint8_t *stages, float *frac_period, SAMPLE *coef) {
     float P = (float)AMY_SAMPLE_RATE / freq;
-    float Pr = (*stages > 0) ? P - ks_loop.chain_delay : P;
-    if(*stages > 0 && Pr < 2.0f) { *stages = 0; Pr = P; }
+    float Pr = P;
+    *coef = 0;
+    if(ks_loop.stiffness <= 0.0f) *stages = 0;
+    if(*stages > 0) {
+        float s = 12.0f * log2f(freq / (float)KS_LOWEST_FREQ);
+        if(s < 0.0f) s = 0.0f;
+        if(s > (float)(KS_DISP_NOTES - 1)) s = (float)(KS_DISP_NOTES - 1);
+        int i = (int)s;
+        if(i > KS_DISP_NOTES - 2) i = KS_DISP_NOTES - 2;
+        float g = ks_loop.g[i] + (s - (float)i) * (ks_loop.g[i + 1] - ks_loop.g[i]);
+        Pr = P - (float)*stages * ks_ap_delay(g, 2.0f * (float)M_PI * freq / (float)AMY_SAMPLE_RATE);
+        if(Pr < 2.0f) { *stages = 0; Pr = P; }
+        else *coef = F2S(g);
+    }
     uint16_t buflen = (uint16_t)Pr;
     if(buflen > MAX_KS_BUFFER_LEN) buflen = MAX_KS_BUFFER_LEN;
     *frac_period = Pr;
@@ -1090,7 +1177,13 @@ static uint16_t ks_ring_len(float freq, uint8_t *stages, float *frac_period) {
 
 SAMPLE render_ks(SAMPLE * buf, uint16_t osc) {
     SAMPLE half = MUL0_SS(F2S(0.5f), F2S(synth[osc]->feedback));
-    SAMPLE amp = F2S(msynth[osc]->amp);
+    // Ramp the gain across the block from the envelope's value at its start
+    // to its value at the end, as the other oscillators do; one step per block
+    // zippers an envelope and cuts a still-ringing string at note-off.
+    SAMPLE incoming_amp = F2S(msynth[osc]->last_amp);
+    SAMPLE ending_amp = F2S(msynth[osc]->amp);
+    SAMPLE current_amp = incoming_amp;
+    SAMPLE incremental_amp = SHIFTR(ending_amp - incoming_amp, BLOCK_SIZE_BITS);
     float freq = freq_of_logfreq(msynth[osc]->logfreq);
     SAMPLE max_value = 0;
     if(freq >= KS_LOWEST_FREQ && synth[osc]->ks_index < AMY_KS_OSCS) {
@@ -1098,9 +1191,9 @@ SAMPLE render_ks(SAMPLE * buf, uint16_t osc) {
         // one read here fixes the settings for the whole block.
         bool tune = ks_loop.tune;
         uint8_t n = ks_loop.stages;
-        SAMPLE g = ks_loop.coef_s;
+        SAMPLE g;
         float Pr;
-        uint16_t buflen = ks_ring_len(freq, &n, &Pr);
+        uint16_t buflen = ks_ring_len(freq, &n, &Pr, &g);
         SAMPLE *ring = ks_buffer[synth[osc]->ks_index];
         // The ring plus the two-tap average is buflen - 0.5 samples of delay,
         // dropping the fraction of the period.  The tuning stage adds back
@@ -1132,7 +1225,8 @@ SAMPLE render_ks(SAMPLE * buf, uint16_t osc) {
             }
             ring[index] = v;
             index = next;
-            SAMPLE value = SMULR7(sample, amp);
+            SAMPLE value = SMULR7(sample, current_amp);
+            current_amp += incremental_amp;
             buf[i] += value;
             if (value < 0) value = -value;
             if (value > max_value) max_value = value;
@@ -1140,6 +1234,7 @@ SAMPLE render_ks(SAMPLE * buf, uint16_t osc) {
         synth[osc]->phase = (PHASOR)index;
         w[0] = w0;
     }
+    msynth[osc]->last_amp = msynth[osc]->amp;
     //fprintf(stderr, "render_ks time %u osc %d freq %.1f amp %.3f maxval %.3f\n", amy_global.total_blocks*AMY_BLOCK_SIZE, osc, freq, S2F(amp), S2F(max_value));
     return max_value;
 }
@@ -1271,7 +1366,8 @@ void ks_note_on(uint16_t osc, float freq) {
     // ks_loop agrees with the one render_ks makes for this block.
     uint8_t n = ks_loop.stages;
     float Pr;
-    uint16_t buflen = ks_ring_len(freq, &n, &Pr);
+    SAMPLE g;
+    uint16_t buflen = ks_ring_len(freq, &n, &Pr, &g);
     // init KS buffer with noise up to max
     SAMPLE sum = 0;
     for(uint16_t i = 0; i < buflen; i++) {
@@ -1296,8 +1392,26 @@ void ks_note_on(uint16_t osc, float freq) {
     //fprintf(stderr, "ks_note_on: osc %d buflen %d row %d\n", osc, buflen, row);
 }
 
-void ks_note_off(uint16_t osc) {
+// Whether a KS note-off starts the amp envelope's release, as it does for
+// the other waves.  Off, note-off leaves the string ringing on the sustain
+// level and the osc never stops rendering.  Written by ks_release_set()
+// under the lock, read by ks_note_off.
+static bool ks_release = true;
+
+// Returns true when the caller should start the release.
+bool ks_note_off(uint16_t osc) {
     msynth[osc]->amp = 0;
+    return ks_release;
+}
+
+void ks_release_set(bool on) {
+    amy_grab_lock();
+    ks_release = on;
+    amy_release_lock();
+}
+
+bool ks_release_get(void) {
+    return ks_release;
 }
 
 
@@ -1355,27 +1469,33 @@ void ks_deinit(void) {
 
 // Set the loop allpass.  Call from a control task, never from the render path:
 // the render body holds the lock this takes.  The settings take effect on the
-// next block.  Changing the stage count while a string sounds moves its ring
-// length by (1 - coef)/(1 + coef) samples, so the note steps in pitch; the
-// stage memories the change frees are cleared at the next note-on, not here.
-void ks_loop_set(bool tune, uint8_t stages, float coef) {
+// next block.  Changing the stage count or stiffness while a string sounds
+// moves its ring length, so the note steps in pitch; the stage memories the
+// change frees are cleared at the next note-on, not here.  The per-semitone
+// design is milliseconds of float work, so it runs into a static scratch
+// before the lock is taken: callers must be a single control task.
+void ks_loop_set(bool tune, uint8_t stages, float stiffness) {
+    static float g[KS_DISP_NOTES];
     if(stages > KS_DISPERSION_MAX_STAGES) stages = KS_DISPERSION_MAX_STAGES;
-    if(coef < -0.9f) coef = -0.9f;
-    if(coef > 0.9f) coef = 0.9f;
-    float d_g = (1.0f - coef) / (1.0f + coef);
+    if(stiffness < 0.0f) stiffness = 0.0f;
+    if(stiffness > KS_STIFFNESS_MAX) stiffness = KS_STIFFNESS_MAX;
+    for(int i = 0; i < KS_DISP_NOTES; i++) {
+        g[i] = (stages > 0 && stiffness > 0.0f)
+            ? ks_disp_design((float)KS_LOWEST_FREQ * exp2f((float)i / 12.0f), stiffness, stages)
+            : 0.0f;
+    }
     amy_grab_lock();
     ks_loop.tune = tune;
     ks_loop.stages = stages;
-    ks_loop.coef = coef;
-    ks_loop.coef_s = F2S(coef);
-    ks_loop.chain_delay = stages * d_g;
+    ks_loop.stiffness = stiffness;
+    memcpy(ks_loop.g, g, sizeof(g));
     amy_release_lock();
 }
 
-void ks_loop_get(bool *tune, uint8_t *stages, float *coef) {
+void ks_loop_get(bool *tune, uint8_t *stages, float *stiffness) {
     *tune = ks_loop.tune;
     *stages = ks_loop.stages;
-    *coef = ks_loop.coef;
+    *stiffness = ks_loop.stiffness;
 }
 
 void ks_excite_set(float soft, float hard, float pick, float shape, float comb) {
