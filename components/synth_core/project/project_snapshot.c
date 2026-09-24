@@ -81,17 +81,17 @@ static void ser_filter(tlv_writer_t *w, const seq_filter_t *f)
     tlv_put_f32(w, f->resonance);
     tlv_put_u8(w,  f->enabled ? 1 : 0);
     tlv_put_f32(w, f->feedback);   /* KS string decay */
-    /* LAYR v17+ / ARP v11+: the envelope routing matrix, [eg][target]. */
+    /* The envelope routing matrix, [eg][target]. */
     for (int eg = 0; eg < 2; eg++)
         for (int t = 0; t < SEQ_EGT_COUNT; t++)
             tlv_put_f32(w, f->eg_depth[eg][t]);
-    tlv_put_f32(w, f->ks_duty_ofs);   /* LAYR v18+ / ARP v12+: KS pluck duty - 0.5 */
+    tlv_put_f32(w, f->ks_duty_ofs);   /* KS pluck duty - 0.5 */
 }
 
 /* Reads every field first (keeps the reader position correct), then bypasses
  * the whole sub-block if filter_type is out of range rather than passing a
- * bogus enum downstream. One fixed shape, no version gates: the sections that
- * carry this block reject anything older than LAYR v18 / ARP v12 outright. */
+ * bogus enum downstream. One fixed shape: the sections that carry this block
+ * accept exactly one version. */
 static bool de_filter(tlv_reader_t *r, seq_filter_t *f)
 {
     uint8_t ft, en;
@@ -128,13 +128,9 @@ static bool de_filter(tlv_reader_t *r, seq_filter_t *f)
     return true;
 }
 
-/* ── Distortion codec (LAYR v12+, ARP v9+) ───────────────────────────────
- * `present` is the caller's version gate, and it is load-bearing rather than
- * cosmetic for LAYR: the block lives at the end of each track's vp, mid-body,
- * so a wrong gate would desync every following track. ARP's copy really is
- * section-final. `present = false` leaves the caller's initialised default
- * (type OFF) untouched. Values are re-clamped on read: a truncated or
- * hand-edited body must not push an out-of-range type into AMY. */
+/* ── Distortion codec ─────────────────────────────────────────────────────
+ * Values are re-clamped on read: a truncated or hand-edited body must not
+ * push an out-of-range type into AMY. */
 static void ser_dist(tlv_writer_t *w, const seq_dist_t *d)
 {
     tlv_put_u8(w, d->type);
@@ -144,9 +140,8 @@ static void ser_dist(tlv_writer_t *w, const seq_dist_t *d)
     tlv_put_u8(w, d->mix);
 }
 
-static bool de_dist(tlv_reader_t *r, seq_dist_t *d, bool present)
+static bool de_dist(tlv_reader_t *r, seq_dist_t *d)
 {
-    if (!present) return true;   /* keep the caller's default */
     uint8_t type, drive, bits, rate, mix;
     if (!tlv_get_u8(r, &type))  return false;
     if (!tlv_get_u8(r, &drive)) return false;
@@ -165,46 +160,28 @@ static void ser_lfo(tlv_writer_t *w, const seq_lfo_t *l)
     tlv_put_u8(w, (uint8_t)l->wave);
     tlv_put_u8(w, (uint8_t)l->rate);
     tlv_put_u8(w, l->depth);
-    tlv_put_u8(w, l->targets);   /* section v2+: target-set bitmask (v1: index) */
-    tlv_put_u8(w, l->wob_rate);  /* LAYR v5+ / ARP v3+: WOBBLE second-order LFO */
+    tlv_put_u8(w, l->targets);   /* target-set bitmask */
+    tlv_put_u8(w, l->wob_rate);  /* WOBBLE second-order LFO */
     tlv_put_u8(w, l->wob_depth);
-    tlv_put_u8(w, l->wob_reach);  /* LAYR v6+ / ARP v4+: reach (0 both,
-                                   * 1 depth, 2 rate). Older firmware reads
-                                   * 2 as nonzero = depth-only - benign. */
-    tlv_put_u8(w, l->flt_oct_q);  /* LAYR v8+ / ARP v7+: FILTER swing in
-                                   * quarter-octaves; 0 = legacy depth-derived */
+    tlv_put_u8(w, l->wob_reach);  /* reach: 0 both, 1 depth, 2 rate */
+    tlv_put_u8(w, l->flt_oct_q);  /* FILTER swing in quarter-octaves; 0 =
+                                   * depth-derived */
 }
 
-/* Same "read everything, then validate" shape as de_filter. The 6th byte
- * changed meaning: v1 = single target index, v2+ = target-set bitmask;
- * migrate index -> bit when reading an old file.
- * Presence flags are caller-resolved because the version threshold differs
- * per containing section: `wobble` = two WOBBLE bytes (LAYR v5+, ARP v3+),
- * `wob_mode` = reach byte (LAYR v6+, ARP v4+; absent = depth+rate; 0 both,
- * 1 depth-only, 2 rate-only),
- * `flt_oct` = FILTER octave-swing byte (LAYR v8+, ARP v7+; absent leaves the
- * 0 sentinel = old depth-derived filter law). */
-static bool de_lfo(tlv_reader_t *r, seq_lfo_t *l, uint8_t ver, bool wobble,
-                   bool wob_mode, bool flt_oct)
+/* Same "read everything, then validate" shape as de_filter. */
+static bool de_lfo(tlv_reader_t *r, seq_lfo_t *l)
 {
-    uint8_t en, mode, wave, rate, depth, tgt;
-    uint8_t wrate = 0, wdepth = 0, wdeponly = 0, foct = 0;
-    if (!tlv_get_u8(r, &en))     return false;
-    if (!tlv_get_u8(r, &mode))   return false;
-    if (!tlv_get_u8(r, &wave))   return false;
-    if (!tlv_get_u8(r, &rate))   return false;
-    if (!tlv_get_u8(r, &depth))  return false;
-    if (!tlv_get_u8(r, &tgt))    return false;
-    if (wobble) {
-        if (!tlv_get_u8(r, &wrate))  return false;
-        if (!tlv_get_u8(r, &wdepth)) return false;
-    }
-    if (wob_mode) {
-        if (!tlv_get_u8(r, &wdeponly)) return false;
-    }
-    if (flt_oct) {
-        if (!tlv_get_u8(r, &foct)) return false;
-    }
+    uint8_t en, mode, wave, rate, depth, tgt, wrate, wdepth, wdeponly, foct;
+    if (!tlv_get_u8(r, &en))       return false;
+    if (!tlv_get_u8(r, &mode))     return false;
+    if (!tlv_get_u8(r, &wave))     return false;
+    if (!tlv_get_u8(r, &rate))     return false;
+    if (!tlv_get_u8(r, &depth))    return false;
+    if (!tlv_get_u8(r, &tgt))      return false;
+    if (!tlv_get_u8(r, &wrate))    return false;
+    if (!tlv_get_u8(r, &wdepth))   return false;
+    if (!tlv_get_u8(r, &wdeponly)) return false;
+    if (!tlv_get_u8(r, &foct))     return false;
 
     if (mode > LFO_MODE_RETRIG || wave >= LFO_WAVE_COUNT ||
         rate >= LFO_RATE_COUNT) {
@@ -216,13 +193,10 @@ static bool de_lfo(tlv_reader_t *r, seq_lfo_t *l, uint8_t ver, bool wobble,
     l->wave    = (lfo_wave_t)wave;
     l->rate    = (lfo_rate_t)rate;
     l->depth   = (depth > 100) ? 100 : depth;
-    l->targets = (ver < 2)
-        ? ((tgt < LFO_TARGET_COUNT) ? LFO_TGT_BIT(tgt) : 0u)  /* v1 index */
-        : (uint8_t)(tgt & LFO_TGT_ALL);                       /* v2 bitmask */
+    l->targets = (uint8_t)(tgt & LFO_TGT_ALL);
     l->wob_rate  = (wrate < LFO_RATE_COUNT) ? wrate : 0;
-    /* Snap to a whole-dB authoring step (voice_config.h): pre-dB files carry
-     * 5 %-grid values, where a stored 5 % reads as OFF while the modulator
-     * still runs. */
+    /* Snap to a whole-dB authoring step (voice_config.h), so an off-grid byte
+     * cannot read as OFF while the modulator still runs. */
     l->wob_depth = voice_wob_db_to_depth(voice_wob_depth_to_db(wdepth));
     l->wob_reach = (wdeponly < WOB_REACH_COUNT) ? wdeponly : 0;
     l->flt_oct_q = (foct > VOICE_LFO_FLT_OCT_Q_MAX)
@@ -243,17 +217,17 @@ static void ser_vp(tlv_writer_t *w, const voice_params_t *vp)
     tlv_put_u8(w, vp->filter_authored ? 1 : 0);
     tlv_put_u8(w, vp->lfo_authored ? 1 : 0);
     tlv_put_f32(w, vp->amp_trim);
-    ser_dist(w, &vp->dist);                        /* LAYR v12+ */
+    ser_dist(w, &vp->dist);
     tlv_put_u8(w, vp->dist_authored ? 1 : 0);
 }
 
-static bool de_vp(tlv_reader_t *r, voice_params_t *vp, uint8_t ver)
+static bool de_vp(tlv_reader_t *r, voice_params_t *vp)
 {
     voice_params_init_defaults(vp);   /* zeroed baseline + unity amp_trim */
     if (!de_env(r, &vp->env))       return false;
     if (!de_env(r, &vp->env1))      return false;
     if (!de_filter(r, &vp->filter)) return false;
-    if (!de_lfo(r, &vp->lfo, ver, ver >= 5, ver >= 6, ver >= 8))  return false;  /* LAYR: wobble v5+, reach v6+, flt_oct v8+ */
+    if (!de_lfo(r, &vp->lfo))       return false;
     uint8_t ea, e1a, fa, la;
     if (!tlv_get_u8(r, &ea))  return false;
     if (!tlv_get_u8(r, &e1a)) return false;
@@ -265,17 +239,10 @@ static bool de_vp(tlv_reader_t *r, voice_params_t *vp, uint8_t ver)
     vp->lfo_authored    = la  != 0;
     if (!tlv_get_f32(r, &vp->amp_trim)) return false;
     vp->amp_trim = SEQ_CLAMP_F32(vp->amp_trim, 0.0f, 1.0f);
-    /* LAYR v12+: distortion, appended to each track's vp block - which sits
-     * INSIDE the per-track loop, so this is mid-body, not section-end. The
-     * version gate is what keeps the walk aligned: on a pre-v12 file both
-     * sides skip these bytes and the next track starts where it should.
-     * Unread, the block keeps voice_params_init_defaults()' OFF default. */
-    if (!de_dist(r, &vp->dist, ver >= 12)) return false;
-    if (ver >= 12) {
-        uint8_t da;
-        if (!tlv_get_u8(r, &da)) return false;
-        vp->dist_authored = da != 0;
-    }
+    if (!de_dist(r, &vp->dist)) return false;
+    uint8_t da;
+    if (!tlv_get_u8(r, &da)) return false;
+    vp->dist_authored = da != 0;
     return true;
 }
 
@@ -431,29 +398,10 @@ static void apply_glob(const staged_glob_t *g)
 
 static void ser_layer(tlv_writer_t *w, const seq_layer_t *L)
 {
-    size_t h = tlv_begin_section(w, TAG_LAYR, 18); /* v2: LFO target bitmask;
-                                                    * v3: +gate_pct, +portamento_ms;
-                                                    * v4: +groove_pct;
-                                                    * v5: LFO +wob_rate/+wob_depth;
-                                                    * v6: LFO +wob_depth_only;
-                                                    * v7: filter +feedback (KS);
-                                                    * v8: LFO +flt_oct_q;
-                                                    * v9: step cond enum+param ->
-                                                    *     independent every+prev
-                                                    *     (same two array slots);
-                                                    * v10: +track_pcm_mode;
-                                                    * v11: +step_pitch_ofs;
-                                                    * v12: vp +dist/+dist_authored;
-                                                    * v13: +fm_algo_override;
-                                                    * v14: +vp_src[], +vp_layer;
-                                                    * v15: +patch_scope;
-                                                    * v16: filter +pitch_env_amount;
-                                                    * v17: filter block carries
-                                                    *     eg_depth[2][4] after
-                                                    *     feedback, filter_env_amount/
-                                                    *     pitch_env_amount folded in;
-                                                    * v18: filter +ks_duty_ofs (block
-                                                    *     tail, after eg_depth) */
+    /* One fixed shape per version; the loader rejects any other version
+     * (no migration), so a format change is a bump here and in
+     * project_snapshot_load. Field history: git log. */
+    size_t h = tlv_begin_section(w, TAG_LAYR, 18);
     tlv_put_u8(w, (uint8_t)L->type);
     tlv_put_u8(w, L->num_steps);
     tlv_put_u16(w, L->patch);
@@ -467,7 +415,7 @@ static void ser_layer(tlv_writer_t *w, const seq_layer_t *L)
         tlv_put_u8(w, L->track_base_note[t]);
         tlv_put_u16(w, L->track_patch[t]);
         tlv_put_u16(w, L->track_pcm_preset[t]);
-        tlv_put_u8(w, L->track_pcm_mode[t]);   /* v10+ */
+        tlv_put_u8(w, L->track_pcm_mode[t]);
         tlv_put_u8(w, L->repeat_rate[t]);
         tlv_put_u8(w, L->mute[t] ? 1 : 0);
         tlv_put_u8(w, L->solo[t] ? 1 : 0);
@@ -475,7 +423,7 @@ static void ser_layer(tlv_writer_t *w, const seq_layer_t *L)
     }
     tlv_put_bytes(w, L->grid,               sizeof L->grid);
     tlv_put_bytes(w, L->step_note,          sizeof L->step_note);
-    tlv_put_bytes(w, L->step_pitch_ofs,     sizeof L->step_pitch_ofs);   /* v11+ */
+    tlv_put_bytes(w, L->step_pitch_ofs,     sizeof L->step_pitch_ofs);
     tlv_put_bytes(w, L->step_prob,          sizeof L->step_prob);
     tlv_put_bytes(w, L->step_ratchet,       sizeof L->step_ratchet);
     tlv_put_bytes(w, L->step_every,         sizeof L->step_every);
@@ -485,18 +433,16 @@ static void ser_layer(tlv_writer_t *w, const seq_layer_t *L)
     tlv_put_bytes(w, L->step_nudge,         sizeof L->step_nudge);
     tlv_put_bytes(w, L->step_velocity_adj,  sizeof L->step_velocity_adj);
     tlv_put_bytes(w, L->step_ratchet_taper, sizeof L->step_ratchet_taper);
-    /* v3: melodic NoteFX (gate length + glide). Tail-appended so v2 readers
-     * stop cleanly before them. */
+    /* Melodic NoteFX: gate length, glide, GROOVE accent amount. */
     tlv_put_u8(w, L->gate_pct);
     tlv_put_u16(w, L->portamento_ms);
-    /* v4: NoteFX GROOVE (accent-curve amount), same tail-append. */
     tlv_put_u8(w, L->groove_pct);
-    /* v13: live FM algorithm override (Shift+Turn), same tail-append. */
+    /* Live FM algorithm override (Shift+Turn). */
     tlv_put_u8(w, L->fm_algo_override);
-    /* v14: voice-block source selector per row + the layer's shared block. */
+    /* Voice-block source selector per row + the layer's shared block. */
     for (int t = 0; t < SEQ_TRACKS; t++) tlv_put_u8(w, L->vp_src[t]);
     ser_vp(w, &L->vp_layer);
-    /* v15: melodic patch scope. track_patch[] above already carries the per-row
+    /* Melodic patch scope. track_patch[] above already carries the per-row
      * patches in both scopes, so this one byte is all the scope needs. */
     tlv_put_u8(w, L->patch_scope);
     tlv_end_section(w, h);
@@ -509,7 +455,7 @@ static uint16_t clamp_patch(uint16_t patch)
     return patch;
 }
 
-static bool parse_layer(tlv_reader_t *b, seq_layer_t *L, uint8_t ver)
+static bool parse_layer(tlv_reader_t *b, seq_layer_t *L)
 {
     memset(L, 0, sizeof *L);
 
@@ -544,29 +490,18 @@ static bool parse_layer(tlv_reader_t *b, seq_layer_t *L, uint8_t ver)
         if (!tlv_get_u16(b, &L->track_patch[t]))      return false;
         L->track_patch[t] = clamp_patch(L->track_patch[t]);
         if (!tlv_get_u16(b, &L->track_pcm_preset[t])) return false;
-        if (ver >= 10) {
-            if (!tlv_get_u8(b, &L->track_pcm_mode[t])) return false;
-        } else {
-            L->track_pcm_mode[t] = 0;   /* pre-v10: engine default (one-shot) */
-        }
+        if (!tlv_get_u8(b, &L->track_pcm_mode[t]))    return false;
         { uint8_t v; if (!tlv_get_u8(b, &v)) return false; L->repeat_rate[t] = v; }
         { uint8_t v; if (!tlv_get_u8(b, &v)) return false; L->mute[t] = v != 0; }
         { uint8_t v; if (!tlv_get_u8(b, &v)) return false; L->solo[t] = v != 0; }
-        if (!de_vp(b, &L->vp[t], ver)) return false;
+        if (!de_vp(b, &L->vp[t])) return false;
     }
 
     if (!tlv_get_bytes(b, L->grid,               sizeof L->grid))               return false;
     if (!tlv_get_bytes(b, L->step_note,          sizeof L->step_note))          return false;
-    if (ver >= 11) {
-        if (!tlv_get_bytes(b, L->step_pitch_ofs, sizeof L->step_pitch_ofs))     return false;
-    } else {
-        memset(L->step_pitch_ofs, 0, sizeof L->step_pitch_ofs);  /* pre-v11: neutral */
-    }
+    if (!tlv_get_bytes(b, L->step_pitch_ofs,     sizeof L->step_pitch_ofs))     return false;
     if (!tlv_get_bytes(b, L->step_prob,          sizeof L->step_prob))          return false;
     if (!tlv_get_bytes(b, L->step_ratchet,       sizeof L->step_ratchet))       return false;
-    /* v9 stores every+prev directly; v<=8 stored a cond enum (0 NONE / 1 FILL
-     * / 2 PREV) and its FILL divisor in the same two byte-array slots - read
-     * into the new fields and remap below. */
     if (!tlv_get_bytes(b, L->step_every,         sizeof L->step_every))         return false;
     if (!tlv_get_bytes(b, L->step_prev,          sizeof L->step_prev))          return false;
     if (!tlv_get_bytes(b, L->step_transform,     sizeof L->step_transform))     return false;
@@ -581,19 +516,8 @@ static bool parse_layer(tlv_reader_t *b, seq_layer_t *L, uint8_t ver)
             L->step_quant_bypass[t][s] = L->step_quant_bypass[t][s] ? 1 : 0;
             if (L->step_prob[t][s] > 100) L->step_prob[t][s] = 100;
             L->step_ratchet[t][s] = SEQ_CLAMP_U8(L->step_ratchet[t][s], 1, SEQ_MAX_RATCHET);
-            if (ver <= 8) {
-                /* Legacy cond enum in step_every's slot, FILL divisor in
-                 * step_prev's: FILL(1) -> every=divisor (capped), PREV(2) ->
-                 * prev on; anything else neutral. */
-                uint8_t cond = L->step_every[t][s];
-                uint8_t parm = L->step_prev[t][s];
-                L->step_every[t][s] = (cond == 1)
-                    ? SEQ_CLAMP_U8(parm, 1, SEQ_STEP_EVERY_MAX) : 1;
-                L->step_prev[t][s]  = (cond == 2) ? 1 : 0;
-            } else {
-                L->step_every[t][s] = SEQ_CLAMP_U8(L->step_every[t][s], 1, SEQ_STEP_EVERY_MAX);
-                L->step_prev[t][s]  = L->step_prev[t][s] ? 1 : 0;
-            }
+            L->step_every[t][s] = SEQ_CLAMP_U8(L->step_every[t][s], 1, SEQ_STEP_EVERY_MAX);
+            L->step_prev[t][s]  = L->step_prev[t][s] ? 1 : 0;
             if (L->step_transform[t][s] >= SEQ_STEP_TRANSFORM_COUNT) L->step_transform[t][s] = SEQ_STEP_TRANSFORM_NONE;
         }
     }
@@ -616,61 +540,35 @@ static bool parse_layer(tlv_reader_t *b, seq_layer_t *L, uint8_t ver)
         }
     }
 
-    /* v3: melodic NoteFX. Pre-v3 files get the legacy gate, glide off.
-     * Clamp to the live control ranges either way. */
-    if (ver >= 3) {
-        if (!tlv_get_u8(b, &L->gate_pct)) return false;
-        if (!tlv_get_u16(b, &L->portamento_ms)) return false;
-    } else {
-        L->gate_pct      = SEQ_MELODIC_GATE_DEFAULT_PCT;
-        L->portamento_ms = 0;
-    }
+    /* Melodic NoteFX, clamped to the live control ranges. */
+    if (!tlv_get_u8(b, &L->gate_pct))       return false;
+    if (!tlv_get_u16(b, &L->portamento_ms)) return false;
     L->gate_pct = SEQ_CLAMP_U8(L->gate_pct, 10, 100);
     if (L->portamento_ms > SEQ_MELODIC_PORTAMENTO_MAX_MS)
         L->portamento_ms = SEQ_MELODIC_PORTAMENTO_MAX_MS;
 
-    /* v4: NoteFX GROOVE. Pre-v4 files get the full legacy accent curve so
-     * they keep their feel. */
-    if (ver >= 4) {
-        if (!tlv_get_u8(b, &L->groove_pct)) return false;
-    } else {
-        L->groove_pct = 100;
-    }
+    if (!tlv_get_u8(b, &L->groove_pct)) return false;
     if (L->groove_pct > 100) L->groove_pct = 100;
 
-    /* v13: live FM algorithm override. Pre-v13 (and corrupt values): none.
-     * The configure path reasserts it after the load's patch apply; anything
-     * past AMY's algorithm table would be an unchecked OOB index there. */
-    if (ver >= 13) {
-        if (!tlv_get_u8(b, &L->fm_algo_override)) return false;
-    } else {
-        L->fm_algo_override = SEQ_FM_ALGO_NONE;
-    }
+    /* Live FM algorithm override; corrupt values fall back to none. The
+     * configure path reasserts it after the load's patch apply; anything past
+     * AMY's algorithm table would be an unchecked OOB index there. */
+    if (!tlv_get_u8(b, &L->fm_algo_override)) return false;
     if (L->fm_algo_override != SEQ_FM_ALGO_NONE &&
         L->fm_algo_override >= amy_num_algorithms)
         L->fm_algo_override = SEQ_FM_ALGO_NONE;
 
-    /* v14: per-row voice-block source + the layer's shared block. Pre-v14:
-     * every row reads its own block (the only behaviour those files had). The
-     * layer block is only meaningful on melodic layers; drum rows are forced
-     * to TRACK so the bank seeding never resolves onto the shared block. */
-    voice_params_init_defaults(&L->vp_layer);
-    if (ver >= 14) {
-        for (int t = 0; t < SEQ_TRACKS; t++) {
-            if (!tlv_get_u8(b, &L->vp_src[t])) return false;
-            if (L->vp_src[t] > SEQ_VP_SRC_LAYER || L->type != SEQ_LAYER_MELODIC)
-                L->vp_src[t] = SEQ_VP_SRC_TRACK;
-        }
-        if (!de_vp(b, &L->vp_layer, ver)) return false;
-    } else {
-        memset(L->vp_src, 0, sizeof L->vp_src);
-        if (L->type == SEQ_LAYER_MELODIC) {
-            L->vp_layer.env  = seq_default_melodic_env();
-            L->vp_layer.env1 = seq_default_melodic_env1();
-        }
+    /* Per-row voice-block source + the layer's shared block. The layer block
+     * is only meaningful on melodic layers; drum rows are forced to TRACK so
+     * the bank seeding never resolves onto the shared block. */
+    for (int t = 0; t < SEQ_TRACKS; t++) {
+        if (!tlv_get_u8(b, &L->vp_src[t])) return false;
+        if (L->vp_src[t] > SEQ_VP_SRC_LAYER || L->type != SEQ_LAYER_MELODIC)
+            L->vp_src[t] = SEQ_VP_SRC_TRACK;
     }
+    if (!de_vp(b, &L->vp_layer)) return false;
 
-    /* v15: melodic patch scope. */
+    /* Melodic patch scope. */
     if (!tlv_get_u8(b, &L->patch_scope)) return false;
     if (L->patch_scope > SEQ_PATCH_SCOPE_TRACK)
         L->patch_scope = SEQ_PATCH_SCOPE_LAYER;
@@ -708,22 +606,8 @@ typedef struct {
 
 static void ser_arp(tlv_writer_t *w)
 {
-    size_t h = tlv_begin_section(w, TAG_ARP, 12);  /* v2: LFO target is a bitmask;
-                                                   * v3: LFO +wob_rate/+wob_depth;
-                                                   * v4: LFO +wob_depth_only;
-                                                   * v5: filter +feedback (KS);
-                                                   * v6: +follow_quant (appended);
-                                                   * v7: LFO +flt_oct_q;
-                                                   * v8: -source/-wave (patch
-                                                   *     covers the wave range);
-                                                   * v9: +dist (appended);
-                                                   * v10: filter +pitch_env_amount;
-                                                   * v11: filter block carries
-                                                   *     eg_depth[2][4] after
-                                                   *     feedback, filter_env_amount/
-                                                   *     pitch_env_amount folded in;
-                                                   * v12: filter +ks_duty_ofs (block
-                                                   *     tail, after eg_depth) */
+    /* One fixed shape per version, as for LAYR. Field history: git log. */
+    size_t h = tlv_begin_section(w, TAG_ARP, 12);
     tlv_put_u8(w, arp_get_enabled() ? 1 : 0);
     tlv_put_u16(w, arp_get_patch());
     tlv_put_u8(w, (uint8_t)arp_get_direction());
@@ -739,31 +623,16 @@ static void ser_arp(tlv_writer_t *w)
     seq_env_t e2; arp_get_envelope2(&e2); ser_env(w, &e2);
     seq_filter_t f; arp_get_filter(&f);  ser_filter(w, &f);
     seq_lfo_t l; arp_get_lfo(&l);        ser_lfo(w, &l);
-    tlv_put_u8(w, arp_get_follow_quant() ? 1 : 0);   /* v6 */
-    seq_dist_t d; arp_get_dist(&d);      ser_dist(w, &d);   /* v9 */
+    tlv_put_u8(w, arp_get_follow_quant() ? 1 : 0);
+    seq_dist_t d; arp_get_dist(&d);      ser_dist(w, &d);
     tlv_end_section(w, h);
 }
 
-static bool parse_arp(tlv_reader_t *b, staged_arp_t *a, uint8_t ver)
+static bool parse_arp(tlv_reader_t *b, staged_arp_t *a)
 {
     uint8_t v;
-    /* The caller memsets the staging block, and an all-zero distortion is not
-     * the OFF default - it is OFF with every secondary parameter below its
-     * legal floor. Seed before parsing so a pre-v9 file restores the same
-     * block a fresh boot would give it. */
-    a->dist = (seq_dist_t){ .type = 0, .drive = 2, .bits = 8, .rate = 8, .mix = 100 };
     if (!tlv_get_u8(b, &v)) return false;
     a->enabled = v != 0;
-    /* Pre-v8: a WAVE/PATCH source toggle (u8) plus a raw AMY waveform (u16)
-     * preceded the patch number. The toggle is gone (the patch range covers
-     * the raw waves); consume the fields to keep the walk aligned, discard
-     * the values - a legacy WAVE-mode save falls back to its stored patch. */
-    if (ver < 8) {
-        uint8_t  legacy_src;
-        uint16_t legacy_wave;
-        if (!tlv_get_u8(b, &legacy_src))   return false;
-        if (!tlv_get_u16(b, &legacy_wave)) return false;
-    }
     if (!tlv_get_u16(b, &a->patch)) return false;
     a->patch = clamp_patch(a->patch);
     if (!tlv_get_u8(b, &v)) return false;
@@ -788,17 +657,11 @@ static bool parse_arp(tlv_reader_t *b, staged_arp_t *a, uint8_t ver)
     if (!de_env(b, &a->env))       return false;
     if (!de_env(b, &a->env2))      return false;
     if (!de_filter(b, &a->filter)) return false;
-    if (!de_lfo(b, &a->lfo, ver, ver >= 3, ver >= 4, ver >= 7))  return false;   /* ARP: wobble v3+, reach v4+, flt_oct v7+ */
-    /* v6: follow the global scale quantizer. Pre-v6 files default OFF
-     * (the arp's own scale). */
-    if (ver >= 6) {
-        if (!tlv_get_u8(b, &v)) return false;
-        a->follow_quant = v != 0;
-    } else {
-        a->follow_quant = false;
-    }
-    /* v9: distortion, appended last. Pre-v9 keeps the staged default. */
-    if (!de_dist(b, &a->dist, ver >= 9)) return false;
+    if (!de_lfo(b, &a->lfo))       return false;
+    /* Follow the global scale quantizer. */
+    if (!tlv_get_u8(b, &v)) return false;
+    a->follow_quant = v != 0;
+    if (!de_dist(b, &a->dist)) return false;
     return true;
 }
 
@@ -1244,13 +1107,13 @@ bool project_snapshot_load(uint8_t slot)
              * (no migration), and the ceiling must track the writer or the
              * firmware rejects its own files. */
             if (ver != 18 || staged_layer_count >= MAX_LAYERS) { ok = false; break; }
-            ok = parse_layer(&body, &staged_layers[staged_layer_count], ver);
+            ok = parse_layer(&body, &staged_layers[staged_layer_count]);
             if (ok) staged_layer_count++;
             break;
         case TAG_ARP:
             /* Exactly ser_arp()'s version (see TAG_LAYR). */
             if (got_arp || ver != 12) { ok = false; break; }
-            ok = parse_arp(&body, &staged_arp, ver);
+            ok = parse_arp(&body, &staged_arp);
             got_arp = ok;
             break;
         case TAG_DRON:
