@@ -849,23 +849,26 @@ void sequencer_core_notify_solo_changed(void);
 
 /* ── Global chord progression ─────────────────────────────────────────────
  * A list of (root, chord_type, duration_bars) entries that auto-advances.
- * When enabled, all melodic layer quantizers and the arp follow the active
- * chord. progression_service() must be called at ~20 Hz from the UI task. */
+ * When enabled, all melodic layer quantizers follow the active chord, and so
+ * does an arp in CHORD quant mode (sequencer_core_progression_arp_chord).
+ * progression_service() must be called at ~20 Hz from the UI task. */
 void    sequencer_core_progression_set_enabled(bool en);
 bool    sequencer_core_progression_get_enabled(void);
 /* Launch quantization for chord applies: false (default) = instant, true =
  * musical edits hold until the next bar line while playing. */
 void    sequencer_core_progression_set_apply_at_bar(bool at_bar);
 bool    sequencer_core_progression_get_apply_at_bar(void);
-/* Drop the progression's captured pre-enable arp root/scale without restoring
- * it. Project load only: the freshly loaded arp values are the new baseline, so
- * a stale capture must not be restored over them on disable. */
-void    sequencer_core_progression_reset_arp_capture(void);
-/* True while the progression drives the arp's root/scale (first chord apply
- * until disable restores the capture). The arp's follow-global-quantizer mode
- * uses this so an active progression chord wins over the global scale,
- * mirroring melodic chord_mode precedence. */
-bool    sequencer_core_progression_arp_owned(void);
+/* The chord the melodic rows are playing, as an arp scale: its root pitch
+ * class (0-11) and the quantizer scale index its chord type maps to.
+ * Obligations: call from synth_ui_task only - the value is written by the
+ * progression service on that task and has no cross-task guard. NULL
+ * out-pointers are skipped.
+ * Guarantees: true with both outputs written once a chord apply has landed;
+ * false with the outputs untouched while no progression chord is applied
+ * (from boot until the first apply, and after the service drains a disable or
+ * an emptied progression). The value changes only on a chord apply or such a
+ * drain, each of which marks the arp dirty. */
+bool    sequencer_core_progression_arp_chord(uint8_t *root_pc, uint8_t *scale_idx);
 void    sequencer_core_progression_set_entry(uint8_t idx, uint8_t root,
                                              chord_type_t chord_type,
                                              uint8_t duration_bars);

@@ -1,7 +1,8 @@
 #include "synth_ui/synth_ui_internal.h"
 #include "sequencer_core.h"
 #include "prog_gen.h"
-#include "quantizer.h"   /* quantizer_chord_intervals() - chord tone counts */
+#include "arp_core.h"
+#include "quantizer.h"   /* quantizer_chord_intervals(), scale names */
 #include <stdio.h>
 
 /* ════════════════════════════════════════════════════════════════════════
@@ -17,10 +18,24 @@
  * last Generate replaced.
  *
  * Key and scale are the global quantizer's, not the page's: the generated
- * roots are diatonic to what the rest of the instrument is already playing. */
+ * roots are diatonic to what the rest of the instrument is already playing.
+ * The Root and Scale rows edit that quantizer through the same setters as the
+ * main menu's rows, so either place shows the other's edits, and Arp Q is the
+ * arp screen's quant source setting. The quantizer's enable flag stays on the
+ * main menu.
+ *
+ * Style walks one list, the major family's presets and then the minor
+ * family's. prog_gen_params_t.style stays an index within the family; the
+ * combined index is page arithmetic only. A step across the family boundary
+ * sets the global scale to that family's default (Major / Natural Minor, root
+ * unchanged); a step within the family leaves the scale alone, so a modal
+ * scale survives browsing its family's styles. */
 
 enum {
-    PGEN_ROW_STYLE = 0,
+    PGEN_ROW_ROOT = 0,
+    PGEN_ROW_SCALE,
+    PGEN_ROW_ARPQ,
+    PGEN_ROW_STYLE,
     PGEN_ROW_LEN,
     PGEN_ROW_BARS,
     PGEN_ROW_EXT,
@@ -39,6 +54,10 @@ static const uint8_t PGEN_BARS_STEPS[] = { 1, 2, 4 };
 
 #define PGEN_SEED_COUNT 1000
 #define PGEN_VAR_COUNT  4
+
+/* Global quantizer scales a family-crossing Style step lands on. */
+#define PGEN_SCALE_MAJOR 1   /* Major */
+#define PGEN_SCALE_MINOR 2   /* Natural Minor */
 
 static menu_item_view_t s_items[PGEN_ROW_COUNT];
 
@@ -76,6 +95,15 @@ static uint8_t clamped_style(prog_gen_family_t family, uint8_t style)
 {
     uint8_t count = prog_gen_style_count(family);
     return (style >= count) ? (uint8_t)(count - 1) : style;
+}
+
+static const char *arp_quant_word(arp_quant_mode_t mode)
+{
+    switch (mode) {
+        case ARP_QUANT_OWN:    return "OWN";
+        case ARP_QUANT_GLOBAL: return "GLOB";
+        default:               return "CHRD";
+    }
 }
 
 static const char *ext_word(uint8_t ext)
@@ -165,8 +193,23 @@ const menu_item_view_t *proggen_menu_build_items(void)
     prog_gen_params_t p;
     sequencer_core_progression_gen_params_get(&p);
 
-    prog_gen_family_t family =
-        prog_gen_family_for_scale(sequencer_core_get_quantizer_scale());
+    uint8_t scale = sequencer_core_get_quantizer_scale();
+    prog_gen_family_t family = prog_gen_family_for_scale(scale);
+
+    snprintf(s_items[PGEN_ROW_ROOT].label, MENU_LABEL_LEN, "Root");
+    snprintf(s_items[PGEN_ROW_ROOT].value, MENU_VALUE_LEN, "%s",
+             chord_root_name(sequencer_core_get_quantizer_root_note() % 12));
+
+    snprintf(s_items[PGEN_ROW_SCALE].label, MENU_LABEL_LEN, "Scale");
+    {
+        const musical_scale_t *sc = quantizer_get_scale(scale);
+        snprintf(s_items[PGEN_ROW_SCALE].value, MENU_VALUE_LEN, "%s",
+                 sc ? sc->name : "?");
+    }
+
+    snprintf(s_items[PGEN_ROW_ARPQ].label, MENU_LABEL_LEN, "Arp Q");
+    snprintf(s_items[PGEN_ROW_ARPQ].value, MENU_VALUE_LEN, "%s",
+             arp_quant_word(arp_get_quant_mode()));
 
     snprintf(s_items[PGEN_ROW_STYLE].label, MENU_LABEL_LEN, "Style");
     snprintf(s_items[PGEN_ROW_STYLE].value, MENU_VALUE_LEN, "%s",
@@ -237,15 +280,47 @@ void proggen_menu_edit_value(uint8_t idx, int delta)
 {
     if (delta == 0) return;
     int move = delta;
+    int dir  = (delta > 0) ? 1 : -1;
+
+    /* Key rows: the global quantizer's own setters, stepped as the main
+     * menu's Root and Scale rows step them. */
+    if (idx == PGEN_ROW_ROOT) {
+        int pc = (int)wrap_index((int)(sequencer_core_get_quantizer_root_note() % 12) + move, 12);
+        sequencer_core_set_quantizer_root_note((uint8_t)(60 + pc));
+        return;
+    }
+    if (idx == PGEN_ROW_SCALE) {
+        sequencer_core_set_quantizer_scale(
+            wrap_index((int)sequencer_core_get_quantizer_scale() + dir,
+                       (int)quantizer_scale_count()));
+        return;
+    }
+    if (idx == PGEN_ROW_ARPQ) {
+        arp_set_quant_mode((arp_quant_mode_t)wrap_index(
+            (int)arp_get_quant_mode() + dir, (int)ARP_QUANT_COUNT));
+        return;
+    }
 
     prog_gen_params_t p;
     sequencer_core_progression_gen_params_get(&p);
 
     if (idx == PGEN_ROW_STYLE) {
+        /* Family read at edit time, never cached: the Scale rows here and on
+         * the main menu change it between edits. */
         prog_gen_family_t family =
             prog_gen_family_for_scale(sequencer_core_get_quantizer_scale());
-        int count = (int)prog_gen_style_count(family);
-        p.style = wrap_index((int)clamped_style(family, p.style) + move, count);
+        int major_count = (int)prog_gen_style_count(PROG_GEN_FAMILY_MAJOR);
+        int total = major_count + (int)prog_gen_style_count(PROG_GEN_FAMILY_MINOR);
+        int base  = (family == PROG_GEN_FAMILY_MINOR) ? major_count : 0;
+        int combined = (int)wrap_index(base + (int)clamped_style(family, p.style) + move,
+                                       total);
+        prog_gen_family_t next =
+            (combined < major_count) ? PROG_GEN_FAMILY_MAJOR : PROG_GEN_FAMILY_MINOR;
+        if (next != family) {
+            sequencer_core_set_quantizer_scale(
+                (next == PROG_GEN_FAMILY_MINOR) ? PGEN_SCALE_MINOR : PGEN_SCALE_MAJOR);
+        }
+        p.style = (uint8_t)(combined - ((next == PROG_GEN_FAMILY_MINOR) ? major_count : 0));
     } else if (idx == PGEN_ROW_LEN) {
         uint8_t i = step_index(PGEN_LEN_STEPS, PGEN_LEN_STEP_COUNT, p.len);
         p.len = PGEN_LEN_STEPS[wrap_index((int)i + move, (int)PGEN_LEN_STEP_COUNT)];

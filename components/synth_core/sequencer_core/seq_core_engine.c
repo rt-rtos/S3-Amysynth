@@ -214,22 +214,33 @@ static void seq_chord_preview_clear_from(uint8_t layer, uint8_t track,
  * the live chord root and entry 0's root - a rigid transpose, never per-tone
  * re-quantization. With the progression off, chords play exactly as entered.
  * Computed at fire time, so an advance re-pitches with no re-emit plumbing. */
-int sequencer_chord_transpose(const seq_layer_t *layer)
+int sequencer_chord_transpose_root(const seq_layer_t *layer, uint8_t root)
 {
     if (!s_prog.enabled || s_prog.count == 0) return 0;
     if (!layer->chord_mode) return 0;
-    return (int)layer->chord_root - (int)s_prog.entries[0].root;
+    return (int)root - (int)s_prog.entries[0].root;
 }
 
-uint8_t seq_track_fire_notes(const seq_layer_t *layer, uint8_t stored_note,
-                             uint8_t out[SEQ_CHORD_MAX_NOTES])
+int sequencer_chord_transpose(const seq_layer_t *layer)
+{
+    return sequencer_chord_transpose_root(layer, layer->chord_root);
+}
+
+uint8_t seq_track_fire_notes_root(const seq_layer_t *layer, uint8_t stored_note,
+                                  uint8_t root, uint8_t out[SEQ_CHORD_MAX_NOTES])
 {
     if (!SEQ_NOTE_IS_CHORD(stored_note)) {
         out[0] = stored_note;
         return 1;
     }
     return seq_chords_resolve(SEQ_CHORD_INDEX(stored_note),
-                              sequencer_chord_transpose(layer), out);
+                              sequencer_chord_transpose_root(layer, root), out);
+}
+
+uint8_t seq_track_fire_notes(const seq_layer_t *layer, uint8_t stored_note,
+                             uint8_t out[SEQ_CHORD_MAX_NOTES])
+{
+    return seq_track_fire_notes_root(layer, stored_note, layer->chord_root, out);
 }
 
 float sequencer_step_velocity(const seq_layer_t *layer,
@@ -314,6 +325,15 @@ uint8_t sequencer_clamp_layer_note(const seq_layer_t *layer, uint8_t note)
 uint8_t sequencer_resolve_track_note(const seq_layer_t *layer,
                                      uint8_t source_note)
 {
+    return sequencer_resolve_track_note_chord(layer, source_note,
+                                              layer->chord_root,
+                                              layer->chord_type);
+}
+
+uint8_t sequencer_resolve_track_note_chord(const seq_layer_t *layer,
+                                           uint8_t source_note, uint8_t root,
+                                           chord_type_t chord_type)
+{
     if (layer->type != SEQ_LAYER_MELODIC) {
         return sequencer_clamp_layer_note(layer, source_note);
     }
@@ -327,9 +347,7 @@ uint8_t sequencer_resolve_track_note(const seq_layer_t *layer,
 
     /* Chord mode overrides the global scale quantizer for this layer. */
     if (layer->chord_mode) {
-        uint8_t snapped = quantizer_snap_to_chord(source_note,
-                                                  layer->chord_root,
-                                                  layer->chord_type);
+        uint8_t snapped = quantizer_snap_to_chord(source_note, root, chord_type);
         return sequencer_clamp_layer_note(layer, snapped);
     }
 
@@ -340,6 +358,45 @@ uint8_t sequencer_resolve_track_note(const seq_layer_t *layer,
     const musical_scale_t *scale = quantizer_get_scale(s_quantizer.scale_index);
     uint8_t snapped = quantizer_snap_midi_note(source_note, s_quantizer.root_note, scale);
     return sequencer_clamp_layer_note(layer, snapped);
+}
+
+_Static_assert(SEQ_TRACKS <= QUANTIZER_VOICE_MAX,
+               "a layer's rows must fit one quantizer_voice_chord call");
+
+void seq_resolve_layer_rows(uint8_t layer_idx, uint8_t root,
+                            chord_type_t type, uint8_t out[SEQ_TRACKS])
+{
+    const seq_layer_t *layer = &s_layers[layer_idx];
+    const uint8_t *src = s_track_source_note[layer_idx];
+    uint8_t n = layer->num_tracks;
+    if (n > SEQ_TRACKS) n = SEQ_TRACKS;
+
+    if (layer->type != SEQ_LAYER_MELODIC || !layer->chord_mode) {
+        for (uint8_t t = 0; t < n; t++) {
+            out[t] = sequencer_resolve_track_note(layer, src[t]);
+        }
+        return;
+    }
+
+    /* Chord mode: the plain rows are voiced together, so they share the
+     * chord's tones instead of each snapping to its own nearest one. Chord
+     * preset rows pass through and take no part. */
+    uint8_t refs[SEQ_TRACKS] = {0};
+    uint8_t voiced[SEQ_TRACKS];
+    uint8_t rows[SEQ_TRACKS];
+    uint8_t nplain = 0;
+    for (uint8_t t = 0; t < n; t++) {
+        if (SEQ_NOTE_IS_CHORD(src[t])) {
+            out[t] = src[t];
+        } else {
+            rows[nplain] = t;
+            refs[nplain++] = src[t];
+        }
+    }
+    quantizer_voice_chord(refs, nplain, root, type, voiced);
+    for (uint8_t i = 0; i < nplain; i++) {
+        out[rows[i]] = sequencer_clamp_layer_note(layer, voiced[i]);
+    }
 }
 
 /* ── Low-level AMY helpers ───────────────────────────────────────────── */
@@ -475,18 +532,13 @@ void sequencer_clear_track_tags(uint8_t layer_idx, uint8_t track)
     seq_chord_preview_clear_from(layer_idx, track, 1);
 }
 
-/* Re-resolve a track's note (clamp + optional quantization), write it to every
- * step, and re-emit. With `preview` set, also fire a short one-shot so the note
- * is audible even when quantization left it unchanged. */
-static void sequencer_refresh_track_note(uint8_t layer_idx, uint8_t track,
-                                        bool preview)
+/* Apply a track's resolved note: write it to every step and re-emit. With
+ * `preview` set, also fire a short one-shot so the note is audible even when
+ * quantization left it unchanged. */
+static void seq_apply_track_note(uint8_t layer_idx, uint8_t track,
+                                 uint8_t resolved_note, bool preview)
 {
-    if (layer_idx >= s_num_layers) return;
     seq_layer_t *layer = &s_layers[layer_idx];
-    if (track >= layer->num_tracks) return;
-
-    uint8_t source_note = s_track_source_note[layer_idx][track];
-    uint8_t resolved_note = sequencer_resolve_track_note(layer, source_note);
 
     /* No change: skip the grid rewrite, but still preview so scrolling within
      * one scale degree remains audible. */
@@ -575,6 +627,28 @@ static void sequencer_refresh_track_note(uint8_t layer_idx, uint8_t track,
 
     ESP_LOGI(TAG, "L%d T%d note -> %d (preview @ tick %lu)",
              layer_idx + 1, track + 1, resolved_note, (unsigned long)fire_tick);
+}
+
+/* Re-resolve a track's note (clamp + optional quantization or chord voicing)
+ * and apply it. In a chord-mode melodic layer the rows are voiced together, so
+ * one row's source change can move the others: they take the new voicing too,
+ * without a preview (the preview stays on the requested row). */
+static void sequencer_refresh_track_note(uint8_t layer_idx, uint8_t track,
+                                        bool preview)
+{
+    if (layer_idx >= s_num_layers) return;
+    seq_layer_t *layer = &s_layers[layer_idx];
+    if (track >= layer->num_tracks) return;
+
+    uint8_t rows[SEQ_TRACKS];
+    seq_resolve_layer_rows(layer_idx, layer->chord_root, layer->chord_type, rows);
+    seq_apply_track_note(layer_idx, track, rows[track], preview);
+
+    if (layer->type == SEQ_LAYER_MELODIC && layer->chord_mode) {
+        for (uint8_t t = 0; t < layer->num_tracks; t++) {
+            if (t != track) seq_apply_track_note(layer_idx, t, rows[t], false);
+        }
+    }
 }
 
 void sequencer_refresh_melodic_layers(bool preview)

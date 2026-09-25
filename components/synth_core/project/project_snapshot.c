@@ -603,7 +603,7 @@ typedef struct {
     uint8_t      gate_pct;
     uint8_t      scale;
     uint8_t      root;
-    bool         follow_quant;
+    uint8_t      quant_mode;
     uint16_t     portamento_ms;
     float        amp_scale;
     int16_t      slots[ARP_MAX_SLOTS];
@@ -632,7 +632,7 @@ static void ser_arp(tlv_writer_t *w)
     seq_env_t e2; arp_get_envelope2(&e2); ser_env(w, &e2);
     seq_filter_t f; arp_get_filter(&f);  ser_filter(w, &f);
     seq_lfo_t l; arp_get_lfo(&l);        ser_lfo(w, &l);
-    tlv_put_u8(w, arp_get_follow_quant() ? 1 : 0);
+    tlv_put_u8(w, (uint8_t)arp_get_quant_mode());
     seq_dist_t d; arp_get_dist(&d);      ser_dist(w, &d);
     tlv_end_section(w, h);
 }
@@ -667,9 +667,9 @@ static bool parse_arp(tlv_reader_t *b, staged_arp_t *a)
     if (!de_env(b, &a->env2))      return false;
     if (!de_filter(b, &a->filter)) return false;
     if (!de_lfo(b, &a->lfo))       return false;
-    /* Follow the global scale quantizer. */
+    /* Scale source (arp_quant_mode_t). */
     if (!tlv_get_u8(b, &v)) return false;
-    a->follow_quant = v != 0;
+    a->quant_mode = (v >= ARP_QUANT_COUNT) ? ARP_QUANT_CHORD : v;
     if (!de_dist(b, &a->dist)) return false;
     return true;
 }
@@ -684,7 +684,7 @@ static void apply_arp(const staged_arp_t *a)
     arp_set_gate_pct(a->gate_pct);
     arp_set_scale(a->scale);
     arp_set_root_note(a->root);
-    arp_set_follow_quant(a->follow_quant);
+    arp_set_quant_mode((arp_quant_mode_t)a->quant_mode);
     arp_set_portamento_ms(a->portamento_ms);
     arp_set_amp_scale(a->amp_scale);
     for (int i = 0; i < ARP_MAX_SLOTS; i++) arp_set_slot((uint8_t)i, a->slots[i]);
@@ -942,10 +942,6 @@ static bool parse_prog(tlv_reader_t *b, staged_prog_t *p)
 
 static void apply_prog(const staged_prog_t *p)
 {
-    /* The arp values applied just above are the new baseline; drop the
-     * pre-load session's capture so set_enabled(false) below cannot restore
-     * stale values over them. */
-    sequencer_core_progression_reset_arp_capture();
     sequencer_core_progression_set_count(p->count);
     for (uint8_t i = 0; i < p->count; i++) {
         sequencer_core_progression_set_entry(i, p->root[i], p->chord_type[i], p->duration_bars[i]);

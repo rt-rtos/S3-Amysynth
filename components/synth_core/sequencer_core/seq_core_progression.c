@@ -59,6 +59,52 @@ static uint32_t prog_apply_lead_ticks(void)
     return upt ? (PROG_APPLY_LEAD_US + upt - 1u) / upt : 0u;
 }
 
+/* The next scheduled chord change, for decorated steps resolved on the pump
+ * task ahead of the apply (sequencer_core_progression_chord_at). WRITTEN once
+ * per service tick on synth_ui_task, READ on the pump task, so consistency is
+ * a generation counter (seqlock), as for the editor preview slot in
+ * seq_core_editors.c: the writer bumps to odd, writes, bumps to even; a reader
+ * that catches a writer reports no pending change. */
+typedef struct {
+    bool         valid;
+    uint32_t     tick;    /* absolute bar-line tick the change lands on */
+    uint8_t      root;
+    chord_type_t type;
+} prog_next_change_t;
+static volatile prog_next_change_t s_next_change;
+static _Atomic uint32_t s_next_change_gen;   /* odd = writer mid-update */
+
+static void prog_publish_next_change(bool valid, uint32_t tick, uint8_t root,
+                                     chord_type_t type)
+{
+    uint32_t g = atomic_load_explicit(&s_next_change_gen, memory_order_relaxed);
+    atomic_store_explicit(&s_next_change_gen, g + 1u, memory_order_relaxed);
+    atomic_thread_fence(memory_order_release);
+    s_next_change.valid = valid;
+    s_next_change.tick  = tick;
+    s_next_change.root  = root;
+    s_next_change.type  = type;
+    atomic_store_explicit(&s_next_change_gen, g + 2u, memory_order_release);
+}
+
+bool sequencer_core_progression_chord_at(uint32_t fire_tick, uint8_t *root,
+                                         chord_type_t *type)
+{
+    uint32_t g0 = atomic_load_explicit(&s_next_change_gen, memory_order_acquire);
+    if (g0 & 1u) return false;
+    bool         valid = s_next_change.valid;
+    uint32_t     tick  = s_next_change.tick;
+    uint8_t      r     = s_next_change.root;
+    chord_type_t t     = s_next_change.type;
+    atomic_thread_fence(memory_order_acquire);
+    if (atomic_load_explicit(&s_next_change_gen, memory_order_relaxed) != g0) return false;
+
+    if (!valid || (int32_t)(fire_tick - tick) < 0) return false;
+    if (root) *root = r;
+    if (type) *type = t;
+    return true;
+}
+
 /* ── Private helpers ─────────────────────────────────────────────────── */
 
 /* Map a chord type to the closest diatonic scale for arp snap quality. */
@@ -82,9 +128,25 @@ static uint8_t chord_type_to_scale_index(chord_type_t ct)
                                        natural-5 clash otherwise */
         case CHORD_MIN9: return 3;  /* Dorian - same family as min7 */
         case CHORD_MAJ9: return 1;  /* Major */
+        case CHORD_MAJ6: return 1;  /* Major - its natural 6 is the chord tone */
+        case CHORD_MIN6: return 3;  /* Dorian - the only minor mode with a natural 6 */
+        case CHORD_DOM9: return 6;  /* Mixolydian - same b7 as dom7 */
         default:         return 1;
     }
 }
+
+/* The chord the melodic rows are currently playing, as an arp scale. Kept as a
+ * snapshot rather than read from entries[current]: enable resets current at
+ * once, BAR launch holds the apply up to a bar, and set_entry on the live
+ * entry lands immediately, so entries[current] runs ahead of what sounds.
+ * Written by chord_progression_apply_current() and cleared by the service
+ * drain, both on synth_ui_task, and read on synth_ui_task (arp refresh and the
+ * arp view) - one task, so no seqlock. */
+static struct {
+    bool    valid;
+    uint8_t root_pc;
+    uint8_t scale_idx;
+} s_prog_applied;
 
 void chord_progression_apply_current(void)
 {
@@ -101,15 +163,20 @@ void chord_progression_apply_current(void)
     }
     sequencer_refresh_melodic_layers(false);
 
-    /* Drive arp root + scale to the new chord, capturing the user's own values
-     * the first time the progression takes over; disable restores them. */
-    if (!s_prog.arp_saved) {
-        s_prog.saved_arp_root  = arp_get_root_note();
-        s_prog.saved_arp_scale = arp_get_scale();
-        s_prog.arp_saved = true;
-    }
-    arp_set_root_note((uint8_t)(e->root + 60));   /* pitch class → MIDI octave 4 */
-    arp_set_scale(chord_type_to_scale_index(e->chord_type));
+    /* A CHORD-mode arp snaps to this chord: publish it and let the arp
+     * re-emit on its next service frame. */
+    s_prog_applied.root_pc   = e->root;
+    s_prog_applied.scale_idx = chord_type_to_scale_index(e->chord_type);
+    s_prog_applied.valid     = true;
+    arp_core_mark_dirty();
+}
+
+bool sequencer_core_progression_arp_chord(uint8_t *root_pc, uint8_t *scale_idx)
+{
+    if (!s_prog_applied.valid) return false;
+    if (root_pc)   *root_pc   = s_prog_applied.root_pc;
+    if (scale_idx) *scale_idx = s_prog_applied.scale_idx;
+    return true;
 }
 
 /* Called from synth_ui_task at 20 Hz - the SINGLE task that emits chord changes
@@ -155,31 +222,50 @@ uint8_t sequencer_core_progression_service(void)
                  * a manual per-layer chord changed. Re-resolve every melodic
                  * layer against its own chord/scale state. */
                 sequencer_refresh_melodic_layers(false);
+                /* No chord for a CHORD-mode arp any more; it falls back to the
+                 * global key. Only a real drop re-emits, so manual per-layer
+                 * chord edits leave the arp alone. */
+                if (s_prog_applied.valid) {
+                    s_prog_applied.valid = false;
+                    arp_core_mark_dirty();
+                }
             }
         }
     } else {
         s_apply_armed_bar = UINT32_MAX;
     }
 
-    if (!s_prog.enabled || s_prog.count == 0 || !s_playing) return grown;
+    if (!s_prog.enabled || s_prog.count == 0 || !s_playing) {
+        prog_publish_next_change(false, 0, 0, CHORD_MAJ);
+        return grown;
+    }
 
     uint32_t bars = bars_ahead;
     /* Mid-session anchors point at the NEXT bar line (entry_start_bar = bars+1),
      * and the unsigned subtraction below would wrap until it passes. */
-    if (bars < s_prog.entry_start_bar) return grown;
-    const chord_prog_entry_t *e = &s_prog.entries[s_prog.current];
+    if (bars >= s_prog.entry_start_bar) {
+        const chord_prog_entry_t *e = &s_prog.entries[s_prog.current];
 
-    if (bars - s_prog.entry_start_bar >= e->duration_bars) {
-        uint8_t next = (uint8_t)((s_prog.current + 1) % s_prog.count);
-        s_prog.current = next;
-        /* Advance by the expiring entry's duration, never "= bars": a service
-         * stall longer than a bar then catches up over successive ticks instead
-         * of permanently shifting the form. */
-        s_prog.entry_start_bar += e->duration_bars;
-        chord_progression_apply_current();
-        ESP_LOGI(TAG, "progression -> entry %u (root=%u type=%u)",
-                 next, s_prog.entries[next].root, (unsigned)s_prog.entries[next].chord_type);
+        if (bars - s_prog.entry_start_bar >= e->duration_bars) {
+            uint8_t next = (uint8_t)((s_prog.current + 1) % s_prog.count);
+            s_prog.current = next;
+            /* Advance by the expiring entry's duration, never "= bars": a
+             * service stall longer than a bar then catches up over successive
+             * ticks instead of permanently shifting the form. */
+            s_prog.entry_start_bar += e->duration_bars;
+            chord_progression_apply_current();
+            ESP_LOGI(TAG, "progression -> entry %u (root=%u type=%u)",
+                     next, s_prog.entries[next].root, (unsigned)s_prog.entries[next].chord_type);
+        }
     }
+
+    /* Publish the change after the current entry, so a decorated step resolved
+     * ahead of its apply already takes the chord of the bar it fires in. */
+    const chord_prog_entry_t *cur = &s_prog.entries[s_prog.current];
+    const chord_prog_entry_t *nxt = &s_prog.entries[(s_prog.current + 1) % s_prog.count];
+    uint32_t change_tick = s_bar_baseline
+                         + (s_prog.entry_start_bar + cur->duration_bars) * SEQ_TICKS_PER_BAR;
+    prog_publish_next_change(true, change_tick, nxt->root, nxt->chord_type);
     return grown;
 }
 
@@ -210,24 +296,11 @@ void sequencer_core_progression_set_enabled(bool en)
         for (uint8_t li = 0; li < s_num_layers; li++) {
             s_layers[li].chord_mode = false;
         }
-        /* Return the arp to the user's pre-progression root/scale. These are
-         * state-only setters - the arp marks itself dirty and arp_core_service
-         * re-emits on the UI task - so the single-applier rule holds. */
-        if (s_prog.arp_saved) {
-            arp_set_root_note(s_prog.saved_arp_root);
-            arp_set_scale(s_prog.saved_arp_scale);
-            s_prog.arp_saved = false;
-        }
         s_prog_apply_pending = true;
     }
 }
 
 bool sequencer_core_progression_get_enabled(void) { return s_prog.enabled; }
-
-/* arp_saved spans exactly the window in which the arp's root/scale hold
- * progression chords rather than user values: set on the first chord apply,
- * cleared when disable restores them. */
-bool sequencer_core_progression_arp_owned(void) { return s_prog.arp_saved; }
 
 /* Launch quantization: false = chord applies land on the next service tick
  * (instant), true = musical edits hold until the next bar line while playing. */
@@ -239,15 +312,6 @@ void sequencer_core_progression_set_apply_at_bar(bool at_bar)
 bool sequencer_core_progression_get_apply_at_bar(void)
 {
     return s_prog.apply_at_bar;
-}
-
-/* Drop the captured pre-progression arp root/scale WITHOUT restoring it.
- * Project load calls this before applying the loaded progression state: the
- * snapshot's arp values are the new baseline, so a capture from the pre-load
- * session must not be restored over them. */
-void sequencer_core_progression_reset_arp_capture(void)
-{
-    s_prog.arp_saved = false;
 }
 
 void sequencer_core_progression_set_entry(uint8_t idx, uint8_t root,

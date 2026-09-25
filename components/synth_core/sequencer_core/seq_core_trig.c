@@ -241,6 +241,23 @@ void trig_schedule_ratchets(uint8_t layer_idx, const seq_layer_t *layer,
     velocity += (float)layer->step_velocity_adj[track][step] * 0.01f;
     velocity = SEQ_CLAMP_F32(velocity, 0.0f, 1.0f);
 
+    /* Same tick law as sequencer_emit_step(): grid boundary + 1, swung and
+     * nudged. The lookahead in sequencer_core_service_tick() guarantees this
+     * base is still ahead of the sequencer clock for the earliest nudge. */
+    int32_t base = (int32_t)grid_tick + 1
+                 + (int32_t)sequencer_step_swing_offset(layer, step)
+                 + (int32_t)layer->step_nudge[track][step];
+
+    /* This runs about a step ahead of the fire, which can be before the
+     * progression applies the chord of the bar the step fires in (the apply
+     * leads the bar line by only 65 ms). A published change due by the fire
+     * tick resolves the pitch against that chord instead of the layer's. */
+    uint8_t chord_root = layer->chord_root;
+    chord_type_t chord_type = layer->chord_type;
+    bool pending = layer->type == SEQ_LAYER_MELODIC && layer->chord_mode &&
+                   sequencer_core_progression_chord_at((uint32_t)base,
+                                                       &chord_root, &chord_type);
+
     /* Single per-fire pitch source for both ratchet sub-hits and the n==1 path.
      * A chord sentinel expands here with the progression transpose applied, and
      * a per-step transform draws ONE offset per fire so every sub-hit and every
@@ -248,8 +265,13 @@ void trig_schedule_ratchets(uint8_t layer_idx, const seq_layer_t *layer,
      * chord tones take the offset chromatically with a bounds clamp, never
      * per-tone re-quantization - the intervals are the feature. */
     uint8_t stored = layer->step_note[track][step];
+    if (pending && !SEQ_NOTE_IS_CHORD(stored)) {
+        uint8_t rows[SEQ_TRACKS];
+        seq_resolve_layer_rows(layer_idx, chord_root, chord_type, rows);
+        stored = rows[track];
+    }
     uint8_t tones[SEQ_CHORD_MAX_NOTES];
-    uint8_t ntones = seq_track_fire_notes(layer, stored, tones);
+    uint8_t ntones = seq_track_fire_notes_root(layer, stored, chord_root, tones);
     if (ntones == 0) return;   /* undefined chord slot: fire nothing */
 
     int toff;
@@ -262,7 +284,8 @@ void trig_schedule_ratchets(uint8_t layer_idx, const seq_layer_t *layer,
             int tn = SEQ_CLAMP_INT((int)tones[0] + toff, 0, 127);
             tones[0] = layer->step_quant_bypass[track][step]
                      ? sequencer_clamp_layer_note(layer, (uint8_t)tn)
-                     : sequencer_resolve_track_note(layer, (uint8_t)tn);
+                     : sequencer_resolve_track_note_chord(layer, (uint8_t)tn,
+                                                          chord_root, chord_type);
         }
     }
     /* Per-step pitch offset, applied last so the transform's re-snap above
@@ -286,12 +309,6 @@ void trig_schedule_ratchets(uint8_t layer_idx, const seq_layer_t *layer,
      * positive decays toward the tail, negative ramps up; k==0 is always
      * full velocity. */
     int8_t taper = layer->step_ratchet_taper[track][step];
-    /* Same tick law as sequencer_emit_step(): grid boundary + 1, swung and
-     * nudged. The lookahead in sequencer_core_service_tick() guarantees this
-     * base is still ahead of the sequencer clock for the earliest nudge. */
-    int32_t base = (int32_t)grid_tick + 1
-                 + (int32_t)sequencer_step_swing_offset(layer, step)
-                 + (int32_t)layer->step_nudge[track][step];
     for (uint8_t k = 0; k < n; k++) {
         float scale = 1.0f - (float)taper * 0.01f * (float)k;
         scale = SEQ_CLAMP_F32(scale, 0.0f, 1.0f);

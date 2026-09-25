@@ -45,6 +45,14 @@ typedef enum {
     ARP_RATE_COUNT
 } arp_rate_t;
 
+/* What arp_snap() snaps slot notes to. Persisted as a u8 in the project. */
+typedef enum {
+    ARP_QUANT_OWN    = 0,   /* the arp's own root/scale */
+    ARP_QUANT_GLOBAL = 1,   /* the global scale quantizer */
+    ARP_QUANT_CHORD  = 2,   /* the playing progression chord */
+    ARP_QUANT_COUNT
+} arp_quant_mode_t;
+
 /* ── Lifecycle ── */
 void arp_core_init(void);
 
@@ -80,13 +88,16 @@ void arp_set_rate(arp_rate_t rate);
 void arp_set_gate_pct(uint8_t gate_pct);      /* clamped 10..100        */
 void arp_set_scale(uint8_t scale_index);
 void arp_set_root_note(uint8_t root_note);
-/* Follow the global scale quantizer instead of the arp's own scale/root.
- * Precedence mirrors melodic layers: a chord progression owning the arp's
- * root/scale still wins, and follow ON with the global quantizer disabled
- * plays chromatic. Default OFF. */
-void arp_set_follow_quant(bool follow);
-bool arp_get_follow_quant(void);
-void arp_set_chord(uint8_t root_midi, uint8_t scale_index);
+/* Choose what the slot notes snap to:
+ *   ARP_QUANT_OWN    - the arp's own scale/root (arp_set_scale/root_note).
+ *   ARP_QUANT_GLOBAL - the global scale quantizer; with the quantizer
+ *                      disabled the arp plays chromatic.
+ *   ARP_QUANT_CHORD  - the progression chord the melodic rows are playing
+ *                      (its root, chord type mapped to a scale); while no
+ *                      progression chord is applied it behaves as GLOBAL.
+ * Values >= ARP_QUANT_COUNT clamp to CHORD, the boot default. */
+void arp_set_quant_mode(arp_quant_mode_t mode);
+arp_quant_mode_t arp_get_quant_mode(void);
 /* Sound selection: one flat number over the full melodic catalog
  * (0..SEQ_PATCH_FULL_MAX - Juno/DX7 strings, raw waves, bass, wavetable, FM,
  * additive). Rebuilds the synth slot and re-applies any authored ADSR/filter. */

@@ -101,13 +101,6 @@ typedef struct {
     uint8_t            current;
     uint32_t           entry_start_bar; /* bars_elapsed when current entry began */
     bool               enabled;
-    /* The progression drives the arp's root/scale while enabled; the user's
-     * values are captured on the first apply and restored on disable, so it
-     * never permanently clobbers arp settings. Runtime-only: zero-init means
-     * "nothing saved". */
-    uint8_t            saved_arp_root;
-    uint8_t            saved_arp_scale;
-    bool               arp_saved;       /* true while the progression owns the arp */
     /* Launch quantization: hold deferred chord applies until the next bar line
      * while playing (false = apply immediately). */
     bool               apply_at_bar;
@@ -201,10 +194,15 @@ uint32_t sequencer_bars_elapsed_ahead(uint32_t ahead_ticks);
  * 1 plain note, or n transposed and clamped chord tones. Returns the tone
  * count; 0 = undefined chord slot, fire nothing. sequencer_chord_transpose is
  * the progression offset: the layer chord root relative to entry 0's root while
- * the progression is enabled, else 0. */
+ * the progression is enabled, else 0. The _root variants take the chord root
+ * explicitly instead of the layer's live one (a decorated step resolved ahead
+ * of a chord change); same obligations and guarantees otherwise. */
 uint8_t seq_track_fire_notes(const seq_layer_t *layer, uint8_t stored_note,
                              uint8_t out[SEQ_CHORD_MAX_NOTES]);
+uint8_t seq_track_fire_notes_root(const seq_layer_t *layer, uint8_t stored_note,
+                                  uint8_t root, uint8_t out[SEQ_CHORD_MAX_NOTES]);
 int     sequencer_chord_transpose(const seq_layer_t *layer);
+int     sequencer_chord_transpose_root(const seq_layer_t *layer, uint8_t root);
 
 /* From seq_core_synth.c */
 void      sequencer_configure_synth(uint8_t layer_idx);
@@ -281,6 +279,14 @@ void     lfo_push_target_neutral(uint8_t synth_id, lfo_target_t target);
 
 /* From seq_core_progression.c */
 void chord_progression_apply_current(void);
+/* True when a published chord change is due at or before fire_tick; then
+ * *root and *type are the chord that will be sounding at fire_tick. The record
+ * is published by sequencer_core_progression_service() on synth_ui_task each
+ * tick while the progression is enabled, non-empty and playing, and is invalid
+ * otherwise. Pump-task safe (seqlock read; a torn read reads as "no pending
+ * change" and leaves the outputs unwritten), no side effects. */
+bool sequencer_core_progression_chord_at(uint32_t fire_tick, uint8_t *root,
+                                         chord_type_t *type);
 
 /* From seq_core_engine.c - shared with seq_core_trig.c so ratchet sub-hits use
  * the same accent/jitter velocity curve as the plain periodic path. */
@@ -296,6 +302,23 @@ bool sequencer_track_audible(const seq_layer_t *layer, uint8_t track);
  * step_quant_bypass is set). */
 uint8_t sequencer_clamp_layer_note(const seq_layer_t *layer, uint8_t note);
 uint8_t sequencer_resolve_track_note(const seq_layer_t *layer, uint8_t source_note);
+/* sequencer_resolve_track_note with the chord given explicitly: in chord mode
+ * the snap uses (root, chord_type) instead of the layer's live chord;
+ * everything else resolves identically. */
+uint8_t sequencer_resolve_track_note_chord(const seq_layer_t *layer,
+                                           uint8_t source_note, uint8_t root,
+                                           chord_type_t chord_type);
+/* Resolve every row of a layer from its source notes (s_track_source_note).
+ * For a melodic layer in chord mode, the plain-note rows are voiced together
+ * through quantizer_voice_chord with (root, type) and clamped; chord preset
+ * rows pass through untouched and take no part. Other layers resolve each row
+ * as sequencer_resolve_track_note does, ignoring root/type. Obligations:
+ * layer_idx < s_num_layers. Guarantees: out[t] written for t < num_tracks,
+ * rows above left untouched; no state written, no AMY events. Called from
+ * synth_ui_task (row refresh) and the AMY ingest pump task (decorated steps);
+ * never from the render task (the voicing search is up to 3125 assignments). */
+void seq_resolve_layer_rows(uint8_t layer_idx, uint8_t root,
+                            chord_type_t type, uint8_t out[SEQ_TRACKS]);
 
 /* From seq_core_trig.c - per-step probability/ratchet/conditional-trig engine.
  * sequencer_emit_step() consults sequencer_core_step_is_decorated() to decide

@@ -75,9 +75,7 @@ typedef struct {
     int16_t    slots[ARP_MAX_SLOTS];  /* raw chromatic MIDI, -1 = empty */
     uint8_t    scale_index;
     uint8_t    root_note;
-    bool       follow_quant;  /* snap to the global scale quantizer instead of
-                                 scale_index/root_note above (see arp_snap);
-                                 default OFF via the init memset */
+    arp_quant_mode_t quant_mode;  /* what arp_snap snaps to; CHORD at init */
     uint16_t     patch;          /* full melodic catalog, 0..SEQ_PATCH_FULL_MAX */
     voice_params_t vp;           /* shared voice params: env, EG1, filter, LFO,
                                     each with its deferred-authority flag, plus
@@ -132,20 +130,25 @@ static uint8_t arp_collect_down(uint8_t out[ARP_MAX_SLOTS])
     return arp_collect_up(out);
 }
 
-/* Snap a chromatic note. Default: the arp's own scale/root. With follow_quant
- * ON, use the global quantizer with the melodic-layer precedence: an active
- * chord progression still wins (it owns the arp's root/scale), and a disabled
- * global quantizer means no snapping at all. */
+/* Snap a chromatic note per the quant mode. OWN: the arp's own scale/root.
+ * CHORD: the progression chord the rows are playing, rooted in octave 4 as the
+ * global path is; with no chord applied it falls through to GLOBAL. GLOBAL: the
+ * global quantizer, where a disabled quantizer means no snapping at all. */
 static uint8_t arp_snap(uint8_t chromatic)
 {
     uint8_t root      = s_arp.root_note;
     uint8_t scale_idx = s_arp.scale_index;
-    if (s_arp.follow_quant && !sequencer_core_progression_arp_owned()) {
-        if (!sequencer_core_get_quantizer_enabled()) {
+    if (s_arp.quant_mode != ARP_QUANT_OWN) {
+        uint8_t pc;
+        if (s_arp.quant_mode == ARP_QUANT_CHORD &&
+            sequencer_core_progression_arp_chord(&pc, &scale_idx)) {
+            root = (uint8_t)(60u + pc);
+        } else if (!sequencer_core_get_quantizer_enabled()) {
             return sequencer_core_clamp_melodic_note((int32_t)chromatic);
+        } else {
+            root      = sequencer_core_get_quantizer_root_note();
+            scale_idx = sequencer_core_get_quantizer_scale();
         }
-        root      = sequencer_core_get_quantizer_root_note();
-        scale_idx = sequencer_core_get_quantizer_scale();
     }
     const musical_scale_t *scale = quantizer_get_scale(scale_idx);
     uint8_t snapped = quantizer_snap_midi_note(chromatic, root, scale);
@@ -326,6 +329,7 @@ void arp_core_init(void)
     s_arp.scale_index = CONFIG_SEQ_ARP_DEFAULT_SCALE;
     s_arp.root_note   = CONFIG_SEQ_ARP_DEFAULT_ROOT_NOTE;
     s_arp.patch       = CONFIG_SEQ_ARP_DEFAULT_PATCH;
+    s_arp.quant_mode  = ARP_QUANT_CHORD;
     /* Default ADSR mirrors the melodic compile-time defaults; unauthored until
      * the user commits in the graph editor (the patch's own env wins). */
     s_arp.vp.env.attack_ms   = 4;    /* tiny curve, prevents a digital click */
@@ -517,17 +521,12 @@ void arp_set_root_note(uint8_t root_note)
     arp_mark_dirty();
 }
 
-void arp_set_follow_quant(bool follow)
+void arp_set_quant_mode(arp_quant_mode_t mode)
 {
-    if (s_arp.follow_quant == follow) return;
-    s_arp.follow_quant = follow;
+    if ((unsigned)mode >= ARP_QUANT_COUNT) mode = ARP_QUANT_CHORD;
+    if (s_arp.quant_mode == mode) return;
+    s_arp.quant_mode = mode;
     arp_mark_dirty();
-}
-
-void arp_set_chord(uint8_t root_midi, uint8_t scale_index)
-{
-    arp_set_root_note(root_midi);
-    arp_set_scale(scale_index);
 }
 
 void arp_set_patch(uint16_t patch_number)
@@ -863,7 +862,7 @@ arp_rate_t   arp_get_rate(void)       { return s_arp.rate; }
 uint8_t      arp_get_gate_pct(void)   { return s_arp.gate_pct; }
 uint8_t      arp_get_scale(void)      { return s_arp.scale_index; }
 uint8_t      arp_get_root_note(void)  { return s_arp.root_note; }
-bool         arp_get_follow_quant(void) { return s_arp.follow_quant; }
+arp_quant_mode_t arp_get_quant_mode(void) { return s_arp.quant_mode; }
 uint16_t     arp_get_patch(void)      { return s_arp.patch; }
 
 const char *arp_rate_name(arp_rate_t rate)

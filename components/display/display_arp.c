@@ -88,11 +88,15 @@ void display_arp_draw_frame(u8g2_t *u8g2, const arp_view_t *view)
         draw_field(u8g2, glide_x, 25, gbuf, view->cursor == ARP_CUR_PORTA, view->editing);
     }
 
-    /* Scale source: GLOB snaps to the global quantizer, OWN to the arp's
-     * private scale. Right-aligned against the glide field so the widest value
-     * keeps clear of it whatever the glide time reads. */
+    /* Scale source: OWN snaps to the arp's private scale, GLOB to the global
+     * quantizer, CHRD to the playing progression chord. Right-aligned against
+     * the glide field so the widest value keeps clear of it whatever the glide
+     * time reads. */
     {
-        snprintf(buf, sizeof(buf), "Q:%s", view->follow_quant ? "GLOB" : "OWN");
+        static const char *const q_names[] = { "OWN", "GLOB", "CHRD" };
+        const char *qn = (view->quant_mode < sizeof(q_names) / sizeof(q_names[0]))
+                       ? q_names[view->quant_mode] : "?";
+        snprintf(buf, sizeof(buf), "Q:%s", qn);
         uint8_t qw = (uint8_t)u8g2_GetStrWidth(u8g2, buf);
         uint8_t qx = (glide_x > (uint8_t)(qw + 3u)) ? (uint8_t)(glide_x - qw - 3u) : 0u;
         draw_field(u8g2, qx, 25, buf, view->cursor == ARP_CUR_QUANT, view->editing);

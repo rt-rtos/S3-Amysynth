@@ -46,7 +46,7 @@ void arp_build_view(arp_view_t *out)
     out->cursor  = s_arp_cursor;
     out->editing = s_arp_editing;
     out->portamento_ms = arp_get_portamento_ms();
-    out->follow_quant  = arp_get_follow_quant();
+    out->quant_mode    = (uint8_t)arp_get_quant_mode();
 
     /* Patch indicator mirrors the sequencer view: number always, name banner
      * only while the patch hold+turn gesture is active. */
@@ -68,7 +68,7 @@ uint32_t arp_view_signature(arp_view_t *out)
     h = fnv1a_bytes(h, &out->patch, sizeof(out->patch));
     h = fnv1a_bytes(h, &out->patch_select, sizeof(out->patch_select));
     h = fnv1a_bytes(h, &out->portamento_ms, sizeof(out->portamento_ms));
-    h = fnv1a_bytes(h, &out->follow_quant, sizeof(out->follow_quant));
+    h = fnv1a_bytes(h, &out->quant_mode, sizeof(out->quant_mode));
     h = fnv1a_bytes(h, out->rate_str, 4);
     h = fnv1a_bytes(h, out->mode_str, 4);
     for (uint8_t i = 0; i < ARP_VIEW_SLOTS; i++) {
@@ -112,8 +112,11 @@ static void arp_edit_value(uint8_t cursor, int delta)
                 (int)arp_get_portamento_ms() + dir * 1, 0, ARP_PORTAMENTO_MAX_MS));
             break;
         case ARP_CUR_QUANT:
-            /* Two values, so any nonzero detent toggles - as the menu row did. */
-            if (dir != 0) arp_set_follow_quant(!arp_get_follow_quant());
+            /* Cycles OWN -> GLOB -> CHRD with the detent direction, wrapping. */
+            if (dir != 0) {
+                int nq = ((int)arp_get_quant_mode() + dir + ARP_QUANT_COUNT) % ARP_QUANT_COUNT;
+                arp_set_quant_mode((arp_quant_mode_t)nq);
+            }
             break;
         default: {
             /* Slot edit: chromatic note, or clear below the floor. */

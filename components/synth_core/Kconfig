@@ -410,7 +410,8 @@ config SEQ_ARP_DEFAULT_SCALE
 		Note slots store raw chromatic notes and are snapped to this scale at
 		playback. There is no on-device editor for it, so the default is
 		Chromatic: OWN then means "no snapping", the useful opposite of GLOB
-		(the chord progression still re-roots the arp while it is enabled).
+		and CHRD (CHRD follows the chord progression while it runs, and the
+		global quantizer otherwise).
 		0=Chromatic, 1=Major, 2=Natural Minor, 3=Dorian, 4=Phrygian,
 		5=Lydian, 6=Mixolydian, 7=Minor Pentatonic, 8=Major Pentatonic.
 

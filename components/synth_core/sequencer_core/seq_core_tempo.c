@@ -130,12 +130,13 @@ uint16_t sequencer_core_get_bpm(void) { return s_bpm; }
 
 /* ── Public API — quantizer ──────────────────────────────────────────── */
 
-/* An arp in follow-global mode snaps against s_quantizer at emit time, so any
- * change here must re-emit its schedule via the same coalesced dirty-mark the
- * arp's own setters use. No-op when the arp uses its own scale. */
+/* An arp in GLOBAL quant mode snaps against s_quantizer at emit time, and so
+ * does a CHORD-mode arp while no progression chord is applied, so any change
+ * here must re-emit its schedule via the same coalesced dirty-mark the arp's
+ * own setters use. No-op when the arp uses its own scale. */
 static void quantizer_changed_refresh_arp(void)
 {
-    if (arp_get_follow_quant()) arp_core_mark_dirty();
+    if (arp_get_quant_mode() != ARP_QUANT_OWN) arp_core_mark_dirty();
 }
 
 void sequencer_core_set_quantizer_enabled(bool enabled)

@@ -147,3 +147,118 @@ uint8_t quantizer_snap_to_chord(uint8_t midi_note, uint8_t root,
     }
     return (uint8_t)best_note;
 }
+
+/* Tone slots per chord-table row, terminator included. */
+#define QUANTIZER_CHORD_ROW ((int)sizeof(s_chord_intervals[0]))
+
+/* Missing and doubling penalties for one chord tone, by its interval from the
+ * root. The first matching role wins; sus = the chord has neither 3 nor 4, so
+ * its 2 or 5 stands in for the third. */
+static void voice_tone_penalties(int8_t interval, bool sus,
+                                 int32_t *missing, int32_t *doubling)
+{
+    if (interval == 0) {                                   /* root */
+        *missing = 32; *doubling = 0;
+    } else if (interval == 3 || interval == 4 ||
+               (sus && (interval == 2 || interval == 5))) { /* third / sus */
+        *missing = 40; *doubling = 6;
+    } else if (interval == 7) {                            /* perfect fifth */
+        *missing = 12; *doubling = 1;
+    } else if (interval == 6 || interval == 8) {           /* altered fifth */
+        *missing = 30; *doubling = 6;
+    } else if (interval >= 9 && interval <= 11) {          /* sixth / seventh */
+        *missing = 36; *doubling = 6;
+    } else {                                               /* extension (9th) */
+        *missing = 24; *doubling = 6;
+    }
+}
+
+/* Exhaustive search over every row -> tone assignment (at most 5^5). Each row's
+ * candidate for a tone is that pitch class's instance nearest the row's ref
+ * (ties low), so the search only picks WHICH tone each row takes. Cost = total
+ * distance moved, plus the per-role missing/doubling penalties, plus 8 per
+ * extra row on one MIDI note (a unison double adds nothing audible). */
+void quantizer_voice_chord(const uint8_t *refs, uint8_t n, uint8_t root,
+                           chord_type_t chord_type, uint8_t *out)
+{
+    if (refs == NULL || out == NULL || n == 0) return;
+
+    const int8_t *intervals = quantizer_chord_intervals(chord_type);
+    int m = 0;
+    if (intervals != NULL) {
+        while (m < QUANTIZER_CHORD_ROW && intervals[m] >= 0) m++;
+    }
+    if (m == 0 || n > QUANTIZER_VOICE_MAX) {
+        for (uint8_t r = 0; r < n; r++) {
+            out[r] = quantizer_snap_to_chord(refs[r], root, chord_type);
+        }
+        return;
+    }
+
+    bool sus = true;
+    for (int t = 0; t < m; t++) {
+        if (intervals[t] == 3 || intervals[t] == 4) sus = false;
+    }
+    int32_t missing[QUANTIZER_CHORD_ROW];
+    int32_t doubling[QUANTIZER_CHORD_ROW];
+    for (int t = 0; t < m; t++) {
+        voice_tone_penalties(intervals[t], sus, &missing[t], &doubling[t]);
+    }
+
+    /* Candidate note and its distance for every (row, tone). */
+    int32_t root_pc = (int32_t)(root % 12);
+    uint8_t cand[QUANTIZER_VOICE_MAX][QUANTIZER_CHORD_ROW];
+    int32_t dist[QUANTIZER_VOICE_MAX][QUANTIZER_CHORD_ROW];
+    for (uint8_t r = 0; r < n; r++) {
+        int32_t ref = (int32_t)(refs[r] > 127 ? 127 : refs[r]);
+        for (int t = 0; t < m; t++) {
+            int32_t pc = (root_pc + intervals[t]) % 12;
+            int32_t below = (ref - pc + 120) % 12;     /* ref - lower instance */
+            int32_t lo = ref - below;
+            int32_t hi = lo + 12;
+            int32_t note = (below <= 12 - below) ? lo : hi;
+            if (note < 0) note = hi;
+            if (note > 127) note = lo;
+            cand[r][t] = (uint8_t)note;
+            dist[r][t] = (note > ref) ? note - ref : ref - note;
+        }
+    }
+
+    uint8_t idx[QUANTIZER_VOICE_MAX] = {0};
+    uint8_t best_idx[QUANTIZER_VOICE_MAX] = {0};
+    int32_t best_cost = INT32_MAX;
+    for (;;) {
+        int32_t cost = 0;
+        uint8_t taken[QUANTIZER_CHORD_ROW] = {0};
+        for (uint8_t r = 0; r < n; r++) {
+            cost += dist[r][idx[r]];
+            taken[idx[r]]++;
+            for (uint8_t q = 0; q < r; q++) {
+                if (cand[q][idx[q]] == cand[r][idx[r]]) {
+                    cost += 8;          /* one more row on an already-taken note */
+                    break;
+                }
+            }
+        }
+        for (int t = 0; t < m; t++) {
+            if (taken[t] == 0) cost += missing[t];
+            else               cost += (int32_t)(taken[t] - 1) * doubling[t];
+        }
+        if (cost < best_cost) {
+            best_cost = cost;
+            for (uint8_t r = 0; r < n; r++) best_idx[r] = idx[r];
+        }
+
+        /* Next assignment: the last row varies fastest, row 0 slowest. */
+        int r = (int)n - 1;
+        while (r >= 0 && ++idx[r] == (uint8_t)m) {
+            idx[r] = 0;
+            r--;
+        }
+        if (r < 0) break;
+    }
+
+    for (uint8_t r = 0; r < n; r++) {
+        out[r] = cand[r][best_idx[r]];
+    }
+}
