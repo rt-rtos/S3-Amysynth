@@ -48,13 +48,38 @@ uint16_t    s_melodic_patch = SEQ_MEL_PATCH;
 uint8_t     s_next_melodic_synth = SEQ_MEL_SYNTH_BASE;
 
 /* Default per-track SYNTH patches by role: raw patch numbers chosen for a
- * 4-on-floor kit. */
-static const uint16_t SEQ_DRUM_DEFAULT_PATCH[SEQ_TRACKS] = {
+ * 4-on-floor kit. Read through seq_default_row(): row 5 takes row 4's. */
+static const uint16_t SEQ_DRUM_DEFAULT_PATCH[SEQ_TRACKS_DEFAULT] = {
     58,   /* kick  - Juno Drum Booms, thumpy at low pitch */
     245,  /* snare - DX7 B.DRM-SNAR                       */
     221,  /* hat   - DX7 BLOCK, tight tick at high pitch  */
     220,  /* perc  - DX7 COW BELL accent                  */
 };
+
+/* Default melodic voicing, one entry per possible row: Cmaj7 (C4 E4 G4 B4)
+ * plus D5, the 9th a four-row layer cannot reach. */
+static const uint8_t SEQ_MEL_DEFAULT_NOTE[] = {60, 64, 67, 71, 74};
+_Static_assert(sizeof(SEQ_MEL_DEFAULT_NOTE) == SEQ_TRACKS,
+               "one default melodic note per row");
+
+/* The defaults the add-layer melodic branch gives one row, apart from the
+ * voice params' own init: base note, patch and the default envelopes. */
+static void seq_seed_melodic_row(uint8_t idx, seq_layer_t *layer, uint8_t t,
+                                 uint16_t patch)
+{
+    uint8_t n = SEQ_MEL_DEFAULT_NOTE[t];
+    s_track_source_note[idx][t] = n;
+    s_track_prev_plain[idx][t]  = n;
+    layer->track_base_note[t] = n;
+    /* LAYER scope (the memset default) means every row carries the layer
+     * patch; the configure path reads track_patch[] only. */
+    layer->track_patch[t] = patch;
+    for (uint8_t s = 0; s < SEQ_MAX_STEPS; s++) {
+        layer->step_note[t][s] = n;
+    }
+    layer->vp[t].env  = seq_default_melodic_env();
+    layer->vp[t].env1 = seq_default_melodic_env1();
+}
 
 void sequencer_core_init(void)
 {
@@ -127,7 +152,7 @@ uint8_t sequencer_core_add_layer(seq_layer_type_t type, uint8_t num_steps)
 
     layer->type       = type;
     layer->num_steps  = (num_steps == SEQ_MAX_STEPS) ? SEQ_MAX_STEPS : SEQ_STEPS;
-    layer->num_tracks = SEQ_TRACKS;
+    layer->num_tracks = SEQ_TRACKS_DEFAULT;
     /* NoteFX defaults. Required after the memset: a 0% gate would silence
      * every note and a 0% groove would flatten dynamics. */
     layer->gate_pct       = SEQ_MELODIC_GATE_DEFAULT_PCT;
@@ -143,7 +168,7 @@ uint8_t sequencer_core_add_layer(seq_layer_type_t type, uint8_t num_steps)
          * the tail. */
         for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
             layer->synth_id[t]   = (uint8_t)(SEQ_DRUM_SYNTH_BASE + t);
-            layer->track_patch[t] = SEQ_DRUM_DEFAULT_PATCH[t];
+            layer->track_patch[t] = SEQ_DRUM_DEFAULT_PATCH[seq_default_row(t)];
         }
         layer->patch       = layer->track_patch[0];  /* display fallback */
         layer->synth_flags = 0;
@@ -181,20 +206,8 @@ uint8_t sequencer_core_add_layer(seq_layer_type_t type, uint8_t num_steps)
         layer->patch       = s_melodic_patch;
         layer->synth_flags = 0;
         layer->num_voices  = SEQ_MEL_VOICES;
-        /* Default: Cmaj7 voicing - C4 E4 G4 B4 */
-        static const uint8_t mel_notes[SEQ_TRACKS] = {60, 64, 67, 71};
         for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
-            s_track_source_note[idx][t] = mel_notes[t];
-            s_track_prev_plain[idx][t]  = mel_notes[t];
-            layer->track_base_note[t] = mel_notes[t];
-            /* LAYER scope (the memset default) means every row carries the
-             * layer patch; the configure path reads track_patch[] only. */
-            layer->track_patch[t] = s_melodic_patch;
-            for (uint8_t s = 0; s < SEQ_MAX_STEPS; s++) {
-                layer->step_note[t][s] = mel_notes[t];
-            }
-            layer->vp[t].env  = seq_default_melodic_env();
-            layer->vp[t].env1 = seq_default_melodic_env1();
+            seq_seed_melodic_row(idx, layer, t, s_melodic_patch);
         }
         layer->vp_layer.env  = seq_default_melodic_env();
         layer->vp_layer.env1 = seq_default_melodic_env1();
@@ -249,10 +262,7 @@ bool sequencer_core_delete_layer(uint8_t layer_idx)
     /* Release AMY oscillator slots for the deleted layer. */
     const seq_layer_t *dead = &s_layers[layer_idx];
     for (uint8_t t = 0; t < dead->num_tracks; t++) {
-        amy_event *e = amy_helpers_event_begin();
-        e->synth      = dead->synth_id[t];
-        e->num_voices = 0;
-        amy_helpers_event_send(e);
+        sequencer_release_synth(dead->synth_id[t]);
     }
 
     /* Raise the mutation guard so the sequencer tick early-returns instead of
@@ -308,6 +318,125 @@ bool sequencer_core_delete_layer(uint8_t layer_idx)
 
     ESP_LOGI(TAG, "delete_layer[L%u]: %u layers remain", layer_idx + 1u, s_num_layers);
     return true;
+}
+
+/* Row `t` of a growing melodic layer: the next default base note, row
+ * `src`'s sound (voice block and its source, and in TRACK scope its patch) so
+ * the added chord tone matches its neighbour, and a copy of row `src`'s grid
+ * and per-step decoration so the row has a rhythm the moment it exists. */
+static void seq_grow_melodic_row(uint8_t idx, seq_layer_t *layer, uint8_t t,
+                                 uint8_t src)
+{
+    uint16_t patch = (layer->patch_scope == SEQ_PATCH_SCOPE_TRACK)
+                   ? layer->track_patch[src] : layer->patch;
+    seq_seed_melodic_row(idx, layer, t, patch);
+    /* After the seed, whose default envelopes it replaces. */
+    layer->vp[t]          = layer->vp[src];
+    layer->vp_src[t]      = layer->vp_src[src];
+    layer->repeat_rate[t] = 0;
+    layer->mute[t]        = false;
+    layer->solo[t]        = false;
+    for (uint8_t s = 0; s < SEQ_MAX_STEPS; s++) {
+        layer->grid[t][s]               = layer->grid[src][s];
+        layer->step_pitch_ofs[t][s]     = layer->step_pitch_ofs[src][s];
+        layer->step_prob[t][s]          = layer->step_prob[src][s];
+        layer->step_ratchet[t][s]       = layer->step_ratchet[src][s];
+        layer->step_every[t][s]         = layer->step_every[src][s];
+        layer->step_prev[t][s]          = layer->step_prev[src][s];
+        layer->step_transform[t][s]     = layer->step_transform[src][s];
+        layer->step_quant_bypass[t][s]  = layer->step_quant_bypass[src][s];
+        layer->step_nudge[t][s]         = layer->step_nudge[src][s];
+        layer->step_velocity_adj[t][s]  = layer->step_velocity_adj[src][s];
+        layer->step_ratchet_taper[t][s] = layer->step_ratchet_taper[src][s];
+    }
+    s_lfo_phase[idx][t] = s_lfo_phase[idx][src];
+    s_lfo_hz[idx][t]    = s_lfo_hz[idx][src];
+    s_lfo_rnd[idx][t]   = s_lfo_rnd[idx][src];
+}
+
+/* Row `t` of a growing drum layer: row `src`'s sound (patch, PCM preset and
+ * mode, voice params, pitch) over an empty, undecorated grid. */
+static void seq_grow_drum_row(uint8_t idx, seq_layer_t *layer, uint8_t t,
+                              uint8_t src)
+{
+    layer->track_patch[t] = layer->track_patch[src];
+    seq_drum_copy_row_sound(idx, t, src);
+    layer->vp[t]          = layer->vp[src];
+    layer->vp_src[t]      = layer->vp_src[src];
+    layer->repeat_rate[t] = 0;
+    layer->mute[t]        = false;
+    layer->solo[t]        = false;
+    uint8_t n = layer->track_base_note[src];
+    s_track_source_note[idx][t] = s_track_source_note[idx][src];
+    s_track_prev_plain[idx][t]  = s_track_prev_plain[idx][src];
+    layer->track_base_note[t]   = n;
+    for (uint8_t s = 0; s < SEQ_MAX_STEPS; s++) {
+        layer->grid[t][s]               = false;
+        layer->step_note[t][s]          = n;
+        layer->step_pitch_ofs[t][s]     = 0;
+        layer->step_prob[t][s]          = 100;
+        layer->step_ratchet[t][s]       = 1;
+        layer->step_every[t][s]         = 1;
+        layer->step_prev[t][s]          = 0;
+        layer->step_transform[t][s]     = SEQ_STEP_TRANSFORM_NONE;
+        layer->step_quant_bypass[t][s]  = 0;
+        layer->step_nudge[t][s]         = 0;
+        layer->step_velocity_adj[t][s]  = 0;
+        layer->step_ratchet_taper[t][s] = 0;
+    }
+    s_lfo_phase[idx][t] = s_lfo_phase[idx][src];
+    s_lfo_hz[idx][t]    = s_lfo_hz[idx][src];
+    s_lfo_rnd[idx][t]   = s_lfo_rnd[idx][src];
+}
+
+bool sequencer_core_set_layer_tracks(uint8_t layer_idx, uint8_t num_tracks)
+{
+    seq_assert_layers_applier();
+    if (layer_idx >= s_num_layers) return false;
+    if (num_tracks < SEQ_TRACKS_DEFAULT || num_tracks > SEQ_TRACKS) return false;
+    seq_layer_t *layer = &s_layers[layer_idx];
+    uint8_t cur = layer->num_tracks;
+    if (num_tracks == cur) return true;
+
+    if (num_tracks < cur) {
+        /* Shrink: the dropped rows stop scheduling and sounding and hand
+         * their voices and oscs back to AMY (a later grow rebuilds them);
+         * their stored data stays for that grow or a save. */
+        for (uint8_t t = num_tracks; t < cur; t++) {
+            sequencer_clear_track_tags(layer_idx, t);
+            sequencer_core_trig_clear_track(layer_idx, t);
+            sequencer_kill_synth_voices(layer->synth_id[t]);
+            sequencer_release_synth(layer->synth_id[t]);
+        }
+        layer->num_tracks = num_tracks;
+        if (layer->type == SEQ_LAYER_DRUM) drum_cache_sync();
+        ESP_LOGI(TAG, "L%u rows %u -> %u", layer_idx + 1u, cur, num_tracks);
+        return true;
+    }
+
+    uint8_t src = (uint8_t)(cur - 1);
+    for (uint8_t t = cur; t < num_tracks; t++) {
+        if (layer->type == SEQ_LAYER_DRUM) seq_grow_drum_row(layer_idx, layer, t, src);
+        else                               seq_grow_melodic_row(layer_idx, layer, t, src);
+        s_track_last_played[layer_idx][t] = false;
+    }
+    /* Whole-layer rebuild under the paused discipline
+     * (sequencer_reconfigure_layer_paused), with the new rows built before
+     * num_tracks exposes them to the tick - the same two-phase order as
+     * add_layer. Sounding notes on the layer stop. */
+    sequencer_clear_layer_tags(layer_idx);
+    sequencer_core_trig_clear_all(layer_idx);
+    sequencer_configure_synth_rows(layer_idx, num_tracks);
+    layer->num_tracks = num_tracks;
+    sequencer_resync_layer(layer_idx);
+    ESP_LOGI(TAG, "L%u rows %u -> %u", layer_idx + 1u, cur, num_tracks);
+    return true;
+}
+
+uint8_t sequencer_core_get_layer_tracks(uint8_t layer_idx)
+{
+    if (layer_idx >= s_num_layers) return SEQ_TRACKS_DEFAULT;
+    return s_layers[layer_idx].num_tracks;
 }
 
 uint8_t sequencer_core_get_num_layers(void)

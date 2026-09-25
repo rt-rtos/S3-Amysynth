@@ -142,8 +142,8 @@ uint8_t sequencer_core_pattern_period_bars(void)
  *   Preview = MAX_LAYERS * (SEQ_TRACKS * SEQ_MAX_STEPS * 2)
  *             + layer * SEQ_TRACKS + track
  *
- * Per layer: 4*32*2 = 256 slots; all 4 layers occupy tags 0..1023.
- * Preview tags start at 1024.
+ * Per layer: 5*32*2 = 320 slots; all 4 layers occupy tags 0..1279.
+ * Preview tags start at 1280; ON and OFF previews end at 1319, below the arp.
  */
 static inline uint32_t seq_tag_on(uint8_t layer, uint8_t track, uint8_t step)
 {
@@ -170,6 +170,13 @@ static inline uint32_t seq_preview_off_tag(uint8_t layer, uint8_t track)
 {
     return seq_preview_tag(layer, track) + (uint32_t)(MAX_LAYERS * SEQ_TRACKS);
 }
+
+/* The highest preview OFF tag, seq_preview_off_tag(MAX_LAYERS-1, SEQ_TRACKS-1),
+ * must stay below the arp's tag space. */
+_Static_assert(MAX_LAYERS * (SEQ_TRACKS * SEQ_MAX_STEPS * 2)
+               + (MAX_LAYERS - 1) * SEQ_TRACKS + (SEQ_TRACKS - 1)
+               + MAX_LAYERS * SEQ_TRACKS < SEQ_ARP_TAG_BASE,
+               "sequencer preview tags overlap the arp tag space");
 
 /* Chord edit-preview tags: extra-tone (1..SEQ_CHORD_MAX_NOTES-1) on/off pairs
  * for the one-shot preview path; tone 0 stays on the preview pair above.
@@ -271,13 +278,13 @@ static seq_solo_change_cb_t s_solo_change_cb = NULL;
 
 /* True when any track of any layer has solo engaged. Solo is a GLOBAL mode, not
  * a per-layer one: soloing a row on one layer has to silence the other layers
- * too, or the feature cannot do the one job it exists for. Scans all
- * SEQ_TRACKS, not just num_tracks, so a stale flag on an unused slot cannot
- * silently affect the tracks in use. */
+ * too, or the feature cannot do the one job it exists for. Scans only the
+ * rows each layer has (num_tracks): a row dropped by a shrink keeps its stored
+ * flag, which must not gate the rows still in use. */
 bool sequencer_core_any_solo(void)
 {
     for (uint8_t li = 0; li < s_num_layers; li++) {
-        for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
+        for (uint8_t t = 0; t < s_layers[li].num_tracks; t++) {
             if (s_layers[li].solo[t]) return true;
         }
     }
@@ -454,6 +461,18 @@ void sequencer_clear_layer_tags(uint8_t layer_idx)
             sequencer_emit_clear_tag(seq_tag_off(layer_idx, t, s));
         }
     }
+}
+
+void sequencer_clear_track_tags(uint8_t layer_idx, uint8_t track)
+{
+    seq_layer_t *layer = &s_layers[layer_idx];
+    for (uint8_t s = 0; s < layer->num_steps; s++) {
+        sequencer_emit_clear_tag(seq_tag_on(layer_idx, track, s));
+        sequencer_emit_clear_tag(seq_tag_off(layer_idx, track, s));
+    }
+    sequencer_emit_clear_tag(seq_preview_tag(layer_idx, track));
+    sequencer_emit_clear_tag(seq_preview_off_tag(layer_idx, track));
+    seq_chord_preview_clear_from(layer_idx, track, 1);
 }
 
 /* Re-resolve a track's note (clamp + optional quantization), write it to every

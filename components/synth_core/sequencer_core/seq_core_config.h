@@ -115,9 +115,9 @@
 #define SEQ_DRUM_LAYER_IDX    0u
 
 /* ── Drum synth slots ────────────────────────────────────────────────────
- * Each of the 4 drum tracks owns its own synth slot, like melodic rows. Fixed
- * block 6..9 in the static pool (synth_slots.h), below the melodic base, so
- * the melodic running allocator is untouched. */
+ * Each drum track owns its own synth slot, like melodic rows. Fixed block
+ * 6..10 (SEQ_TRACKS wide) in the static pool (synth_slots.h), below the
+ * melodic base, so the melodic running allocator is untouched. */
 #define SEQ_DRUM_VOICES       1  /* one pitch at a time per row, as melodic */
 /* Drum tracks play real pitches, so they clamp to the same musical range as
  * melodic rows rather than a GM-drum note span. */
@@ -154,16 +154,18 @@
 
 /* ── Arpeggiator tag space ───────────────────────────────────────────────
  * Arp tags sit just above the sequencer's tag space:
- *   step on/off : 0 .. MAX_LAYERS*SEQ_TRACKS*SEQ_MAX_STEPS*2 - 1   (0..1023)
- *   previews    : 1024 .. 1024 + MAX_LAYERS*SEQ_TRACKS*2 - 1       (..1055)
- * so the arp starts at 1056 and needs ARP_MAX_SLOTS*ARP_OCT_MAX*2 = 64 tags.
+ *   step on/off : 0 .. MAX_LAYERS*SEQ_TRACKS*SEQ_MAX_STEPS*2 - 1   (0..1279)
+ *   previews    : 1280 .. 1280 + MAX_LAYERS*SEQ_TRACKS*2 - 1       (..1319)
+ * so the arp starts at 1320 and needs ARP_MAX_SLOTS*ARP_OCT_MAX*2 = 64 tags.
  *
  * AMY's sequencer_add_wire rejects `tag >= max_sequences`, so sequences[]
  * needs at least (highest_tag + 1) user-addressable entries. Keep main.c's
  * amy_cfg.max_sequencer_tags in sync. */
-#define SEQ_ARP_TAG_BASE      1056u
+#define SEQ_STEP_TAG_COUNT    (MAX_LAYERS * SEQ_TRACKS * SEQ_MAX_STEPS * 2u) /* 1280 */
+#define SEQ_PREVIEW_TAG_COUNT (MAX_LAYERS * SEQ_TRACKS * 2u)                 /* 40 */
+#define SEQ_ARP_TAG_BASE      (SEQ_STEP_TAG_COUNT + SEQ_PREVIEW_TAG_COUNT)    /* 1320 */
 #define SEQ_ARP_TAG_COUNT     (ARP_MAX_SLOTS * ARP_OCT_MAX * 2)  /* = 64 */
-#define SEQ_ARP_TAG_MAX       (SEQ_ARP_TAG_BASE + SEQ_ARP_TAG_COUNT - 1)  /* 1119 */
+#define SEQ_ARP_TAG_MAX       (SEQ_ARP_TAG_BASE + SEQ_ARP_TAG_COUNT - 1)  /* 1383 */
 
 /* ── Ratchet tag space ────────────────────────────────────────────────────
  * A decorated step never uses the plain per-step ON/OFF pair: instead
@@ -172,9 +174,9 @@
  * sub-hits never overwrite each other. Sits just above the arp's tag space.
  * Same off-by-one rule: main.c's amy_cfg.max_sequencer_tags must stay
  * >= SEQ_RATCHET_TAG_MAX + 2. */
-#define SEQ_RATCHET_TAG_BASE  (SEQ_ARP_TAG_MAX + 1u)                          /* 1120 */
-#define SEQ_RATCHET_TAG_COUNT (MAX_LAYERS * SEQ_TRACKS * SEQ_MAX_RATCHET * 2) /* 128 */
-#define SEQ_RATCHET_TAG_MAX   (SEQ_RATCHET_TAG_BASE + SEQ_RATCHET_TAG_COUNT - 1) /* 1247 */
+#define SEQ_RATCHET_TAG_BASE  (SEQ_ARP_TAG_MAX + 1u)                          /* 1384 */
+#define SEQ_RATCHET_TAG_COUNT (MAX_LAYERS * SEQ_TRACKS * SEQ_MAX_RATCHET * 2) /* 160 */
+#define SEQ_RATCHET_TAG_MAX   (SEQ_RATCHET_TAG_BASE + SEQ_RATCHET_TAG_COUNT - 1) /* 1543 */
 
 /* ── Chord tag space ──────────────────────────────────────────────────────
  * Chord steps always take the decorated one-shot path (a chord sentinel in
@@ -182,20 +184,21 @@
  * one-shot tags only, never a periodic per-step block. Tone 0 reuses the
  * ratchet pair; higher tones get a statically assigned pair per (layer, track,
  * ratchet-slot, tone), plus a second small block for the edit-preview path.
- * Each tag costs ~20 B of internal DRAM in AMY, which is why the one-shot
- * scheme (640 tags) beat a periodic per-step chord block (~3.5 K tags). Same
+ * Each tag slot (sequence_info_t) is 16 B of internal DRAM in AMY, plus its
+ * wire string while occupied, which is why the one-shot scheme (800 tags)
+ * beat a periodic per-step chord block (~3.5 K tags). Same
  * off-by-one rule: main.c must stay >= SEQ_CHORD_PREVIEW_TAG_MAX + 2 - it
  * derives max_sequencer_tags from that expression rather than a literal,
  * because this ceiling moves with SEQ_CHORD_MAX_NOTES. */
-#define SEQ_CHORD_TAG_BASE    (SEQ_RATCHET_TAG_MAX + 1u)                      /* 1248 */
+#define SEQ_CHORD_TAG_BASE    (SEQ_RATCHET_TAG_MAX + 1u)                      /* 1544 */
 #define SEQ_CHORD_TAG_COUNT   (MAX_LAYERS * SEQ_TRACKS * SEQ_MAX_RATCHET \
-                               * (SEQ_CHORD_MAX_NOTES - 1) * 2)               /* 512 */
-#define SEQ_CHORD_TAG_MAX     (SEQ_CHORD_TAG_BASE + SEQ_CHORD_TAG_COUNT - 1)  /* 1759 */
-#define SEQ_CHORD_PREVIEW_TAG_BASE  (SEQ_CHORD_TAG_MAX + 1u)                  /* 1760 */
+                               * (SEQ_CHORD_MAX_NOTES - 1) * 2)               /* 640 */
+#define SEQ_CHORD_TAG_MAX     (SEQ_CHORD_TAG_BASE + SEQ_CHORD_TAG_COUNT - 1)  /* 2183 */
+#define SEQ_CHORD_PREVIEW_TAG_BASE  (SEQ_CHORD_TAG_MAX + 1u)                  /* 2184 */
 #define SEQ_CHORD_PREVIEW_TAG_COUNT (MAX_LAYERS * SEQ_TRACKS \
-                                     * (SEQ_CHORD_MAX_NOTES - 1) * 2)         /* 128 */
+                                     * (SEQ_CHORD_MAX_NOTES - 1) * 2)         /* 160 */
 #define SEQ_CHORD_PREVIEW_TAG_MAX   (SEQ_CHORD_PREVIEW_TAG_BASE + \
-                                     SEQ_CHORD_PREVIEW_TAG_COUNT - 1)         /* 1887 */
+                                     SEQ_CHORD_PREVIEW_TAG_COUNT - 1)         /* 2343 */
 
 /* ── Bounce clip start tags ──────────────────────────────────────────────
  * Two per clip slot (clip_player.c): an aux config entry that sets the
@@ -203,9 +206,9 @@
  * at its end tick or re-anchors it on a bar line. The aux tag is the lower
  * one so it fires first within the tick. Same off-by-one rule: main.c derives
  * max_sequencer_tags from this ceiling. */
-#define SEQ_CLIP_TAG_BASE     (SEQ_CHORD_PREVIEW_TAG_MAX + 1u)                /* 1888 */
+#define SEQ_CLIP_TAG_BASE     (SEQ_CHORD_PREVIEW_TAG_MAX + 1u)                /* 2344 */
 #define SEQ_CLIP_TAG_COUNT    (2u * CLIP_SLOT_COUNT)
-#define SEQ_CLIP_TAG_MAX      (SEQ_CLIP_TAG_BASE + SEQ_CLIP_TAG_COUNT - 1)    /* 1891 */
+#define SEQ_CLIP_TAG_MAX      (SEQ_CLIP_TAG_BASE + SEQ_CLIP_TAG_COUNT - 1)    /* 2347 */
 
 /* ── Global chord progression ────────────────────────────────────────────── */
 #define CHORD_PROG_MAX_ENTRIES 8

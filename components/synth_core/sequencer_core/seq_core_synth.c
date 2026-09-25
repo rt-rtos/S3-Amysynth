@@ -7,7 +7,11 @@
 
 /* Defined with the FM-algorithm stepper below; the configure path reasserts
  * the layer's live algorithm override after every patch (re)load. */
-static void seq_reassert_layer_fm_algo(const seq_layer_t *layer);
+static void seq_reassert_layer_fm_algo(const seq_layer_t *layer, uint8_t rows);
+/* Defined with the public portamento push below; the configure path reasserts
+ * glide on the rows it builds. */
+static void seq_push_melodic_portamento_rows(const seq_layer_t *layer,
+                                             uint8_t rows);
 
 /* ── State definitions — owns drum engine selector ──────────────────── */
 /* Drum sound source for the whole drum layer. SYNTH = tonal AMY patches per
@@ -46,7 +50,7 @@ static const patch_domain_t s_drum_domain = {
 /* ── Drum sample banks (menu "Drum Bank" selector) ──
  * One row per selectable PCM bank: the compiled-in 808 ROM bank plus the
  * gamma9001 banks streamed from the 'drums' flash partition. first/count are
- * PCM preset ranges; roles[] and notes[] seed the four tracks on selection -
+ * PCM preset ranges; roles[] and notes[] seed the tracks on selection -
  * a bank pick is a full kit change, sounds AND pitches. Preset numbers
  * mirror the vendored amy/src/pcm_gamma9001.h map (256=909BD .. 391=Narrow) -
  * re-verify after any AMY re-vendor. Banks are contiguous in preset space, so
@@ -69,15 +73,17 @@ static const patch_domain_t s_drum_domain = {
  * The bank is derived from the track's CURRENT preset (not the display
  * selector), so kit defaults follow cycling within a bank and survive
  * project reload; presets outside every bank range (e.g. the runtime-
- * recorded sample slot) fall back to legacy defaults. */
+ * recorded sample slot) fall back to legacy defaults.
+ * Per-role arrays hold the four default rows; seq_default_row() gives a row
+ * above them row 4's entry. */
 typedef struct {
     const char *name;
     uint16_t    first, count;
-    uint16_t    roles[SEQ_TRACKS];
-    uint8_t     notes[SEQ_TRACKS];
-    const seq_env_t    *eg0[SEQ_TRACKS];
-    const seq_env_t    *eg1[SEQ_TRACKS];
-    const seq_filter_t *flt[SEQ_TRACKS];
+    uint16_t    roles[SEQ_TRACKS_DEFAULT];
+    uint8_t     notes[SEQ_TRACKS_DEFAULT];
+    const seq_env_t    *eg0[SEQ_TRACKS_DEFAULT];
+    const seq_env_t    *eg1[SEQ_TRACKS_DEFAULT];
+    const seq_filter_t *flt[SEQ_TRACKS_DEFAULT];
 } seq_drum_bank_t;
 
 #define SEQ_GAMMA_PCM_FIRST 256u
@@ -188,7 +194,7 @@ static inline bool drum_gamma_available(void)
  * CONFIG_AMY_PCM_GAMMA808, as the table comment above notes.) */
 uint8_t sequencer_drum_default_note(uint8_t track)
 {
-    return s_drum_banks[0].notes[track];
+    return s_drum_banks[0].notes[seq_default_row(track)];
 }
 
 /* Per-layer, per-track PCM preset override, lazily defaulted to the boot
@@ -207,7 +213,7 @@ static uint16_t drum_pcm_preset_for(uint8_t layer_idx, uint8_t track)
 {
     if (!s_drum_pcm_preset_init[layer_idx]) {
         for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
-            s_drum_pcm_preset[layer_idx][t] = s_drum_banks[0].roles[t];
+            s_drum_pcm_preset[layer_idx][t] = s_drum_banks[0].roles[seq_default_row(t)];
         }
         s_drum_pcm_preset_init[layer_idx] = true;
     }
@@ -233,18 +239,19 @@ static void sequencer_configure_drum_pcm_track_params(uint8_t layer_idx,
     voice_params_t *vp = &layer->vp[track];
     const seq_drum_bank_t *bank =
         drum_bank_for_preset(drum_pcm_preset_for(layer_idx, track));
+    uint8_t row = seq_default_row(track);
 
     if (!vp->env_authored) {
-        vp->env = (bank && bank->eg0[track]) ? *bank->eg0[track]
-                                             : s_drum_env_transparent;
+        vp->env = (bank && bank->eg0[row]) ? *bank->eg0[row]
+                                           : s_drum_env_transparent;
     }
     if (!vp->env1_authored) {
-        vp->env1 = (bank && bank->eg1[track]) ? *bank->eg1[track]
-                                              : s_drum_env_sweep;
+        vp->env1 = (bank && bank->eg1[row]) ? *bank->eg1[row]
+                                            : s_drum_env_sweep;
     }
     if (!vp->filter_authored) {
-        vp->filter = (bank && bank->flt[track]) ? *bank->flt[track]
-                                                : (seq_filter_t){0};  /* bypass */
+        vp->filter = (bank && bank->flt[row]) ? *bank->flt[row]
+                                              : (seq_filter_t){0};  /* bypass */
     }
 
     sequencer_configure_melodic_envelope_track(layer_idx, track);
@@ -252,7 +259,7 @@ static void sequencer_configure_drum_pcm_track_params(uint8_t layer_idx,
      * neither, the preset reload's osc reset leaves it cleared, and
      * melodic_filter_apply supplies the breakpoint guarantee if an authored
      * filter env later needs one. */
-    if (vp->env1_authored || (bank && bank->eg1[track])) {
+    if (vp->env1_authored || (bank && bank->eg1[row])) {
         sequencer_configure_melodic_envelope1_track(layer_idx, track);
     }
     sequencer_configure_melodic_filter_track(layer_idx, track);
@@ -263,9 +270,10 @@ static void sequencer_configure_drum_pcm_track_params(uint8_t layer_idx,
 }
 
 /* Apply per-track envelope shape and hat HPF after PCM wave/preset are set. */
-static void sequencer_configure_drum_pcm_voice_params(uint8_t layer_idx)
+static void sequencer_configure_drum_pcm_voice_params(uint8_t layer_idx,
+                                                      uint8_t rows)
 {
-    for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
+    for (uint8_t t = 0; t < rows; t++) {
         sequencer_configure_drum_pcm_track_params(layer_idx, t);
     }
 }
@@ -275,6 +283,14 @@ void sequencer_kill_synth_voices(uint8_t synth_id)
     amy_event *e = amy_helpers_event_begin();
     e->synth    = synth_id;
     e->velocity = 0.0f;
+    amy_helpers_event_send(e);
+}
+
+void sequencer_release_synth(uint8_t synth_id)
+{
+    amy_event *e = amy_helpers_event_begin();
+    e->synth      = synth_id;
+    e->num_voices = 0;
     amy_helpers_event_send(e);
 }
 
@@ -318,7 +334,7 @@ bool sequencer_layer_voices_stale(uint8_t layer_idx)
     if (layer_idx >= s_num_layers) return false;
     const seq_layer_t *layer = &s_layers[layer_idx];
     if (layer->type != SEQ_LAYER_MELODIC) return false;
-    for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
+    for (uint8_t t = 0; t < layer->num_tracks; t++) {
         if (seq_track_num_voices(layer, t) != s_voices_applied[layer_idx][t]) {
             return true;
         }
@@ -466,7 +482,7 @@ void sequencer_core_set_unison(uint8_t layer_idx, const voice_unison_t *u)
     /* Per-row patches: unison reaches only the wave rows of a mixed layer.
      * With none, the spec is stored and lands on the next wave build. */
     bool any_wave = false;
-    for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
+    for (uint8_t t = 0; t < layer->num_tracks; t++) {
         if (sequencer_core_is_wave_patch(layer->track_patch[t])) { any_wave = true; break; }
     }
     if (!any_wave) return;
@@ -479,7 +495,7 @@ void sequencer_core_set_unison(uint8_t layer_idx, const voice_unison_t *u)
         return;
     }
     /* Same shape: re-send only the per-copy CONST fields, no note kill. */
-    for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
+    for (uint8_t t = 0; t < layer->num_tracks; t++) {
         if (!sequencer_core_is_wave_patch(layer->track_patch[t])) continue;
         voice_unison_t eff = v;
         eff.count = seq_track_unison_copies(layer_idx, t);
@@ -573,7 +589,7 @@ static void sequencer_configure_melodic_wave_track(uint8_t synth_id,
  * Deferred authority: a row's envelope only overrides the patch's own envelope
  * once the user has committed it in the graph editor (env_authored[t]==true).
  * Unauthored rows are left alone so the freshly-loaded patch envelope plays. */
-static void sequencer_configure_melodic_envelope(uint8_t layer_idx)
+static void sequencer_configure_melodic_envelope(uint8_t layer_idx, uint8_t rows)
 {
     const seq_layer_t *layer = &s_layers[layer_idx];
     /* Raw-wave primitives carry no patch envelope. With none pushed, the
@@ -583,7 +599,7 @@ static void sequencer_configure_melodic_envelope(uint8_t layer_idx)
      * pause, which both silence voices via that same note-off. Force the
      * default envelope onto every such unauthored row. (KS/NOISE also get their
      * sustain floor in sequencer_configure_melodic_envelope_track.) */
-    for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
+    for (uint8_t t = 0; t < rows; t++) {
         bool force_wave = sequencer_core_is_wave_patch(layer->track_patch[t]);
         if (seq_track_vp(layer_idx, t)->env_authored || force_wave) {
             sequencer_configure_melodic_envelope_track(layer_idx, t);
@@ -593,9 +609,9 @@ static void sequencer_configure_melodic_envelope(uint8_t layer_idx)
 
 /* Push each AUTHORED row's stored EG1 to its own synth. No "force" case unlike
  * EG0 above: EG1 has no raw-wave fallback role. */
-static void sequencer_configure_melodic_envelope1(uint8_t layer_idx)
+static void sequencer_configure_melodic_envelope1(uint8_t layer_idx, uint8_t rows)
 {
-    for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
+    for (uint8_t t = 0; t < rows; t++) {
         if (seq_track_vp(layer_idx, t)->env1_authored) {
             sequencer_configure_melodic_envelope1_track(layer_idx, t);
         }
@@ -606,9 +622,9 @@ static void sequencer_configure_melodic_envelope1(uint8_t layer_idx)
  * Unauthored rows keep whatever filter the patch string baked in (Juno/DX7
  * patches carry a G/F/R block), unless CONFIG_SEQ_MELODIC_DISABLE_DEFAULT_LPF
  * is set, which strips it so the raw patch tone is heard. */
-static void sequencer_configure_melodic_filter(uint8_t layer_idx)
+static void sequencer_configure_melodic_filter(uint8_t layer_idx, uint8_t rows)
 {
-    for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
+    for (uint8_t t = 0; t < rows; t++) {
         if (seq_track_vp(layer_idx, t)->filter_authored) {
             sequencer_configure_melodic_filter_track(layer_idx, t);
 #if CONFIG_SEQ_MELODIC_DISABLE_DEFAULT_LPF
@@ -626,9 +642,9 @@ static void sequencer_configure_melodic_filter(uint8_t layer_idx)
 /* Push the distortion for every authored row in a layer (after a patch
  * reload). Unauthored rows are left alone: a patch string never carries a
  * distortion block, so there is nothing to strip and nothing to restore. */
-static void sequencer_configure_melodic_dist(uint8_t layer_idx)
+static void sequencer_configure_melodic_dist(uint8_t layer_idx, uint8_t rows)
 {
-    for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
+    for (uint8_t t = 0; t < rows; t++) {
         if (seq_track_vp(layer_idx, t)->dist_authored)
             sequencer_configure_melodic_dist_track(layer_idx, t);
     }
@@ -775,10 +791,14 @@ static inline void seq_flush_patch_fx(bool owed, uint8_t synth_id)
     if (owed) synth_ui_fx_reassert(synth_id);
 }
 
-/* (Re)configure the AMY synth(s) for layer_idx.
- * Drums use a single synth (synth_id[0]); melodic layers configure one synth
- * per row, all sharing the same patch/flags/voice-count but on distinct slots. */
+/* (Re)configure the AMY synth(s) for layer_idx: one synth per built row,
+ * drum and melodic alike, each on its own slot. */
 void sequencer_configure_synth(uint8_t layer_idx)
+{
+    sequencer_configure_synth_rows(layer_idx, s_layers[layer_idx].num_tracks);
+}
+
+void sequencer_configure_synth_rows(uint8_t layer_idx, uint8_t rows)
 {
     seq_layer_t *layer = &s_layers[layer_idx];
 
@@ -792,7 +812,7 @@ void sequencer_configure_synth(uint8_t layer_idx)
              * global EQ/chorus, so no reassert is owed. */
             (void)drum_pcm_preset_for(layer_idx, 0);   /* seed defaults first */
             drum_cache_sync();                          /* windows before the preset events */
-            for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
+            for (uint8_t t = 0; t < rows; t++) {
                 /* Allocate/realloc the slot as a 1-osc voice (clears old patch). */
                 amy_event *e = amy_helpers_event_begin();
                 e->num_voices    = layer->num_voices;
@@ -811,13 +831,13 @@ void sequencer_configure_synth(uint8_t layer_idx)
                     e->mode = s_drum_pcm_mode[layer_idx][t];
                 amy_helpers_event_send(e);
             }
-            sequencer_configure_drum_pcm_voice_params(layer_idx);
+            sequencer_configure_drum_pcm_voice_params(layer_idx, rows);
             return;
         }
 
         /* SYNTH mode: each drum row loads its OWN patch onto its OWN slot,
          * note-offs honored (flags = 0). Mirrors the melodic loop. */
-        for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
+        for (uint8_t t = 0; t < rows; t++) {
             sequencer_kill_synth_voices(layer->synth_id[t]);
             amy_send_patch(layer->synth_id[t], layer->track_patch[t],
                            layer->num_voices, layer->synth_flags);
@@ -829,12 +849,12 @@ void sequencer_configure_synth(uint8_t layer_idx)
     }
 
     /* Melodic: push each row's own patch/flags to its own synth. In LAYER
-     * scope all four track_patch[] hold the layer patch, so the loop is the
+     * scope every track_patch[] holds the layer patch, so the loop is the
      * same work it always was; in TRACK scope the rows differ. Voice count is
      * per-track - layer->num_voices, widened to the chord tone count on rows
      * carrying a chord preset, so voices are spent only where chords play. */
     bool string_patch = false;
-    for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
+    for (uint8_t t = 0; t < rows; t++) {
         uint8_t voices = seq_track_num_voices(layer, t);
         sequencer_kill_synth_voices(layer->synth_id[t]);
         const voice_params_t *vp = seq_track_vp(layer_idx, t);
@@ -852,16 +872,16 @@ void sequencer_configure_synth(uint8_t layer_idx)
         s_voices_applied[layer_idx][t] = voices;
     }
     seq_flush_patch_fx(string_patch, layer->synth_id[0]);
-    sequencer_configure_melodic_envelope(layer_idx);
-    sequencer_configure_melodic_envelope1(layer_idx);
-    sequencer_configure_melodic_filter(layer_idx);
-    sequencer_configure_melodic_dist(layer_idx);
-    sequencer_configure_melodic_lfo(layer_idx);
+    sequencer_configure_melodic_envelope(layer_idx, rows);
+    sequencer_configure_melodic_envelope1(layer_idx, rows);
+    sequencer_configure_melodic_filter(layer_idx, rows);
+    sequencer_configure_melodic_dist(layer_idx, rows);
+    sequencer_configure_melodic_lfo(layer_idx, rows);
     /* Glide is a per-osc AMY setting that a voice rebuild clears - reassert. */
-    sequencer_core_push_melodic_portamento(layer_idx);
+    seq_push_melodic_portamento_rows(layer, rows);
     /* The patch load just rewrote osc 0's baked algorithm - reassert the
      * live override (no-op without one). */
-    seq_reassert_layer_fm_algo(layer);
+    seq_reassert_layer_fm_algo(layer, rows);
 }
 
 /* ── Public API — melodic patch ─────────────────────────────────────── */
@@ -995,7 +1015,7 @@ void sequencer_core_fm_voice_changed(uint8_t what)
     for (uint8_t i = 0; i < s_num_layers; i++) {
         seq_layer_t *layer = &s_layers[i];
         if (layer->type != SEQ_LAYER_MELODIC) continue;
-        for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
+        for (uint8_t t = 0; t < layer->num_tracks; t++) {
             if (layer->track_patch[t] != SEQ_PATCH_FM_CUSTOM) continue;
             fm_voice_push(layer->synth_id[t], &s_fm_voice, what);
         }
@@ -1046,9 +1066,10 @@ static bool seq_layer_patch_has_algo(uint16_t patch)
  * DX7 curves - re-assert it in the same event (the eg_type delta applies after
  * the algorithm one). DX7-bank patches keep the DX7 curves their own patch load
  * installs, so nothing to re-assert there. */
-static void seq_push_layer_fm_algo(const seq_layer_t *layer, uint8_t algo)
+static void seq_push_layer_fm_algo(const seq_layer_t *layer, uint8_t algo,
+                                   uint8_t rows)
 {
-    for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
+    for (uint8_t t = 0; t < rows; t++) {
         if (!seq_layer_patch_has_algo(layer->track_patch[t])) continue;
         amy_event *e = amy_helpers_event_begin();
         e->synth     = layer->synth_id[t];
@@ -1062,10 +1083,10 @@ static void seq_push_layer_fm_algo(const seq_layer_t *layer, uint8_t algo)
 /* Reconfigure-path reassert: a patch (re)load rewrites osc 0 with the baked
  * algorithm, so the override must ride every configure - the same discipline
  * as the portamento and FX reasserts above. No-op without an override. */
-static void seq_reassert_layer_fm_algo(const seq_layer_t *layer)
+static void seq_reassert_layer_fm_algo(const seq_layer_t *layer, uint8_t rows)
 {
     if (layer->fm_algo_override == SEQ_FM_ALGO_NONE) return;
-    seq_push_layer_fm_algo(layer, layer->fm_algo_override);
+    seq_push_layer_fm_algo(layer, layer->fm_algo_override, rows);
 }
 
 int sequencer_core_cycle_layer_fm_algo(uint8_t layer_idx, int dir)
@@ -1078,7 +1099,7 @@ int sequencer_core_cycle_layer_fm_algo(uint8_t layer_idx, int dir)
     int step = (dir > 0) ? 1 : -1;
 
 #if CONFIG_SYNTH_CUSTOM_FM
-    for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
+    for (uint8_t t = 0; t < layer->num_tracks; t++) {
         if (layer->track_patch[t] != SEQ_PATCH_FM_CUSTOM) continue;
         /* The custom voice's algorithm is an authored field: step the voice
          * store itself (shared with the FM screen and the arp), no shadow. One
@@ -1094,7 +1115,7 @@ int sequencer_core_cycle_layer_fm_algo(uint8_t layer_idx, int dir)
      * the baked baseline, since the override itself is one per layer. */
     uint16_t p = 0;
     bool has_algo = false;
-    for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
+    for (uint8_t t = 0; t < layer->num_tracks; t++) {
         if (seq_layer_patch_has_algo(layer->track_patch[t])) {
             p = layer->track_patch[t];
             has_algo = true;
@@ -1113,7 +1134,7 @@ int sequencer_core_cycle_layer_fm_algo(uint8_t layer_idx, int dir)
     }
     int a = (base + step + n) % n;
     layer->fm_algo_override = (uint8_t)a;
-    seq_push_layer_fm_algo(layer, (uint8_t)a);
+    seq_push_layer_fm_algo(layer, (uint8_t)a, layer->num_tracks);
     ESP_LOGI(TAG, "L%u FM algo -> %d", (unsigned)layer_idx + 1u, a);
     return a;
 }
@@ -1126,7 +1147,7 @@ void sequencer_core_additive_voice_changed(void)
     for (uint8_t i = 0; i < s_num_layers; i++) {
         seq_layer_t *layer = &s_layers[i];
         if (layer->type != SEQ_LAYER_MELODIC) continue;
-        for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
+        for (uint8_t t = 0; t < layer->num_tracks; t++) {
             if (layer->track_patch[t] != SEQ_PATCH_ADDITIVE_CUSTOM) continue;
             additive_voice_push_live(layer->synth_id[t], &s_additive_voice);
         }
@@ -1241,7 +1262,9 @@ void sequencer_core_set_drum_pcm_preset(uint8_t layer_idx, uint8_t track,
      * pointed at it; the reset below stops the osc reading the old one. */
     drum_cache_sync();
 
-    if (s_drum_engine == SEQ_DRUM_PCM) {
+    /* A row the layer has not built has no osc to reload; the store above is
+     * what a later grow or save reads. */
+    if (s_drum_engine == SEQ_DRUM_PCM && track < s_layers[layer_idx].num_tracks) {
         /* Reset the osc before reconfiguring, so any stray coefficient state
          * (a software-LFO push, filter residue) is wiped on every preset
          * change instead of surviving until the next full re-alloc. reset_osc
@@ -1291,6 +1314,13 @@ uint8_t sequencer_core_get_drum_pcm_mode(uint8_t layer_idx, uint8_t track)
 {
     if (layer_idx >= s_num_layers || track >= SEQ_TRACKS) return 0;
     return s_drum_pcm_mode[layer_idx][track];
+}
+
+void seq_drum_copy_row_sound(uint8_t layer_idx, uint8_t dst, uint8_t src)
+{
+    if (layer_idx >= MAX_LAYERS || dst >= SEQ_TRACKS || src >= SEQ_TRACKS) return;
+    s_drum_pcm_preset[layer_idx][dst] = drum_pcm_preset_for(layer_idx, src);
+    s_drum_pcm_mode[layer_idx][dst]   = s_drum_pcm_mode[layer_idx][src];
 }
 
 uint16_t sequencer_core_cycle_drum_pcm_preset(uint8_t layer_idx, uint8_t track,
@@ -1388,9 +1418,9 @@ void sequencer_core_set_drum_source(uint8_t idx)
      * the note preview must sound the new sample. */
     for (uint8_t i = 0; i < s_num_layers; i++) {
         if (s_layers[i].type != SEQ_LAYER_DRUM) continue;
-        for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
-            sequencer_core_set_drum_pcm_preset(i, t, b->roles[t]);
-            sequencer_core_set_track_midi_note(i, t, b->notes[t]);
+        for (uint8_t t = 0; t < s_layers[i].num_tracks; t++) {
+            sequencer_core_set_drum_pcm_preset(i, t, b->roles[seq_default_row(t)]);
+            sequencer_core_set_track_midi_note(i, t, b->notes[seq_default_row(t)]);
         }
     }
     sequencer_core_set_drum_engine(SEQ_DRUM_PCM);
@@ -1464,15 +1494,21 @@ void sequencer_core_push_envelope_eg1(uint8_t synth, uint8_t osc, const seq_env_
  * a bare portamento_ms event (no velocity) fans out to every voice's base osc,
  * where AMY applies portamento_alpha as a logfreq low-pass. 0 ms = off.
  * Melodic-only config path; drum layers never call this. */
-void sequencer_core_push_melodic_portamento(uint8_t layer_idx)
+static void seq_push_melodic_portamento_rows(const seq_layer_t *layer,
+                                             uint8_t rows)
 {
-    const seq_layer_t *layer = &s_layers[layer_idx];
-    for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
+    for (uint8_t t = 0; t < rows; t++) {
         amy_event *e = amy_helpers_event_begin();
         e->synth         = layer->synth_id[t];
         e->portamento_ms = layer->portamento_ms;
         amy_helpers_event_send(e);
     }
+}
+
+void sequencer_core_push_melodic_portamento(uint8_t layer_idx)
+{
+    const seq_layer_t *layer = &s_layers[layer_idx];
+    seq_push_melodic_portamento_rows(layer, layer->num_tracks);
 }
 
 void sequencer_core_arp_configure(uint16_t patch_number, uint8_t num_voices,

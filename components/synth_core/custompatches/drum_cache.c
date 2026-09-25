@@ -111,7 +111,8 @@ void drum_cache_sync(void)
         uint8_t n = sequencer_core_get_num_layers();
         for (uint8_t l = 0; l < n; l++) {
             if (sequencer_core_get_layer_type(l) != SEQ_LAYER_DRUM) continue;
-            for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
+            uint8_t rows = sequencer_core_get_layer_tracks(l);
+            for (uint8_t t = 0; t < rows; t++) {
                 uint16_t p = sequencer_core_get_drum_pcm_preset(l, t);
                 if (p >= s_base && p < s_base + s_count) {
                     wanted[p - s_base] = true;

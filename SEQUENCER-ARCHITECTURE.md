@@ -49,7 +49,7 @@ pattern. Abridged to its current field groups:
 typedef struct {
     seq_layer_type_t type;                        // SEQ_LAYER_DRUM | SEQ_LAYER_MELODIC
     uint8_t  num_steps;                           // 16 or 32
-    uint8_t  num_tracks;                          // always SEQ_TRACKS (4)
+    uint8_t  num_tracks;                          // live rows, SEQ_TRACKS_DEFAULT..SEQ_TRACKS (4 or 5)
     bool     grid[SEQ_TRACKS][SEQ_MAX_STEPS];     // step on/off
     uint8_t  step_note[SEQ_TRACKS][SEQ_MAX_STEPS];// per-step MIDI pitch
     int8_t   step_pitch_ofs[SEQ_TRACKS][SEQ_MAX_STEPS]; // +-24 st from step_note,
@@ -108,7 +108,8 @@ by the pure renderers in `components/display/`. See `display_seq.h`.
 
 | Define | Value | Meaning |
 |---|---|---|
-| `SEQ_TRACKS` | 4 | Tracks per layer |
+| `SEQ_TRACKS` | 5 | Tracks per layer (array width) |
+| `SEQ_TRACKS_DEFAULT` | 4 | Tracks a new layer starts with |
 | `SEQ_STEPS` | 16 | Default steps for a new layer |
 | `SEQ_MAX_STEPS` | 32 | Maximum per layer |
 | `MAX_LAYERS` | 4 | Maximum simultaneous layers |
@@ -127,19 +128,20 @@ classDiagram
     class seq_layer_t {
         seq_layer_type_t type
         uint8_t num_steps
-        bool grid[4][32]
-        uint8_t step_note[4][32]
-        int8_t step_pitch_ofs[4][32]
-        voice_params_t vp[4]
-        uint8_t repeat_rate[4]
-        bool mute[4]
-        bool solo[4]
-        uint8_t synth_id[4]
-        uint16_t track_patch[4]
-        uint8_t step_prob[4][32]
-        uint8_t step_ratchet[4][32]
-        uint8_t step_every[4][32]
-        uint8_t step_prev[4][32]
+        uint8_t num_tracks
+        bool grid[5][32]
+        uint8_t step_note[5][32]
+        int8_t step_pitch_ofs[5][32]
+        voice_params_t vp[5]
+        uint8_t repeat_rate[5]
+        bool mute[5]
+        bool solo[5]
+        uint8_t synth_id[5]
+        uint16_t track_patch[5]
+        uint8_t step_prob[5][32]
+        uint8_t step_ratchet[5][32]
+        uint8_t step_every[5][32]
+        uint8_t step_prev[5][32]
         uint8_t fm_algo_override
     }
     class voice_params_t {
@@ -154,7 +156,7 @@ classDiagram
         float amp_trim
     }
     seq_state "1" *-- "0..4" seq_layer_t : layers
-    seq_layer_t "1" *-- "4" voice_params_t : vp per row
+    seq_layer_t "1" *-- "5" voice_params_t : vp per row
 ```
 
 ---
@@ -204,21 +206,22 @@ Preview = MAX_LAYERS × (SEQ_TRACKS × SEQ_MAX_STEPS × 2)
           + layer × SEQ_TRACKS + track
 ```
 
-With `MAX_LAYERS=4`, `SEQ_TRACKS=4`, `SEQ_MAX_STEPS=32` the full map
+With `MAX_LAYERS=4`, `SEQ_TRACKS=5`, `SEQ_MAX_STEPS=32` the full map
 (`seq_core_config.h`) is:
 
 | Range | Owner |
 |---|---|
-| 0-1023 | step ON/OFF events, all 4 layers |
-| 1024-1055 | one-shot preview events (one per layer per track) |
-| 1056-1119 | arpeggiator (`SEQ_ARP_TAG_BASE` .. `SEQ_ARP_TAG_MAX`) |
-| 1120-1247 | ratchet one-shots for decorated steps (`SEQ_RATCHET_TAG_BASE` ..) |
-| 1248-1759 | chord one-shots (`SEQ_CHORD_TAG_BASE` .. `SEQ_CHORD_TAG_MAX`) |
-| 1760-1887 | chord preview one-shots (`SEQ_CHORD_PREVIEW_TAG_BASE` ..) |
+| 0-1279 | step ON/OFF events, all 4 layers |
+| 1280-1319 | one-shot preview events (one per layer per track) |
+| 1320-1383 | arpeggiator (`SEQ_ARP_TAG_BASE` .. `SEQ_ARP_TAG_MAX`) |
+| 1384-1543 | ratchet one-shots for decorated steps (`SEQ_RATCHET_TAG_BASE` ..) |
+| 1544-2183 | chord one-shots (`SEQ_CHORD_TAG_BASE` .. `SEQ_CHORD_TAG_MAX`) |
+| 2184-2343 | chord preview one-shots (`SEQ_CHORD_PREVIEW_TAG_BASE` ..) |
+| 2344-2347 | bounce clip start tags (`SEQ_CLIP_TAG_BASE` .. `SEQ_CLIP_TAG_MAX`) |
 
 The chord ranges scale with `SEQ_CHORD_MAX_NOTES` (5), so `main.c` does not
 hardcode the ceiling: it sets `amy_cfg.max_sequencer_tags =
-SEQ_CHORD_PREVIEW_TAG_MAX + 2` (= 1889 as shipped), clearing the highest used
+SEQ_CLIP_TAG_MAX + 2` (= 2349 as shipped), clearing the highest used
 tag with the margin the layout comment requires (AMY's `sequencer_add_wire()`
 rejects `tag >= max_sequences` - see ARP-ARCHITECTURE.md). Widening a chord
 moves the top tag; deriving it is what keeps the two in step.
@@ -269,17 +272,19 @@ an open-ended arena on top.
 | Arp | **1** | `CONFIG_SEQ_ARP_DEFAULT_PATCH` | 4 |
 | Drone | **2 / 3** (carrier / sub) | build-your-own or AMY preset | 5 / 1 |
 | Drone (free-running mode) | **4 / 5** (carrier / sub) | build-your-own or AMY preset | chord size / 1 |
-| Drum layer (layer 0) | **6-9** (one per track) | per-track from the curated drum list (defaults 58/245/221/220) or per-track PCM presets in PCM mode | 1 |
-| Live play | **10** | live-play patch | 4 |
-| Melodic layers | **11..`SEQ_MAX_SYNTH`**, contiguous blocks of 4 from base 11 | `CONFIG_SEQ_MELODIC_PATCH`, shared across the layer's rows | 1 per row |
+| Drum layer (layer 0) | **6-10** (one per track) | per-track from the curated drum list (defaults 58/245/221/220) or per-track PCM presets in PCM mode | 1 |
+| Live play | **11** | live-play patch | 4 |
+| Clip players | **12-13** (`CLIP_SYNTH_BASE`) | bounce clips (runtime PCM) | 1 |
+| Melodic layers | **14..`SEQ_MAX_SYNTH`**, contiguous blocks of 5 from base 14 | `CONFIG_SEQ_MELODIC_PATCH`, shared across the layer's rows | 1 per row |
 
-`main.c` derives `amy_cfg.max_synths` from `SYNTH_SLOT_COUNT` (63). The
+`main.c` derives `amy_cfg.max_synths` from `SYNTH_SLOT_COUNT` (66). The
 melodic ceiling is `SYNTH_SLOT_COUNT - 1`: nothing static sits above the
 melodic range, so growing melodic capacity is a single-constant change (the
 real limit is AMY's 250-osc pool).
 
-The drum layer is a **per-track patch layer**: each of its 4 tracks owns a
-dedicated synth slot in the fixed block 6-9 and loads its own patch. In
+The drum layer is a **per-track patch layer**: each of its 4 or 5 tracks owns a
+dedicated synth slot in the fixed block 6-10 and loads its own patch (row 5 is
+the AUX row). In
 **Synth** mode that patch comes from a curated DX7/Juno drum list
 (`seq_core_synth.c`); in **PCM** mode each track plays an AMY PCM preset
 (808-style kick/snare/hat/clap by default). Note-offs are honored (flags = 0)
@@ -445,16 +450,16 @@ touched outside the queued event API.
 app_main
   ├── i2c_u8g2_init()
   ├── amy_start()              ← multicore=0, multithread=0, AMY_AUDIO_IS_NONE,
-  │                              max_synths=SYNTH_SLOT_COUNT (63),
-  │                              max_sequencer_tags=SEQ_CHORD_PREVIEW_TAG_MAX+2 (1889)
+  │                              max_synths=SYNTH_SLOT_COUNT (66),
+  │                              max_sequencer_tags=SEQ_CLIP_TAG_MAX+2 (2349)
   ├── usb_audio_init()
   ├── synth_ui_init(u8g2)
   │     ├── amy_helpers_init()          (shared event scratch + mutex)
   │     ├── sequencer_core_init()
   │     ├── arp_core_init() / drone_core_init() / sample_rec_init()
-  │     ├── add drum layer        → synth slots 6..9, seeded groove
+  │     ├── add drum layer        → synth slots 6..10, seeded groove
   │     ├── sequencer_core_set_playing(true)
-  │     ├── add melodic layer     → synth slots 11..14
+  │     ├── add melodic layer     → synth slots 14..18
   │     └── xTaskCreate(seq_ui task)
   ├── xTaskCreatePinnedToCore(amy_usb_render_task, core 1)
   ├── button queue + button_handler_task
@@ -482,9 +487,9 @@ sequenceDiagram
     app_main->>USB: usb_audio_init()
     app_main->>UI: synth_ui_init()
     UI->>Core: sequencer_core_init() + arp/drone/sampler init
-    UI->>Core: add drum layer (slots 6..9, seeded groove)
+    UI->>Core: add drum layer (slots 6..10, seeded groove)
     UI->>Core: sequencer_core_set_playing(true)
-    UI->>Core: add melodic layer (slots 11..14)
+    UI->>Core: add melodic layer (slots 14..18)
     UI->>SeqTask: create seq_ui task
     app_main->>Render: xTaskCreatePinnedToCore(amy_usb_render_task, core 1)
     app_main->>Btn: button queue + button_handler_task + my_buttons_init()
@@ -501,8 +506,8 @@ Increase `MAX_LAYERS` in `seq_model.h`. The tag formula scales automatically
 (raise `amy_cfg.max_sequencer_tags` to keep the arp and ratchet windows above
 the step window). Memory impact per layer is dominated by the per-step
 decoration arrays; the OLED shows one layer at a time, so display code is
-unaffected. Melodic slot pressure: each layer consumes a block of 4 slots
-between 11 and 62, so the practical ceiling is ~12 melodic layers before the
+unaffected. Melodic slot pressure: each layer consumes a block of 5 slots
+between 14 and 65, so the practical ceiling is ~10 melodic layers before the
 slot map, not memory, is the limit.
 
 ### Whole-layer mute / play-stop per layer

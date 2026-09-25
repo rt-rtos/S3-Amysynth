@@ -46,7 +46,7 @@ typedef enum {
  * at the level its sources had. */
 #define FX_BUS_CLIPS_MAKEUP 10.0f
 
-/* Slot -> group: 2..5 DRONES, 6..9 DRUMS, the CLIP_SYNTH_BASE block CLIPS,
+/* Slot -> group: 2..5 DRONES, 6..10 DRUMS, the CLIP_SYNTH_BASE block CLIPS,
  * everything else (sentinel, arp, live play, melodic arena) MELODIC. */
 fx_group_t fx_group_of_slot(uint8_t slot);
 /* The bus a group owns while split: MELODIC 0, DRUMS 1, DRONES 2, CLIPS 3. */

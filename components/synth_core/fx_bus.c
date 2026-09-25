@@ -15,6 +15,7 @@ static bool s_split[FX_GROUP_COUNT];
 static bool s_clips_loaded;
 
 _Static_assert(CLIP_SLOT_COUNT <= 8, "fx_group_slots() writes at most 8 entries");
+_Static_assert(SEQ_TRACKS <= 8, "fx_group_slots() writes at most 8 entries");
 
 fx_group_t fx_group_of_slot(uint8_t slot)
 {
@@ -22,7 +23,7 @@ fx_group_t fx_group_of_slot(uint8_t slot)
         return FX_GROUP_CLIPS;
     if (slot >= DRONE_SYNTH_MAIN && slot <= DRONE_STD_SYNTH_SUB)
         return FX_GROUP_DRONES;
-    if (slot >= SEQ_DRUM_SYNTH_BASE && slot < SEQ_DRUM_SYNTH_BASE + 4)
+    if (slot >= SEQ_DRUM_SYNTH_BASE && slot < SEQ_DRUM_SYNTH_BASE + SEQ_TRACKS)
         return FX_GROUP_DRUMS;
     return FX_GROUP_MELODIC;
 }
@@ -104,9 +105,9 @@ uint8_t fx_group_slots(fx_group_t g, uint8_t out[8])
 {
     switch (g) {
         case FX_GROUP_DRUMS:
-            for (uint8_t i = 0; i < 4; i++)
+            for (uint8_t i = 0; i < SEQ_TRACKS; i++)
                 out[i] = (uint8_t)(SEQ_DRUM_SYNTH_BASE + i);
-            return 4;
+            return SEQ_TRACKS;
         case FX_GROUP_CLIPS:
             for (uint8_t i = 0; i < CLIP_SLOT_COUNT; i++)
                 out[i] = (uint8_t)(CLIP_SYNTH_BASE + i);

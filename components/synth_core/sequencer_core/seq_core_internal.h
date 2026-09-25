@@ -78,6 +78,14 @@ static inline uint16_t seq_step_gate(const seq_layer_t *layer, uint8_t step)
     return gate;
 }
 
+/* Row whose entry a per-row default table (sized SEQ_TRACKS_DEFAULT) supplies
+ * for `track`: its own, or the last one for the rows above the default
+ * count. */
+static inline uint8_t seq_default_row(uint8_t track)
+{
+    return (track < SEQ_TRACKS_DEFAULT) ? track : (uint8_t)(SEQ_TRACKS_DEFAULT - 1);
+}
+
 /* ── Private types ───────────────────────────────────────────────────── */
 
 /* Global chord progression (internal representation) */
@@ -180,6 +188,9 @@ void     sequencer_emit_step(uint8_t layer_idx, uint8_t track, uint8_t step);
 void     sequencer_emit_clear_tag(uint32_t tag);
 void     sequencer_resync_layer(uint8_t layer_idx);
 void     sequencer_clear_layer_tags(uint8_t layer_idx);
+/* Cancel one track's plain step pairs and its preview pairs (plain and chord
+ * tones). The trig engine's one-shots: sequencer_core_trig_clear_track(). */
+void     sequencer_clear_track_tags(uint8_t layer_idx, uint8_t track);
 void     sequencer_refresh_melodic_layers(bool preview);
 uint32_t sequencer_bars_elapsed(void);
 /* Bars elapsed as they will read ahead_ticks from now. */
@@ -197,7 +208,15 @@ int     sequencer_chord_transpose(const seq_layer_t *layer);
 
 /* From seq_core_synth.c */
 void      sequencer_configure_synth(uint8_t layer_idx);
+/* sequencer_configure_synth for the first `rows` rows instead of num_tracks:
+ * builds a row before num_tracks exposes it to the tick. */
+void      sequencer_configure_synth_rows(uint8_t layer_idx, uint8_t rows);
+/* Drum row `dst` takes row `src`'s PCM preset and mode (core-side store). */
+void      seq_drum_copy_row_sound(uint8_t layer_idx, uint8_t dst, uint8_t src);
 void      sequencer_kill_synth_voices(uint8_t synth_id);
+/* Free a synth slot's voices and oscs in AMY (num_voices = 0); the slot is
+ * rebuilt by the next configure that covers it. */
+void      sequencer_release_synth(uint8_t synth_id);
 /* Chord-aware per-track voice count: layer->num_voices, widened to the chord
  * tone count while the track's base note is a chord sentinel. Every melodic
  * patch-apply site must consult it so the widened count survives reloads. */
@@ -241,7 +260,7 @@ void sequencer_configure_melodic_envelope_track(uint8_t layer_idx, uint8_t track
 void sequencer_configure_melodic_envelope1_track(uint8_t layer_idx, uint8_t track);
 void sequencer_configure_melodic_filter_track(uint8_t layer_idx, uint8_t track);
 void sequencer_configure_melodic_dist_track(uint8_t layer_idx, uint8_t track);
-void sequencer_configure_melodic_lfo(uint8_t layer_idx);
+void sequencer_configure_melodic_lfo(uint8_t layer_idx, uint8_t rows);
 void melodic_lfo_refresh_native_freq(void);
 
 /* From seq_core_tempo.c */
@@ -290,6 +309,8 @@ void sequencer_core_trig_reset_all(void);            /* called on layer add/dele
  * resolved note moves away from a chord, so no scheduled extra tone survives
  * the transition. */
 void sequencer_core_trig_clear_track_chord(uint8_t layer_idx, uint8_t track);
+/* Clear one track's pending ratchet and chord-tone one-shot tags. */
+void sequencer_core_trig_clear_track(uint8_t layer_idx, uint8_t track);
 /* One-shot schedule step_ratchet sub-hits for a decorated fire: velocity,
  * pitch/chord/transform resolve, tag emission via amy_helpers_note_send().
  * grid_tick is the step's absolute grid boundary; sub-hit k lands at

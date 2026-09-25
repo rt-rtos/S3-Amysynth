@@ -37,10 +37,21 @@ bool sequencer_core_import_layer(uint8_t layer_idx, const seq_layer_t *src)
     seq_layer_t *dst = &s_layers[layer_idx];
     if (dst->type != src->type) return false;   /* topology fixed by caller */
 
+    /* Adopt the source's row count. Rows the copy drops stop scheduling and
+     * sounding and release their synths first, as a shrink does. */
+    uint8_t num_tracks = src->num_tracks;
+    if (num_tracks < SEQ_TRACKS_DEFAULT) num_tracks = SEQ_TRACKS_DEFAULT;
+    if (num_tracks > SEQ_TRACKS)         num_tracks = SEQ_TRACKS;
+    for (uint8_t t = num_tracks; t < dst->num_tracks; t++) {
+        sequencer_clear_track_tags(layer_idx, t);
+        sequencer_core_trig_clear_track(layer_idx, t);
+        sequencer_kill_synth_voices(dst->synth_id[t]);
+        sequencer_release_synth(dst->synth_id[t]);
+    }
+
     /* Preserve runtime-owned fields. */
     uint8_t synth_id[SEQ_TRACKS];
     memcpy(synth_id, dst->synth_id, sizeof synth_id);
-    uint8_t num_tracks = dst->num_tracks;
 
     *dst = *src;
     memcpy(dst->synth_id, synth_id, sizeof synth_id);
@@ -70,7 +81,8 @@ bool sequencer_core_import_layer(uint8_t layer_idx, const seq_layer_t *src)
     if (dst->type == SEQ_LAYER_DRUM) {
         /* Restore each track's PCM mode then preset: mode first so the
          * preset's live-reload (when PCM is active) applies both in one
-         * pass; otherwise both just store for the next engine toggle. */
+         * pass; otherwise both just store for the next engine toggle. Rows
+         * above num_tracks are stored only. */
         for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
             sequencer_core_set_drum_pcm_mode(layer_idx, t, dst->track_pcm_mode[t]);
             sequencer_core_set_drum_pcm_preset(layer_idx, t, dst->track_pcm_preset[t]);

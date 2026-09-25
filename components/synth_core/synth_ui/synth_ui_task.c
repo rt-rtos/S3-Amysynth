@@ -52,6 +52,13 @@ static volatile uint8_t s_layer_delete_idx     = 0;
  * esp_timer task's 3584-byte stack, so it defers here like delete. */
 static volatile bool    s_layer_add_pending    = false;
 
+/* Deferred row-count change (DEV "Rows"), consumed by synth_ui_task each
+ * frame: a row-count change is a structural s_layers edit, so it runs on the
+ * applier, not the encoder task the DEV menu's input arrives on. */
+static volatile bool    s_layer_rows_pending   = false;
+static volatile uint8_t s_layer_rows_idx       = 0;
+static volatile uint8_t s_layer_rows_count     = 0;
+
 static void synth_ui_task(void *pvParameters)
 {
     (void)pvParameters;
@@ -76,7 +83,14 @@ static void synth_ui_task(void *pvParameters)
         /* Normal drone: drain its coalesced rebuild (no tick machinery). */
         drone_std_core_service();
         sequencer_core_lfo_service();
-        sequencer_core_progression_service();
+        {
+            /* A Prog Gen row request drained here grows layers in the core;
+             * mirror them back. */
+            uint8_t grown = sequencer_core_progression_service();
+            for (uint8_t li = 0; grown && li < seq_state.num_layers; li++) {
+                if (grown & (1u << li)) synth_ui_reexport_layer(li);
+            }
+        }
         clip_bounce_service();
         clip_player_service();
         drum_cache_service();
@@ -126,6 +140,15 @@ static void synth_ui_task(void *pvParameters)
             /* Re-check the cap; num_layers may have moved since the request. */
             if (seq_state.num_layers < MAX_LAYERS) {
                 synth_ui_add_layer(SEQ_LAYER_MELODIC, SEQ_STEPS);
+            }
+        }
+
+        if (s_layer_rows_pending) {
+            s_layer_rows_pending = false;
+            uint8_t li = s_layer_rows_idx;
+            if (li < seq_state.num_layers &&
+                sequencer_core_set_layer_tracks(li, s_layer_rows_count)) {
+                synth_ui_reexport_layer(li);
             }
         }
 
@@ -378,20 +401,21 @@ uint8_t synth_ui_add_layer(seq_layer_type_t type, uint8_t num_steps)
     memset(layer, 0, sizeof(seq_layer_t));
     layer->type       = type;
     layer->num_steps  = (num_steps == SEQ_MAX_STEPS) ? SEQ_MAX_STEPS : SEQ_STEPS;
-    layer->num_tracks = SEQ_TRACKS;
+    layer->num_tracks = sequencer_core_get_layer_tracks(li);
 
     if (type == SEQ_LAYER_MELODIC) {
         layer->patch       = sequencer_core_get_layer_patch(li);
         layer->patch_scope = sequencer_core_get_patch_scope(li);
-        /* Default: Cmaj7 voicing — C4 E4 G4 B4 */
-        static const uint8_t mel_notes[SEQ_TRACKS] = {60, 64, 67, 71};
+        /* Default voicing from the core, the single source of the seeded
+         * base notes (Cmaj7 C4 E4 G4 B4, D5 on a fifth row). */
         for (int t = 0; t < SEQ_TRACKS; t++) {
-            layer->track_base_note[t] = mel_notes[t];
+            uint8_t note = sequencer_core_get_track_source_note(li, t);
+            layer->track_base_note[t] = note;
             /* track_patch[] is the per-row store in both scopes; mirror it so
              * the header and the patch overlay read the row the cursor is on. */
             layer->track_patch[t] = sequencer_core_get_melodic_track_patch(li, t);
             for (int s = 0; s < SEQ_MAX_STEPS; s++) {
-                layer->step_note[t][s] = mel_notes[t];
+                layer->step_note[t][s] = note;
             }
         }
     } else {
@@ -413,6 +437,29 @@ uint8_t synth_ui_add_layer(seq_layer_type_t type, uint8_t num_steps)
     ESP_LOGI(TAG_TASK, "UI layer L%d added (type=%d steps=%d)",
              li + 1, type, layer->num_steps);
     return li;
+}
+
+/* Refresh one layer of the UI mirror from the core after the core changed its
+ * shape (row count), and keep the cursors on a row that exists. */
+void synth_ui_reexport_layer(uint8_t li)
+{
+    if (li >= seq_state.num_layers) return;
+    sequencer_core_export_layer(li, &seq_state.layers[li]);
+    uint8_t n = seq_state.layers[li].num_tracks;
+    if (li == seq_state.active_layer_idx && seq_state.selected_track >= n) {
+        seq_state.selected_track = (uint8_t)(n - 1);
+    }
+    s_force_redraw = true;
+}
+
+/* Request a row-count change for layer li; synth_ui_task applies it next
+ * frame and re-exports the layer. Safe from any Core-0 context. */
+void synth_ui_request_layer_tracks(uint8_t li, uint8_t num_tracks)
+{
+    if (li >= seq_state.num_layers) return;
+    s_layer_rows_idx     = li;
+    s_layer_rows_count   = num_tracks;
+    s_layer_rows_pending = true;
 }
 
 /* Request a melodic layer add. synth_ui_task drains the flag next frame so the
@@ -462,20 +509,21 @@ void synth_ui_handle_encoder(long delta)
     if (delta == 0) return;
 
     if (seq_state.edit_mode) {
-        uint8_t li        = seq_state.active_layer_idx;
-        uint8_t num_steps = seq_state.layers[li].num_steps;
-        int new_step      = (int)seq_state.selected_step + (int)delta;
+        uint8_t li         = seq_state.active_layer_idx;
+        uint8_t num_steps  = seq_state.layers[li].num_steps;
+        uint8_t num_tracks = seq_state.layers[li].num_tracks;
+        int new_step       = (int)seq_state.selected_step + (int)delta;
 
         if (new_step < 0) {
             /* Off the start: last step of the previous track. */
             new_step = (int)num_steps - 1;
             seq_state.selected_track =
-                (uint8_t)((seq_state.selected_track + SEQ_TRACKS - 1) % SEQ_TRACKS);
+                (uint8_t)((seq_state.selected_track + num_tracks - 1) % num_tracks);
         } else if (new_step >= (int)num_steps) {
             /* Off the end: first step of the next track. */
             new_step = 0;
             seq_state.selected_track =
-                (uint8_t)((seq_state.selected_track + 1) % SEQ_TRACKS);
+                (uint8_t)((seq_state.selected_track + 1) % num_tracks);
         }
         seq_state.selected_step = (uint8_t)new_step;
     }
@@ -489,7 +537,7 @@ bool synth_ui_set_layer_steps(uint8_t li, uint8_t num_steps)
     if (!sequencer_core_set_layer_steps(li, num_steps)) return false;
     /* Mirror what the core did to its own copy. */
     if (num_steps == SEQ_MAX_STEPS) {
-        for (uint8_t t = 0; t < SEQ_TRACKS; t++) seq_layer_copy_first_half(layer, t);
+        for (uint8_t t = 0; t < layer->num_tracks; t++) seq_layer_copy_first_half(layer, t);
     }
     layer->num_steps = num_steps;
     if (seq_state.selected_step >= num_steps) seq_state.selected_step = (uint8_t)(num_steps - 1);

@@ -46,6 +46,14 @@ static menu_item_view_t s_lm_items[LM_COUNT];
 /* The track Repeat/Mute/Solo edit; page state, not engine state. */
 static uint8_t s_lm_track = 0;
 
+/* Rows the active layer has; the Track row wraps inside them. */
+static uint8_t layermenu_num_tracks(void)
+{
+    uint8_t li = seq_state.active_layer_idx;
+    if (li >= seq_state.num_layers) return SEQ_TRACKS_DEFAULT;
+    return seq_state.layers[li].num_tracks;
+}
+
 /* Active layer index if it is melodic, else 0xFF (nothing to edit). */
 static uint8_t layermenu_active_melodic_layer(void)
 {
@@ -79,7 +87,7 @@ static uint8_t lm_row_at(uint8_t idx)
 void layermenu_menu_reset(void)
 {
     s_lm_track = seq_state.selected_track;
-    if (s_lm_track >= SEQ_TRACKS) s_lm_track = 0;
+    if (s_lm_track >= layermenu_num_tracks()) s_lm_track = 0;
 }
 
 /* Pull the shared menu cursor back into the visible list after ClrSolo has
@@ -334,8 +342,9 @@ void layermenu_menu_edit_value(uint8_t idx, int delta)
         break;
     }
     case LM_TRACK: {
+        int n  = (int)layermenu_num_tracks();
         int nt = (int)s_lm_track + dir;
-        if (nt < 0) nt += SEQ_TRACKS; else if (nt >= SEQ_TRACKS) nt -= SEQ_TRACKS;
+        if (nt < 0) nt += n; else if (nt >= n) nt -= n;
         s_lm_track = (uint8_t)nt;
         break;
     }

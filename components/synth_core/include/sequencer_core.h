@@ -562,6 +562,19 @@ uint8_t          sequencer_core_add_layer(seq_layer_type_t type, uint8_t num_ste
  * oscillator slots, compacts the array and resyncs survivors if playing.
  * Applier-task only (see above). */
 bool             sequencer_core_delete_layer(uint8_t layer_idx);
+/* Set a layer's live row count, SEQ_TRACKS_DEFAULT..SEQ_TRACKS, melodic or
+ * drum. Growing seeds each new row (melodic: the top row's voice block and,
+ * in TRACK scope, its patch, the next default base note and a copy of the top
+ * row's grid and step decoration; drum: the top row's sound over an empty
+ * grid), rebuilds the whole layer (sounding notes on it stop) and raises
+ * num_tracks only once the new rows' synths exist. Shrinking cancels the
+ * dropped rows' scheduled tags, kills their voices and releases their synths;
+ * their stored data stays. True on success or no change, false
+ * for an out-of-range layer or count. The UI mirror is the caller's to
+ * re-export. Applier-task only (see above). */
+bool             sequencer_core_set_layer_tracks(uint8_t layer_idx, uint8_t num_tracks);
+/* Live row count of a layer; SEQ_TRACKS_DEFAULT out of range. */
+uint8_t          sequencer_core_get_layer_tracks(uint8_t layer_idx);
 uint8_t          sequencer_core_get_num_layers(void);
 seq_layer_type_t sequencer_core_get_layer_type(uint8_t layer_idx);
 
@@ -574,9 +587,9 @@ seq_layer_type_t sequencer_core_get_layer_type(uint8_t layer_idx);
 bool sequencer_core_export_layer(uint8_t layer_idx, seq_layer_t *out);
 
 /* Overwrite the layer's persistable fields from *src, re-push
- * patches/envelopes/filters/LFO, and resync scheduled steps. Runtime-owned
- * fields (synth_id, num_tracks) keep their live values.
- * Applier-task only. */
+ * patches/envelopes/filters/LFO, and resync scheduled steps. synth_id keeps
+ * its live values; num_tracks is taken from *src, clamped to
+ * SEQ_TRACKS_DEFAULT..SEQ_TRACKS. Applier-task only. */
 bool sequencer_core_import_layer(uint8_t layer_idx, const seq_layer_t *src);
 
 /* ── Per-layer step / note control ── */
@@ -866,7 +879,13 @@ uint8_t sequencer_core_progression_get_max(void);
 uint8_t sequencer_core_progression_bars_in_current(void);
 bool    sequencer_core_progression_add_entry(void);
 void    sequencer_core_progression_delete_entry(uint8_t idx);
-void    sequencer_core_progression_service(void);
+/* Ask for every melodic layer to hold at least `rows` rows (clamped to
+ * SEQ_TRACKS; layers never shrink). A byte store, any task; consumed by the
+ * next progression_service() drain before the chord apply. */
+void    sequencer_core_progression_request_rows(uint8_t rows);
+/* Returns a bitmask of the layers whose row count the drain changed (bit i =
+ * layer i), for the caller to re-export into its UI mirror. */
+uint8_t sequencer_core_progression_service(void);
 
 /* The generator's parameters, stored beside the progression they generated so
  * a project carries both. Plain struct copies; a NULL argument is ignored.

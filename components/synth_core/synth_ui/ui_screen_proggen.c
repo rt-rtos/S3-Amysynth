@@ -1,6 +1,7 @@
 #include "synth_ui/synth_ui_internal.h"
 #include "sequencer_core.h"
 #include "prog_gen.h"
+#include "quantizer.h"   /* quantizer_chord_intervals() - chord tone counts */
 #include <stdio.h>
 
 /* ════════════════════════════════════════════════════════════════════════
@@ -86,6 +87,16 @@ static const char *ext_word(uint8_t ext)
     }
 }
 
+/* Tones in a chord type: its interval row up to the -1 terminator. */
+static uint8_t chord_tone_count(chord_type_t ct)
+{
+    const int8_t *row = quantizer_chord_intervals(ct);
+    uint8_t n = 0;
+    if (row == NULL) return 0;
+    while (n < 6 && row[n] >= 0) n++;
+    return n;
+}
+
 static void proggen_generate(void)
 {
     prog_gen_params_t p;
@@ -111,6 +122,15 @@ static void proggen_generate(void)
 
     prog_gen_entry_t out[PROG_GEN_MAX_ENTRIES];
     uint8_t n = prog_gen_generate(&p, root, scale, out);
+    /* Melodic layers grow to the widest chord's tone count, so an extension
+     * has a row to snap to; applied by the progression drain before the
+     * chord apply. */
+    uint8_t rows = 0;
+    for (uint8_t i = 0; i < n; i++) {
+        uint8_t c = chord_tone_count(out[i].chord_type);
+        if (c > rows) rows = c;
+    }
+    sequencer_core_progression_request_rows(rows);
     /* Ascending order: the setter appends only at idx == count. */
     for (uint8_t i = 0; i < n; i++) {
         sequencer_core_progression_set_entry(i, out[i].root, out[i].chord_type,

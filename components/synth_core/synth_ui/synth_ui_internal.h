@@ -52,6 +52,16 @@ void     sync_layer_to_core(uint8_t li);
  * Applier-task only (synth_ui_task). */
 void     synth_ui_reload_mirror_from_core(void);
 
+/* Re-export one layer into the UI mirror after the core changed its row count,
+ * clamping the sequencer cursor onto a row that exists. Applier-task only
+ * (synth_ui_task). */
+void     synth_ui_reexport_layer(uint8_t li);
+
+/* Queue a row-count change for layer li (sequencer_core_set_layer_tracks),
+ * applied and re-exported by synth_ui_task on its next frame. Any Core-0
+ * context. */
+void     synth_ui_request_layer_tracks(uint8_t li, uint8_t num_tracks);
+
 /* ─── View signatures (each defined in its screen/editor file) ──────────
  * CONTRACT: signature functions are side-effect-free. The redraw gate calls one
  * per frame and compares its hash against the previous frame's; any state

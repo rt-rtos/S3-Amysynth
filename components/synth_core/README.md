@@ -42,8 +42,8 @@ precedence resolver (`ui_view_resolve.c`), patch cycling
 ## Highlights
 
 - **Per-row synths everywhere.** Every track of every layer (drum and
-  melodic) owns its own AMY synth slot: drums 6-9, melodic layers in blocks
-  of 4 from slot 11 (cap 62), arp 63, drone 64/65. AMY routes note-on by
+  melodic) owns its own AMY synth slot: drums 6-10, melodic layers in blocks
+  of 5 from `SEQ_MEL_SYNTH_BASE` (map in `synth_slots.h`). AMY routes note-on by
   `(synth, pitch)`, so shared slots would collapse same-pitch notes into one
   voice.
 - **Non-blocking UI.** A dedicated FreeRTOS task (`seq_ui`, 20 Hz) services
@@ -186,8 +186,8 @@ exact same struct. Change them only if you want a different starting shape.
 Each row synth uses `SEQ_MEL_VOICES` voices (default **1** - a row only
 sounds one pitch at a time). Bump to 2 for note-off/note-on overlap headroom
 at the step boundary, at 2× oscillator cost. AMY's osc budget is **250**
-(the AMY default); worst case (4 layers × 4 rows × 1 voice × ~6
-oscs/DX7-voice) ≈ 96 oscs plus the drum, arp and drone slots - comfortably
+(the AMY default); worst case (4 layers × 5 rows × 1 voice × ~6
+oscs/DX7-voice) ≈ 120 oscs plus the drum, arp and drone slots - comfortably
 under budget.
 
 ## Scale Table

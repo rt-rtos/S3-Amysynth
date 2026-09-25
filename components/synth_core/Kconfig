@@ -159,8 +159,9 @@ config SEQ_KS_RINGS
 		AMY's ks_oscs: how many KS voices can sound at once before a note-on
 		steals the quietest ring (a stolen ring is then shared, and voices
 		sharing a ring damp and re-excite each other). All rings are
-		allocated at boot and held. 0 sizes it as SEQ_KS_LAYERS x 4 rows x
-		SEQ_KS_VOICES_MAX, plus the arp's and live play's 4 voices each when
+		allocated at boot and held. 0 sizes it as SEQ_KS_LAYERS x 5 rows (the
+		row maximum) x SEQ_KS_VOICES_MAX, plus the arp's and live play's 4
+		voices each when
 		the rings are in PSRAM. Each ring is one period of 55 Hz, ~3.5 KB at
 		48 kHz.
 

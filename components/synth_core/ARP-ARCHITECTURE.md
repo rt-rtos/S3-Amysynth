@@ -76,7 +76,7 @@ flowchart TD
     PICK --> SNAP["chromatic = pick + octave*12\narp_snap() clamps to melodic range"]
     SNAP --> EMIT["sequencer_core_arp_emit_note\ntick_on = 1 + i*rate_ticks"]
     GATE --> EMIT
-    EMIT --> TAGWIN["arp tag window\nSEQ_ARP_TAG_BASE 1056 .. SEQ_ARP_TAG_MAX 1119"]
+    EMIT --> TAGWIN["arp tag window\nSEQ_ARP_TAG_BASE 1320 .. SEQ_ARP_TAG_MAX 1383"]
     TAGWIN --> SYNTH["AMY synth slot SEQ_ARP_SYNTH\n(sequencer_core_arp_synth)"]
 ```
 
@@ -150,24 +150,24 @@ The arp's tags sit **immediately above** the sequencer's tag space so the two
 never collide. Defined in `sequencer_core/seq_core_config.h`:
 
 ```
-sequencer step on/off : 0 .. MAX_LAYERS*SEQ_TRACKS*SEQ_MAX_STEPS*2 - 1   (0..1023)
-sequencer previews    : 1024 .. 1024 + MAX_LAYERS*SEQ_TRACKS*2 - 1       (..1055)
+sequencer step on/off : 0 .. MAX_LAYERS*SEQ_TRACKS*SEQ_MAX_STEPS*2 - 1   (0..1279)
+sequencer previews    : 1280 .. 1280 + MAX_LAYERS*SEQ_TRACKS*2 - 1       (..1319)
 ─────────────────────────────────────────────────────────────────────────────────
-SEQ_ARP_TAG_BASE  = 1056
+SEQ_ARP_TAG_BASE  = 1320
 SEQ_ARP_TAG_COUNT = ARP_MAX_SLOTS * ARP_OCT_MAX * 2 = 64
-SEQ_ARP_TAG_MAX   = 1056 + 64 - 1 = 1119
+SEQ_ARP_TAG_MAX   = 1320 + 64 - 1 = 1383
 ─────────────────────────────────────────────────────────────────────────────────
-ratchet one-shots     : 1120 .. 1247  (decorated sequencer steps)
+ratchet one-shots     : 1384 .. 1543  (decorated sequencer steps)
 ```
 
 Each arp step `i` uses tag `SEQ_ARP_TAG_BASE + i*2` (note-on) and `+1`
-(note-off). With `ARP_MAX_STEPS = 32`, that's tags 1056..1119.
+(note-off). With `ARP_MAX_STEPS = 32`, that's tags 1320..1383.
 
 > **AMY tag bound.** AMY's `sequencer_add_wire()` (v1.2.121+) rejects
 > `tag >= max_sequences`, fixing the historical off-by-one where a write at
 > index `max_sequences` overran `sequences[]`. To stay clear, `main.c` sets
-> `amy_cfg.max_sequencer_tags = 1730` (above the highest window - the chord
-> preview one-shots - at 1727).
+> `amy_cfg.max_sequencer_tags = SEQ_CLIP_TAG_MAX + 2` (2349, above the
+> highest window - the clip start tags - at 2347).
 > `sequencer_core_arp_emit_note()` also defensively drops any tag
 > `> SEQ_ARP_TAG_MAX`. Keep `max_sequencer_tags`, `SEQ_ARP_TAG_BASE/COUNT`,
 > the ratchet window, and the sequencer tag formula in sync.
@@ -176,7 +176,7 @@ The arp's slice of the global AMY tag ID space:
 
 ```mermaid
 flowchart LR
-    A["Sequencer steps\n0 .. 1023"] --> B["Sequencer previews\n1024 .. 1055"] --> C["Arp tags\n1056 .. 1119"] --> D["Ratchet one-shots\n1120 .. 1247"]
+    A["Sequencer steps\n0 .. 1279"] --> B["Sequencer previews\n1280 .. 1319"] --> C["Arp tags\n1320 .. 1383"] --> D["Ratchet one-shots\n1384 .. 1543"]
 ```
 
 ### Rate → ticks
@@ -239,14 +239,14 @@ rebuild because patch changes reset AMY's internal glide state.
 | **Arp** | **1** | `CONFIG_SEQ_ARP_DEFAULT_PATCH` (138) | 4 |
 | Drone | 2 / 3 | build-your-own / preset | 5 / 1 |
 | Drone (free-running) | 4 / 5 | build-your-own / preset | chord / 1 |
-| Drum layer | 6-9 (one per track) | curated drum list / PCM presets | 1 |
-| Clip players | 11-12 (`CLIP_SYNTH_BASE`) | bounce clips (runtime PCM) | 1 |
-| Melodic layers | `SEQ_MEL_SYNTH_BASE`..`SEQ_MAX_SYNTH` (blocks of 4) | `CONFIG_SEQ_MELODIC_PATCH` | 1/row |
+| Drum layer | 6-10 (one per track) | curated drum list / PCM presets | 1 |
+| Clip players | 12-13 (`CLIP_SYNTH_BASE`) | bounce clips (runtime PCM) | 1 |
+| Melodic layers | `SEQ_MEL_SYNTH_BASE`..`SEQ_MAX_SYNTH` (blocks of 5) | `CONFIG_SEQ_MELODIC_PATCH` | 1/row |
 
 The arp owns slot **1** in the static pool at the bottom of the slot map
 (`synth_slots.h`), below the clip slots and the melodic base, so it never
 collides with a melodic layer's per-row block. `main.c` derives
-`amy_cfg.max_synths` from `SYNTH_SLOT_COUNT` (65). The arp
+`amy_cfg.max_synths` from `SYNTH_SLOT_COUNT` (66). The arp
 synth uses 4 voices to allow note overlap at fast rates.
 
 ---
@@ -278,7 +278,7 @@ so a boot-enabled arp emits on its first service tick.
 > Companion behavior in `components/amy/src/sequencer.c` (upstream since AMY
 > v1.2.121, superseding an earlier local active-tag index): the per-tick scan
 > walks a threaded ascending list of occupied slots instead of `0..highest_tag`,
-> so the arp pinning a high tag no longer makes every tick scan ~1120
+> so the arp pinning a high tag no longer makes every tick scan ~1383
 > mostly-empty slots. The tick itself runs once per rendered block on the
 > core-1 render task.
 
@@ -323,7 +323,7 @@ void     arp_set_portamento_ms(uint16_t ms); // 0..ARP_PORTAMENTO_MAX_MS (2000)
 ```c
 uint8_t  sequencer_core_arp_synth(void);   // 1 (SEQ_ARP_SYNTH)
 uint8_t  sequencer_core_arp_voices(void);  // 4
-uint32_t sequencer_core_arp_tag_base(void);// 1056
+uint32_t sequencer_core_arp_tag_base(void);// 1320
 uint8_t  sequencer_core_clamp_melodic_note(int32_t);
 
 void sequencer_core_arp_configure(uint16_t patch_number, uint8_t num_voices);

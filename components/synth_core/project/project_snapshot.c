@@ -47,8 +47,12 @@ static const char *TAG = "project_snapshot";
 
 #define PROJECT_SER_BUF_CAP (64 * 1024)
 
-_Static_assert(SEQ_TRACKS == 4 && SEQ_MAX_STEPS == 32,
-               "LAYR v1 format assumes 4x32; bump section version");
+/* LAYR section version: the writer's tag and the loader's only accepted
+ * value. */
+#define LAYR_VERSION 19
+
+_Static_assert(SEQ_TRACKS == 5 && SEQ_MAX_STEPS == 32,
+               "LAYR format assumes 5x32; bump LAYR_VERSION");
 
 /* ── Shared env/filter/lfo sub-block codecs ──────────────────────────────
  * Used by voice_params_t (LAYR, per track) and directly by ARP/DRON, so the
@@ -401,7 +405,7 @@ static void ser_layer(tlv_writer_t *w, const seq_layer_t *L)
     /* One fixed shape per version; the loader rejects any other version
      * (no migration), so a format change is a bump here and in
      * project_snapshot_load. Field history: git log. */
-    size_t h = tlv_begin_section(w, TAG_LAYR, 18);
+    size_t h = tlv_begin_section(w, TAG_LAYR, LAYR_VERSION);
     tlv_put_u8(w, (uint8_t)L->type);
     tlv_put_u8(w, L->num_steps);
     tlv_put_u16(w, L->patch);
@@ -445,6 +449,8 @@ static void ser_layer(tlv_writer_t *w, const seq_layer_t *L)
     /* Melodic patch scope. track_patch[] above already carries the per-row
      * patches in both scopes, so this one byte is all the scope needs. */
     tlv_put_u8(w, L->patch_scope);
+    /* Live row count; rows above it are written and read but not built. */
+    tlv_put_u8(w, L->num_tracks);
     tlv_end_section(w, h);
 }
 
@@ -579,6 +585,9 @@ static bool parse_layer(tlv_reader_t *b, seq_layer_t *L)
     if (L->type == SEQ_LAYER_MELODIC && L->patch_scope == SEQ_PATCH_SCOPE_LAYER) {
         for (int t = 0; t < SEQ_TRACKS; t++) L->track_patch[t] = L->patch;
     }
+
+    if (!tlv_get_u8(b, &L->num_tracks)) return false;
+    L->num_tracks = SEQ_CLAMP_U8(L->num_tracks, SEQ_TRACKS_DEFAULT, SEQ_TRACKS);
 
     return true;
 }
@@ -1106,7 +1115,7 @@ bool project_snapshot_load(uint8_t slot)
             /* Exactly ser_layer()'s version: older files are rejected outright
              * (no migration), and the ceiling must track the writer or the
              * firmware rejects its own files. */
-            if (ver != 18 || staged_layer_count >= MAX_LAYERS) { ok = false; break; }
+            if (ver != LAYR_VERSION || staged_layer_count >= MAX_LAYERS) { ok = false; break; }
             ok = parse_layer(&body, &staged_layers[staged_layer_count]);
             if (ok) staged_layer_count++;
             break;

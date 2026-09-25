@@ -219,6 +219,27 @@ static void ksl_adjust(int delta, int arg)
     ks_loop_set(tune, stages, stiff);
 }
 
+/* Row count of the active layer, melodic or drum
+ * (sequencer_core_set_layer_tracks): a grow seeds the new row, a shrink drops
+ * it from playback and keeps its data. Structural, so the change is queued to
+ * synth_ui_task, which applies it and re-exports the layer for the grid. */
+static void rows_fmt(char *buf, size_t n, int arg)
+{
+    (void)arg;
+    uint8_t li = seq_state.active_layer_idx;
+    snprintf(buf, n, "L%u %u", (unsigned)li + 1u,
+             (unsigned)sequencer_core_get_layer_tracks(li));
+}
+
+static void rows_adjust(int delta, int arg)
+{
+    (void)arg;
+    uint8_t li = seq_state.active_layer_idx;
+    int r = (int)sequencer_core_get_layer_tracks(li) + delta;
+    synth_ui_request_layer_tracks(li, (uint8_t)SEQ_CLAMP_INT(r, SEQ_TRACKS_DEFAULT,
+                                                             SEQ_TRACKS));
+}
+
 /* One-shot sequencer state dump to the console (seq_core_dump.c). */
 static void seqdump_fire(int arg)
 {
@@ -417,6 +438,7 @@ static const dev_item_t s_ksloop_items[] = {
     { .label = "Stiff",  .fmt = ksl_fmt, .adjust = ksl_adjust, .arg = KSL_STIFF  },
     { .label = "Release", .fmt = ksl_fmt, .fire  = ksl_fire,   .arg = KSL_RELEASE },
     { .label = "Voices", .fmt = ksl_fmt, .adjust = ksl_adjust, .arg = KSL_VOICES },
+    { .label = "Rows",   .fmt = rows_fmt, .adjust = rows_adjust },
 };
 static const dev_page_t s_page_ksloop = { "KS LOOP", s_ksloop_items,
                                           sizeof s_ksloop_items / sizeof *s_ksloop_items };

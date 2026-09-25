@@ -16,7 +16,9 @@ extern "C" {
 #endif
 
 /* ── Sequencer dimensions ── */
-#define SEQ_TRACKS    4
+#define SEQ_TRACKS    5           /* array width: most rows a layer can hold */
+#define SEQ_TRACKS_DEFAULT 4      /* rows a new layer starts with; width of the
+                                     per-row default tables                  */
 #define SEQ_STEPS     16          /* default steps for a new layer  */
 #define SEQ_MAX_STEPS 32          /* maximum steps supported         */
 #define MAX_LAYERS    4           /* compile-time layer limit        */
@@ -392,7 +394,7 @@ typedef enum {
 typedef struct {
     seq_layer_type_t type;
     uint8_t  num_steps;                              /* 16 or 32               */
-    uint8_t  num_tracks;                             /* = SEQ_TRACKS           */
+    uint8_t  num_tracks;                             /* live rows, SEQ_TRACKS_DEFAULT..SEQ_TRACKS */
     bool     grid[SEQ_TRACKS][SEQ_MAX_STEPS];        /* step on/off state      */
     uint8_t  step_note[SEQ_TRACKS][SEQ_MAX_STEPS];   /* per-step MIDI pitch    */
     int8_t   step_pitch_ofs[SEQ_TRACKS][SEQ_MAX_STEPS]; /* semitones from step_note,

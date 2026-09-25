@@ -200,7 +200,7 @@ uint8_t sequencer_core_melodic_vp_peers(uint8_t layer_idx, uint8_t track,
         return 1;
     }
     uint8_t n = 0;
-    for (uint8_t t = 0; t < SEQ_TRACKS; ++t)
+    for (uint8_t t = 0; t < layer->num_tracks; ++t)
         if (layer->vp_src[t] == SEQ_VP_SRC_LAYER) peers[n++] = t;
     return n;
 }
@@ -667,7 +667,7 @@ void __attribute__((optimize("O3", "unroll-loops", "fast-math"))) sequencer_core
     melodic_preview_t prev;
     bool prev_ok = preview_snapshot(&prev);
     for (int li = 0; li < s_num_layers; li++) {
-        for (int tr = 0; tr < SEQ_TRACKS; tr++) {
+        for (int tr = 0; tr < s_layers[li].num_tracks; tr++) {
             bool prev_here = prev_ok &&
                              prev.li == (uint8_t)li &&
                              prev.tr == (uint8_t)tr;
@@ -780,11 +780,11 @@ void __attribute__((optimize("O3", "unroll-loops", "fast-math"))) sequencer_core
 
 /* Re-apply the authored native LFO for every row whose patch reserves a
  * carrier pair. Skipped rows fall to the software loop. */
-void sequencer_configure_melodic_lfo(uint8_t layer_idx)
+void sequencer_configure_melodic_lfo(uint8_t layer_idx, uint8_t rows)
 {
 #if CONFIG_SEQ_MELODIC_AMY_NATIVE_LFO
     const seq_layer_t *layer = &s_layers[layer_idx];
-    for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
+    for (uint8_t t = 0; t < rows; t++) {
         /* Per row: a mixed layer can have wave rows next to string rows, and
          * only the former reserve a carrier pair. */
         if (!sequencer_core_lfo_native_layout(layer->track_patch[t], NULL, NULL))
@@ -798,6 +798,7 @@ void sequencer_configure_melodic_lfo(uint8_t layer_idx)
     }
 #else
     (void)layer_idx;
+    (void)rows;
 #endif
 }
 
@@ -812,7 +813,7 @@ void melodic_lfo_refresh_native_freq(void)
          * carrier oscs don't exist on non-melodic (1-osc) synths. */
         if (layer->type != SEQ_LAYER_MELODIC)
             continue;
-        for (int tr = 0; tr < SEQ_TRACKS; tr++) {
+        for (int tr = 0; tr < layer->num_tracks; tr++) {
             if (!sequencer_core_lfo_native_layout(layer->track_patch[tr], NULL, NULL))
                 continue;
             const voice_params_t *vp = seq_track_vp((uint8_t)li, (uint8_t)tr);

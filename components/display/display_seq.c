@@ -3,11 +3,52 @@
 #include "seq_chords.h"   /* chord sentinel test for the track pitch label */
 #include <stdio.h>
 
-/* Static role labels for the four drum tracks (low body, mid attack, high
- * tick, percussive accent); the loaded preset is named in the patch overlay. */
-static const char *const drum_track_labels[SEQ_TRACKS] = {
-    "LOW", "MID", "TOP", "PERC"
+/* Static role labels for the drum tracks (low body, mid attack, high tick,
+ * percussive accent, and the fifth row's auxiliary voice); the loaded preset
+ * is named in the patch overlay. */
+static const char *const drum_track_labels[] = {
+    "LOW", "MID", "TOP", "PERC", "AUX"
 };
+_Static_assert(sizeof(drum_track_labels) / sizeof(drum_track_labels[0]) == SEQ_TRACKS,
+               "one drum label per row");
+
+/* Grid geometry for a layer's row and step counts. The single place the grid
+ * pitch lives: every row, separator and playhead coordinate derives from it. */
+typedef struct {
+    int grid_x;     /* left edge of step column 0                   */
+    int col_w;      /* step pitch                                   */
+    int cell_w;     /* drawn cell width                             */
+    int cell_size;  /* drawn cell height                            */
+    int row_h;      /* row pitch                                    */
+    int grid_top;   /* top of row 0's cells                         */
+    int span_top;   /* top of the beat separators and the playhead  */
+    int span_h;     /* their height                                 */
+} seq_grid_geom_t;
+
+static seq_grid_geom_t seq_grid_geom(uint8_t num_tracks, uint8_t num_steps)
+{
+    seq_grid_geom_t g;
+    /* The whole loop in one row: 16 steps at a 6 px pitch, 32 at 3 px. Both
+     * end at x=122; cells keep their 5 px height. A frame needs 3 px of width
+     * to have an unlit interior, so at 2 px an empty cell is drawn as a
+     * centered dash instead. */
+    g.grid_x    = 26;
+    g.col_w     = (num_steps == SEQ_MAX_STEPS) ? 3 : 6;
+    g.cell_w    = g.col_w - 1;
+    g.cell_size = 5;
+    /* Five rows close up to an 8 px pitch and start higher, so the last row
+     * clears the hint strip. */
+    if (num_tracks > SEQ_TRACKS_DEFAULT) {
+        g.row_h    = 8;
+        g.grid_top = 16;
+    } else {
+        g.row_h    = 10;
+        g.grid_top = 20;
+    }
+    g.span_top = g.grid_top - 3;
+    g.span_h   = num_tracks * g.row_h + 2;
+    return g;
+}
 
 /* 3-char note name ("C4", "C#4", ...), or the chord-slot label "CHn" when the
  * stored note is a chord preset sentinel (seq_chords.h). */
@@ -32,8 +73,10 @@ void display_seq_draw_frame(u8g2_t *u8g2, const display_seq_state_t *state, uint
         return;
     }
 
-    const seq_layer_t *layer     = &state->layers[state->active_layer_idx];
-    const uint8_t      num_steps = layer->num_steps;
+    const seq_layer_t *layer      = &state->layers[state->active_layer_idx];
+    const uint8_t      num_steps  = layer->num_steps;
+    const uint8_t      num_tracks = (layer->num_tracks > SEQ_TRACKS)
+                                    ? SEQ_TRACKS : layer->num_tracks;
 
     u8g2_ClearBuffer(u8g2);
 
@@ -83,18 +126,15 @@ void display_seq_draw_frame(u8g2_t *u8g2, const display_seq_state_t *state, uint
 
     /* === GRID === */
     u8g2_SetFont(u8g2, u8g2_font_5x7_tr);
-    /* The whole loop in one row: 16 steps at a 6 px pitch, 32 at 3 px. Both
-     * end at x=122; cells keep their 5 px height. A frame needs 3 px of width
-     * to have an unlit interior, so at 2 px an empty cell is drawn as a
-     * centered dash instead. */
-    const int grid_x    = 26;
-    const int col_w     = (num_steps == SEQ_MAX_STEPS) ? 3 : 6;
-    const int cell_w    = col_w - 1;
-    const int cell_size = 5;
-    const int row_h     = 10;
-    const int grid_top  = 20;
+    const seq_grid_geom_t geom = seq_grid_geom(num_tracks, num_steps);
+    const int grid_x    = geom.grid_x;
+    const int col_w     = geom.col_w;
+    const int cell_w    = geom.cell_w;
+    const int cell_size = geom.cell_size;
+    const int row_h     = geom.row_h;
+    const int grid_top  = geom.grid_top;
 
-    for (int t = 0; t < SEQ_TRACKS; t++) {
+    for (int t = 0; t < num_tracks; t++) {
         int y = grid_top + t * row_h;
 
         /* Track label: drums show the static role, melodic the pitch name. */
@@ -131,7 +171,7 @@ void display_seq_draw_frame(u8g2_t *u8g2, const display_seq_state_t *state, uint
     /* Beat separators (every 4 steps) */
     for (int b = 1; b < (int)num_steps / 4; b++) {
         int x = grid_x + (b * 4) * col_w - 1;
-        u8g2_DrawVLine(u8g2, x, grid_top - 3, SEQ_TRACKS * row_h + 2);
+        u8g2_DrawVLine(u8g2, x, geom.span_top, geom.span_h);
     }
 
     /* === PLAYHEAD (XOR highlight) === */
@@ -139,7 +179,7 @@ void display_seq_draw_frame(u8g2_t *u8g2, const display_seq_state_t *state, uint
     if ((state->playing || state->edit_mode) && cur_step < num_steps) {
         int ph_x = grid_x + cur_step * col_w - 1;
         u8g2_SetDrawColor(u8g2, 2);
-        u8g2_DrawBox(u8g2, ph_x, grid_top - 3, col_w + 1, SEQ_TRACKS * row_h + 2);
+        u8g2_DrawBox(u8g2, ph_x, geom.span_top, col_w + 1, geom.span_h);
         u8g2_SetDrawColor(u8g2, 1);
     }
 

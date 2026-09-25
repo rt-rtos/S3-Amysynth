@@ -36,7 +36,7 @@ typedef struct {
     uint8_t     current_pattern;
     uint8_t     current_step;       /* 0 .. (active layer num_steps - 1) */
     bool        playing;
-    uint8_t     selected_track;     /* 0 .. SEQ_TRACKS-1                 */
+    uint8_t     selected_track;     /* 0 .. active layer num_tracks-1    */
     uint8_t     selected_step;      /* 0 .. (active layer num_steps - 1) */
     bool        edit_mode;
     bool        drum_select_mode;   /* true while note-select btn held   */

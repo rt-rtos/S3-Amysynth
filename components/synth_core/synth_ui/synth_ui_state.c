@@ -51,7 +51,7 @@ void synth_ui_state_alloc(void)
 void sync_layer_to_core(uint8_t li)
 {
     seq_layer_t *layer = &seq_state.layers[li];
-    for (int t = 0; t < SEQ_TRACKS; t++) {
+    for (int t = 0; t < layer->num_tracks; t++) {
         for (int s = 0; s < layer->num_steps; s++) {
             if (layer->grid[t][s]) {
                 sequencer_core_set_step(li, t, s, true);
@@ -133,6 +133,7 @@ uint32_t seq_view_signature(void)
         h = fnv1a_bytes(h, L->track_patch, sizeof(L->track_patch));
         h = fnv1a_bytes(h, &L->patch_scope, sizeof(L->patch_scope));
         h = fnv1a_bytes(h, &L->num_steps, sizeof(L->num_steps));
+        h = fnv1a_bytes(h, &L->num_tracks, sizeof(L->num_tracks));
         h = fnv1a_bytes(h, L->track_base_note, sizeof(L->track_base_note));
         h = fnv1a_bytes(h, L->grid, sizeof(L->grid));
     }

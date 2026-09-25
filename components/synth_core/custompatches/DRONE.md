@@ -271,7 +271,7 @@ amplitude, so:
 | 13–64 | melodic layers |
 
 The full map lives in `synth_slots.h` (statics at the bottom, melodic arena on
-top). `main/main.c` sets `amy_cfg.max_synths = SYNTH_SLOT_COUNT` (65). AMY's
+top). `main/main.c` sets `amy_cfg.max_synths = SYNTH_SLOT_COUNT` (66). AMY's
 instrument table is sized
 from config (`instruments_init(config.max_synths)`). AMY's default 250 oscs leave
 ample headroom (5-voice main × 2 oscs + sub × 2 = ~12 oscs).

@@ -36,7 +36,7 @@ At boot you get a playing groove: a four-track drum layer playing the
 built-in TR-808 PCM bank (seeded with a four-on-the-floor pattern) and a
 melodic layer, running at 108 BPM. From there:
 
-- **Step sequencer** - up to 4 layers of 4 tracks x 16 steps, edited live
+- **Step sequencer** - up to 4 layers of 4 or 5 tracks x 16 steps, edited live
   on the grid. Every step carries its own pitch offset (+-24 semitones),
   probability, 1-4 ratchet sub-hits, a fire-every-N-loops count and an
   only-after-previous condition (the two conditions combine), set from a
@@ -174,9 +174,10 @@ A few design decisions worth calling out:
 - **Per-row / per-instrument synths.** Each drum track, each melodic row, the
   arp, and the drones own their own AMY synth slots. Fixed consumers pack the
   bottom of the slot space (arp 1, stutter drone 2-3, free-running drone 4-5,
-  drums 6-9, live play 10) and the melodic rows are an open-ended arena on top
-  (11 up to `max_synths - 1`); the whole map lives in one header,
-  `synth_slots.h`, and growing melodic polyphony is a single-constant change.
+  drums 6-10, live play 11, clip players 12-13) and the melodic rows are an
+  open-ended arena on top (14 up to `max_synths - 1`); the whole map lives in
+  one header, `synth_slots.h`, and growing melodic polyphony is a
+  single-constant change.
   Because AMY routes note-on
   by `(synth, pitch)`, a shared synth would collapse two same-pitch notes into
   one voice; separate slots keep them independent.
@@ -556,10 +557,10 @@ four-on-the-floor groove) and one melodic layer already running at 108 BPM.
 
 - Up to 4 layers; layer 0 is always the drum layer (cannot be deleted).
 - Add / remove melodic layers via menu items **Add Layer** / **Del Layer**.
-- Each layer is 4 tracks x 16 steps. (The engine and the project format
+- Each layer is 4 or 5 tracks x 16 steps. (The engine and the project format
   carry up to 32 steps per layer, and a 16-step and a 32-step layer stay
   in phase; the UI does not create 32-step layers yet.)
-- Melodic layers share one patch across all 4 tracks; drum tracks each carry their own patch.
+- Melodic layers share one patch across all their tracks; drum tracks each carry their own patch.
 
 **Per-step popup** (`MY_BUTTON_SHIFT` + `MY_BUTTON_2` on a step):
 

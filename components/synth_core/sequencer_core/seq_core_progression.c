@@ -32,6 +32,11 @@ volatile bool s_prog_apply_pending = false;
  * launch-quantize hold and lands on the next service tick. */
 volatile bool s_prog_apply_immediate = false;
 
+/* Rows every melodic layer should hold, requested by the Prog Gen Generate
+ * handler (widest generated chord); 0 = no request. Consumed by the next
+ * drain, before the chord apply, so grown rows are snapped in that apply. */
+static volatile uint8_t s_prog_rows_wanted = 0;
+
 /* BAR launch mode: bar index at which a held pending apply was armed;
  * UINT32_MAX = not armed. Drains once the lead-adjusted bar count moves past
  * this value. */
@@ -112,8 +117,10 @@ void chord_progression_apply_current(void)
  * chord state) and advances the progression when the current entry expires.
  * Funnelling every emit through one task removes the need for a lock: there is
  * only one writer. */
-void sequencer_core_progression_service(void)
+uint8_t sequencer_core_progression_service(void)
 {
+    uint8_t grown = 0;
+
     /* Bar count as it will read at the next bar line's lead point: every
      * bar-quantized apply below keys on this, so it lands just before the
      * line instead of just after it. */
@@ -134,6 +141,13 @@ void sequencer_core_progression_service(void)
             s_apply_armed_bar = UINT32_MAX;
             s_prog_apply_pending = false;
             s_prog_apply_immediate = false;
+            uint8_t rows = s_prog_rows_wanted;
+            s_prog_rows_wanted = 0;
+            for (uint8_t li = 0; rows && li < s_num_layers; li++) {
+                if (s_layers[li].type != SEQ_LAYER_MELODIC) continue;
+                if (s_layers[li].num_tracks >= rows) continue;
+                if (sequencer_core_set_layer_tracks(li, rows)) grown |= (uint8_t)(1u << li);
+            }
             if (s_prog.enabled && s_prog.count > 0) {
                 chord_progression_apply_current();
             } else {
@@ -147,12 +161,12 @@ void sequencer_core_progression_service(void)
         s_apply_armed_bar = UINT32_MAX;
     }
 
-    if (!s_prog.enabled || s_prog.count == 0 || !s_playing) return;
+    if (!s_prog.enabled || s_prog.count == 0 || !s_playing) return grown;
 
     uint32_t bars = bars_ahead;
     /* Mid-session anchors point at the NEXT bar line (entry_start_bar = bars+1),
      * and the unsigned subtraction below would wrap until it passes. */
-    if (bars < s_prog.entry_start_bar) return;
+    if (bars < s_prog.entry_start_bar) return grown;
     const chord_prog_entry_t *e = &s_prog.entries[s_prog.current];
 
     if (bars - s_prog.entry_start_bar >= e->duration_bars) {
@@ -166,9 +180,16 @@ void sequencer_core_progression_service(void)
         ESP_LOGI(TAG, "progression -> entry %u (root=%u type=%u)",
                  next, s_prog.entries[next].root, (unsigned)s_prog.entries[next].chord_type);
     }
+    return grown;
 }
 
 /* ── Progression public API ─────────────────────────────────────────────── */
+
+void sequencer_core_progression_request_rows(uint8_t rows)
+{
+    if (rows > SEQ_TRACKS) rows = SEQ_TRACKS;
+    s_prog_rows_wanted = rows;
+}
 
 void sequencer_core_progression_set_enabled(bool en)
 {

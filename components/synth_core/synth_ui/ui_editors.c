@@ -50,7 +50,7 @@ typedef enum {
     GRAPH_TGT_DRONE     = 1,
     GRAPH_TGT_ARP       = 2,
     GRAPH_TGT_DRONE_STD = 3,
-    /* BLE MIDI live-play voice (slot 10). Structurally the arp's twin - one
+    /* BLE MIDI live-play voice (slot 11). Structurally the arp's twin - one
      * voice, no layer/track scope - so it follows the arp branch everywhere,
      * incl. the LFO split (native carrier on wave patches, 20 Hz software
      * stepper on patch strings via live_play_lfo_service). */

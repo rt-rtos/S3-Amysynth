@@ -178,6 +178,16 @@ void sequencer_core_trig_clear_track_chord(uint8_t layer_idx, uint8_t track)
     }
 }
 
+void sequencer_core_trig_clear_track(uint8_t layer_idx, uint8_t track)
+{
+    if (layer_idx >= MAX_LAYERS || track >= SEQ_TRACKS) return;
+    for (uint8_t k = 0; k < SEQ_MAX_RATCHET; k++) {
+        sequencer_emit_clear_tag(ratchet_on_tag(layer_idx, track, k));
+        sequencer_emit_clear_tag(ratchet_off_tag(layer_idx, track, k));
+    }
+    sequencer_core_trig_clear_track_chord(layer_idx, track);
+}
+
 /* ── Conditional trig evaluation ──────────────────────────────────────────
  * EVERY and PREV are independent conditions; both must hold. every==0 (an
  * uninitialised or hand-edited value) is treated as 1 (neutral). */
