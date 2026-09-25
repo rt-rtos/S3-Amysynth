@@ -125,10 +125,6 @@ static void drone_std_configure_wave_synth(uint8_t synth, uint8_t voices,
  * Real AMY patch: it owns its osc topology, so no native LFO is layered on. */
 static void drone_std_configure_patch_synth(uint8_t synth, uint8_t voices)
 {
-    /* Foreign topology on a wave-built slot: void the lazy-LFO shape proof
-     * (see voice_config.h) before the patch reshapes the pool. */
-    voice_lfo_mark_foreign(synth);
-
     amy_event *e = amy_helpers_event_begin();
     e->synth        = synth;
     e->num_voices   = voices;

@@ -16,63 +16,17 @@ void voice_params_init_defaults(voice_params_t *vp)
     vp->dist = (seq_dist_t){ .type = 0, .drive = 2, .bits = 8, .rate = 8, .mix = 100 };
 }
 
-/* ── Lazy LFO-sibling materialization state ──────────────────────────────
- * Per synth: has anything ever sent an event to the LFO sibling oscs
- * (osc1/osc2) since the pool was last provably reset? AMY allocates an osc's
- * ~532 B struct the first time an event addresses it (ensure_osc_allocd), so
- * the disabled-path "park" events below would themselves BE the allocation.
- * Skipping them is safe exactly when this bit is clear: the oscs are then NULL
- * or AMY-reset, both silent and free of mod coupling.
- *
- * Clear the bit ONLY on provable freshness (a known pool-shape change in
- * voice_build_wave); anything ambiguous keeps it SET. A wrongly-set bit costs
- * only memory; a wrongly-clear bit skips parking a live carrier (the
- * stale-COEF_MOD DC-rail class). The shape cache exists solely for that proof:
- * 0 = unknown (never built here, or foreign config since, see
- * voice_lfo_mark_foreign), and unknown never clears the bit.
- *
- * Core-0 / UI-task only, like every entry point in this file. */
-#define VOICE_LFO_SYNTH_MAX 128u
-
-static uint16_t s_pool_shape[VOICE_LFO_SYNTH_MAX];        /* (voices<<8)|oscs; 0 = unknown */
-static uint8_t  s_lfo_materialized[VOICE_LFO_SYNTH_MAX / 8u];
-
-static inline bool lfo_materialized(uint8_t synth)
+void voice_park_oscs(uint8_t synth, uint8_t first, uint8_t end)
 {
-    if (synth >= VOICE_LFO_SYNTH_MAX) return true;  /* out of range: park always */
-    return (s_lfo_materialized[synth >> 3] >> (synth & 7u)) & 1u;
-}
-
-static inline void lfo_set_materialized(uint8_t synth, bool on)
-{
-    if (synth >= VOICE_LFO_SYNTH_MAX) return;
-    if (on) s_lfo_materialized[synth >> 3] |=  (uint8_t)(1u << (synth & 7u));
-    else    s_lfo_materialized[synth >> 3] &= (uint8_t)~(1u << (synth & 7u));
-}
-
-bool voice_lfo_siblings_materialized(uint8_t synth)
-{
-    return lfo_materialized(synth);
-}
-
-void voice_lfo_mark_foreign(uint8_t synth)
-{
-    if (synth >= VOICE_LFO_SYNTH_MAX) return;
-    s_pool_shape[synth] = 0;                 /* shape proof is gone */
-    lfo_set_materialized(synth, true);       /* park always until proven fresh */
-}
-
-void voice_lfo_note_pool_shape(uint8_t synth, uint8_t num_voices,
-                               uint8_t oscs_per_voice)
-{
-    if (synth >= VOICE_LFO_SYNTH_MAX) return;
-    /* A *known different* shape forces AMY to reallocate the voice oscs
-     * (patches.c no-ops only on an identical shape) and RESET_OSC each one, so
-     * the carrier pair is provably fresh. An unknown cache proves nothing. */
-    uint16_t shape = (uint16_t)(((uint16_t)num_voices << 8) | oscs_per_voice);
-    if (s_pool_shape[synth] != 0 && s_pool_shape[synth] != shape)
-        lfo_set_materialized(synth, false);
-    s_pool_shape[synth] = shape;
+    for (uint8_t o = first; o < end; o++) {
+        amy_event *e = amy_helpers_event_begin();
+        e->synth                 = synth;
+        e->osc                   = o;
+        e->amp_coefs[COEF_CONST] = 0.0f;  /* render_osc_wave skips CONST 0 */
+        e->amp_coefs[COEF_MOD]   = 0.0f;
+        e->freq_coefs[COEF_MOD]  = 0.0f;
+        amy_helpers_event_send(e);
+    }
 }
 
 uint16_t voice_lfo_wave_to_amy(lfo_wave_t wave)
@@ -261,10 +215,8 @@ void voice_build_wave(const voice_wave_cfg_t *cfg)
 {
     if (!cfg) return;
 
-    voice_lfo_note_pool_shape(cfg->synth, cfg->num_voices, cfg->oscs_per_voice);
-
-    /* Pool definition. Re-sending an unchanged shape is a no-op in AMY, so
-     * callers may rebuild freely without resetting live voices. */
+    /* Pool definition. AMY resets every osc of every existing voice on each
+     * one (patches_load_patch), unchanged shape or not. */
     amy_event *e = amy_helpers_event_begin();
     e->synth          = cfg->synth;
     e->num_voices     = cfg->num_voices;
@@ -291,10 +243,9 @@ void voice_build_wave(const voice_wave_cfg_t *cfg)
      * switch would inherit the previous build's chained_osc, filter_type,
      * unison count and MOD rails. Wipe every audible osc first
      * (voice-relative; a no-op on one AMY has not allocated yet). The
-     * reserved carrier pair stays untouched - resetting it would be the
-     * allocation the lazy reservation exists to avoid. */
+     * reserved oscs above the audible layout are parked below instead. */
+    uint8_t audible = (uint8_t)(headed ? n + 2u : engine ? 2u : n);
     if (n > 1u) {
-        uint8_t audible = (uint8_t)(headed ? n + 2u : engine ? 2u : n);
         for (uint8_t i = 0; i < audible; i++) {
             e = amy_helpers_event_begin();
             e->synth     = cfg->synth;
@@ -363,6 +314,13 @@ void voice_build_wave(const voice_wave_cfg_t *cfg)
         }
         amy_helpers_event_send(e);
     }
+
+    /* Park every osc the caller reserved above the audible layout (the native
+     * LFO carrier pair). A note with no osc named reaches every osc of the
+     * voice, and AMY brings an unconfigured osc up at its reset defaults - a
+     * full-level SINE on the note - so a reserved osc is only silent once
+     * parked. The LFO path raises the carrier when one is authored. */
+    voice_park_oscs(cfg->synth, audible, cfg->oscs_per_voice);
 
     /* A rebuild must not drop the stage, so the owner's block rides every
      * build. cfg->dist == NULL means the caller has none to assert yet. */
@@ -609,8 +567,6 @@ void voice_apply_native_lfo_topo(uint8_t synth, const seq_lfo_t *lfo,
         e->amp_coefs[COEF_VEL]    = 0.0f;
         e->amp_coefs[COEF_EG0]    = 0.0f;
         amy_helpers_event_send(e);
-
-        lfo_set_materialized(synth, true);
     } else {
         /* Disabled: clear the mod coupling on every coupled osc, silence the
          * carrier. The coupled-osc events always go out (those oscs exist as
@@ -629,12 +585,6 @@ void voice_apply_native_lfo_topo(uint8_t synth, const seq_lfo_t *lfo,
             e->dist_mix_coefs[COEF_MOD]    = 0.0f;
             amy_helpers_event_send(e);
         }
-
-        /* A never-materialized carrier pair is NULL or AMY-reset: silent, no
-         * coupling, nothing to park. Sending the events would allocate the
-         * oscs and forfeit the lazy reservation. */
-        if (!lfo_materialized(synth))
-            return;
 
         e = amy_helpers_event_begin();
         e->synth                 = synth;

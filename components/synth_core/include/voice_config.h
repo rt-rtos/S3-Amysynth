@@ -133,14 +133,18 @@ uint16_t voice_lfo_wave_to_amy(lfo_wave_t wave);
 
 /* ── Shared WAVE-voice skeleton ──────────────────────────────────────────
  * The canonical "N voices, osc0 = note-following carrier" build used by the
- * arp, drone and melodic sequencer. Sends two events: pool definition and osc0
- * skeleton. Deliberately does NOT touch osc1, envelopes, filters or mod
- * routing - each engine layers its own specialization on top as deltas.
+ * arp, drone and melodic sequencer. Sends the pool definition, the audible
+ * skeleton, and a park (amp CONST 0, MOD rails cleared) for every osc above
+ * the audible layout up to oscs_per_voice. Guarantee: a reserved osc never
+ * sounds until its owner configures it - a note with no osc named reaches
+ * every osc of the voice, and an unconfigured osc plays at AMY's reset
+ * defaults (a full-level SINE on the note). Deliberately does NOT touch
+ * envelopes, filters or mod routing - each engine layers its own
+ * specialization on top as deltas, after this call.
  *
- * AMY does not reset the osc pool when the same num_voices/oscs_per_voice is
- * re-sent, so rebuilding never glitches held voices; that same property is why
- * per-target COEF_MOD state must be cleared explicitly on reconfigure
- * (voice_apply_native_lfo). */
+ * AMY resets every osc of every existing voice on each pool definition
+ * (patches_load_patch), unchanged shape or not, so a rebuild cuts held voices
+ * and the caller re-sends whatever it layered on top. */
 typedef struct {
     uint8_t  synth;
     uint8_t  num_voices;
@@ -245,38 +249,12 @@ void voice_apply_dist_osc(uint8_t synth, uint8_t osc, const seq_dist_t *d);
 void voice_push_dist_lfo(uint8_t synth, const seq_dist_t *base,
                          const seq_lfo_t *lfo, float val);
 
-/* ── Lazy LFO-sibling materialization ────────────────────────────────────
- * voice_build_wave() reserves the osc1 (LFO carrier) and osc2 (wobble) INDEX
- * slots in the pool shape, but AMY allocates an osc's ~532 B struct only when
- * an event first addresses it. voice_config tracks per synth whether the
- * siblings were ever materialized, so the disabled-path park events - which
- * would themselves BE the allocation - are skipped while the oscs are provably
- * fresh (NULL or AMY-reset: silent, no mod coupling).
- *
- * Failure modes are asymmetric by design: a wrongly-SET state costs only the
- * savings, while a wrongly-CLEAR state skips parking a live carrier and
- * resurrects the stale-COEF_MOD DC rail. So the state clears ONLY on a
- * provable pool reset inside voice_build_wave, and every path configuring a
- * wave-built synth with a foreign topology (patch string, bass/FM/additive
- * preset, PCM pool) must call voice_lfo_mark_foreign() first. */
-
-/* True when this synth's LFO siblings (osc1/osc2) may exist or carry
- * state, i.e. park events must be sent. Callers that pre-park osc1
- * outside voice_apply_native_lfo (the melodic dormant slot) gate on it. */
-bool voice_lfo_siblings_materialized(uint8_t synth);
-
-/* This synth was configured outside voice_build_wave. Foreign topologies
- * can leave live oscs at the sibling indices and stale-date the shape
- * cache, so force park-always until a future build proves a pool reset. */
-void voice_lfo_mark_foreign(uint8_t synth);
-
-/* Register a pool build that reserves a trailing LFO carrier pair but is
- * issued outside voice_build_wave (custom builders - the bass presets). Same
- * shape-proof rules: a known different shape clears the materialized state,
- * anything ambiguous keeps it. Such a builder must NOT also be routed through
- * voice_lfo_mark_foreign. */
-void voice_lfo_note_pool_shape(uint8_t synth, uint8_t num_voices,
-                               uint8_t oscs_per_voice);
+/* Park voice-relative oscs [first, end) of every voice of `synth`: amp CONST
+ * 0 (render skips the osc) and its amp/freq MOD rails cleared. For builders
+ * outside voice_build_wave that reserve oscs (the bass presets' LFO pair);
+ * voice_build_wave parks its own. Send after the pool definition, before
+ * any configuration of those oscs. Core-0 / UI-task only. */
+void voice_park_oscs(uint8_t synth, uint8_t first, uint8_t end);
 
 /* Apply the AMY-native mod-source LFO routing for one synth built by
  * voice_build_wave() with oscs_per_voice=3: osc0 gets mod_source=1 plus the

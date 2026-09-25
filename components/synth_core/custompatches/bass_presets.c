@@ -26,22 +26,20 @@
 #include "sequencer_core.h"    /* SEQ_PATCH_BASS_* */
 #include "amy.h"               /* PULSE, SAW_DOWN, SINE, FILTER_LPF24, COEF_*, ENVELOPE_* */
 #include "amy_helpers.h"       /* amy_helpers_event_begin/send */
-#include "voice_config.h"      /* voice_lfo_note_pool_shape (reserved LFO pair) */
+#include "voice_config.h"      /* voice_park_oscs (reserved LFO pair) */
 
 void bass_preset_configure_track(uint8_t synth_id, uint16_t patch,
                                  uint16_t num_voices)
 {
     /* 2 audible oscs per voice plus a reserved native-LFO carrier pair at
-     * osc2/osc3 (sequencer_core_lfo_native_layout). Nothing below touches the
-     * pair, so their synth structs stay unallocated until an LFO is authored
-     * (lazy materialization, voice_config.h); registering the shape keeps the
-     * materialized-state proof identical to the wave build. */
-    voice_lfo_note_pool_shape(synth_id, (uint8_t)num_voices, 4);
+     * osc2/osc3 (sequencer_core_lfo_native_layout), parked until an LFO is
+     * authored: notes reach every osc of the voice (voice_park_oscs). */
     amy_event *e = amy_helpers_event_begin();
     e->synth          = synth_id;
     e->num_voices     = num_voices;
     e->oscs_per_voice = 4;
     amy_helpers_event_send(e);
+    voice_park_oscs(synth_id, 2, 4);
 
     if (patch == SEQ_PATCH_BASS_1) {
         /* ─── Preset 264: Classic Sub-Heavy Detune Bass ─────────────────

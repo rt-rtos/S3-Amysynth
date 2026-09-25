@@ -509,8 +509,8 @@ void sequencer_core_set_unison(uint8_t layer_idx, const voice_unison_t *u)
  * In native LFO mode the pool is whatever the unison layout needs (EFFECTIVE
  * count from `uni` via unison_copies_for; NULL or 1 = single osc0) plus the
  * LFO carrier and wobble INDEX slots reserved above it, so toggling the LFO
- * never forces a pool resize; their ~532 B/osc structs stay unallocated until
- * an LFO is authored (lazy materialization, see voice_config.h). */
+ * never forces a pool resize; voice_build_wave parks them until an LFO is
+ * authored. */
 static void sequencer_configure_melodic_wave_track(uint8_t synth_id,
                                                     uint16_t patch,
                                                     uint16_t num_voices,
@@ -569,20 +569,6 @@ static void sequencer_configure_melodic_wave_track(uint8_t synth_id,
         .unison               = uni,
     };
     voice_build_wave(&cfg);
-
-#if CONFIG_SEQ_MELODIC_AMY_NATIVE_LFO
-    /* The LFO carrier (first osc above the audible layout): only re-park it
-     * when it may already exist, i.e. it survived a same-shape rebuild. On a
-     * fresh pool the event itself would allocate the osc and forfeit the lazy
-     * reservation. */
-    if (voice_lfo_siblings_materialized(synth_id)) {
-        amy_event *e = amy_helpers_event_begin();
-        e->synth                 = synth_id;
-        e->osc                   = (uint8_t)(oscs_per_voice - 2u);
-        e->amp_coefs[COEF_CONST] = 0.0f;  /* dormant */
-        amy_helpers_event_send(e);
-    }
-#endif
 }
 
 /* Push each AUTHORED row's stored envelope to its own per-row synth.
@@ -733,16 +719,12 @@ static bool sequencer_apply_patch_kind(uint8_t synth_id, uint16_t patch,
                                                ks_duty_ofs, uni);
         return false;
     }
-    /* Bass presets participate in the reserved-LFO-pair contract (they register
-     * their own pool shape); every OTHER branch below configures a foreign osc
-     * topology, voiding the lazy-LFO shape proof (see voice_config.h). */
     if (patch >= SEQ_PATCH_BASS_BASE && patch <= SEQ_PATCH_BASS_MAX) {
         bass_preset_configure_track(synth_id, patch, num_voices);
         return false;
     }
 #if CONFIG_SYNTH_CUSTOM_FM
     if (patch >= SEQ_PATCH_FM_BASE && patch <= SEQ_PATCH_FM_MAX) {
-        voice_lfo_mark_foreign(synth_id);
         if (patch == SEQ_PATCH_FM_CUSTOM) {
             fm_voice_configure_track(synth_id, num_voices, &s_fm_voice);
         } else {
@@ -753,7 +735,6 @@ static bool sequencer_apply_patch_kind(uint8_t synth_id, uint16_t patch,
 #endif
 #if CONFIG_SYNTH_ADDITIVE
     if (patch >= SEQ_PATCH_ADDITIVE_BASE && patch <= SEQ_PATCH_ADDITIVE_MAX) {
-        voice_lfo_mark_foreign(synth_id);
         if (patch == SEQ_PATCH_ADDITIVE_CUSTOM) {
             additive_voice_configure_track(synth_id, num_voices, &s_additive_voice);
         } else {
@@ -762,7 +743,6 @@ static bool sequencer_apply_patch_kind(uint8_t synth_id, uint16_t patch,
         return false;
     }
 #endif
-    voice_lfo_mark_foreign(synth_id);
     amy_send_patch(synth_id, patch,
                    seq_clamp_patch_voices(patch, num_voices), synth_flags);
     return true;

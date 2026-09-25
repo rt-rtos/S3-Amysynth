@@ -869,9 +869,9 @@ void app_main(void)
     amy_cfg.ram_caps_fbl    = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
     /* Per-osc synthinfo/msynth blocks: read per-BLOCK (control state), not
      * per-sample - the sample-hot buffers are fbl/block above. The osc arena
-     * grows lazily and never shrinks (free only on full reset), and a
-     * 25-osc/voice patch (built-in piano) grows it by ~46 KB in one apply -
-     * measured 2026-08-11 emptying internal to 7.5 KB when this inherited
+     * grows lazily and frees a voice's oscs on release, and a 25-osc/voice
+     * patch (built-in piano) grows it by ~46 KB in one apply - measured
+     * 2026-08-11 emptying internal to 7.5 KB when this inherited
      * ram_caps_events. PSRAM is cached and per-block access is cheap. */
     amy_cfg.ram_caps_oscs = MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT;
     /* Sequencer wire strings are cold control-plane data (read once per
