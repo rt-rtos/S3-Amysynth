@@ -12,9 +12,10 @@
  * step state prints lazily - a pattern string per track, plus one line per
  * step only where something differs from the plain-step neutral values
  * (prob=100, ratchet=1, every<=1, note==track base, all else 0). Voice
- * params print lazily too: eg0/eg1/flt lines only when the row's authored
- * flag is set (unauthored = the patch owns it, nothing to harvest), trim
- * only when off unity. */
+ * params print lazily too: eg1/flt/dist lines only when authored
+ * (unauthored = the patch owns it, nothing to harvest), trim only when off
+ * unity; eg0 always, since raw-wave rows get it pushed regardless. The
+ * layer's shared block prints as LB after its rows. */
 
 #include "seq_core_internal.h"
 #include "sequencer_core.h"
@@ -39,6 +40,52 @@ static const char *xform_name(uint8_t x)
 {
     return (x < sizeof XFORM_NAMES / sizeof *XFORM_NAMES)
                ? XFORM_NAMES[x] : "?";
+}
+
+/* One voice block (a row's own, or the layer's shared one). The eg0 line
+ * prints authored or not: a raw-wave row gets its stored env pushed either
+ * way (sequencer_configure_melodic_envelope). Returns the lines printed. */
+static unsigned dump_vp(const char *tag, const voice_params_t *vp)
+{
+    unsigned n_lines = 0;
+    DP("  %s eg0 a=%lu d=%lu s=%u r=%lu type=%u auth=%u",
+       tag, (unsigned long)vp->env.attack_ms,
+       (unsigned long)vp->env.decay_ms, vp->env.sustain_pct,
+       (unsigned long)vp->env.release_ms, vp->env.eg_type,
+       (unsigned)vp->env_authored);
+    if (vp->env1_authored) {
+        DP("  %s eg1 a=%lu d=%lu s=%u r=%lu type=%u",
+           tag, (unsigned long)vp->env1.attack_ms,
+           (unsigned long)vp->env1.decay_ms, vp->env1.sustain_pct,
+           (unsigned long)vp->env1.release_ms, vp->env1.eg_type);
+    }
+    if (vp->filter_authored) {
+        DP("  %s flt type=%u en=%u cut=%.0f res=%.2f fb=%.2f dto=%.2f "
+           "eg0=%.2f/%.2f/%.2f/%.2f eg1=%.2f/%.2f/%.2f/%.2f",
+           tag, vp->filter.filter_type,
+           (unsigned)vp->filter.enabled, (double)vp->filter.cutoff_hz,
+           (double)vp->filter.resonance,
+           (double)vp->filter.feedback,
+           (double)vp->filter.ks_duty_ofs,
+           (double)vp->filter.eg_depth[0][SEQ_EGT_PITCH],
+           (double)vp->filter.eg_depth[0][SEQ_EGT_CUTOFF],
+           (double)vp->filter.eg_depth[0][SEQ_EGT_DRIVE],
+           (double)vp->filter.eg_depth[0][SEQ_EGT_MIX],
+           (double)vp->filter.eg_depth[1][SEQ_EGT_PITCH],
+           (double)vp->filter.eg_depth[1][SEQ_EGT_CUTOFF],
+           (double)vp->filter.eg_depth[1][SEQ_EGT_DRIVE],
+           (double)vp->filter.eg_depth[1][SEQ_EGT_MIX]);
+    }
+    if (vp->dist_authored || vp->lfo_authored) {
+        DP("  %s dist auth=%u type=%u drive=%u bits=%u rate=%u mix=%u lfo auth=%u",
+           tag, (unsigned)vp->dist_authored, vp->dist.type,
+           vp->dist.drive, vp->dist.bits, vp->dist.rate, vp->dist.mix,
+           (unsigned)vp->lfo_authored);
+    }
+    if (vp->amp_trim != 1.0f) {
+        DP("  %s trim=%.2f", tag, (double)vp->amp_trim);
+    }
+    return n_lines;
 }
 
 void sequencer_core_dump_state(void)
@@ -97,38 +144,9 @@ void sequencer_core_dump_state(void)
             if (L->vp_src[t] == SEQ_VP_SRC_LAYER) {
                 DP("  T%u src=LAYER", t + 1u);
             }
-            if (vp->env_authored) {
-                DP("  T%u eg0 a=%lu d=%lu s=%u r=%lu type=%u",
-                   t + 1u, (unsigned long)vp->env.attack_ms,
-                   (unsigned long)vp->env.decay_ms, vp->env.sustain_pct,
-                   (unsigned long)vp->env.release_ms, vp->env.eg_type);
-            }
-            if (vp->env1_authored) {
-                DP("  T%u eg1 a=%lu d=%lu s=%u r=%lu type=%u",
-                   t + 1u, (unsigned long)vp->env1.attack_ms,
-                   (unsigned long)vp->env1.decay_ms, vp->env1.sustain_pct,
-                   (unsigned long)vp->env1.release_ms, vp->env1.eg_type);
-            }
-            if (vp->filter_authored) {
-                DP("  T%u flt type=%u en=%u cut=%.0f res=%.2f fb=%.2f dto=%.2f "
-                   "eg0=%.2f/%.2f/%.2f/%.2f eg1=%.2f/%.2f/%.2f/%.2f",
-                   t + 1u, vp->filter.filter_type,
-                   (unsigned)vp->filter.enabled, (double)vp->filter.cutoff_hz,
-                   (double)vp->filter.resonance,
-                   (double)vp->filter.feedback,
-                   (double)vp->filter.ks_duty_ofs,
-                   (double)vp->filter.eg_depth[0][SEQ_EGT_PITCH],
-                   (double)vp->filter.eg_depth[0][SEQ_EGT_CUTOFF],
-                   (double)vp->filter.eg_depth[0][SEQ_EGT_DRIVE],
-                   (double)vp->filter.eg_depth[0][SEQ_EGT_MIX],
-                   (double)vp->filter.eg_depth[1][SEQ_EGT_PITCH],
-                   (double)vp->filter.eg_depth[1][SEQ_EGT_CUTOFF],
-                   (double)vp->filter.eg_depth[1][SEQ_EGT_DRIVE],
-                   (double)vp->filter.eg_depth[1][SEQ_EGT_MIX]);
-            }
-            if (vp->amp_trim != 1.0f) {
-                DP("  T%u trim=%.2f", t + 1u, (double)vp->amp_trim);
-            }
+            char tag[4];
+            snprintf(tag, sizeof tag, "T%u", t + 1u);
+            n_lines += dump_vp(tag, vp);
 
             char grid[SEQ_MAX_STEPS + 1];
             for (uint8_t s = 0; s < L->num_steps; s++)
@@ -183,6 +201,7 @@ void sequencer_core_dump_state(void)
                (unsigned)lv->env_authored, (unsigned)lv->env1_authored,
                (unsigned)lv->filter_authored, (unsigned)lv->lfo_authored,
                (unsigned)lv->dist_authored);
+            n_lines += dump_vp("LB", lv);
         }
     }
 

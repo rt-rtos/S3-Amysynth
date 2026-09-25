@@ -26,6 +26,7 @@ set(dev_srcs)
 if(CONFIG_SYNTH_DEV_MENU)
     list(APPEND dev_srcs
         "synth_ui/ui_screen_dev.c"
+        "synth_ui/ui_dev_riff.c"
         "sequencer_core/seq_core_dump.c")
 endif()
 

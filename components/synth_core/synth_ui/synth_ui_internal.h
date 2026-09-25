@@ -99,6 +99,19 @@ bool        synth_ui_dev_dropbar_active(void);
 const char *synth_ui_dev_dropbar_text(void);
 uint32_t    synth_ui_dev_dropbar_sig(void);
 
+/* ─── DEV KS riff A/B (ui_dev_riff.c; CONFIG_SYNTH_DEV_MENU) ────────────
+ * play_a: the host harness's six KS strings on six spare synths; play_b: the
+ * same riff on the first melodic layer's rows with their live voice. Each
+ * stops the transport and schedules the whole riff on AMY's clock; a press
+ * while one is sounding is ignored. dump: AMY's own osc state for both riffs'
+ * synths and the global KS settings, to the console. UI/input task context. */
+void  synth_ui_dev_riff_play_a(void);
+void  synth_ui_dev_riff_play_b(void);
+void  synth_ui_dev_riff_dump(void);
+bool  synth_ui_dev_riff_busy(void);
+float synth_ui_dev_riff_duty(void);
+void  synth_ui_dev_riff_toggle_duty(void);
+
 /* ─── View descriptor table (draw + hint), defined in ui_view_resolve.c ──
  * One scratch union holds whichever view struct the active screen builds:
  * signature() fills it and returns the FNV hash, draw() reuses it. Indexed by

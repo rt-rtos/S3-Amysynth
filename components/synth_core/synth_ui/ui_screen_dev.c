@@ -240,6 +240,29 @@ static void rows_adjust(int delta, int arg)
                                                              SEQ_TRACKS));
 }
 
+/* KS riff A/B (ui_dev_riff.c): A plays the host harness's strings at the
+ * "A duty" row's duty (0.50 or 0.37), B the same riff on the first melodic
+ * layer's rows. */
+static void riff_fmt(char *buf, size_t n, int arg)
+{
+    if (arg == 2) { snprintf(buf, n, "%.2f", (double)synth_ui_dev_riff_duty()); return; }
+    if (arg == 3) { snprintf(buf, n, "log"); return; }
+    snprintf(buf, n, "%s", synth_ui_dev_riff_busy() ? "..." : "play");
+}
+
+static void riff_adjust(int delta, int arg)
+{
+    (void)arg;
+    if (delta) synth_ui_dev_riff_toggle_duty();
+}
+
+static void riff_fire(int arg)
+{
+    if (arg == 0)      synth_ui_dev_riff_play_a();
+    else if (arg == 1) synth_ui_dev_riff_play_b();
+    else               synth_ui_dev_riff_dump();
+}
+
 /* One-shot sequencer state dump to the console (seq_core_dump.c). */
 static void seqdump_fire(int arg)
 {
@@ -439,6 +462,10 @@ static const dev_item_t s_ksloop_items[] = {
     { .label = "Release", .fmt = ksl_fmt, .fire  = ksl_fire,   .arg = KSL_RELEASE },
     { .label = "Voices", .fmt = ksl_fmt, .adjust = ksl_adjust, .arg = KSL_VOICES },
     { .label = "Rows",   .fmt = rows_fmt, .adjust = rows_adjust },
+    { .label = "A duty", .fmt = riff_fmt, .adjust = riff_adjust, .arg = 2 },
+    { .label = "Riff A", .fmt = riff_fmt, .fire = riff_fire,     .arg = 0 },
+    { .label = "Riff B", .fmt = riff_fmt, .fire = riff_fire,     .arg = 1 },
+    { .label = "Dump",   .fmt = riff_fmt, .fire = riff_fire,     .arg = 3 },
 };
 static const dev_page_t s_page_ksloop = { "KS LOOP", s_ksloop_items,
                                           sizeof s_ksloop_items / sizeof *s_ksloop_items };
