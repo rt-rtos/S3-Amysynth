@@ -596,9 +596,9 @@ static void sequencer_configure_melodic_envelope(uint8_t layer_idx, uint8_t rows
      * carrier's COEF_EG0 stays 1.0: AMY reads an empty breakpoint set as a
      * permanently open gate (envelope.c) and a velocity-0 note-off never zeroes
      * it (amy.c), so the oscillator rings forever - surviving patch changes and
-     * pause, which both silence voices via that same note-off. Force the
-     * default envelope onto every such unauthored row. (KS/NOISE also get their
-     * sustain floor in sequencer_configure_melodic_envelope_track.) */
+     * pause, which both silence voices via that same note-off. Push the row's
+     * stored envelope (seeded with the default) onto every such unauthored
+     * row. */
     for (uint8_t t = 0; t < rows; t++) {
         bool force_wave = sequencer_core_is_wave_patch(layer->track_patch[t]);
         if (seq_track_vp(layer_idx, t)->env_authored || force_wave) {
