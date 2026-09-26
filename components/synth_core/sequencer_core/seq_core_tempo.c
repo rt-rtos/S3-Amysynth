@@ -3,6 +3,7 @@
 #include "voice_config.h"                   /* SEQ_LFO_PITCH_BASE_HZ */
 #include "custompatches/drone_std_core.h"   /* drone_std_core_refresh_lfo_freq */
 #include "seq_clamp.h"
+#include "amy_fx.h"                         /* amy_fx_on_tempo_change */
 #include "sdkconfig.h"
 #if CONFIG_SYNTH_WIRELESS
 #include "live_play.h"                      /* live_play_refresh_lfo_freq */
@@ -124,6 +125,7 @@ void sequencer_core_set_bpm(uint16_t new_bpm)
     live_play_refresh_lfo_freq();
 #endif
     clip_player_on_tempo_change(s_bpm);
+    amy_fx_on_tempo_change();
 }
 
 uint16_t sequencer_core_get_bpm(void) { return s_bpm; }

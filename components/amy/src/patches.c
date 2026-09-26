@@ -1338,6 +1338,11 @@ void patches_event_has_voices(amy_event *e, struct delta **queue) {
             // No voices to process, somehow event is to be ignored.
             return;
         }
+        // LOCAL EDIT (S3-Amysynth): reset_osc() puts the osc on bus 0, but the
+        // bus is the synth's; re-state it behind each voice's reset.
+        int reset_bus = 0;
+        if (AMY_IS_SET(e->synth) && AMY_IS_SET(e->reset_osc))
+            reset_bus = instrument_get_bus(e->synth);
         // Clear out the instrument, voices, patch from the event. If we didn't, we'd keep calling this over and over
         AMY_UNSET(e->patch_number);
         AMY_UNSET(e->synth);
@@ -1358,6 +1363,16 @@ void patches_event_has_voices(amy_event *e, struct delta **queue) {
                         amy_event_to_deltas_queue(e, target_osc, voice_oscs, queue);
                     }
                     AMY_UNSET(e->osc);
+                }
+                if (reset_bus > 0 && e->reset_osc < voice_oscs) {
+                    struct delta d = {
+                        .time = AMY_IS_SET(e->time) ? e->time : 0,
+                        .osc = (uint16_t)(target_osc + e->reset_osc),
+                        .param = BUS,
+                        .data.i = (uint32_t)reset_bus,
+                        .next = NULL,
+                    };
+                    add_delta_to_queue(&d, queue);
                 }
                 //fprintf(stderr, "patches: synth %d voice %d osc %d wav %d note %d vel %d\n", synth, voices[i], target_osc, e->wave, (int)e->midi_note, (int)(127.f * e->velocity));
             }

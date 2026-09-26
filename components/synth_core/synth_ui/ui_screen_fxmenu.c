@@ -123,6 +123,8 @@ typedef enum {
     FXI_CHORUS_DELAY,
     FXI_ECHO_LEVEL,
     FXI_ECHO_FEEDBACK,
+    FXI_ECHO_MODE,  /* Sync: Echo Note sets the time; Free: Echo Time does */
+    FXI_ECHO_NOTE,
     FXI_ECHO_TIME,
     FXI_ECHO_TONE,
     FXI_REVERB_LEVEL,
@@ -241,9 +243,18 @@ const menu_item_view_t *fx_menu_build_items(void)
     snprintf(s_fx_items[FXI_ECHO_FEEDBACK].label, MENU_LABEL_LEN, "Echo Fbk");
     snprintf(s_fx_items[FXI_ECHO_FEEDBACK].value, MENU_VALUE_LEN, "%d%%",
              fx_eff(f->echo_feedback, 0));
+    snprintf(s_fx_items[FXI_ECHO_MODE].label, MENU_LABEL_LEN, "Echo Mode");
+    snprintf(s_fx_items[FXI_ECHO_MODE].value, MENU_VALUE_LEN, "%s",
+             f->echo_sync ? "Sync" : "Free");
+    /* The row the mode does not use stays visible in parentheses, read-only:
+     * in Sync, Echo Time shows the ms the note works out to. */
+    snprintf(s_fx_items[FXI_ECHO_NOTE].label, MENU_LABEL_LEN, "Echo Note");
+    snprintf(s_fx_items[FXI_ECHO_NOTE].value, MENU_VALUE_LEN,
+             f->echo_sync ? "%s" : "(%s)", amy_fx_echo_div_label(f->echo_div));
     snprintf(s_fx_items[FXI_ECHO_TIME].label, MENU_LABEL_LEN, "Echo Time");
-    snprintf(s_fx_items[FXI_ECHO_TIME].value, MENU_VALUE_LEN, "%dms",
-             fx_eff(f->echo_delay_ms, 500));
+    snprintf(s_fx_items[FXI_ECHO_TIME].value, MENU_VALUE_LEN,
+             f->echo_sync ? "(%dms)" : "%dms",
+             (int)(amy_fx_echo_time_ms(s_page_bus) + 0.5f));
     snprintf(s_fx_items[FXI_ECHO_TONE].label, MENU_LABEL_LEN, "Echo Tone");
     snprintf(s_fx_items[FXI_ECHO_TONE].value, MENU_VALUE_LEN, "%+d",
              fx_eff(f->echo_tone, 0));
@@ -274,8 +285,10 @@ bool fx_menu_item_is_value(uint8_t idx)
 {
     /* Every row except Back holds an editable value - bar Split on bus 0 and
      * the clip bus, which state where the bus sits rather than offering a
-     * choice. */
+     * choice, and whichever of Echo Note / Echo Time the mode is not using. */
     if (idx >= FXI_BACK) return false;
+    if (idx == FXI_ECHO_NOTE) return s_fx[s_page_bus].echo_sync;
+    if (idx == FXI_ECHO_TIME) return !s_fx[s_page_bus].echo_sync;
     if (idx == FXI_SPLIT && (s_page_bus == FX_BUS_HOME || s_page_bus == FX_BUS_CLIPS))
         return false;
     return true;
@@ -379,10 +392,18 @@ void fx_menu_edit_value(uint8_t idx, int delta)
         case FXI_ECHO_FEEDBACK:
             fx_step(&f->echo_feedback, 0, 5, 0, 99, dir, fx_push_echo, bus);
             break;
+        case FXI_ECHO_MODE:
+            f->echo_sync = !f->echo_sync;
+            fx_push_echo(bus);
+            break;
+        case FXI_ECHO_NOTE:
+            f->echo_div = (uint8_t)SEQ_CLAMP_INT((int)f->echo_div + dir,
+                                                 0, FX_ECHO_DIV_COUNT - 1);
+            fx_push_echo(bus);
+            break;
         case FXI_ECHO_TIME:
-            /* 743 ms = AMY's default-allocated echo delay line; longer values
-             * get clamped inside config_echo anyway. */
-            fx_step(&f->echo_delay_ms, 500, 10, 0, 743, dir, fx_push_echo, bus);
+            fx_step(&f->echo_delay_ms, 500, 10, 0, FX_ECHO_MAX_MS, dir,
+                    fx_push_echo, bus);
             break;
         case FXI_ECHO_TONE:
             fx_step(&f->echo_tone, 0, 5, -99, 99, dir, fx_push_echo, bus);

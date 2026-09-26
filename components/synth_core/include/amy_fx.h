@@ -22,6 +22,27 @@ extern "C" {
  * default. Chosen outside every valid range, incl. negative echo tone. */
 #define FX_PARAM_UNSET  INT16_MIN
 
+/* Longest echo time. AMY sizes the echo line to the power of two enclosing
+ * its 743 ms default: 65536 samples, 1365 ms at 48 kHz. */
+#define FX_ECHO_MAX_MS  1365
+
+/* Tempo-synced echo lengths, shortest first; the index is what fx_state_t and
+ * the project file store. */
+typedef enum {
+    FX_ECHO_DIV_32 = 0,
+    FX_ECHO_DIV_16T,
+    FX_ECHO_DIV_16,
+    FX_ECHO_DIV_8T,
+    FX_ECHO_DIV_8,
+    FX_ECHO_DIV_4T,
+    FX_ECHO_DIV_8D,
+    FX_ECHO_DIV_4,
+    FX_ECHO_DIV_2T,
+    FX_ECHO_DIV_4D,
+    FX_ECHO_DIV_2,
+    FX_ECHO_DIV_COUNT
+} fx_echo_div_t;
+
 typedef struct {
     int8_t  eq_low_db;     /* -15..+15 dB */
     int8_t  eq_mid_db;
@@ -31,9 +52,12 @@ typedef struct {
     uint8_t reverb_level;  /* 0..100 -> 0..1 */
     /* Extended FX params, FX_PARAM_UNSET until dialed in. Percent
      * fields map /100 to AMY's 0..1 float; others as noted. */
-    int16_t echo_delay_ms;   /* 0..743 ms;   unset -> AMY 500 ms          */
+    int16_t echo_delay_ms;   /* 0..FX_ECHO_MAX_MS; unset -> AMY 500 ms. Free
+                                mode only; Sync derives the time from BPM */
     int16_t echo_feedback;   /* 0..99 (%);   unset -> AMY 0 (one repeat)  */
     int16_t echo_tone;       /* -99..99 (% filter coef); unset -> AMY 0   */
+    bool    echo_sync;       /* true: time = echo_div at the sequencer BPM */
+    uint8_t echo_div;        /* fx_echo_div_t                              */
     int16_t reverb_liveness; /* 0..100 (%);  unset -> AMY 0.85            */
     int16_t reverb_damping;  /* 0..100 (%);  unset -> AMY 0.5             */
     int16_t reverb_xover_hz; /* 500..8000 Hz; unset -> AMY 3000 Hz        */
@@ -81,6 +105,20 @@ void fx_push_dist(uint8_t bus);
 
 /* All five pushes for one bus. */
 void fx_bus_sync(uint8_t bus);
+
+/* The echo time a bus's cache asks for, in ms: echo_div at the current
+ * sequencer BPM when synced, else echo_delay_ms (AMY's 500 ms while unset).
+ * Clamped to 0..FX_ECHO_MAX_MS, so this is also what the engine runs. */
+float amy_fx_echo_time_ms(uint8_t bus);
+
+/* Menu label of a synced length ("1/8D"); "?" out of range. */
+const char *amy_fx_echo_div_label(uint8_t div);
+
+/* Re-time every synced echo to the current BPM. Called by
+ * sequencer_core_set_bpm(); UI task (or any non-render task) only. The echo
+ * line's read point jumps to the new length, so repeats still sounding
+ * glitch once. */
+void amy_fx_on_tempo_change(void);
 
 /* Split a group onto its own bus (or fold it back onto FX_BUS_HOME): re-tags
  * the group's existing synths and syncs the group's own bus. No-op when the

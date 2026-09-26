@@ -46,6 +46,7 @@ flowchart TD
     Active --> BUILD["Kconfig + CMakeLists: fixed-point, profiler, wavetable, gamma808 flags; NDEBUG hot files; drums-flash<br/>Kconfig, CMakeLists.txt"]
     Active --> UNI["Experimental per-osc unison cluster<br/>src/amy.h, src/amy.c, src/oscillators.c, src/patches.c, src/api.c"]
     Active --> FTR["Filter state reset on filter_type change<br/>src/amy.c"]
+    Active --> RBUS["reset_osc keeps the instrument's bus<br/>src/patches.c"]
 ```
 
 ## Dropped (merged upstream)
@@ -107,6 +108,21 @@ way at a lower level. Same-type re-sends (patch strings, per-detent editor
 pushes) are unaffected by the compare. The filter editor's type cursor hits
 this on every sounding voice. Same shape as the upstream branch
 `fix/filter-type-switch-reset`; retire on the sync that carries it.
+
+### `patches.c` - a synth-addressed `reset_osc` keeps the instrument's bus (upstream PR candidate)
+
+`reset_osc()` puts the osc back on bus 0 (`reset_osc_params`), but the bus
+is instrument state (`instrument_set_bus`). An event naming a synth and a
+voice-relative `reset_osc` therefore moved that osc of every voice onto bus 0
+while `instrument_get_bus()` still named the synth's bus, and later osc-level
+config does not re-state it. `patches_event_has_voices()` now reads the
+instrument's bus before it unsets `e->synth` and, when it is not 0, queues a
+`BUS` delta for each voice's reset osc right behind the reset. Same rule as
+upstream's re-patch bus inheritance in `patches_load_patch()`. In the app this
+hit the clip players on every transport stop (a bounce clip left the clip bus
+for bus 0) and a drum row on every PCM preset or mode change. A `BUS` delta
+allocates its osc at play time, so a reset aimed at a never-allocated osc of
+a bus > 0 synth now allocates it. Retire on the sync that carries the fix.
 
 ### `amy.h` + `amy.c` + `oscillators.c` + `patches.c` + `api.c` — per-osc unison cluster (experimental, dev-only)
 

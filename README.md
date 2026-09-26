@@ -650,7 +650,7 @@ edited.
 | Item | Range |
 |---|---|
 | EQ Low / Mid / High | -15 to +15 dB (1 dB steps) |
-| Echo | 0-100 % level, plus Fbk 0-99 %, Time 0-743 ms, Tone -99 to +99 |
+| Echo | 0-100 % level, plus Fbk 0-99 %, Mode Sync/Free, Note 1/32 to 1/2 incl. triplets (T) and dotted (D) in Sync, Time 0-1365 ms in Free, Tone -99 to +99 |
 | Chorus | 0-100 % level, plus Rate 0.05-10 Hz, Depth 0-100 % |
 | Reverb | 0-100 % level, plus Live 0-100 %, Damp 0-100 %, Xover 500-8000 Hz |
 | Dist | stage set: OFF / CLIP / FOLD / C+F / CRSH / C+H / F+H / ALL (clip, fold, bitcrush and their combinations) |

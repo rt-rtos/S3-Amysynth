@@ -272,7 +272,7 @@ typedef struct {
 
 static void ser_glob(tlv_writer_t *w)
 {
-    size_t h = tlv_begin_section(w, TAG_GLOB, 4);  /* v4: per-bus chorus_delay appended */
+    size_t h = tlv_begin_section(w, TAG_GLOB, 5);  /* v5: per-bus echo sync + note */
     tlv_put_u16(w, sequencer_core_get_bpm());
     tlv_put_f32(w, amy_fx_get_master_volume());
     tlv_put_u8(w, sequencer_core_get_quantizer_enabled() ? 1 : 0);
@@ -298,6 +298,8 @@ static void ser_glob(tlv_writer_t *w)
         tlv_put_i16(w, f->echo_delay_ms);
         tlv_put_i16(w, f->echo_feedback);
         tlv_put_i16(w, f->echo_tone);
+        tlv_put_u8(w,  f->echo_sync ? 1 : 0);
+        tlv_put_u8(w,  f->echo_div);
         tlv_put_i16(w, f->reverb_liveness);
         tlv_put_i16(w, f->reverb_damping);
         tlv_put_i16(w, f->reverb_xover_hz);
@@ -353,6 +355,10 @@ static bool parse_glob(tlv_reader_t *b, staged_glob_t *g)
         if (!tlv_get_i16(b, &f->echo_delay_ms))   return true;
         if (!tlv_get_i16(b, &f->echo_feedback))   return true;
         if (!tlv_get_i16(b, &f->echo_tone))       return true;
+        if (!tlv_get_u8(b, &v))                   return true;
+        f->echo_sync = v != 0;
+        if (!tlv_get_u8(b, &f->echo_div))         return true;
+        if (f->echo_div >= FX_ECHO_DIV_COUNT) f->echo_div = FX_ECHO_DIV_8D;
         if (!tlv_get_i16(b, &f->reverb_liveness)) return true;
         if (!tlv_get_i16(b, &f->reverb_damping))  return true;
         if (!tlv_get_i16(b, &f->reverb_xover_hz)) return true;
@@ -1103,7 +1109,7 @@ bool project_snapshot_load(uint8_t slot)
     while (ok && tlv_next_section(&r, &tag, &ver, &body)) {
         switch (tag) {
         case TAG_GLOB:
-            if (got_glob || ver != 4) { ok = false; break; }
+            if (got_glob || ver != 5) { ok = false; break; }
             ok = parse_glob(&body, &staged_glob);
             got_glob = ok;
             break;
@@ -1180,6 +1186,14 @@ bool project_snapshot_load(uint8_t slot)
      * CHRD section clears the table - the project is the whole persisted
      * state, chords included. */
     seq_chords_import(got_chrd ? staged_chords : NULL);
+
+    /* Split flags BEFORE the layer imports: a synth the import creates takes
+     * its bus from the flags at send time (the amy_helpers ingress hook), and
+     * apply_glob's re-tag cannot reach it - it skips slots AMY has not built
+     * yet, and the import's events are still queued when it runs. */
+    for (fx_group_t grp = FX_GROUP_DRUMS; grp < FX_GROUP_COUNT; grp++) {
+        fx_bus_set_split(grp, (staged_glob.split_flags & (1u << grp)) != 0);
+    }
 
     while (sequencer_core_get_num_layers() > 1) {
         sequencer_core_delete_layer((uint8_t)(sequencer_core_get_num_layers() - 1));

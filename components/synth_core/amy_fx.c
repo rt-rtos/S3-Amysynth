@@ -13,6 +13,7 @@
 #include "amy_helpers.h"
 #include "sdkconfig.h"
 #include "seq_clamp.h"
+#include "sequencer_core.h"   /* sequencer_core_get_bpm: synced echo */
 
 /* ── Default initialisation guards ─────────────────────────────────────── */
 #ifndef CONFIG_SEQ_FX_DEFAULT_ECHO
@@ -40,6 +41,8 @@
     .echo_delay_ms   = FX_PARAM_UNSET, \
     .echo_feedback   = FX_PARAM_UNSET, \
     .echo_tone       = FX_PARAM_UNSET, \
+    .echo_sync       = true, \
+    .echo_div        = FX_ECHO_DIV_8D, \
     .reverb_liveness = FX_PARAM_UNSET, \
     .reverb_damping  = FX_PARAM_UNSET, \
     .reverb_xover_hz = FX_PARAM_UNSET, \
@@ -70,6 +73,9 @@ fx_state_t s_fx[FX_BUS_COUNT] = {
         .echo_delay_ms   = FX_PARAM_UNSET,
         .echo_feedback   = FX_PARAM_UNSET,
         .echo_tone       = FX_PARAM_UNSET,
+        /* Echo starts in time with the pattern, on a dotted 8th. */
+        .echo_sync       = true,
+        .echo_div        = FX_ECHO_DIV_8D,
         .reverb_liveness = FX_PARAM_UNSET,
         .reverb_damping  = FX_PARAM_UNSET,
         .reverb_xover_hz = FX_PARAM_UNSET,
@@ -130,16 +136,63 @@ void fx_push_eq(uint8_t bus)
     amy_helpers_event_send(e);
 }
 
+/* Synced echo lengths in 24ths of a quarter note, indexed by fx_echo_div_t:
+ * ms = 60000 * ticks / (24 * bpm) = 2500 * ticks / bpm. */
+static const struct { uint8_t ticks; char label[6]; } s_echo_divs[FX_ECHO_DIV_COUNT] = {
+    [FX_ECHO_DIV_32]  = {  3, "1/32"  },
+    [FX_ECHO_DIV_16T] = {  4, "1/16T" },
+    [FX_ECHO_DIV_16]  = {  6, "1/16"  },
+    [FX_ECHO_DIV_8T]  = {  8, "1/8T"  },
+    [FX_ECHO_DIV_8]   = { 12, "1/8"   },
+    [FX_ECHO_DIV_4T]  = { 16, "1/4T"  },
+    [FX_ECHO_DIV_8D]  = { 18, "1/8D"  },
+    [FX_ECHO_DIV_4]   = { 24, "1/4"   },
+    [FX_ECHO_DIV_2T]  = { 32, "1/2T"  },
+    [FX_ECHO_DIV_4D]  = { 36, "1/4D"  },
+    [FX_ECHO_DIV_2]   = { 48, "1/2"   },
+};
+
+const char *amy_fx_echo_div_label(uint8_t div)
+{
+    return (div < FX_ECHO_DIV_COUNT) ? s_echo_divs[div].label : "?";
+}
+
+float amy_fx_echo_time_ms(uint8_t bus)
+{
+    if (bus >= FX_BUS_COUNT) return ECHO_DEFAULT_DELAY_MS;
+    const fx_state_t *f = &s_fx[bus];
+    float ms;
+    if (f->echo_sync && f->echo_div < FX_ECHO_DIV_COUNT) {
+        uint16_t bpm = sequencer_core_get_bpm();
+        ms = (bpm > 0) ? 2500.0f * (float)s_echo_divs[f->echo_div].ticks / (float)bpm
+                       : (float)FX_ECHO_MAX_MS;
+    } else {
+        ms = (f->echo_delay_ms == FX_PARAM_UNSET) ? ECHO_DEFAULT_DELAY_MS
+                                                  : (float)f->echo_delay_ms;
+    }
+    if (ms < 0.0f) ms = 0.0f;
+    if (ms > (float)FX_ECHO_MAX_MS) ms = (float)FX_ECHO_MAX_MS;
+    return ms;
+}
+
+void amy_fx_on_tempo_change(void)
+{
+    for (uint8_t bus = 0; bus < FX_BUS_COUNT; bus++) {
+        if (s_fx[bus].echo_sync && fx_bus_is_active(bus)) fx_push_echo(bus);
+    }
+}
+
 void fx_push_echo(uint8_t bus)
 {
     const fx_state_t *f = fx_engine_state(bus);
     amy_event *e = amy_helpers_event_begin();
     e->bus        = bus;
     e->echo_level = (float)f->echo_level / 100.0f;
-    /* Only send sub-params the user has set; unset ones stay AMY_UNSET so
+    /* The time is always sent: after a synced push, AMY no longer holds
+     * the factory 500 ms an unset Free time displays. */
+    e->echo_delay_ms = amy_fx_echo_time_ms(bus);
+    /* Only send the other sub-params once set; unset ones stay AMY_UNSET so
      * config_echo keeps the bus's current value. */
-    if (f->echo_delay_ms != FX_PARAM_UNSET)
-        e->echo_delay_ms   = (float)f->echo_delay_ms;
     if (f->echo_feedback != FX_PARAM_UNSET)
         e->echo_feedback   = (float)f->echo_feedback / 100.0f;
     if (f->echo_tone != FX_PARAM_UNSET)
