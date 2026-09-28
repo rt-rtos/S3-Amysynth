@@ -55,7 +55,7 @@ static inline uint32_t sequencer_step_swing_offset(const seq_layer_t *layer,
                                                    uint8_t step)
 {
     if ((step & 1u) == 0u || layer->swing_pct == 0) return 0;
-    return ((uint32_t)SEQ_TICKS_PER_STEP * (uint32_t)layer->swing_pct) / 100u;
+    return SEQ_SWING_TICKS(layer->swing_pct);
 }
 
 /* Note-hold in ticks for the plain (non-subdivided) trig of `step`. Off-beat

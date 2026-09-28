@@ -62,6 +62,14 @@ void     synth_ui_reexport_layer(uint8_t li);
  * context. */
 void     synth_ui_request_layer_tracks(uint8_t li, uint8_t num_tracks);
 
+/* Layer swing editing, shared by the Layer page and the graph editor's SWG
+ * stop (defined in ui_screen_layermenu.c). ui_swing_step moves swing_pct by
+ * `dir` engine ticks and returns the smallest pct for the new tick, clamped to
+ * 0..SEQ_SWING_MAX. ui_swing_format writes the long/short ratio of a 16th pair
+ * ("54%", triplet "67T") into buf. Pure; any task. */
+uint8_t  ui_swing_step(uint8_t swing_pct, int dir);
+void     ui_swing_format(char *buf, size_t len, uint8_t swing_pct);
+
 /* ─── View signatures (each defined in its screen/editor file) ──────────
  * CONTRACT: signature functions are side-effect-free. The redraw gate calls one
  * per frame and compares its hash against the previous frame's; any state
@@ -142,6 +150,10 @@ typedef struct {
      * editor readouts and CLIP/LOUD. Only a hint: display_badge_draw() keeps
      * the badge off lit pixels regardless. 0 = let the probe choose. */
     uint8_t badge_x;
+    /* Optional SHOULDER cell, appended as " LB:<label>" when it returns
+     * non-NULL (LB = the left shoulder button, SHOULDER; RB = the right one,
+     * SHIFT). NULL fn (the default for rows that omit it) = no cell. */
+    const char *(*bs_fn)(void);
 } ui_view_desc_t;
 
 extern const ui_view_desc_t ui_view_table[UI_VIEW_COUNT];
@@ -179,9 +191,12 @@ void     fx_menu_set_bus(uint8_t bus);
 uint8_t  fx_menu_current_bus(void);
 const char *fx_menu_title(void);     /* header-bar title for the bus page */
 const char *menu_page_title(void);   /* header-bar title for the active page */
+/* True when a SHOULDER press would leave a menu sub-page for the main list
+ * (synth_ui_menu_go_main); drives the hint strip's LB cell. */
+bool     menu_shoulder_goes_main(void);
 
-/* ─── Layer page: everything scoped to the active layer - steps, melodic patch
- *     scope, gate/glide/groove, the manual chord, and the per-track
+/* ─── Layer page: everything scoped to the active layer - steps, swing, melodic
+ *     patch scope, gate/glide/groove, the manual chord, and the per-track
  *     repeat/mute/solo block (item model in ui_screen_layermenu.c; page state
  *     and input routing live in ui_screen_menu.c). Reached from the `Layer >`
  *     dive row on the main list. The visible row list is dynamic (ClrSolo

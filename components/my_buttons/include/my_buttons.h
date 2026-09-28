@@ -23,7 +23,7 @@ extern "C" {
  * Keep each comment's GPIO in step with the matching row of that array.
  */
 typedef enum {
-    MY_BUTTON_SHOULDER, // GPIO15 → per-view: step toggle on the grid (second one,
+    MY_BUTTON_SHOULDER, // GPIO15, left shoulder (LB) → per-view: step toggle on the grid (second one,
                         //          alongside the encoder press), EG1 sweep
                         //          polarity in the envelope editor
     MY_BUTTON_1,        // GPIO18 → patch-select hold (hold + encoder); in editors:
@@ -33,7 +33,7 @@ typedef enum {
     MY_BUTTON_ENC,      // GPIO16 → encoder push button (step toggle)
     MY_BUTTON_0,        // GPIO17 → layer cycle (tap) / play-stop (long); commit
                         //          or cancel an open editor
-    MY_BUTTON_SHIFT,    // GPIO47 → hold modifier for the SHIFT+1/2/3 chords
+    MY_BUTTON_SHIFT,    // GPIO47, right shoulder (RB) → hold modifier for the SHIFT+1/2/3 chords
     MY_BUTTON_MAX
 } my_button_id_t;
 

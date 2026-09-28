@@ -3,6 +3,7 @@
 #include "sequencer_core.h"
 #include "custompatches/clip_bounce.h"
 #include "custompatches/clip_player.h"
+#include "custompatches/sample_rec.h"
 #include "synth_slots.h"
 #include <stdio.h>
 #include <string.h>
@@ -18,7 +19,9 @@
  * Rec row that starts and stops
  * (the same transport as the SHIFT+0 chord, with the page's slot instead of
  * the first empty one), a Cancel row and a one-level Undo. Below it, four
- * rows per clip slot: play/mute, level, tempo mode, clear.
+ * rows per clip slot: play/mute, level, tempo mode, clear. Last, the runtime
+ * sampler (sample_rec): the same mix capture into one drum pad instead of a
+ * clip, driven by a Sample row and its cancel.
  *
  * The shape survives leaving the page, so a second bounce after one
  * recording is one click on Rec. Only the failure text is per-visit.
@@ -27,8 +30,8 @@
  * reason is shown inline in the Rec row's value until the next arm, exactly
  * how the Projects page reports its action results. */
 
-/* Row indices. The clip block is four rows per slot, so the Back row and the
- * total both derive from CLIP_SLOT_COUNT. */
+/* Row indices. The clip block is four rows per slot, so the sampler rows, the
+ * Back row and the total all derive from CLIP_SLOT_COUNT. */
 enum {
     BOUNCE_ROW_SLOT = 0,
     BOUNCE_ROW_LEN,
@@ -42,8 +45,10 @@ enum {
     BOUNCE_ROW_CLIP0,
 };
 #define BOUNCE_CLIP_ROWS  4u    /* play/mute, level, tempo mode, clear */
-#define BOUNCE_ROW_BACK   (BOUNCE_ROW_CLIP0 + BOUNCE_CLIP_ROWS * CLIP_SLOT_COUNT)
-#define BOUNCE_ROW_COUNT  (BOUNCE_ROW_BACK + 1u)
+#define BOUNCE_ROW_SAMPLE     (BOUNCE_ROW_CLIP0 + BOUNCE_CLIP_ROWS * CLIP_SLOT_COUNT)
+#define BOUNCE_ROW_SMP_CANCEL (BOUNCE_ROW_SAMPLE + 1u)
+#define BOUNCE_ROW_BACK       (BOUNCE_ROW_SMP_CANCEL + 1u)
+#define BOUNCE_ROW_COUNT      (BOUNCE_ROW_BACK + 1u)
 
 /* Max bar counts on offer. Powers of two up to CLIP_BOUNCE_MAX_BARS; the
  * real length is set by the stop, rounded to whole pattern periods.
@@ -58,6 +63,8 @@ static uint8_t s_slot = 0;
 
 /* Why the last arm was refused; empty once it has been shown its use. */
 static char s_fail[MENU_VALUE_LEN];
+/* Same, for the sampler's arm. */
+static char s_smp_fail[MENU_VALUE_LEN];
 
 static menu_item_view_t s_items[BOUNCE_ROW_COUNT];
 
@@ -69,6 +76,8 @@ static uint8_t             s_snap_bars_done = 0;
 static bool                s_snap_stop_set  = false;
 static clip_slot_state_t   s_snap_slot[CLIP_SLOT_COUNT];
 static bool                s_snap_playing[CLIP_SLOT_COUNT];
+static sample_rec_state_t  s_snap_smp_state = SAMPLE_REC_IDLE;
+static uint8_t             s_snap_smp_pct   = 0;
 
 static const char *slot_state_word(uint8_t slot)
 {
@@ -104,7 +113,7 @@ static uint8_t clip_row_kind(uint8_t idx)
 
 static bool is_clip_row(uint8_t idx)
 {
-    return idx >= BOUNCE_ROW_CLIP0 && idx < BOUNCE_ROW_BACK;
+    return idx >= BOUNCE_ROW_CLIP0 && idx < BOUNCE_ROW_SAMPLE;
 }
 
 const char *bounce_menu_title(void)
@@ -219,6 +228,33 @@ const menu_item_view_t *bounce_menu_build_items(void)
         s_items[base + 3].value[0] = '\0';
     }
 
+    /* Idle, the value previews what Arm will target: the track is taken from
+     * the grid cursor at the moment of arming. */
+    snprintf(s_items[BOUNCE_ROW_SAMPLE].label, MENU_LABEL_LEN, "Sample");
+    switch (sample_rec_get_state()) {
+        case SAMPLE_REC_ARMED:
+            snprintf(s_items[BOUNCE_ROW_SAMPLE].value, MENU_VALUE_LEN, "Rec!");
+            break;
+        case SAMPLE_REC_RECORDING:
+            snprintf(s_items[BOUNCE_ROW_SAMPLE].value, MENU_VALUE_LEN, "Rec %u%%",
+                     (unsigned)sample_rec_get_progress_pct());
+            break;
+        case SAMPLE_REC_READY:
+            snprintf(s_items[BOUNCE_ROW_SAMPLE].value, MENU_VALUE_LEN, "Assign?");
+            break;
+        case SAMPLE_REC_IDLE:
+        default:
+            if (s_smp_fail[0] != '\0') {
+                snprintf(s_items[BOUNCE_ROW_SAMPLE].value, MENU_VALUE_LEN, "%s", s_smp_fail);
+            } else {
+                snprintf(s_items[BOUNCE_ROW_SAMPLE].value, MENU_VALUE_LEN, "Arm T%u",
+                         (unsigned)(seq_state.selected_track + 1));
+            }
+            break;
+    }
+    snprintf(s_items[BOUNCE_ROW_SMP_CANCEL].label, MENU_LABEL_LEN, "Smp Cancel");
+    s_items[BOUNCE_ROW_SMP_CANCEL].value[0] = '\0';
+
     snprintf(s_items[BOUNCE_ROW_BACK].label, MENU_LABEL_LEN, "< Back");
     s_items[BOUNCE_ROW_BACK].value[0] = '\0';
     return s_items;
@@ -295,6 +331,34 @@ bool bounce_menu_handle_click(uint8_t idx)
         return false;
     }
 
+    /* One row walks the sampler: arm -> start -> (auto stop) -> assign. The
+     * page stays open and the service redraws the progress. */
+    if (idx == BOUNCE_ROW_SAMPLE) {
+        s_smp_fail[0] = '\0';
+        switch (sample_rec_get_state()) {
+            case SAMPLE_REC_IDLE: {
+                uint8_t li = seq_state.active_layer_idx;
+                if (seq_state.layers[li].type != SEQ_LAYER_DRUM) {
+                    snprintf(s_smp_fail, sizeof(s_smp_fail), "drum layer?");
+                } else if (!sample_rec_arm(li, seq_state.selected_track)) {
+                    snprintf(s_smp_fail, sizeof(s_smp_fail), "failed");
+                }
+                break;
+            }
+            case SAMPLE_REC_ARMED:     sample_rec_start();  break;
+            case SAMPLE_REC_READY:     sample_rec_assign(); break;
+            case SAMPLE_REC_RECORDING:
+            default:                   break;   /* runs to its own stop */
+        }
+        return false;
+    }
+
+    if (idx == BOUNCE_ROW_SMP_CANCEL) {
+        s_smp_fail[0] = '\0';
+        sample_rec_cancel();
+        return false;
+    }
+
     return false;
 }
 
@@ -353,6 +417,7 @@ void bounce_menu_edit_value(uint8_t idx, int delta)
 void bounce_menu_reset(void)
 {
     s_fail[0] = '\0';
+    s_smp_fail[0] = '\0';
 }
 
 /* The engine moves the bounce state and the slot states on the render task,
@@ -382,6 +447,14 @@ void bounce_menu_service(void)
             s_snap_playing[s] = pl;
             changed = true;
         }
+    }
+
+    sample_rec_state_t ss  = sample_rec_get_state();
+    uint8_t            pct = sample_rec_get_progress_pct();
+    if (ss != s_snap_smp_state || pct != s_snap_smp_pct) {
+        s_snap_smp_state = ss;
+        s_snap_smp_pct   = pct;
+        changed = true;
     }
 
     if (changed) s_force_redraw = true;

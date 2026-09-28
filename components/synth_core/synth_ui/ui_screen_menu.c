@@ -5,7 +5,6 @@
 #include "arp_core.h"
 #include "custompatches/drone_core.h"
 #include "custompatches/drone_std_core.h"
-#include "custompatches/sample_rec.h"
 #include "custompatches/clip_player.h"
 #include "quantizer.h"
 #include "amy_fx.h"
@@ -38,6 +37,8 @@ typedef enum {
 #if CONFIG_SYNTH_DEV_MENU
     MI_DEV,               /* first row: DEV menu (temporary controls) */
 #endif
+    MI_LAYER_MENU,        /* dive row: everything scoped to the active layer.
+                           * Near the top: the most-visited page (mute/solo). */
     MI_SCREEN_SEQ,
     MI_SCREEN_ARP,
     MI_SCREEN_DRONE,
@@ -55,7 +56,6 @@ typedef enum {
     MI_DRUM_ENGINE,
     MI_ADD_LAYER,
     MI_REMOVE_LAYER,
-    MI_LAYER_MENU,        /* dive row: everything scoped to the active layer */
     MI_CHORDS,
     MI_BOUNCE,
     MI_PROGGEN,
@@ -67,8 +67,6 @@ typedef enum {
     MI_WIRELESS,
 #endif
     MI_VOLUME,
-    MI_SAMPLE,
-    MI_SAMPLE_CANCEL,
     MI_COUNT
 } menu_item_id_t;
 
@@ -321,29 +319,6 @@ void menu_build_view(menu_view_t *out)
     snprintf(s_menu_items[MI_VOLUME].value, MENU_VALUE_LEN, "%.0f%%",
              (double)(amy_fx_get_master_volume() * 100.0f));
 
-    /* Runtime PCM sampler (custompatches/sample_rec): the label previews what
-     * ARM will target, since the track selection is snapshotted only at the
-     * moment the user arms. */
-    snprintf(s_menu_items[MI_SAMPLE].label, MENU_LABEL_LEN, "Sample");
-    switch (sample_rec_get_state()) {
-        case SAMPLE_REC_ARMED:
-            snprintf(s_menu_items[MI_SAMPLE].value, MENU_VALUE_LEN, "Rec!");
-            break;
-        case SAMPLE_REC_RECORDING:
-            snprintf(s_menu_items[MI_SAMPLE].value, MENU_VALUE_LEN, "Rec %u%%",
-                     (unsigned)sample_rec_get_progress_pct());
-            break;
-        case SAMPLE_REC_READY:
-            snprintf(s_menu_items[MI_SAMPLE].value, MENU_VALUE_LEN, "Assign?");
-            break;
-        case SAMPLE_REC_IDLE:
-        default:
-            snprintf(s_menu_items[MI_SAMPLE].value, MENU_VALUE_LEN, "Arm T%u",
-                     (unsigned)(seq_state.selected_track + 1));
-            break;
-    }
-    snprintf(s_menu_items[MI_SAMPLE_CANCEL].label, MENU_LABEL_LEN, "Smp Cancel");
-
     out->items   = s_menu_items;
     out->count   = MI_COUNT;
     out->cursor  = seq_state.menu_cursor;
@@ -448,6 +423,37 @@ static void menu_edit_value(menu_item_id_t id, int delta)
     }
 }
 
+/* True while a sub-page (not the main list) is showing. */
+static bool menu_on_subpage(void)
+{
+    return s_layer_page || s_fxbus_page || s_fx_page ||
+#if CONFIG_SYNTH_PROJECT_STORE
+           s_projects_page ||
+#endif
+#if CONFIG_SYNTH_WIRELESS
+           s_wireless_page ||
+#endif
+           s_chords_page || s_bounce_page || s_proggen_page;
+}
+
+/* Row count of the page that is showing. */
+static int menu_page_item_count(void)
+{
+    return s_layer_page ? (int)layermenu_menu_item_count() :
+           s_fxbus_page ? (int)fx_menu_item_count() :
+           s_fx_page ? (int)fxhub_item_count() :
+#if CONFIG_SYNTH_PROJECT_STORE
+           s_projects_page ? (int)projects_menu_item_count() :
+#endif
+           s_chords_page ? (int)chords_menu_item_count() :
+           s_bounce_page ? (int)bounce_menu_item_count() :
+           s_proggen_page ? (int)proggen_menu_item_count() :
+#if CONFIG_SYNTH_WIRELESS
+           s_wireless_page ? (int)wireless_menu_item_count() :
+#endif
+           (int)MI_COUNT;
+}
+
 void synth_ui_menu_toggle(void)
 {
     /* The graph editor is the top overlay; don't let the menu fight it. */
@@ -455,20 +461,18 @@ void synth_ui_menu_toggle(void)
     seq_state.menu_open    = !seq_state.menu_open;
     seq_state.menu_editing = false;
     if (seq_state.menu_open) {
-        /* Always reopen on the main page so the menu lands somewhere known. */
-        s_fx_page = false;
-        s_fxbus_page = false;
-        s_layer_page = false;
+        /* Reopen on the page and row it was closed on, so a page used back and
+         * forth with the grid (Layer: mute/solo) costs no scrolling. Only
+         * per-visit state is refreshed: the Layer page re-seeds its Track row
+         * from the grid cursor, and the Projects page drops an armed load/save
+         * or a half-typed rename, so one click after reopening cannot fire
+         * what was armed before the menu closed. */
+        if (s_layer_page) layermenu_menu_reset();
 #if CONFIG_SYNTH_PROJECT_STORE
-        s_projects_page = false;
+        if (s_projects_page) projects_menu_reset();
 #endif
-        s_chords_page = false;
-        s_bounce_page = false;
-        s_proggen_page = false;
-#if CONFIG_SYNTH_WIRELESS
-        s_wireless_page = false;
-#endif
-        if (seq_state.menu_cursor >= MI_COUNT) seq_state.menu_cursor = 0;
+        int n = menu_page_item_count();
+        if (seq_state.menu_cursor >= n) seq_state.menu_cursor = (uint8_t)(n - 1);
     }
     s_force_redraw = true;
     ESP_LOGI(TAG, "menu %s", seq_state.menu_open ? "open" : "closed");
@@ -481,8 +485,9 @@ bool synth_ui_menu_is_active(void)
 
 /* Projects-page rename hooks (see synth_ui.h). The overlay owns the page state,
  * so it gates the projects module's rename flag with menu_open +
- * s_projects_page - both reset on menu-open, so an uncommitted rename cannot
- * leak onto another screen and callers poll one always-coherent predicate.
+ * s_projects_page; reopening onto the page resets the rename, so an
+ * uncommitted rename cannot leak onto another screen or survive a close, and
+ * callers poll one always-coherent predicate.
  * Compiles to false/no-op when the project store is off. */
 bool synth_ui_menu_rename_active(void)
 {
@@ -505,6 +510,32 @@ void synth_ui_menu_rename_discard(void)
 #if CONFIG_SYNTH_PROJECT_STORE
     if (synth_ui_menu_rename_active()) projects_menu_rename_cancel();
 #endif
+}
+
+bool menu_shoulder_goes_main(void)
+{
+    return seq_state.menu_open && menu_on_subpage();
+}
+
+bool synth_ui_menu_go_main(void)
+{
+    if (!menu_shoulder_goes_main()) return false;
+    s_fx_page = false;
+    s_fxbus_page = false;
+    s_layer_page = false;
+#if CONFIG_SYNTH_PROJECT_STORE
+    s_projects_page = false;
+#endif
+    s_chords_page = false;
+    s_bounce_page = false;
+    s_proggen_page = false;
+#if CONFIG_SYNTH_WIRELESS
+    s_wireless_page = false;
+#endif
+    seq_state.menu_cursor  = s_main_cursor;
+    seq_state.menu_editing = false;
+    s_force_redraw = true;
+    return true;
 }
 
 bool synth_ui_menu_handle_encoder(long delta)
@@ -537,19 +568,7 @@ bool synth_ui_menu_handle_encoder(long delta)
             menu_edit_value((menu_item_id_t)seq_state.menu_cursor, (int)delta);
         }
     } else {
-        int n = s_layer_page ? (int)layermenu_menu_item_count() :
-                s_fxbus_page ? (int)fx_menu_item_count() :
-                s_fx_page ? (int)fxhub_item_count() :
-#if CONFIG_SYNTH_PROJECT_STORE
-                s_projects_page ? (int)projects_menu_item_count() :
-#endif
-                s_chords_page ? (int)chords_menu_item_count() :
-                s_bounce_page ? (int)bounce_menu_item_count() :
-                s_proggen_page ? (int)proggen_menu_item_count() :
-#if CONFIG_SYNTH_WIRELESS
-                s_wireless_page ? (int)wireless_menu_item_count() :
-#endif
-                (int)MI_COUNT;
+        int n = menu_page_item_count();
         int c = (int)seq_state.menu_cursor + (int)delta;
         /* wrap: the lists are long enough that top-to-bottom in one click
          * beats scrolling the whole way */
@@ -785,31 +804,6 @@ bool synth_ui_menu_handle_button(void)
                 wireless_menu_reset();
                 break;
 #endif
-            case MI_SAMPLE:
-                switch (sample_rec_get_state()) {
-                    case SAMPLE_REC_IDLE:
-                        if (seq_state.layers[seq_state.active_layer_idx].type == SEQ_LAYER_DRUM) {
-                            sample_rec_arm(seq_state.active_layer_idx, seq_state.selected_track);
-                        } else {
-                            ESP_LOGW(TAG, "sample_rec: select a drum track first");
-                        }
-                        break;
-                    case SAMPLE_REC_ARMED:
-                        sample_rec_start();
-                        break;
-                    case SAMPLE_REC_READY:
-                        sample_rec_assign();
-                        break;
-                    case SAMPLE_REC_RECORDING:
-                    default:
-                        break;   /* capture runs regardless of the menu */
-                }
-                seq_state.menu_open = false;
-                break;
-            case MI_SAMPLE_CANCEL:
-                sample_rec_cancel();
-                seq_state.menu_open = false;
-                break;
             default:
                 break;
         }

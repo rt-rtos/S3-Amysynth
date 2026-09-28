@@ -117,16 +117,22 @@ static const char *hint_editor_b2(void)
         default:                return "Pitch";
     }
 }
-/* MENU b1/b2: swap the browsing labels for Save/Discard while a project name is
- * being edited, the only menu sub-state that repurposes buttons 1/2.
+/* MENU b1/b2: Save/Discard while a project name is being edited, the only menu
+ * sub-state that gives buttons 1/2 a job; otherwise "-", since the menu owns
+ * the encoder and the patch/pitch holds have nothing to turn.
  * synth_ui_menu_rename_active() is false when the project store is off. */
 static const char *hint_menu_b1(void)
 {
-    return synth_ui_menu_rename_active() ? "Save" : "Patch";
+    return synth_ui_menu_rename_active() ? "Save" : "-";
 }
 static const char *hint_menu_b2(void)
 {
-    return synth_ui_menu_rename_active() ? "Disc" : "Pitch";
+    return synth_ui_menu_rename_active() ? "Disc" : "-";
+}
+/* MENU SHOULDER: back to the main list, shown only on a sub-page. */
+static const char *hint_menu_bs(void)
+{
+    return menu_shoulder_goes_main() ? "Main" : NULL;
 }
 
 /* ─── The table: one row per view, indexed by ui_view_id_t ─────────────── */
@@ -146,7 +152,7 @@ const ui_view_desc_t ui_view_table[UI_VIEW_COUNT] = {
     [UI_VIEW_DIST]      = { "DIST",   sig_dist,      draw_dist,      "-",      NULL,    "Next",  NULL,               hint_editor_b2,          0 },
     [UI_VIEW_STEPEDIT]  = { "STEP",   sig_stepedit,  draw_stepedit,  "Patch",  "-",     "Close", NULL,               NULL,                    0 },
     [UI_VIEW_GRAPH]     = { "GRAPH",  sig_graph,     draw_graph,     "Type",   NULL,    "Next",  NULL,               synth_ui_graph_hint_b2, 52 },
-    [UI_VIEW_MENU]      = { "MENU",   sig_menu,      draw_menu,      NULL,     NULL,    "Menu",  hint_menu_b1,       hint_menu_b2,           52 },
+    [UI_VIEW_MENU]      = { "MENU",   sig_menu,      draw_menu,      NULL,     NULL,    "Menu",  hint_menu_b1,       hint_menu_b2,           52, hint_menu_bs },
     [UI_VIEW_ARP]       = { "ARP",    sig_arp,       draw_arp,       "Patch",  "-",     "Menu",  NULL,               NULL,                   52 },
     [UI_VIEW_DRONE_VIS] = { "DRONEV", sig_drone,     draw_drone_vis, "Patch",  "-",     "Menu",  NULL,               NULL,                   58 },
     [UI_VIEW_DRONE]     = { "DRONE",  sig_drone,     draw_drone,     "Patch",  "-",     "Menu",  NULL,               NULL,                   52 },

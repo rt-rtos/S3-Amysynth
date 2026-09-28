@@ -494,7 +494,7 @@ the hold-modifier `MY_BUTTON_SHIFT`. Pin assignments are in
 |---|---|
 | **Encoder (rotate)** | Navigate / select; adjusts the value when a field is in edit mode |
 | `MY_BUTTON_ENC` (short) | Confirm / toggle step; enters edit mode on the focused field |
-| `MY_BUTTON_SHOULDER` | Per screen: toggle the step under the cursor (grid), flip EG1 sweep polarity (envelope editor), switch target tab (LFO editor), toggle feedback on the selected operator (FM screen) |
+| `MY_BUTTON_SHOULDER` | Per screen: toggle the step under the cursor (grid), flip EG1 sweep polarity (envelope editor), switch target tab (LFO editor), toggle feedback on the selected operator (FM screen), back to the main list from a menu page (menu) |
 | `MY_BUTTON_SHIFT` + `MY_BUTTON_1` | Open the voice editors (ADSR first) for the active instrument |
 | `MY_BUTTON_SHIFT` + `MY_BUTTON_2` | Open / close the per-step popup (sequencer screen); inside a voice editor: release the open tab to the patch |
 | `MY_BUTTON_SHIFT` + `MY_BUTTON_3` | Inside a voice editor (melodic rows): flip the row between its own voice settings and the layer's shared ones |
@@ -502,10 +502,12 @@ the hold-modifier `MY_BUTTON_SHIFT`. Pin assignments are in
 | `MY_BUTTON_0` (long) | Toggle global playback; inside an editor: **cancel** and close |
 | `MY_BUTTON_1` (hold + encoder) | Cycle patch for the selected track / instrument |
 | `MY_BUTTON_2` (hold + encoder) | Transpose the selected track's base note by semitones |
-| `MY_BUTTON_3` (short) | Open / close the main menu; inside an editor: next page |
+| `MY_BUTTON_3` (short) | Open / close the menu; it reopens on the page and row it was closed on. Inside an editor: next page |
 
 A one-line **hint strip** along the bottom of the screen shows what the
-buttons do in the current context.
+buttons do in the current context. `LB` in it is `MY_BUTTON_SHOULDER`, the
+left shoulder button (the right one, RB, is `MY_BUTTON_SHIFT`); on a menu page
+`LB:Main` returns to the main list.
 
 ---
 
@@ -621,23 +623,24 @@ whether the arp follows the global scale (GLOB) or plays its slots unsnapped
 | Item | Range |
 |---|---|
 | DEV | Developer screen (with `CONFIG_SYNTH_DEV_MENU`) |
-| Screen: Seq / Arp / Drone / Prog / TrackOpts / FM | Switch mode screen |
+| Layer | opens the active layer's page: steps, swing, patch scope, gate/glide/groove, chord, per-track repeat/mute/solo |
+| Screen: Seq / Arp / Drone / Prog / FM | Switch mode screen |
 | BPM | 40-300 |
 | Quant | ON / OFF |
 | Scale | Chromatic, Major (Ionian), Natural Minor, Dorian, Phrygian, Lydian, Mixolydian, Minor Pentatonic, Major Pentatonic, Harmonic Minor, Locrian, Whole Tone |
 | Root | C ... B |
-| ArpQ | GLOB (follow the global quantizer) / OWN (the arp's own scale, chromatic by default = no snapping) |
 | Arp | ON / OFF |
 | Drone | ON / OFF - the free-running drone |
 | Stutter | ON / OFF - the stutter drone |
 | Drum Bank | 808 (built-in, default) / 909 / Linn / MR12 / SynFX / Power / Perc / Misc - the Gamma9001 banks are listed while the `drums` partition is mounted; Synth (DX7/Juno patches) appears first when built with `CONFIG_SYNTH_DRUM_SYNTH_MODE` |
 | Add Layer / Del Layer | add or remove a melodic layer |
 | Chords | opens the chord preset bank (see below) |
+| Bounce | opens the loop-bounce recorder, the clip players and the resampler |
+| Prog Gen | opens the chord-progression generator |
 | FX | opens the effects page (see below) |
 | Projects | opens the project slots (see below) |
 | Wireless | opens the BLE MIDI page (with `CONFIG_SYNTH_WIRELESS`) |
 | Volume | 0-200 % (unity = 100 %) |
-| Sample / Sample Cancel | arm / cancel the resampler (see below) |
 
 ---
 
@@ -711,14 +714,15 @@ distortion are edited the same way as any track's.
 
 ---
 
-### Resampler (menu → Sample)
+### Resampler (menu → Bounce → Sample)
 
-Select a drum track on the grid, then activate **Sample** in the menu: the
-state machine steps IDLE → ARMED → RECORDING → READY. While recording, the
+Select a drum track on the grid, then click **Sample** on the Bounce page
+once per stage: the state machine steps IDLE → ARMED → RECORDING → READY,
+and the row shows the stage and the recording progress. While recording, the
 firmware captures **1.5 s of its own final mix** (everything currently
 playing, folded to mono) into a PCM preset, which is then assigned to the
 selected drum track - instant resampling for building evolving loops.
-**Sample Cancel** aborts at any stage. There is one recording slot: a new
+**Smp Cancel** aborts at any stage. There is one recording slot: a new
 capture replaces the previous one on every track that used it, and it lives
 in RAM only (it does not survive a power cycle).
 

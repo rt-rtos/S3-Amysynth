@@ -1361,11 +1361,7 @@ bool synth_ui_graph_handle_encoder(long delta)
     if (!graph_popup_is_active(&s_graph_popup)) return false;
 
     if (s_graph_swing_mode) {
-        /* Layer swing in 2% steps: fine enough to find the 54-58% pocket, and
-         * the whole 0..66 range is still a third of a turn. */
-        int v = (int)s_graph_swing_edit + (int)delta * 2;
-        v = SEQ_CLAMP_INT(v, 0, SEQ_SWING_MAX);
-        s_graph_swing_edit = (uint8_t)v;
+        s_graph_swing_edit = ui_swing_step(s_graph_swing_edit, (int)delta);
         s_swing_live_pending = true;
         graph_swing_live_flush(false);
         s_force_redraw = true;
@@ -2923,8 +2919,10 @@ static void graph_draw_topbar(u8g2_t *u8g2)
         rw = (uint8_t)u8g2_GetStrWidth(u8g2, tgt_buf);
         u8g2_DrawStr(u8g2, (uint8_t)(128 - rw - 2), 8, tgt_buf);
     } else if (s_graph_swing_mode) {
+        char swg_val[6];
         char swg_buf[10];
-        snprintf(swg_buf, sizeof(swg_buf), "SWG%u%%", (unsigned)s_graph_swing_edit);
+        ui_swing_format(swg_val, sizeof(swg_val), s_graph_swing_edit);
+        snprintf(swg_buf, sizeof(swg_buf), "SWG%s", swg_val);
         u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
         rw = (uint8_t)u8g2_GetStrWidth(u8g2, swg_buf);
         u8g2_DrawStr(u8g2, (uint8_t)(128 - rw - 2), 8, swg_buf);

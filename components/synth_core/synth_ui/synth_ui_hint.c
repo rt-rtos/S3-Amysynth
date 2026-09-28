@@ -17,10 +17,12 @@ const char *synth_ui_hint_text(void)
 {
     const ui_view_desc_t *d = &ui_view_table[synth_ui_active_view()];
     static char buf[32];
-    snprintf(buf, sizeof(buf), "1:%s 2:%s 3:%s",
+    const char *bs = d->bs_fn ? d->bs_fn() : NULL;
+    snprintf(buf, sizeof(buf), "1:%s 2:%s 3:%s%s%s",
              hint_cell(d->b1, d->b1_fn),
              hint_cell(d->b2, d->b2_fn),
-             d->b3);  /* b3 is always a static label */
+             d->b3,  /* b3 is always a static label */
+             bs ? " LB:" : "", bs ? bs : "");
     return buf;
 }
 

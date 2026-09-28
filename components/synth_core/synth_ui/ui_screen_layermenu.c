@@ -1,15 +1,16 @@
 #include "synth_ui/synth_ui_internal.h"
 #include "synth_ui.h"
 #include "sequencer_core.h"
-#include "seq_core_config.h"   /* SEQ_MELODIC_PORTAMENTO_MAX_MS */
+#include "amy.h"               /* AMY_SEQUENCER_PPQ behind SEQ_TICKS_PER_STEP */
+#include "seq_core_config.h"   /* SEQ_MELODIC_PORTAMENTO_MAX_MS, SEQ_SWING_* */
 #include "seq_clamp.h"
 #include <stdio.h>
 
 /* ════════════════════════════════════════════════════════════════════════
  *  LAYER SUBMENU PAGE
  * ════════════════════════════════════════════════════════════════════════
- * Everything that belongs to ONE layer, on one page: step count, the melodic
- * patch scope, the note controls (gate/glide/groove), the manual chord, and
+ * Everything that belongs to ONE layer, on one page: step count, swing, the
+ * melodic patch scope, the note controls (gate/glide/groove), the manual chord, and
  * the per-track repeat/mute/solo block. Reached from the `Layer >` dive row on
  * the main menu; page state and input routing live in ui_screen_menu.c, this
  * file only builds the rows and applies clicks and encoder edits.
@@ -25,6 +26,7 @@
 
 typedef enum {
     LM_STEPS = 0,
+    LM_SWING,
     LM_PATCH_SCOPE,
     LM_GATE,
     LM_GLIDE,
@@ -45,6 +47,26 @@ static menu_item_view_t s_lm_items[LM_COUNT];
 
 /* The track Repeat/Mute/Solo edit; page state, not engine state. */
 static uint8_t s_lm_track = 0;
+
+/* Swing detents are engine ticks, not swing_pct points: pct values that floor
+ * to the same tick play identically, so each detent lands on its tick's
+ * smallest pct. */
+uint8_t ui_swing_step(uint8_t swing_pct, int dir)
+{
+    int t = (int)SEQ_SWING_TICKS(swing_pct) + dir;
+    t = SEQ_CLAMP_INT(t, 0, (int)SEQ_SWING_TICKS(SEQ_SWING_MAX));
+    return SEQ_SWING_PCT_FOR_TICKS(t);
+}
+
+/* The long/short ratio of a 16th pair (MPC convention), not the stored
+ * percent-of-a-step: 50 is straight, 67T is triplet swing. */
+void ui_swing_format(char *buf, size_t len, uint8_t swing_pct)
+{
+    uint32_t t = SEQ_SWING_TICKS(swing_pct);
+    unsigned ratio = (unsigned)((100u * (SEQ_TICKS_PER_STEP + t) + SEQ_TICKS_PER_STEP - 1u)
+                                / (2u * SEQ_TICKS_PER_STEP));
+    snprintf(buf, len, (3u * t == SEQ_TICKS_PER_STEP) ? "%uT" : "%u%%", ratio);
+}
 
 /* Rows the active layer has; the Track row wraps inside them. */
 static uint8_t layermenu_num_tracks(void)
@@ -136,6 +158,10 @@ const menu_item_view_t *layermenu_menu_build_items(void)
             snprintf(it->label, MENU_LABEL_LEN, "Steps");
             snprintf(it->value, MENU_VALUE_LEN, "%u",
                      (unsigned)seq_state.layers[li].num_steps);
+            break;
+        case LM_SWING:
+            snprintf(it->label, MENU_LABEL_LEN, "Swing");
+            ui_swing_format(it->value, MENU_VALUE_LEN, sequencer_core_get_layer_swing(li));
             break;
         case LM_PATCH_SCOPE:
             snprintf(it->label, MENU_LABEL_LEN, "Patch");
@@ -234,6 +260,7 @@ static bool lm_row_is_editable(uint8_t row)
     case LM_TYPE:
         return mel && !sequencer_core_progression_get_enabled();
     case LM_STEPS:
+    case LM_SWING:
     case LM_TRACK:
     case LM_REPEAT:
     case LM_MUTE:
@@ -287,6 +314,10 @@ void layermenu_menu_edit_value(uint8_t idx, int delta)
     case LM_STEPS:
         synth_ui_set_layer_steps(li, (seq_state.layers[li].num_steps == SEQ_MAX_STEPS)
                                      ? SEQ_STEPS : SEQ_MAX_STEPS);
+        break;
+    case LM_SWING:
+        sequencer_core_set_layer_swing(
+            li, ui_swing_step(sequencer_core_get_layer_swing(li), dir));
         break;
     case LM_PATCH_SCOPE:
         sequencer_core_set_patch_scope(

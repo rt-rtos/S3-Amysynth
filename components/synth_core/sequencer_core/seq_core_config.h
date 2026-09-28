@@ -45,6 +45,12 @@
  * DRONE_SWING_MAX and must stay < 100 so a swung note-on never crosses into the
  * next step's slot. The Digitakt 50-80% scalar maps to 0-60 here. */
 #define SEQ_SWING_MAX         66
+/* Delay in ticks that swing_pct gives an odd step. Integer floor, so pct values
+ * that land on the same tick play identically (8 distinct delays at 48 PPQ). */
+#define SEQ_SWING_TICKS(pct)  (((uint32_t)SEQ_TICKS_PER_STEP * (uint32_t)(pct)) / 100u)
+/* Smallest swing_pct whose delay is `ticks`: the inverse, for per-tick editors. */
+#define SEQ_SWING_PCT_FOR_TICKS(ticks) \
+    ((uint8_t)(((uint32_t)(ticks) * 100u + SEQ_TICKS_PER_STEP - 1u) / SEQ_TICKS_PER_STEP))
 /* A musical bar = 16 steps. Fixed regardless of layer length so the bar
  * counter and repeat-rate are independent of which layers are active. */
 #define SEQ_TICKS_PER_BAR     (16u * SEQ_TICKS_PER_STEP)

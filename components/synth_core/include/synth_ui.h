@@ -53,11 +53,17 @@ void synth_ui_set_patch_select_mode(bool held);
  * editor). While open it captures the encoder + encoder-button:
  *   - not editing: encoder scrolls items, click enters an item (or runs an
  *     action item like switching screens)
- *   - editing:     encoder changes the item's value, click exits editing */
+ *   - editing:     encoder changes the item's value, click exits editing
+ * Opening reopens the page and row the menu was closed on; the Projects page
+ * comes back disarmed (no pending load/save confirm, no rename). */
 void synth_ui_menu_toggle(void);
 bool synth_ui_menu_is_active(void);
 bool synth_ui_menu_handle_encoder(long delta); /* true if consumed */
 bool synth_ui_menu_handle_button(void);        /* true if consumed */
+/* Leave any sub-page for the main list, on the row the sub-page was entered
+ * from; ends value editing. No-op (false) while the menu is closed or already
+ * on the main list. UI input task only. */
+bool synth_ui_menu_go_main(void);
 
 /* Projects-page rename editor: while a name is being typed, MY_BUTTON_1 saves
  * and MY_BUTTON_2 discards, so the user need not walk to the end of the field
