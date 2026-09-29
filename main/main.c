@@ -395,6 +395,18 @@ static void dispatch_button_event(my_button_id_t button_id, button_event_t event
         return;
     }
 
+    /* DEV screen: no patch-select or pitch hold - they would edit the active
+     * layer behind the screen. Clear both latches in case one was held when
+     * the screen switched. */
+    if ((button_id == MY_BUTTON_1 || button_id == MY_BUTTON_2) &&
+        synth_ui_active_view() == UI_VIEW_DEV) {
+        s_patch_held = false;
+        synth_ui_set_patch_select_mode(false);
+        s_drum_select_held = false;
+        synth_ui_set_drum_select_mode(false);
+        return;
+    }
+
     // MY_BUTTON_1, per editor: filter = enabled toggle, envelope = cycle EG
     // curve type, LFO = unused (source flip is SHIFT+3). Otherwise it is the
     // patch-select hold.

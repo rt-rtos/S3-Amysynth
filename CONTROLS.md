@@ -69,8 +69,8 @@ while on.
 | DEV | - | - | Menu |
 | ADSR editor | Type | Amp / Swg / Pit / Cut / Drv / Mix / Off (the next stop) | Next |
 | Filter editor | On/Off | - | Next |
-| LFO, DIST editor | - | Pitch / - / +Add (of the screen underneath) | Next |
-| Step Trig popup | Patch | - | Close |
+| LFO, DIST editor | - | - | Next |
+| Step Trig popup | - | - | Close |
 
 ## Sequencer screen (Seq)
 

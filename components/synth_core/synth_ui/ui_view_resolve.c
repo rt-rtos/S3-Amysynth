@@ -103,19 +103,7 @@ static void     draw_dev(u8g2_t *g, ui_view_vw_t *vw) { display_dev_draw_frame(g
 #endif
 
 /* ─── Dynamic hint labels (state the view id does not carry) ─────────────
- * Only the cells that vary on ui_mode: the LFO and DIST editors' b2 falls
- * through to the underlying screen. SHIFT gestures are not shown on the
- * 3-button strip. */
-static const char *hint_editor_b2(void)
-{
-    switch (seq_state.ui_mode) {
-        case UI_MODE_ARP:
-        case UI_MODE_DRONE:
-        case UI_MODE_DRONE_STD: return "-";
-        case UI_MODE_PROG:      return "+Add";
-        default:                return "Pitch";
-    }
-}
+ * SHIFT gestures are not shown on the 3-button strip. */
 /* MENU b1/b2: Save/Discard while a project name is being edited, the only menu
  * sub-state that gives buttons 1/2 a job; otherwise "-", since the menu owns
  * the encoder and the patch/pitch holds have nothing to turn.
@@ -139,9 +127,9 @@ static const char *hint_menu_bs(void)
  * The badge never draws over lit pixels, so these only need to be close. */
 const ui_view_desc_t ui_view_table[UI_VIEW_COUNT] = {
     [UI_VIEW_FILTER]    = { "FILTER", sig_filter,    draw_filter,    "On/Off", "-",     "Next",  NULL,               NULL,                   52 },
-    [UI_VIEW_LFO]       = { "LFO",    sig_lfo,       draw_lfo,       "-",      NULL,    "Next",  NULL,               hint_editor_b2,         68 },
-    [UI_VIEW_DIST]      = { "DIST",   sig_dist,      draw_dist,      "-",      NULL,    "Next",  NULL,               hint_editor_b2,          0 },
-    [UI_VIEW_STEPEDIT]  = { "STEP",   sig_stepedit,  draw_stepedit,  "Patch",  "-",     "Close", NULL,               NULL,                    0 },
+    [UI_VIEW_LFO]       = { "LFO",    sig_lfo,       draw_lfo,       "-",      "-",     "Next",  NULL,               NULL,                   68 },
+    [UI_VIEW_DIST]      = { "DIST",   sig_dist,      draw_dist,      "-",      "-",     "Next",  NULL,               NULL,                    0 },
+    [UI_VIEW_STEPEDIT]  = { "STEP",   sig_stepedit,  draw_stepedit,  "-",      "-",     "Close", NULL,               NULL,                    0 },
     [UI_VIEW_GRAPH]     = { "GRAPH",  sig_graph,     draw_graph,     "Type",   NULL,    "Next",  NULL,               synth_ui_graph_hint_b2, 52 },
     [UI_VIEW_MENU]      = { "MENU",   sig_menu,      draw_menu,      NULL,     NULL,    "Menu",  hint_menu_b1,       hint_menu_b2,           52, hint_menu_bs },
     [UI_VIEW_ARP]       = { "ARP",    sig_arp,       draw_arp,       "Patch",  "-",     "Menu",  NULL,               NULL,                   52 },
