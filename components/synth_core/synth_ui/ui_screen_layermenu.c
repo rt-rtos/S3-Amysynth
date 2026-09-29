@@ -172,9 +172,8 @@ const menu_item_view_t *layermenu_menu_build_items(void)
             break;
         case LM_GATE:
             snprintf(it->label, MENU_LABEL_LEN, "Gate");
-            if (mel == 0xFF) snprintf(it->value, MENU_VALUE_LEN, "--");
-            else snprintf(it->value, MENU_VALUE_LEN, "%u%%",
-                          (unsigned)sequencer_core_get_melodic_gate_pct(mel));
+            snprintf(it->value, MENU_VALUE_LEN, "%u%%",
+                     (unsigned)sequencer_core_get_layer_gate_pct(li));
             break;
         case LM_GLIDE:
             snprintf(it->label, MENU_LABEL_LEN, "Glide");
@@ -244,14 +243,12 @@ bool layermenu_menu_item_is_back(uint8_t idx)
 }
 
 /* True for rows a turn can change on this layer: the "--" rows of a drum layer
- * and the progression-locked chord rows are inert, following the NoteFX page's
- * drum behaviour. */
+ * and the progression-locked chord rows are inert. */
 static bool lm_row_is_editable(uint8_t row)
 {
     bool mel = (layermenu_active_melodic_layer() != 0xFF);
     switch (row) {
     case LM_PATCH_SCOPE:
-    case LM_GATE:
     case LM_GLIDE:
     case LM_GROOVE:
         return mel;
@@ -261,6 +258,7 @@ static bool lm_row_is_editable(uint8_t row)
         return mel && !sequencer_core_progression_get_enabled();
     case LM_STEPS:
     case LM_SWING:
+    case LM_GATE:
     case LM_TRACK:
     case LM_REPEAT:
     case LM_MUTE:
@@ -327,8 +325,8 @@ void layermenu_menu_edit_value(uint8_t idx, int delta)
     case LM_GATE: {
         /* 5%/detent, mirroring the arp GATE control. */
         int v = SEQ_CLAMP_INT(
-            (int)sequencer_core_get_melodic_gate_pct(mel) + dir * 5, 10, 100);
-        sequencer_core_set_melodic_gate_pct(mel, (uint8_t)v);
+            (int)sequencer_core_get_layer_gate_pct(li) + dir * 5, 10, 100);
+        sequencer_core_set_layer_gate_pct(li, (uint8_t)v);
         break;
     }
     case LM_GLIDE: {

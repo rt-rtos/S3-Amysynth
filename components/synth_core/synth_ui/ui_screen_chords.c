@@ -11,7 +11,7 @@
  *  CHORDS PAGE (Main Menu -> "Chords")
  * ════════════════════════════════════════════════════════════════════════
  * Item model for the chord-preset editor; page state and input routing live
- * in ui_screen_menu.c (same split as the FX/NoteFX/Projects pages).
+ * in ui_screen_menu.c (same split as the FX/Layer/Projects pages).
  *
  * Two levels inside one page: the slot list (CH1..CH8 + Back) and, after
  * clicking a slot, the edit view (Root + Type + Clear + Back). Every edit

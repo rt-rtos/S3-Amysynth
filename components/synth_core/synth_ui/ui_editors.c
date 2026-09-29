@@ -871,14 +871,15 @@ static bool graph_swing_available(void)
            editor_src_is_layer(s_graph_layer, s_graph_track);
 }
 
-static bool graph_target_has_eg1_depth(void);
-
 /* Rows carrying the envelope routing matrix: melodic and drum layer rows, the
  * arp and the live voice. The drones and the FM ops have none.
  * Page-independent - both envelope pages carry the per-target stops. */
 static bool graph_eg_targets_available(void)
 {
-    return graph_target_has_eg1_depth();
+#if CONFIG_SYNTH_WIRELESS
+    if (s_graph_target == GRAPH_TGT_LIVE) return true;
+#endif
+    return s_graph_target == GRAPH_TGT_MELODIC || s_graph_target == GRAPH_TGT_ARP;
 }
 
 /* Same leading-edge/trailing-flush shape as the amp trim, and for the same
@@ -1173,18 +1174,6 @@ static bool graph_target_has_eg1(void)
            s_graph_target != GRAPH_TGT_FM_OP;
 }
 
-/* Targets carrying an EG1->cutoff sweep DEPTH field (seq_filter_t's
- * eg_depth[1][SEQ_EGT_CUTOFF]). The drones have none - their EG1 page edits the
- * envelope only. Gates the depth readout, the depth adjust and the polarity
- * flip. */
-static bool graph_target_has_eg1_depth(void)
-{
-#if CONFIG_SYNTH_WIRELESS
-    if (s_graph_target == GRAPH_TGT_LIVE) return true;
-#endif
-    return s_graph_target == GRAPH_TGT_MELODIC || s_graph_target == GRAPH_TGT_ARP;
-}
-
 /* Switch between the target's EG0 and EG1 breakpoint sets. An uncommitted edit
  * on the departing index is written through first so flipping tabs never
  * discards work, then the curve and range are reseeded from the other index -
@@ -1204,6 +1193,7 @@ static void graph_toggle_eg_index(void)
         s_graph_swing_mode = false;
     }
     s_graph_eg_tgt = -1;          /* page-scoped stop, same reasoning */
+    s_graph_amp_mode = false;     /* no sub-mode follows a page flip */
 
     s_graph_eg_index = (s_graph_eg_index == 0) ? 1 : 0;
 
@@ -1319,31 +1309,20 @@ const char *synth_ui_graph_hint_b2(void)
 }
 
 /* Flip the sign of the depth the target stop is editing, on either envelope
- * page, or of the EG1->cutoff sweep (MY_BUTTON_SHOULDER on the EG1 page) when
- * no target stop is up. No-op at 0.0 depth: nothing to invert, and it keeps
- * -0.0 out of the readout. */
-void synth_ui_graph_flip_eg1_polarity(void)
+ * page. No-op with no stop up, and at 0.0 depth: nothing to invert, and it
+ * keeps -0.0 out of the readout. */
+void synth_ui_graph_flip_depth_polarity(void)
 {
     if (!graph_popup_is_active(&s_graph_popup)) return;
-    if (s_graph_eg_tgt >= 0) {
-        float *d = &s_graph_eg_edit[s_graph_eg_index][s_graph_eg_tgt];
-        if (*d == 0.0f) return;
-        *d = -*d;
-        s_graph_eg_dirty = true;
-        graph_live_push_eg_depths();
-        s_force_redraw = true;
-        ESP_LOGI(TAG, "EG%u %s depth -> %+.2f", s_graph_eg_index,
-                 s_eg_tgt_name[s_graph_eg_tgt], (double)*d);
-        return;
-    }
-    if (s_graph_eg_index != 1) return;
-    if (!graph_target_has_eg1_depth()) return;
-    if (s_graph_eg_edit[1][SEQ_EGT_CUTOFF] == 0.0f) return;
-    s_graph_eg_edit[1][SEQ_EGT_CUTOFF] = -s_graph_eg_edit[1][SEQ_EGT_CUTOFF];
+    if (s_graph_eg_tgt < 0) return;
+    float *d = &s_graph_eg_edit[s_graph_eg_index][s_graph_eg_tgt];
+    if (*d == 0.0f) return;
+    *d = -*d;
     s_graph_eg_dirty = true;
+    graph_live_push_eg_depths();
     s_force_redraw = true;
-    ESP_LOGI(TAG, "EG1 polarity -> %+.2f oct",
-             (double)s_graph_eg_edit[1][SEQ_EGT_CUTOFF]);
+    ESP_LOGI(TAG, "EG%u %s depth -> %+.2f", s_graph_eg_index,
+             s_eg_tgt_name[s_graph_eg_tgt], (double)*d);
 }
 
 /* Route an encoder delta to the pop-up. Returns true if the pop-up consumed it
@@ -1376,16 +1355,6 @@ bool synth_ui_graph_handle_encoder(long delta)
     }
 
     if (s_graph_amp_mode) {
-        if (s_graph_eg_index == 1 && graph_target_has_eg1_depth()) {
-            /* EG1->cutoff depth, 0.25 oct/detent. Bipolar -8..+8; negative =
-             * downward sweep. Same field as the filter editor's EG cursor. */
-            float v = s_graph_eg_edit[1][SEQ_EGT_CUTOFF] + (float)delta * 0.25f;
-            s_graph_eg_edit[1][SEQ_EGT_CUTOFF] = SEQ_CLAMP_F32(v, -8.0f, 8.0f);
-            s_graph_eg_dirty = true;
-            graph_live_push_eg_depths();
-            s_force_redraw = true;
-            return true;
-        }
         /* Amp trim in 5% steps, applied live but throttled (melodic applies
          * re-emit the track). */
         float v = s_graph_amp_edit + (float)delta * 0.05f;
@@ -2887,11 +2856,9 @@ static void graph_draw_topbar(u8g2_t *u8g2)
     bool mid_shown = (!type_flash && !s_graph_amp_mode && !s_graph_swing_mode &&
                       s_graph_eg_tgt < 0 && n >= 4 && c >= 1 && c <= 3);
 
-    /* Right: amp indicator in amp mode, layer swing in swing mode. The melodic
-     * EG1 page shows the signed sweep depth instead whenever the middle readout
-     * is idle, so the shoulder-button polarity flip has a visible readout. */
+    /* Right: the type name while it flashes, else the target stop's depth,
+     * layer swing in swing mode, or the amp indicator in amp mode. */
     uint8_t rw = 0;
-    bool eg1_fenv = (s_graph_eg_index == 1 && graph_target_has_eg1_depth());
     if (type_flash) {
         /* Inverted pad so it reads as an event, not a label. */
         const char *tname = graph_eg_type_name(s_graph_eg_type_disp);
@@ -2916,15 +2883,10 @@ static void graph_draw_topbar(u8g2_t *u8g2)
         u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
         rw = (uint8_t)u8g2_GetStrWidth(u8g2, swg_buf);
         u8g2_DrawStr(u8g2, (uint8_t)(128 - rw - 2), 8, swg_buf);
-    } else if (s_graph_amp_mode || (eg1_fenv && !mid_shown)) {
+    } else if (s_graph_amp_mode) {
         char amp_buf[10];
-        if (eg1_fenv) {
-            snprintf(amp_buf, sizeof(amp_buf), "ENV%+.2f",
-                     (double)s_graph_eg_edit[1][SEQ_EGT_CUTOFF]);
-        } else {
-            snprintf(amp_buf, sizeof(amp_buf), "AMP%d%%",
-                     (int)(s_graph_amp_edit * 100.0f + 0.5f));
-        }
+        snprintf(amp_buf, sizeof(amp_buf), "AMP%d%%",
+                 (int)(s_graph_amp_edit * 100.0f + 0.5f));
         u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
         rw = (uint8_t)u8g2_GetStrWidth(u8g2, amp_buf);
         u8g2_DrawStr(u8g2, (uint8_t)(128 - rw - 2), 8, amp_buf);

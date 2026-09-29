@@ -42,7 +42,7 @@ static uint16_t s_patch_mem_wave  = SEQ_PATCH_WAVE_BASE;  /* SINE */
 static uint16_t s_patch_mem_patch = 138;                  /* DX7 E.PIANO 1 */
 
 /* Glide time (ms) between note pitches, AMY-native portamento. Same range as
- * the arp / melodic NoteFX Glide (1 ms per encoder detent). */
+ * the arp / melodic layer Glide (1 ms per encoder detent). */
 static uint16_t s_glide_ms = 0;
 
 /* Runtime-editable voice params, the same block every other engine embeds.

@@ -164,7 +164,7 @@ void synth_ui_dev_riff_play_b(void)
     uint16_t bpm = seq_get_bpm();
     if (bpm == 0) bpm = 120;
     /* One 16th step at the current tempo, held for the layer's gate %. */
-    uint32_t gate = 15000u * sequencer_core_get_melodic_gate_pct((uint8_t)li)
+    uint32_t gate = 15000u * sequencer_core_get_layer_gate_pct((uint8_t)li)
                     / 100u / bpm;
     if (gate < 1u) gate = 1u;
 

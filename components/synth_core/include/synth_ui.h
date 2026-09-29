@@ -25,14 +25,14 @@ void    synth_ui_request_delete_active_layer(void);
 bool    synth_ui_set_layer_steps(uint8_t li, uint8_t num_steps);
 
 /* Advance the active layer displayed/edited on screen.
- * Resets the cursor to track 0, step 0, edit_mode = true. */
+ * Resets the cursor to track 0, step 0. */
 void synth_ui_cycle_active_layer(void);
 
 /* Input dispatch ── called from encoder / button tasks */
 void synth_ui_handle_encoder(long delta);
 void synth_ui_handle_button(void);
-/* Toggle the grid step under the cursor (edit_mode-gated, no play/pause
- * fallback). Returns true if a step was toggled. */
+/* Toggle the grid step under the cursor. Returns true if a step was
+ * toggled. */
 bool synth_ui_toggle_step_at_cursor(void);
 void synth_ui_toggle_playing(void);
 void synth_ui_set_bpm(uint16_t bpm);
@@ -187,12 +187,10 @@ bool synth_ui_graph_close_commit(void);
 void synth_ui_graph_toggle_amp_mode(void);
 
 /* Flip the sign of the depth the target stop is editing, on either envelope
- * page, or - with no target stop up - of the EG1->cutoff sweep depth
- * (MY_BUTTON_SHOULDER on the envelope editor's EG1 page). The target stops
- * exist on every row carrying the depth matrix (melodic and drum rows, the arp,
- * the live voice). That fallback is a no-op on the EG0 page, for targets with
- * no depth field, and at 0.0 depth. */
-void synth_ui_graph_flip_eg1_polarity(void);
+ * page (MY_BUTTON_SHOULDER in the envelope editor). The target stops exist on
+ * every row carrying the depth matrix (melodic and drum rows, the arp, the
+ * live voice). No-op with no stop up and at 0.0 depth. */
+void synth_ui_graph_flip_depth_polarity(void);
 
 /* Cycle the shown EG's curve type Normal->Linear->DX7->TrueExp (AMY eg_type
  * 0..3), MY_BUTTON_1 while the envelope editor is open. Applies to AMY

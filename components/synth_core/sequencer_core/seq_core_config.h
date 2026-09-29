@@ -17,23 +17,11 @@
 #ifndef CONFIG_SEQ_MELODIC_EXPRESSIVE_DEFAULTS
 #define CONFIG_SEQ_MELODIC_EXPRESSIVE_DEFAULTS 1
 #endif
-#ifndef CONFIG_SEQ_MELODIC_GATE_NUMERATOR
-#define CONFIG_SEQ_MELODIC_GATE_NUMERATOR 5
-#endif
-#ifndef CONFIG_SEQ_MELODIC_GATE_DENOMINATOR
-#define CONFIG_SEQ_MELODIC_GATE_DENOMINATOR 6
-#endif
 #ifndef CONFIG_SEQ_MELODIC_ENVELOPE_ENABLED
 #define CONFIG_SEQ_MELODIC_ENVELOPE_ENABLED 1
 #endif
 #ifndef CONFIG_SEQ_MELODIC_PATCH
 #define CONFIG_SEQ_MELODIC_PATCH 138
-#endif
-#ifndef CONFIG_SEQ_DRUM_GATE_NUMERATOR
-#define CONFIG_SEQ_DRUM_GATE_NUMERATOR 1
-#endif
-#ifndef CONFIG_SEQ_DRUM_GATE_DENOMINATOR
-#define CONFIG_SEQ_DRUM_GATE_DENOMINATOR 2
 #endif
 #ifndef CONFIG_SEQ_ENV_DEBUG_DUMP
 #define CONFIG_SEQ_ENV_DEBUG_DUMP 0
@@ -86,26 +74,17 @@
  * the pickers, so the selectable range stays uniform across surfaces. */
 #define SEQ_LFO_NATIVE_MAX_HZ 20.0f
 #define SEQ_LFO_SW_MAX_HZ     5.0f
-/* Drum gate: fraction of a step the note is held before its note-off, i.e.
- * choke vs ring; a patch's own release tail still plays out afterwards.
- * Kconfig-tunable, default 1/2 step. NOTE: the default drum engine is PCM
- * (gamma banks) rather than tonal patches. */
-#define SEQ_GATE_DRUM         ((SEQ_TICKS_PER_STEP * CONFIG_SEQ_DRUM_GATE_NUMERATOR) / CONFIG_SEQ_DRUM_GATE_DENOMINATOR)
-/* Default per-layer melodic gate (the NoteFX GATE control) as a % of the step.
- * Derived from the same num/den fraction as SEQ_GATE_MELODIC, and defined from
- * the fraction rather than SEQ_TICKS_PER_STEP so it stays PPQ-independent and
- * usable in TUs that do not include amy.h (project_snapshot.c). Control spans
- * 10..100% (100% = legato). */
+/* Default per-layer gate (the Layer page's Gate row) as a % of the step,
+ * 10..100 (100% = legato). A drum hit is held half a step before its note-off,
+ * the choke point; the voice's release tail still plays out afterwards.
+ * Melodic notes default near-legato so they connect instead of stabbing. */
+#define SEQ_DRUM_GATE_DEFAULT_PCT         50u
 #if CONFIG_SEQ_MELODIC_EXPRESSIVE_DEFAULTS
-#define SEQ_GATE_MELODIC      ((SEQ_TICKS_PER_STEP * CONFIG_SEQ_MELODIC_GATE_NUMERATOR) / CONFIG_SEQ_MELODIC_GATE_DENOMINATOR)
-#define SEQ_MELODIC_GATE_DEFAULT_PCT \
-    ((100u * CONFIG_SEQ_MELODIC_GATE_NUMERATOR + CONFIG_SEQ_MELODIC_GATE_DENOMINATOR / 2u) \
-     / CONFIG_SEQ_MELODIC_GATE_DENOMINATOR)
+#define SEQ_MELODIC_GATE_DEFAULT_PCT      92u   /* 11/12 of a step */
 #else
-#define SEQ_GATE_MELODIC              ((SEQ_TICKS_PER_STEP * 2) / 3)
-#define SEQ_MELODIC_GATE_DEFAULT_PCT  67u   /* round(100 * 2/3) */
+#define SEQ_MELODIC_GATE_DEFAULT_PCT      67u   /* 2/3 of a step */
 #endif
-/* Melodic glide (NoteFX Glide) ceiling, ms. Matches ARP_PORTAMENTO_MAX_MS so
+/* Melodic glide (Layer page Glide) ceiling, ms. Matches ARP_PORTAMENTO_MAX_MS so
  * both glide controls share the same feel. */
 #define SEQ_MELODIC_PORTAMENTO_MAX_MS  100u
 #define SEQ_MIN_BPM           40

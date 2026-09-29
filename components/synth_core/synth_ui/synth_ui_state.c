@@ -42,7 +42,6 @@ void synth_ui_state_alloc(void)
 #endif
     seq_state.current_pattern = 1;
     seq_state.playing         = true;
-    seq_state.edit_mode       = true;
 }
 
 /* Mirror the UI's grid of active steps into the audio core so the core
@@ -74,9 +73,6 @@ void synth_ui_reload_mirror_from_core(void)
     seq_state.selected_track   = 0;
     seq_state.selected_step    = 0;
     seq_state.playing          = false;
-    /* Match the boot default: edit_mode gates what a bare encoder turn/push
-     * does, and post-load must behave exactly like post-boot. */
-    seq_state.edit_mode        = true;
     s_force_redraw = true;
     ESP_LOGI(TAG, "UI mirror reloaded from core: %u layer(s)", seq_state.num_layers);
 }
@@ -106,7 +102,6 @@ uint32_t seq_view_signature(void)
     { uint16_t bpm_snap = sequencer_core_get_bpm(); h = fnv1a_bytes(h, &bpm_snap, sizeof(bpm_snap)); }
     h = fnv1a_bytes(h, &seq_state.playing, sizeof(seq_state.playing));
     h = fnv1a_bytes(h, &seq_state.current_step, sizeof(seq_state.current_step));
-    h = fnv1a_bytes(h, &seq_state.edit_mode, sizeof(seq_state.edit_mode));
     h = fnv1a_bytes(h, &seq_state.selected_track, sizeof(seq_state.selected_track));
     h = fnv1a_bytes(h, &seq_state.selected_step, sizeof(seq_state.selected_step));
     h = fnv1a_bytes(h, &seq_state.drum_select_mode, sizeof(seq_state.drum_select_mode));

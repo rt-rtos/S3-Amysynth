@@ -247,12 +247,14 @@ path.
 
 ### Gate widths
 
-The two layer types gate differently:
+Both layer types gate from the runtime per-layer `gate_pct` (10..100 % of a
+step, the Layer page's Gate row, saved with the project). Only the default
+differs, and melodic steps get an off-beat shortening drums don't:
 
-| Layer type | Source | Shipped value |
+| Layer type | Default | Off-beat steps |
 |---|---|---|
-| Drum | compile-time `SEQ_DRUM_GATE_NUMERATOR/DENOMINATOR` (Kconfig; this tree builds with 1/2) | 1/2 step = 6 ticks |
-| Melodic | runtime per-layer `gate_pct` (10..100 % of a step, NoteFX-editable); the Kconfig ratio `SEQ_MELODIC_GATE_NUMERATOR/DENOMINATOR` (11/12) only seeds its boot default (92 %) | near-legato by default |
+| Drum | `SEQ_DRUM_GATE_DEFAULT_PCT` 50 % = 6 ticks | plain gate |
+| Melodic | `SEQ_MELODIC_GATE_DEFAULT_PCT` 92 % (67 % with `SEQ_MELODIC_EXPRESSIVE_DEFAULTS` off) | 2 ticks shorter |
 
 Drums honor note-offs (real patches, not one-shots), so the drum gate controls
 choke vs. ring; the near-legato melodic default lets notes connect instead of
@@ -351,7 +353,7 @@ Seven logical buttons (`components/my_buttons/`), dispatched by
 | MY_BUTTON_0 (17) | single click | Cycle active layer; with an editor open: commit and close it |
 | MY_BUTTON_0 (17) | long press | Toggle play / stop; with an editor open: cancel / discard it |
 | MY_BUTTON_ENC (16) | press | Sequencer: toggle the focused step. Editors: toggle select <-> adjust. Menu and mode screens: activate the focused item |
-| MY_BUTTON_SHOULDER (15) | press | Sequencer: toggle the step under the cursor (two-handed entry). ADSR editor: flip the EG1 sweep polarity |
+| MY_BUTTON_SHOULDER (15) | press | Sequencer: toggle the step under the cursor (two-handed entry). ADSR editor: flip the sign of the routing depth under the target stop |
 | MY_BUTTON_1 (18) | held + encoder | Cycle the active screen's patch (drone / arp / selected drum track / melodic) |
 | MY_BUTTON_1 (18) | press, per editor | Filter editor: toggle enabled. ADSR editor: cycle EG curve type. Progression screen: delete entry. Rename editor: save |
 | MY_BUTTON_2 (8) | held + encoder | Transpose the selected track's base note (semitones) |

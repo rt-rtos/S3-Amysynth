@@ -153,9 +153,10 @@ uint8_t sequencer_core_add_layer(seq_layer_type_t type, uint8_t num_steps)
     layer->type       = type;
     layer->num_steps  = (num_steps == SEQ_MAX_STEPS) ? SEQ_MAX_STEPS : SEQ_STEPS;
     layer->num_tracks = SEQ_TRACKS_DEFAULT;
-    /* NoteFX defaults. Required after the memset: a 0% gate would silence
+    /* Note FX defaults. Required after the memset: a 0% gate would silence
      * every note and a 0% groove would flatten dynamics. */
-    layer->gate_pct       = SEQ_MELODIC_GATE_DEFAULT_PCT;
+    layer->gate_pct       = (type == SEQ_LAYER_DRUM) ? SEQ_DRUM_GATE_DEFAULT_PCT
+                                                     : SEQ_MELODIC_GATE_DEFAULT_PCT;
     layer->portamento_ms  = 0;
     layer->groove_pct     = 100;   /* full accent curve */
     /* Required after the memset too: 0 is a real FM algorithm. */

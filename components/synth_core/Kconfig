@@ -51,9 +51,9 @@ config SEQ_MELODIC_EXPRESSIVE_DEFAULTS
 	bool "Enable expressive melodic defaults"
 	default y
 	help
-		Enables melodic step velocity accents and uses the configured melodic
-		gate ratio. If disabled, melodic velocity defaults to 1.0 and the gate
-		falls back to the original 2/3-step duration.
+		Enables melodic step velocity accents and a near-legato default gate
+		(92% of a step) for new melodic layers. If disabled, melodic velocity
+		defaults to 1.0 and new layers start at a 2/3-step gate.
 
 choice SEQ_MELODIC_PATCH_PRESET
 	prompt "Melodic layer AMY patch preset"
@@ -212,41 +212,6 @@ config SEQ_PATCH_SHOW_NAMES
 		pressure (you then see just the patch number). The number is always
 		shown; the name is appended only when this is enabled.
 
-config SEQ_MELODIC_GATE_NUMERATOR
-	int "Melodic gate ratio numerator"
-	range 1 12
-	default 11
-	help
-		Numerator used to compute melodic note gate duration. A ratio close
-		to 1 (e.g. 11/12) makes notes near-legato so they connect instead of
-		stabbing; combined with the EG0 release this gives a sustained tail
-		rather than the original short "car horn" staccato.
-
-config SEQ_MELODIC_GATE_DENOMINATOR
-	int "Melodic gate ratio denominator"
-	range 1 12
-	default 12
-	help
-		Denominator used to compute melodic note gate duration.
-
-config SEQ_DRUM_GATE_NUMERATOR
-	int "Drum gate ratio numerator"
-	range 1 12
-	default 3
-	help
-		Numerator for the drum note gate duration (fraction of one step the
-		note is held before its note-off). Drums are now real Juno patches with
-		note-offs honored, so this controls choke vs. ring: a short gate (e.g.
-		1/2) chokes the patch quickly for a tight percussive feel; the patch's
-		own release tail still plays after note-off.
-
-config SEQ_DRUM_GATE_DENOMINATOR
-	int "Drum gate ratio denominator"
-	range 1 12
-	default 4
-	help
-		Denominator for the drum note gate duration.
-
 config SEQ_MELODIC_ENVELOPE_ENABLED
 	bool "Apply melodic EG0 envelope defaults"
 	default y
@@ -330,44 +295,6 @@ config SEQ_MELODIC_AMY_NATIVE_LFO
 		path even when this option is enabled, since the AMY native LFO
 		does not support them (same limitation as the arp).
 		Disable to revert all melodic LFO to the software accumulator.
-
-config SEQ_DIST_DRIVE_AMP_EG
-	bool "Amp envelope (EG0) modulates distortion drive (WIP)"
-	default n
-	help
-		PROTOTYPE / experimental. Routes each voice's amplitude envelope
-		(EG0) into the per-osc distortion DRIVE via AMY's control-coef rail.
-		Drive is a log2 rail, so - exactly like a filter EG sweeps cutoff -
-		the unipolar 0..1 envelope adds a SIGNED octave depth
-		(SEQ_DIST_DRIVE_AMP_EG_DEPTH_Q) of pre-gain: full at the attack peak,
-		tapering to the authored drive at the release tail. Positive depth
-		means louder/attack = more grit (as a real overdrive stage responds
-		to level); a negative depth instead pulls drive DOWN as the note
-		swells.
-
-		Applies wherever distortion is authored (melodic, arp, live, drone) -
-		they share voice_apply_dist. The authored drive is the floor; EG0's
-		sustain level holds a proportional boost for the note's length, since
-		drive's contour is shared with amplitude (AMY has only two envelopes,
-		both already spoken for - amp and filter).
-
-		Off by default; adding the symbol needs a clean rebuild. Melodic,
-		drum, arp and live rows carry their own per-track EG -> drive depths
-		(the envelope editor's target stops) and re-send them after every
-		dist apply once their filter block is authored, so this global depth
-		reaches only the drones and never-authored rows.
-
-config SEQ_DIST_DRIVE_AMP_EG_DEPTH_Q
-	int "  Drive EG depth (quarter-octaves, signed)"
-	depends on SEQ_DIST_DRIVE_AMP_EG
-	range -16 16
-	default 4
-	help
-		EG0-into-drive depth in quarter-octaves at the envelope peak:
-		4 = +1.0 oct (up to 2x drive), 16 = +4 oct (the rail's clamp).
-		Negative values sweep drive DOWN as the envelope rises. Value-only
-		change, so tunable in menuconfig without a clean rebuild once the
-		toggle above is on.
 
 config SYNTH_CUSTOM_FM
 	bool "Custom FM/DX7 6-operator voices (WIP)"

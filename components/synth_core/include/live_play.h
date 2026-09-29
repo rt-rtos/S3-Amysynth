@@ -44,7 +44,7 @@ bool live_play_get_wave_mode(void);
 void live_play_set_wave_mode(bool wave);
 
 /* Glide (AMY-native portamento) between note pitches, ms, 0 = off. Range
- * matches the arp / melodic NoteFX Glide: 1 ms per encoder detent. */
+ * matches the arp / melodic layer Glide: 1 ms per encoder detent. */
 #define LIVE_PLAY_GLIDE_MAX_MS 100u
 uint16_t live_play_get_glide_ms(void);
 void     live_play_set_glide_ms(uint16_t ms);

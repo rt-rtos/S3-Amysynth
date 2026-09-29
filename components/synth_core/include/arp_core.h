@@ -187,7 +187,7 @@ float arp_get_amp_scale(void);
 void     arp_set_portamento_ms(uint16_t ms);
 uint16_t arp_get_portamento_ms(void);
 #define ARP_PORTAMENTO_MAX_MS 100u    /* glide ceiling, ms (1 ms/detent).
-                                       * Matches the melodic NoteFX Glide range;
+                                       * Matches the melodic layer Glide range;
                                        * longer saved glides clamp on load. */
 
 #define ARP_OCT_MAX 4

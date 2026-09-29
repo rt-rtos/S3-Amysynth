@@ -494,7 +494,7 @@ the hold-modifier `MY_BUTTON_SHIFT`. Pin assignments are in
 |---|---|
 | **Encoder (rotate)** | Navigate / select; adjusts the value when a field is in edit mode |
 | `MY_BUTTON_ENC` (short) | Confirm / toggle step; enters edit mode on the focused field |
-| `MY_BUTTON_SHOULDER` | Per screen: toggle the step under the cursor (grid), flip EG1 sweep polarity (envelope editor), switch target tab (LFO editor), toggle feedback on the selected operator (FM screen), back to the main list from a menu page (menu) |
+| `MY_BUTTON_SHOULDER` | Per screen: toggle the step under the cursor (grid), flip the routing depth's sign (envelope editor, target stop up), switch target tab (LFO editor), toggle feedback on the selected operator (FM screen), back to the main list from a menu page (menu) |
 | `MY_BUTTON_SHIFT` + `MY_BUTTON_1` | Open the voice editors (ADSR first) for the active instrument |
 | `MY_BUTTON_SHIFT` + `MY_BUTTON_2` | Open / close the per-step popup (sequencer screen); inside a voice editor: release the open tab to the patch |
 | `MY_BUTTON_SHIFT` + `MY_BUTTON_3` | Inside a voice editor (melodic rows): flip the row between its own voice settings and the layer's shared ones |
@@ -623,7 +623,7 @@ whether the arp follows the global scale (GLOB) or plays its slots unsnapped
 | Item | Range |
 |---|---|
 | DEV | Developer screen (with `CONFIG_SYNTH_DEV_MENU`) |
-| Layer | opens the active layer's page: steps, swing, patch scope, gate/glide/groove, chord, per-track repeat/mute/solo |
+| Layer | opens the active layer's page: steps, swing, patch scope, gate/glide/groove, chord, per-track repeat/mute/solo. **Gate** is 10-100 % of the step (100 = legato; drum layers start at 50 %, melodic at 92 %); **Glide** (ms, AMY-native portamento) and **Groove** (0-100 % accent / humanize) are melodic only |
 | Screen: Seq / Arp / Drone / Prog / FM | Switch mode screen |
 | BPM | 40-300 |
 | Quant | ON / OFF |
@@ -658,12 +658,7 @@ edited.
 | Reverb | 0-100 % level, plus Live 0-100 %, Damp 0-100 %, Xover 500-8000 Hz |
 | Dist | stage set: OFF / CLIP / FOLD / C+F / CRSH / C+H / F+H / ALL (clip, fold, bitcrush and their combinations) |
 | Dst Drive / Bits / Rate / Mix | pre-gain 1-16, bit depth 1-24, sample-rate divisor 1-64, wet/dry 0-100 % |
-| NoteFX | opens the per-layer note FX page |
 | Preset FX | ON / OFF - see [Quirks](#non-obvious-quirks) |
-
-**NoteFX** (per melodic layer, the active one): **Gate** 10-100 % of the
-step (100 = legato), **Glide** in ms (AMY-native portamento between
-consecutive notes), **Groove** 0-100 % accent / humanize amount.
 
 ---
 

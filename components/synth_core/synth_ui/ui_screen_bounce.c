@@ -12,7 +12,7 @@
  *  BOUNCE PAGE (Main Menu -> "Bounce")
  * ════════════════════════════════════════════════════════════════════════
  * Item model for the loop-bounce recorder; page state and input routing live
- * in ui_screen_menu.c (same split as the FX/NoteFX/Projects/Chords pages).
+ * in ui_screen_menu.c (same split as the FX/Layer/Projects/Chords pages).
  *
  * Top block is the shape of the next bounce (target slot, max bars, mono or
  * stereo, tail, what becomes of the sources), a read-only memory line, the

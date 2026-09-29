@@ -430,19 +430,18 @@ typedef struct {
                                             delayed by this % of one step at
                                             emit time. 0 = straight (memset
                                             default).                          */
-    uint8_t   gate_pct;                  /* melodic note-hold as % of the step
-                                            (10..100), the NoteFX GATE control;
-                                            drum layers use SEQ_GATE_DRUM
-                                            instead. MUST be initialised to
-                                            SEQ_MELODIC_GATE_DEFAULT_PCT in
-                                            add_layer - memset 0 silences every
-                                            melodic note.                      */
+    uint8_t   gate_pct;                  /* note-hold as % of the step
+                                            (10..100), the Layer page's Gate
+                                            row, drum and melodic. MUST be
+                                            initialised to the type's
+                                            SEQ_*_GATE_DEFAULT_PCT in add_layer
+                                            - memset 0 silences every note.    */
     uint16_t  portamento_ms;             /* glide between step pitches (0..100
-                                            ms, NoteFX Glide), 0 = off. AMY
+                                            ms, Layer page Glide), 0 = off. AMY
                                             portamento_alpha; re-pushed on every
                                             voice rebuild since osc reset
                                             clears it.                         */
-    uint8_t   groove_pct;                /* NoteFX GROOVE: how much of the
+    uint8_t   groove_pct;                /* Layer page Groove: how much of the
                                             accent/humanize velocity curve
                                             applies (0..100, 0 = flat 1.0),
                                             scaled at emit time in

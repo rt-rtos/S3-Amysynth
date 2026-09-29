@@ -24,8 +24,8 @@ extern "C" {
  */
 typedef enum {
     MY_BUTTON_SHOULDER, // GPIO15, left shoulder (LB) → per-view: step toggle on the grid (second one,
-                        //          alongside the encoder press), EG1 sweep
-                        //          polarity in the envelope editor
+                        //          alongside the encoder press), routing
+                        //          depth sign in the envelope editor
     MY_BUTTON_1,        // GPIO18 → patch-select hold (hold + encoder); in editors:
                         //          filter enable, EG curve-type cycle
     MY_BUTTON_2,        // GPIO8

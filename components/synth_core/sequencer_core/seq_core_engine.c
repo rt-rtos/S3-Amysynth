@@ -271,7 +271,7 @@ float sequencer_step_velocity(const seq_layer_t *layer,
 
     velocity = SEQ_CLAMP_F32(velocity, 0.45f, 1.0f);
 
-    /* NoteFX GROOVE: blend the accent curve (100%) against flat 1.0 (0%).
+    /* Layer page Groove: blend the accent curve (100%) against flat 1.0 (0%).
      * After the clamp, so 0% is exactly 1.0. */
     velocity = 1.0f - ((float)layer->groove_pct * 0.01f) * (1.0f - velocity);
     return velocity;
@@ -1035,24 +1035,23 @@ uint8_t sequencer_core_get_layer_swing(uint8_t layer_idx)
     return s_layers[layer_idx].swing_pct;
 }
 
-/* ── Per-layer melodic NoteFX: gate length + glide (portamento) ────────────
- * Per-layer scalars from the NoteFX menu page. Gate applies at emit time
+/* ── Per-layer note FX: gate length + glide (portamento) ───────────────────
+ * Per-layer scalars from the Layer menu page. Gate applies at emit time
  * (seq_step_gate), so a change must re-emit the layer's steps for the new
- * note-off ticks to take effect, exactly like swing. Glide is an AMY per-osc
- * setting pushed straight to the row synths. Both no-op on drum layers (gate
- * uses the fixed SEQ_GATE_DRUM; drums don't glide). */
-void sequencer_core_set_melodic_gate_pct(uint8_t layer_idx, uint8_t gate_pct)
+ * note-off ticks to take effect, exactly like swing; it applies to drum and
+ * melodic layers alike. Glide is an AMY per-osc setting pushed straight to the
+ * row synths, melodic only (drums don't glide). */
+void sequencer_core_set_layer_gate_pct(uint8_t layer_idx, uint8_t gate_pct)
 {
     if (layer_idx >= s_num_layers) return;
     seq_layer_t *layer = &s_layers[layer_idx];
-    if (layer->type != SEQ_LAYER_MELODIC) return;
     uint8_t clamped = (uint8_t)SEQ_CLAMP_U8((int)gate_pct, 10, 100);
     if (layer->gate_pct == clamped) return;
     layer->gate_pct = clamped;
     sequencer_resync_layer(layer_idx);   /* re-emit: gate changes note-off ticks */
 }
 
-uint8_t sequencer_core_get_melodic_gate_pct(uint8_t layer_idx)
+uint8_t sequencer_core_get_layer_gate_pct(uint8_t layer_idx)
 {
     if (layer_idx >= s_num_layers) return 0;
     return s_layers[layer_idx].gate_pct;

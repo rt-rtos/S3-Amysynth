@@ -12,8 +12,7 @@
  * routing live in ui_screen_menu.c.
  *
  * The HUB is one row per AMY bus (dive rows, showing whether the bus carries
- * anything) plus the two settings that are not per-bus: the Preset FX guard
- * and the dive into the per-layer NoteFX page.
+ * anything) plus the one setting that is not per-bus: the Preset FX guard.
  *
  * The BUS page is the old global-FX model, now bound to one bus: three-band
  * EQ, echo/chorus/reverb with their extended params, distortion (fx_state_t),

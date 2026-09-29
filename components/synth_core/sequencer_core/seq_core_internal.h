@@ -65,13 +65,12 @@ static inline uint32_t sequencer_step_swing_offset(const seq_layer_t *layer,
  * ratchet n==1 path so the two cannot drift. */
 static inline uint16_t seq_step_gate(const seq_layer_t *layer, uint8_t step)
 {
-    if (layer->type == SEQ_LAYER_DRUM) return SEQ_GATE_DRUM;
-
-    /* Melodic note-hold is a per-layer % of the step (the NoteFX GATE control),
-     * rounded pct->ticks; 100% is a full-step legato hold. */
+    /* Note-hold is a per-layer % of the step (the Layer page's Gate row),
+     * rounded pct->ticks; 100% is a full-step legato hold. The off-beat
+     * shortening is melodic phrasing, so drum hits keep the plain gate. */
     uint16_t gate = (uint16_t)(((uint32_t)SEQ_TICKS_PER_STEP * layer->gate_pct
                                 + 50u) / 100u);
-    if ((step % 2) == 1 && gate > 2) {
+    if (layer->type != SEQ_LAYER_DRUM && (step % 2) == 1 && gate > 2) {
         gate -= 2;
     }
     if (gate < 1) gate = 1;   /* never zero — the note must sound */

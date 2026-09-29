@@ -124,10 +124,8 @@ void sequencer_core_push_eg_depths(uint8_t synth, int osc,
     amy_helpers_event_send(e);
 }
 
-/* Push one dist block where the row's layout carries the stage. Every owning
- * row re-sends its routing depths behind each dist push, so the Kconfig-global
- * EG0->drive depth voice_apply_dist_osc() carries reaches only never-authored
- * rows and the drones. */
+/* Push one dist block where the row's layout carries the stage, then, on an
+ * owning row, its routing depths (filter_push_eg_depths). */
 static void melodic_dist_apply(uint8_t layer_idx, uint8_t track,
                                const seq_dist_t *d)
 {

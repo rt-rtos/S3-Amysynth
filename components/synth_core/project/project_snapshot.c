@@ -443,7 +443,7 @@ static void ser_layer(tlv_writer_t *w, const seq_layer_t *L)
     tlv_put_bytes(w, L->step_nudge,         sizeof L->step_nudge);
     tlv_put_bytes(w, L->step_velocity_adj,  sizeof L->step_velocity_adj);
     tlv_put_bytes(w, L->step_ratchet_taper, sizeof L->step_ratchet_taper);
-    /* Melodic NoteFX: gate length, glide, GROOVE accent amount. */
+    /* Note FX: gate length (drum and melodic), glide, GROOVE accent amount. */
     tlv_put_u8(w, L->gate_pct);
     tlv_put_u16(w, L->portamento_ms);
     tlv_put_u8(w, L->groove_pct);
@@ -552,7 +552,7 @@ static bool parse_layer(tlv_reader_t *b, seq_layer_t *L)
         }
     }
 
-    /* Melodic NoteFX, clamped to the live control ranges. */
+    /* Note FX, clamped to the live control ranges. */
     if (!tlv_get_u8(b, &L->gate_pct))       return false;
     if (!tlv_get_u16(b, &L->portamento_ms)) return false;
     L->gate_pct = SEQ_CLAMP_U8(L->gate_pct, 10, 100);

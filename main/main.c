@@ -257,7 +257,7 @@ static void main_button_event_cb(my_button_id_t button_id, button_event_t event,
 static void dispatch_button_event(my_button_id_t button_id, button_event_t event)
 {
     /* MY_BUTTON_SHOULDER, per view: SEQ toggles the step under the cursor
-     * (two-handed tracker-style entry), GRAPH flips the EG1 sweep polarity,
+     * (two-handed tracker-style entry), GRAPH flips the routing depth's sign,
      * LFO flips the target checklist tab, MENU leaves a sub-page for the main
      * list (button 3 reopens the last page, so this is the way home). Step
      * entry, the polarity flip and the menu jump take PRESS_DOWN for zero tap
@@ -269,8 +269,8 @@ static void dispatch_button_event(my_button_id_t button_id, button_event_t event
             if (sv == UI_VIEW_SEQ) {
                 synth_ui_toggle_step_at_cursor();
             } else if (sv == UI_VIEW_GRAPH) {
-                /* No-op on the EG0 page and for arp/drone targets. */
-                synth_ui_graph_flip_eg1_polarity();
+                /* No-op unless a routing target stop is up. */
+                synth_ui_graph_flip_depth_polarity();
             } else if (sv == UI_VIEW_MENU) {
                 synth_ui_menu_go_main();
 #if CONFIG_SYNTH_CUSTOM_FM

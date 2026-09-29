@@ -176,7 +176,7 @@ void display_seq_draw_frame(u8g2_t *u8g2, const display_seq_state_t *state, uint
 
     /* === PLAYHEAD (XOR highlight) === */
     uint8_t cur_step = state->current_step;
-    if ((state->playing || state->edit_mode) && cur_step < num_steps) {
+    if (cur_step < num_steps) {
         int ph_x = grid_x + cur_step * col_w - 1;
         u8g2_SetDrawColor(u8g2, 2);
         u8g2_DrawBox(u8g2, ph_x, geom.span_top, col_w + 1, geom.span_h);
@@ -184,13 +184,11 @@ void display_seq_draw_frame(u8g2_t *u8g2, const display_seq_state_t *state, uint
     }
 
     /* === SELECTION CURSOR === */
-    if (state->edit_mode) {
-        uint8_t sel = state->selected_step;
-        if (sel < num_steps) {
-            int sel_y = grid_top + state->selected_track * row_h - 1;
-            int sel_x = grid_x + sel * col_w;
-            u8g2_DrawRFrame(u8g2, sel_x, sel_y, cell_w + 2, cell_size + 2, 1);
-        }
+    uint8_t sel = state->selected_step;
+    if (sel < num_steps) {
+        int sel_y = grid_top + state->selected_track * row_h - 1;
+        int sel_x = grid_x + sel * col_w;
+        u8g2_DrawRFrame(u8g2, sel_x, sel_y, cell_w + 2, cell_size + 2, 1);
     }
 
     /* === PATCH-SELECT NAME OVERLAY ===

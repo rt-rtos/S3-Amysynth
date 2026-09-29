@@ -494,39 +494,35 @@ void synth_ui_cycle_active_layer(void)
         (uint8_t)((seq_state.active_layer_idx + 1) % seq_state.num_layers);
     seq_state.selected_track = 0;
     seq_state.selected_step  = 0;
-    seq_state.edit_mode      = true;
     ESP_LOGI(TAG_TASK, "Active layer -> L%d (%s)",
              seq_state.active_layer_idx + 1,
              seq_state.layers[seq_state.active_layer_idx].type == SEQ_LAYER_DRUM
              ? "drum" : "melodic");
 }
 
-/* Move the step cursor by `delta` in edit mode; outside it a bare turn is
- * deliberately a no-op (BPM lives in the main menu only). Running off either
- * end wraps to the adjacent track, so a long turn scans the whole grid. */
+/* Move the step cursor by `delta`. Running off either end wraps to the
+ * adjacent track, so a long turn scans the whole grid. */
 void synth_ui_handle_encoder(long delta)
 {
     if (delta == 0) return;
 
-    if (seq_state.edit_mode) {
-        uint8_t li         = seq_state.active_layer_idx;
-        uint8_t num_steps  = seq_state.layers[li].num_steps;
-        uint8_t num_tracks = seq_state.layers[li].num_tracks;
-        int new_step       = (int)seq_state.selected_step + (int)delta;
+    uint8_t li         = seq_state.active_layer_idx;
+    uint8_t num_steps  = seq_state.layers[li].num_steps;
+    uint8_t num_tracks = seq_state.layers[li].num_tracks;
+    int new_step       = (int)seq_state.selected_step + (int)delta;
 
-        if (new_step < 0) {
-            /* Off the start: last step of the previous track. */
-            new_step = (int)num_steps - 1;
-            seq_state.selected_track =
-                (uint8_t)((seq_state.selected_track + num_tracks - 1) % num_tracks);
-        } else if (new_step >= (int)num_steps) {
-            /* Off the end: first step of the next track. */
-            new_step = 0;
-            seq_state.selected_track =
-                (uint8_t)((seq_state.selected_track + 1) % num_tracks);
-        }
-        seq_state.selected_step = (uint8_t)new_step;
+    if (new_step < 0) {
+        /* Off the start: last step of the previous track. */
+        new_step = (int)num_steps - 1;
+        seq_state.selected_track =
+            (uint8_t)((seq_state.selected_track + num_tracks - 1) % num_tracks);
+    } else if (new_step >= (int)num_steps) {
+        /* Off the end: first step of the next track. */
+        new_step = 0;
+        seq_state.selected_track =
+            (uint8_t)((seq_state.selected_track + 1) % num_tracks);
     }
+    seq_state.selected_step = (uint8_t)new_step;
 }
 
 bool synth_ui_set_layer_steps(uint8_t li, uint8_t num_steps)
@@ -544,12 +540,10 @@ bool synth_ui_set_layer_steps(uint8_t li, uint8_t num_steps)
     return true;
 }
 
-/* Toggle the grid step under the cursor and mirror it to the core. Gated on
- * edit_mode like the encoder push but with no play/pause fallback, so it is
- * safe on a dedicated button. Returns whether a step was toggled. */
+/* Toggle the grid step under the cursor and mirror it to the core. Returns
+ * whether a step was toggled. */
 bool synth_ui_toggle_step_at_cursor(void)
 {
-    if (!seq_state.edit_mode) return false;
     uint8_t li = seq_state.active_layer_idx;
     uint8_t t  = seq_state.selected_track;
     uint8_t s  = seq_state.selected_step;

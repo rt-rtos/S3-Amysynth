@@ -417,18 +417,6 @@ void voice_apply_dist_osc(uint8_t synth, uint8_t osc, const seq_dist_t *d)
      * (AMY maps it onto its log2 drive rail on the way in); mix is linear 0..1. */
     e->dist_drive_coefs[COEF_CONST] = (float)v.drive;
     e->dist_mix_coefs[COEF_CONST]   = (float)v.mix / 100.0f;
-#if CONFIG_SEQ_DIST_DRIVE_AMP_EG
-    /* WIP PROTOTYPE (Kconfig-gated, default off): route the amp envelope (EG0)
-     * into drive on the log2 rail - the unipolar 0..1 env times a signed octave
-     * depth, exactly the shape the EG1 cutoff depth uses to sweep cutoff. The
-     * authored drive above is the release-tail floor; this adds up to DEPTH_Q/4
-     * octaves at the envelope peak (COEF0_SPECIAL only remaps CONST, so the EG
-     * slot is already in octaves). Shares EG0 with amplitude, so drive tracks
-     * loudness. TODO: promote to a per-track amount + EG0/EG1 source choice if
-     * it proves itself (see the dist coef rail in AMY-EDITS.md). */
-    e->dist_drive_coefs[COEF_EG0] =
-        (float)CONFIG_SEQ_DIST_DRIVE_AMP_EG_DEPTH_Q / 4.0f;
-#endif
     amy_helpers_event_send(e);
 }
 
