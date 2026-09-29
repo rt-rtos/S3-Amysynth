@@ -130,7 +130,6 @@ void     clip_bounce_chord(bool long_press);
  * commit replaced and, after a Clear, the layers as they were (import per
  * layer; one whose type changed since is skipped), then clear its slot. One
  * level; consumed by the next commit. Applier task (layer import). */
-bool     clip_bounce_undo_available(void);
 void     clip_bounce_undo(void);
 
 uint8_t  clip_bounce_slot(void);        /* target slot; meaningful while not IDLE */

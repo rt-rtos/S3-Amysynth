@@ -18,7 +18,6 @@ the `display` component for rendering.
 | `quantizer.c` | scale tables and chord math (shared by grid, arp, progression, drone) |
 | `arp_core.c` | arpeggiator engine — see [ARP-ARCHITECTURE.md](ARP-ARCHITECTURE.md) |
 | `voice_config.c` | shared voice-parameter layer: builds 2-osc WAVE voices, wires the native AMY LFO |
-| `graph_popup_amy.c` | AMY breakpoint ↔ graph-widget adapter for the envelope editor |
 
 **`sequencer_core/`** — the engine, split by concern: `seq_model.h` (data
 model), `seq_core_state.c` (layer lifecycle), `seq_core_engine.c` (tag
@@ -151,11 +150,8 @@ across later patch changes.
 The seed values are *not* stale once the editor exists - the editor writes the
 exact same struct. Change them only if you want a different starting shape.
 
-### Graph editor (`graph_popup_amy.c`, `synth_ui/ui_editors.c`)
+### Graph editor (`synth_ui/ui_editors.c`)
 
-- `graph_popup_amy.c` is the AMY↔widget adapter. It converts between AMY
-  breakpoint arrays (times in ms, values 0..1) and the widget's normalised
-  point model, prepending an implicit `(0,0)` origin.
 - `synth_ui_graph_open_envelope()` seeds the 3-point editor (A/D/R, plus
   origin) from the bound target's stored envelope via `graph_seed_from_env()`.
 - `graph_commit_to_env()` reads the points back, converts X→ms under the active

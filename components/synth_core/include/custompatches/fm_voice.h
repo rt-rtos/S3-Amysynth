@@ -62,11 +62,9 @@ void fm_voice_configure_track(uint8_t synth_id, uint16_t num_voices,
 
 /* Live update of an already-configured FM voice without reallocating the osc
  * pool: routing + every operator (7 events per synth). Use after a topology
- * or algorithm change; for one operator's ratio/level/env use _push_op. */
+ * or algorithm change; for one operator's ratio/level/env use fm_voice_push()
+ * with that operator's index. */
 void fm_voice_push_live(uint8_t synth_id, const fm_voice_t *voice);
-
-/* One operator's ratio/level/envelope (1 event). op >= FM_NUM_OPS: no-op. */
-void fm_voice_push_op(uint8_t synth_id, const fm_voice_t *voice, uint8_t op);
 
 /* Push scope for the "voice changed" fan-out (sequencer_core_fm_voice_changed,
  * arp_core_fm_voice_changed): an operator index pushes that operator only,

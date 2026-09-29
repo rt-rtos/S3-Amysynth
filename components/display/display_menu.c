@@ -9,11 +9,6 @@
 #define MENU_FIRST_ROW  25
 #define MENU_VIS_ROWS   3
 
-void display_menu_draw_frame(u8g2_t *u8g2, const menu_view_t *view)
-{
-    display_menu_draw_frame_titled(u8g2, "MENU", view);
-}
-
 void display_menu_draw_frame_titled(u8g2_t *u8g2, const char *title,
                                     const menu_view_t *view)
 {

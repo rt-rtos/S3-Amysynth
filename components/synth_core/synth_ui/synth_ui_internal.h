@@ -188,7 +188,6 @@ bool     fx_menu_item_is_value(uint8_t idx);
 bool     fx_menu_item_is_back(uint8_t idx);
 void     fx_menu_edit_value(uint8_t idx, int delta);
 void     fx_menu_set_bus(uint8_t bus);
-uint8_t  fx_menu_current_bus(void);
 const char *fx_menu_title(void);     /* header-bar title for the bus page */
 const char *menu_page_title(void);   /* header-bar title for the active page */
 /* True when a SHOULDER press would leave a menu sub-page for the main list
@@ -237,7 +236,6 @@ void     projects_menu_rename_cancel(void);
 const menu_item_view_t *wireless_menu_build_items(void);
 uint8_t  wireless_menu_item_count(void);
 bool     wireless_menu_item_is_back(uint8_t idx);
-bool     wireless_menu_item_is_value(uint8_t idx);
 bool     wireless_menu_handle_click(uint8_t idx);
 void     wireless_menu_edit_value(uint8_t idx, int delta);
 void     wireless_menu_reset(void);
@@ -252,7 +250,6 @@ void     wireless_menu_reset(void);
 const menu_item_view_t *chords_menu_build_items(void);
 uint8_t  chords_menu_item_count(void);
 bool     chords_menu_item_is_back(uint8_t idx);
-bool     chords_menu_item_is_value(uint8_t idx);
 bool     chords_menu_handle_click(uint8_t idx);
 void     chords_menu_edit_value(uint8_t idx, int delta);
 void     chords_menu_reset(void);

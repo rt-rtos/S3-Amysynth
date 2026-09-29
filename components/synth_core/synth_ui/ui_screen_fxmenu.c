@@ -146,11 +146,6 @@ void fx_menu_set_bus(uint8_t bus)
     s_page_bus = (bus < FX_BUS_COUNT) ? bus : FX_BUS_HOME;
 }
 
-uint8_t fx_menu_current_bus(void)
-{
-    return s_page_bus;
-}
-
 const char *fx_menu_title(void)
 {
     static char s_title[24];

@@ -315,26 +315,6 @@ esp_err_t usb_audio_write_stereo(const int16_t *data, size_t num_frames)
     return ESP_OK;
 }
 
-esp_err_t usb_audio_write_mono(const int16_t *data, size_t num_samples)
-{
-    if (!s_initialized || !data || num_samples == 0) return ESP_ERR_INVALID_STATE;
-
-    // Expand to interleaved stereo on the stack, chunked so the frame stays
-    // small for arbitrary lengths.
-    int16_t frames[128 * 2];
-    const size_t chunk = 128;
-    for (size_t off = 0; off < num_samples; off += chunk) {
-        size_t n = (num_samples - off < chunk) ? (num_samples - off) : chunk;
-        for (size_t i = 0; i < n; i++) {
-            frames[i * 2]     = data[off + i];
-            frames[i * 2 + 1] = data[off + i];
-        }
-        esp_err_t err = usb_audio_write_stereo(frames, n);
-        if (err != ESP_OK) return err;   // drop the rest of this call on full buffer
-    }
-    return ESP_OK;
-}
-
 void usb_audio_diag_get_snapshot(usb_audio_diag_snapshot_t *snapshot)
 {
     if (snapshot == NULL) {
@@ -365,25 +345,3 @@ void usb_audio_diag_get_snapshot(usb_audio_diag_snapshot_t *snapshot)
     snapshot->peak_abs_sample = s_peak_abs_sample;
 #endif
 }
-
-void usb_audio_diag_reset(void)
-{
-#if CONFIG_USB_AUDIO_DIAGNOSTICS
-    if (!s_initialized) {
-        return;
-    }
-
-    // Best-effort; racing a single increment is harmless for advisory diags.
-    // (dropout_stats counters are cumulative-since-boot by contract and are
-    // deliberately not reset here.)
-    s_write_calls = 0;
-    s_write_drop_events = 0;
-    s_peak_fill_samples = 0;
-    s_peak_abs_sample = 0;
-#else
-    (void)0;
-#endif
-}
-
-// from main int16_t mix[960];   // 10 ms @ 48 kHz mono
-// ... fill mix with your drum samples ... usb_audio_write_mono(mix, 960);

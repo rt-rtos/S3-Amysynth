@@ -103,9 +103,8 @@ counter on a task can see.
 | --- | --- |
 | `usb_audio_init()` | Allocate the ring (PSRAM) and start the UAC device |
 | `usb_audio_write_stereo(samples, frames)` | Push one interleaved stereo block; all-or-nothing |
-| `usb_audio_write_mono(samples, frames)` | Mono convenience variant (duplicated to both channels) |
 | `usb_audio_consumer_active()` | True while the host is actually draining the stream |
-| `usb_audio_diag_get_snapshot()` / `usb_audio_diag_reset()` | Diagnostics snapshot: fill / peak / write / drop counters need `CONFIG_USB_AUDIO_DIAGNOSTICS`; the `dropout_stats` mirrors in the same struct are valid in every build |
+| `usb_audio_diag_get_snapshot()` | Diagnostics snapshot: fill / peak / write / drop counters need `CONFIG_USB_AUDIO_DIAGNOSTICS`; the `dropout_stats` mirrors in the same struct are valid in every build |
 
 ## How the project drives it
 

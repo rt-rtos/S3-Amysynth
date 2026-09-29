@@ -241,12 +241,6 @@ bool chords_menu_item_is_back(uint8_t idx)
     return s_mode == CHORDS_MODE_LIST && idx == SEQ_CHORD_SLOTS;
 }
 
-bool chords_menu_item_is_value(uint8_t idx)
-{
-    return s_mode == CHORDS_MODE_EDIT &&
-           (idx == CHORDS_EDIT_ROOT || idx == CHORDS_EDIT_TYPE);
-}
-
 /* Returns the new menu_editing state (mirrors projects_menu_handle_click). */
 bool chords_menu_handle_click(uint8_t idx)
 {

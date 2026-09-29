@@ -24,7 +24,6 @@ amy_event *amy_helpers_event_begin(void);
  * A synth-creating or re-patching event is routed to its slot's bus (fx_bus.h)
  * unless it names one. */
 void amy_helpers_event_send(amy_event *event);
-void amy_helpers_event_cancel(amy_event *event);
 
 /* Register the pump's single urgent source: a callback that drains one
  * deadline-sensitive job and returns true, or false when it has none. The
@@ -62,11 +61,6 @@ void amy_helpers_config_send(amy_event *event);
  * synth_flags passes through for layer-specific instrument flags. */
 void amy_send_patch(uint8_t synth, uint16_t patch_number, uint16_t num_voices,
                     uint32_t synth_flags);
-
-/* Global panic: RESET_ALL_NOTES releases every sounding note. Safe from the
- * sequencer/UI core. Call on pause to silence mid-gate notes whose scheduled
- * note-offs were just cancelled. */
-void amy_send_all_notes_off(void);
 
 #ifdef __cplusplus
 }

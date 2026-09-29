@@ -127,7 +127,7 @@ config SEQ_MEL_VOICES
 		One AMY synth is allocated PER ROW (per track). A row only ever
 		sounds one pitch at a time, so a single voice suffices. Bump to 2
 		to give note-off/note-on overlap headroom at the step boundary, at
-		2x oscillator cost per row. Melodic rows span slots 13..64, so
+		2x oscillator cost per row. Melodic rows span slots 14..65, so
 		higher values multiply oscillator use against AMY's 250-osc budget.
 
 config SEQ_KS_VOICES_MAX
@@ -185,14 +185,18 @@ choice SEQ_PATCH_BROWSE_MODE
 config SEQ_PATCH_BROWSE_PRESELECTED
 	bool "Preselected shortlist"
 	help
-		Cycle a small, hand-picked list of musical built-in patches. Fast to
-		reach favourites; does not require the name table.
+		Cycle a curated shortlist: a few favourite Juno and DX7 patches, the
+		built-in piano, the raw waves (257..263), the app's bass, wavetable,
+		FM and additive voices, and the app wavetable bank (280..287). Fast
+		to reach favourites; does not require the name table.
 
 config SEQ_PATCH_BROWSE_FULL_RANGE
-	bool "Full range (0..256)"
+	bool "Full range (0..287)"
 	help
-		Cycle every AMY built-in patch: Juno 0..127, DX7 128..255, and the
-		built-in piano (256). Enable SEQ_PATCH_SHOW_NAMES to see what each is.
+		Cycle every patch number: Juno 0..127, DX7 128..255, the built-in
+		piano (256), then the app's own voices up to the wavetable bank
+		(287). Ranges whose feature is compiled out are skipped. Enable
+		SEQ_PATCH_SHOW_NAMES to see what each is.
 
 endchoice
 
@@ -406,7 +410,8 @@ config SEQ_ARP_DEFAULT_SCALE
 	range 0 8
 	default 0
 	help
-		The arp's own quantizer scale, used while the ArpQ menu row is OWN.
+		The arp's own quantizer scale, used while the arp's quantize mode
+		(Arp screen, or Arp Q on the Prog Gen page) is OWN.
 		Note slots store raw chromatic notes and are snapped to this scale at
 		playback. There is no on-device editor for it, so the default is
 		Chromatic: OWN then means "no snapping", the useful opposite of GLOB

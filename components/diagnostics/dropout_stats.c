@@ -34,11 +34,6 @@ void dropout_count_wire_zlp(void)
     s_wire_zlp++;
 }
 
-void dropout_count_ring_underrun(void)
-{
-    s_ring_underrun++;
-}
-
 void dropout_count_ring_overrun(void)
 {
     s_ring_overrun++;
@@ -47,11 +42,6 @@ void dropout_count_ring_overrun(void)
 void dropout_count_render_overrun(uint32_t missed_ticks)
 {
     s_render_overrun += missed_ticks;
-}
-
-void dropout_count_chunk_drop(void)
-{
-    s_chunk_drop++;
 }
 
 void dropout_stats_get(dropout_stats_t *out)

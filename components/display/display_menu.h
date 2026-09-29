@@ -14,7 +14,6 @@ extern "C" {
  * row into a label + value string and hands over a flat array. The renderer
  * draws a scrollable list, framing the entered value while editing. */
 
-#define MENU_MAX_ITEMS    24
 #define MENU_LABEL_LEN    18
 #define MENU_VALUE_LEN    14
 
@@ -30,11 +29,9 @@ typedef struct {
     bool    editing;    /* true => value of cursor item is being edited */
 } menu_view_t;
 
-/* Draw the full menu overlay (clears + sends the buffer). */
-void display_menu_draw_frame(u8g2_t *u8g2, const menu_view_t *view);
-
-/* Same renderer with a caller-supplied title instead of the fixed "MENU", so
- * other screens (e.g. the FM voice editor) can reuse it. */
+/* Draw the full menu overlay (clears + sends the buffer) under a
+ * caller-supplied title, so other screens (e.g. the FM voice editor) can
+ * reuse it. */
 void display_menu_draw_frame_titled(u8g2_t *u8g2, const char *title,
                                     const menu_view_t *view);
 

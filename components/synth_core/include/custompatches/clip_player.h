@@ -40,9 +40,6 @@ typedef enum {
 void clip_player_init(void);
 
 clip_slot_state_t clip_player_slot_state(uint8_t slot);
-uint8_t  clip_player_slot_bars(uint8_t slot);
-bool     clip_player_slot_stereo(uint8_t slot);
-uint32_t clip_player_slot_bytes(uint8_t slot);
 uint32_t clip_player_pool_used(void);        /* bytes across every non-EMPTY slot */
 
 /* Play/mute is a gain on the clip synth: a muted clip keeps looping silently,

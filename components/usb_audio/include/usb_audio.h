@@ -40,11 +40,6 @@ esp_err_t usb_audio_init(void);
 esp_err_t usb_audio_write_stereo(const int16_t *data, size_t num_frames);
 
 /**
- * @brief Write mono 16-bit samples (automatically duplicated to L+R)
- */
-esp_err_t usb_audio_write_mono(const int16_t *data, size_t num_samples);
-
-/**
  * @brief True iff a USB host has pulled audio within the liveness timeout.
  *        Producer-side gate so render output is not buffered/dropped when no
  *        host is consuming. Advisory (relaxed atomics).
@@ -72,11 +67,6 @@ bool usb_audio_peek_levels(size_t n_samples, int32_t *peak_abs,
  * @brief Get a snapshot of USB audio diagnostic counters and buffer state.
  */
 void usb_audio_diag_get_snapshot(usb_audio_diag_snapshot_t *snapshot);
-
-/**
- * @brief Reset USB audio diagnostic counters.
- */
-void usb_audio_diag_reset(void);
 
 #ifdef __cplusplus
 }

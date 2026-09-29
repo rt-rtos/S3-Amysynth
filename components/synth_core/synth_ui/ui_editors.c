@@ -1127,14 +1127,6 @@ static void graph_auto_range_check(void)
     }
 }
 
-/* Manual SHORT<->LONG toggle, kept for external callers. */
-bool synth_ui_graph_toggle_range(void)
-{
-    if (!graph_popup_is_active(&s_graph_popup)) return false;
-    graph_set_range(!s_graph_long_range);
-    return true;
-}
-
 /* Cycle MY_BUTTON_2's topbar sub-modes: OFF -> AMP -> SWG -> OFF, with the SWG
  * stop skipped where graph_swing_available() says swing is not this editor's to
  * touch. A row carrying the depth matrix appends one stop per routing target
@@ -1961,9 +1953,7 @@ bool synth_ui_filter_handle_encoder(long delta)
     bool drone = (filter_tgt_is_drone());
 
     /* Arp takes the same cursor map and edit branches as melodic, so it needs
-     * no predicate: its EG1 sweep depth is the fixed ARP_FILTER_EG1_DEPTH_OCT,
-     * not an editable field. Kept as the hook if that ever changes. */
-    /* bool arp = (filter_tgt_is_arp()); */
+     * no predicate of its own. */
 
     if (!s_fgraph.editing) {
         /* Cursor map. Drone: 0=cutoff 1=resonance (type fixed, no EN).

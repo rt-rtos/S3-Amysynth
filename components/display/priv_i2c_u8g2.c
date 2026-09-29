@@ -287,11 +287,6 @@ u8g2_t *i2c_u8g2_get_u8g2(i2c_u8g2_handle_t *handle)
     return &handle->u8g2;
 }
 
-bool i2c_u8g2_display_present(void)
-{
-    return s_display_present;
-}
-
 bool i2c_u8g2_service(void)
 {
     if (s_display_present || s_active_handle == NULL || s_i2c_bus_handle == NULL) {
@@ -324,46 +319,4 @@ bool i2c_u8g2_service(void)
     ESP_LOGI(TAG, "display attached at 0x%02X; reinitialized",
              (unsigned)s_device_address);
     return true;
-}
-
-esp_err_t i2c_u8g2_set_power_save(i2c_u8g2_handle_t *handle, bool enable)
-{
-    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "handle is NULL");
-    ESP_RETURN_ON_FALSE(handle->initialized, ESP_ERR_INVALID_STATE, TAG, "display not initialized");
-
-    u8g2_SetPowerSave(&handle->u8g2, enable ? 1 : 0);
-    return ESP_OK;
-}
-
-void demo_shapes(u8g2_t *u8g2)
-{
-    ESP_LOGI(TAG, "Geometric Shapes");
-
-    u8g2_ClearBuffer(u8g2);
-
-    /* Title */
-    u8g2_SetFont(u8g2, u8g2_font_ncenB08_tr);
-    u8g2_DrawStr(u8g2, 35, 12, "Shapes");
-
-    /* Filled rectangle */
-    u8g2_DrawBox(u8g2, 10, 20, 20, 15);
-
-    /* Outlined rectangle */
-    u8g2_DrawFrame(u8g2, 35, 20, 20, 15);
-
-    /* Circle outline */
-    u8g2_DrawCircle(u8g2, 70, 27, 8, U8G2_DRAW_ALL);
-
-    /* Filled circle */
-    u8g2_DrawDisc(u8g2, 95, 27, 6, U8G2_DRAW_ALL);
-
-    /* Lines */
-    u8g2_DrawLine(u8g2, 10, 45, 50, 45);
-    u8g2_DrawLine(u8g2, 10, 50, 30, 60);
-    u8g2_DrawLine(u8g2, 30, 50, 50, 60);
-
-    /* Triangle */
-    u8g2_DrawTriangle(u8g2, 70, 45, 85, 60, 55, 60);
-
-    u8g2_SendBuffer(u8g2);
 }

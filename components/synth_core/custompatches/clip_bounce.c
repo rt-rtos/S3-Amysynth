@@ -296,11 +296,6 @@ void clip_bounce_chord(bool long_press)
     }
 }
 
-bool clip_bounce_undo_available(void)
-{
-    return s_undo.valid;
-}
-
 void clip_bounce_undo(void)
 {
     if (!s_undo.valid) return;

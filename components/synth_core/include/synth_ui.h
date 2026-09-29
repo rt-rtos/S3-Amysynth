@@ -177,11 +177,6 @@ bool synth_ui_graph_handle_button(bool is_long);
  * synth_ui_graph_handle_button(true), which discards. */
 bool synth_ui_graph_close_commit(void);
 
-/* Toggle the graph time range SHORT(2s linear) <-> LONG(15s, log-squashed tail)
- * while the editor is open. Range is auto-switched from total envelope time, so
- * this is kept only for completeness; no button calls it. */
-bool synth_ui_graph_toggle_range(void);
-
 /* Cycle the graph editor's MY_BUTTON_2 sub-modes: the encoder adjusts the
  * target's amplitude trim (0..1) instead of moving ADSR points; on a melodic
  * EG1 page the same stop edits the filter sweep depth. Every row carrying the

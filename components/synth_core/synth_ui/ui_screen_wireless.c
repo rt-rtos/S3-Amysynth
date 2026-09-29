@@ -45,12 +45,6 @@ bool wireless_menu_item_is_back(uint8_t idx)
     return idx == WI_BACK;
 }
 
-bool wireless_menu_item_is_value(uint8_t idx)
-{
-    return idx == WI_TOGGLE || idx == WI_SOURCE || idx == WI_PATCH
-        || idx == WI_GLIDE;
-}
-
 const menu_item_view_t *wireless_menu_build_items(void)
 {
     radio_state_t st = radio_manager_state();

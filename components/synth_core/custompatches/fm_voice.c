@@ -188,12 +188,6 @@ void fm_voice_push_live(uint8_t synth_id, const fm_voice_t *voice)
     for (uint8_t i = 0; i < FM_NUM_OPS; i++) fm_voice_send_op(synth_id, voice, i);
 }
 
-void fm_voice_push_op(uint8_t synth_id, const fm_voice_t *voice, uint8_t op)
-{
-    if (!voice || op >= FM_NUM_OPS) return;
-    fm_voice_send_op(synth_id, voice, op);
-}
-
 void fm_voice_push(uint8_t synth_id, const fm_voice_t *voice, uint8_t what)
 {
     if (!voice) return;

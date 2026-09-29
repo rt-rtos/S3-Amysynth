@@ -296,10 +296,6 @@ clip_slot_state_t clip_player_slot_state(uint8_t slot)
     return atomic_load_explicit(&s_slot[slot].state, memory_order_acquire);
 }
 
-uint8_t  clip_player_slot_bars(uint8_t slot)   { return slot < CLIP_SLOT_COUNT ? s_slot[slot].bars   : 0; }
-bool     clip_player_slot_stereo(uint8_t slot) { return slot < CLIP_SLOT_COUNT ? s_slot[slot].stereo : false; }
-uint32_t clip_player_slot_bytes(uint8_t slot)  { return slot < CLIP_SLOT_COUNT ? s_slot[slot].bytes  : 0; }
-
 uint32_t clip_player_pool_used(void)
 {
     uint32_t used = 0;

@@ -1,5 +1,4 @@
 #include "quantizer.h"
-#include "seq_clamp.h"
 #include <stddef.h>
 
 static const musical_scale_t s_scales[] = {
@@ -43,13 +42,6 @@ const musical_scale_t *quantizer_get_scale(uint8_t scale_index)
         return &s_scales[0];
     }
     return &s_scales[scale_index];
-}
-
-uint8_t quantizer_clamp_midi(int32_t midi_note)
-{
-    /* seq_clamp_u8 widens to int64_t before comparing, so a negative note
-     * clamps to 0 rather than wrapping through uint8_t on the way in. */
-    return SEQ_CLAMP_U8(midi_note, 0, 127);
 }
 
 /* Snap a MIDI note to the nearest note in the given scale/key: generate every

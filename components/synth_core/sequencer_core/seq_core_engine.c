@@ -221,11 +221,6 @@ int sequencer_chord_transpose_root(const seq_layer_t *layer, uint8_t root)
     return (int)root - (int)s_prog.entries[0].root;
 }
 
-int sequencer_chord_transpose(const seq_layer_t *layer)
-{
-    return sequencer_chord_transpose_root(layer, layer->chord_root);
-}
-
 uint8_t seq_track_fire_notes_root(const seq_layer_t *layer, uint8_t stored_note,
                                   uint8_t root, uint8_t out[SEQ_CHORD_MAX_NOTES])
 {

@@ -13,7 +13,6 @@ extern "C" {
  * parameter into a label + value string and hands over a flat array. The
  * renderer draws a scrollable list, framing the selected value while editing. */
 
-#define DRONE_VIEW_MAX_ROWS  16
 #define DRONE_LABEL_LEN      12
 #define DRONE_VALUE_LEN      12
 
@@ -29,9 +28,9 @@ typedef struct {
     bool    editing;    /* true => value of cursor row is editing */
 } drone_view_t;
 
-/* Draw the full drone screen (clears + sends the buffer). The titled variant
- * lets the stutter and normal drone screens share this renderer. */
-void display_drone_draw_frame(u8g2_t *u8g2, const drone_view_t *view);
+/* Draw the full drone screen (clears + sends the buffer) under a
+ * caller-supplied title, so the stutter and normal drone screens share this
+ * renderer. */
 void display_drone_draw_frame_titled(u8g2_t *u8g2, const char *title,
                                      const drone_view_t *view);
 

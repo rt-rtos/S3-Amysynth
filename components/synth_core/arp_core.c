@@ -17,10 +17,10 @@
 #define CONFIG_SEQ_ARP_DEFAULT_ENABLED 0
 #endif
 #ifndef CONFIG_SEQ_ARP_DEFAULT_SCALE
-#define CONFIG_SEQ_ARP_DEFAULT_SCALE 1   /* Major */
+#define CONFIG_SEQ_ARP_DEFAULT_SCALE 0   /* Chromatic */
 #endif
 #ifndef CONFIG_SEQ_ARP_DEFAULT_ROOT_NOTE
-#define CONFIG_SEQ_ARP_DEFAULT_ROOT_NOTE 60  /* C4 */
+#define CONFIG_SEQ_ARP_DEFAULT_ROOT_NOTE 40  /* E2 */
 #endif
 #ifndef CONFIG_SEQ_ARP_DEFAULT_GATE_PCT
 #define CONFIG_SEQ_ARP_DEFAULT_GATE_PCT 75
@@ -881,24 +881,6 @@ int16_t arp_get_slot_snapped(uint8_t idx)
 {
     if (idx >= ARP_MAX_SLOTS || s_arp.slots[idx] < 0) return -1;
     return (int16_t)arp_snap((uint8_t)s_arp.slots[idx]);
-}
-
-uint8_t arp_active_slot_count(void)
-{
-    uint8_t n = 0;
-    for (uint8_t i = 0; i < ARP_MAX_SLOTS; i++) {
-        if (s_arp.slots[i] < 0) break;
-        n++;
-    }
-    return n;
-}
-
-uint8_t arp_active_step_count(void)
-{
-    uint8_t n = 0;
-    for (uint8_t i = 0; i < ARP_MAX_SLOTS; i++)
-        if (s_arp.slots[i] != -1) n++;
-    return n;
 }
 
 /* ── Per-target amplitude trim (graph editor amp mode) ──────────────────── */

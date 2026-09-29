@@ -62,10 +62,8 @@ typedef struct {
 } dropout_stats_t;
 
 void dropout_count_wire_zlp(void);
-void dropout_count_ring_underrun(void);
 void dropout_count_ring_overrun(void);
 void dropout_count_render_overrun(uint32_t missed_ticks);
-void dropout_count_chunk_drop(void);
 
 void dropout_stats_get(dropout_stats_t *out);
 

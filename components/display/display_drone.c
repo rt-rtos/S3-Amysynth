@@ -70,11 +70,6 @@ void display_drone_draw_frame_titled(u8g2_t *u8g2, const char *title,
     }
 }
 
-void display_drone_draw_frame(u8g2_t *u8g2, const drone_view_t *view)
-{
-    display_drone_draw_frame_titled(u8g2, "DRONE", view);
-}
-
 /* ── Drone visualiser overlay ───────────────────────────────────────────────
  *
  * 128x64 dual-colour panel (rows 0..15 yellow, 16..63 blue). No bottom hint

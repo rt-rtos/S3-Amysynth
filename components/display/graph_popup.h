@@ -9,8 +9,7 @@
  *   - AMY- and sequencer-agnostic: operates purely on caller-owned *normalised*
  *     points (x and y each in 0.0..1.0).
  *   - The host opens it, seeds the points, routes input, and reads them back.
- *     Domain mapping (ms, levels, log-freq) lives in adapters outside this file
- *     (e.g. graph_popup_amy.c in synth_core).
+ *     Domain mapping (ms, levels, log-freq) lives in adapters outside this file.
  *
  * Rendering contract:
  *   graph_popup_draw() draws ONLY the pop-up box. The host owns
@@ -166,30 +165,6 @@ void graph_popup_draw(u8g2_t *u8g2, const gpopup_t *p);
 gpopup_result_t graph_popup_handle_encoder(gpopup_t *p, long delta);
 gpopup_result_t graph_popup_handle_button(gpopup_t *p);       /* short press   */
 gpopup_result_t graph_popup_handle_button_long(gpopup_t *p);  /* long = cancel */
-
-/* ───────────────────────────────────────────────────────────────────────────
- * Optional AMY adapter (components/synth_core/graph_popup_amy.c): converts
- * between AMY envelope arrays (ms, values 0..1) and the widget's normalised
- * points. Declared here for convenience; the widget above has NO AMY dependency.
- * ───────────────────────────────────────────────────────────────────────── */
-
-/* Build normalised points from an AMY EG (times in ms, values 0..1).
- * x = cumulative time / total time; y = value. An implicit origin point at
- * (0,0) is prepended so the curve starts at the bottom-left. Returns the
- * number of points written (<= max_out). */
-uint8_t gpopup_points_from_envelope(gpopup_point_t *out, uint8_t max_out,
-                                    const uint32_t *times_ms,
-                                    const float    *values,
-                                    uint8_t         num_bps);
-
-/* Convert normalised (edited) points back to ms/value arrays sized for an AMY
- * EG. total_ms scales the x axis back to milliseconds. The implicit origin
- * point at index 0 is skipped. out_times_ms/out_values must hold at least
- * (n-1) entries. Returns the number of breakpoints written. */
-uint8_t gpopup_points_to_envelope(const gpopup_point_t *pts, uint8_t n,
-                                  uint32_t  total_ms,
-                                  uint32_t *out_times_ms,
-                                  float    *out_values);
 
 #ifdef __cplusplus
 }

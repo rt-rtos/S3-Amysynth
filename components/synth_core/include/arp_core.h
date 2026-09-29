@@ -171,8 +171,6 @@ uint16_t     arp_get_patch(void);
 int16_t   arp_get_slot(uint8_t idx);          /* raw chromatic, -1=empty, ARP_REST=-2 */
 /* Snapped pitch the slot will actually play (for display), or -1 if empty/rest. */
 int16_t   arp_get_slot_snapped(uint8_t idx);
-uint8_t   arp_active_slot_count(void);        /* notes up to first -1 (UP/DOWN) */
-uint8_t   arp_active_step_count(void);        /* notes + rests across all slots (SLOT mode) */
 
 /* ── Per-target amplitude trim (graph editor amp mode) ──
  * 0..1 multiplier on note velocity at emit time. Default 1.0 (unity).

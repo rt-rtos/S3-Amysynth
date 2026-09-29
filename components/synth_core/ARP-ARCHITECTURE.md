@@ -308,7 +308,6 @@ void arp_set_slot(uint8_t idx, int16_t chromatic_note);  // -1 clears, ARP_REST 
 /* Getters (for UI display) mirror the setters; plus: */
 int16_t  arp_get_slot(uint8_t idx);          // raw chromatic, -1 = empty
 int16_t  arp_get_slot_snapped(uint8_t idx);  // pitch actually played
-uint8_t  arp_active_slot_count(void);
 
 /* Portamento — pushed straight to the synth, does not mark dirty */
 void     arp_set_portamento_ms(uint16_t ms); // 0..ARP_PORTAMENTO_MAX_MS (2000)

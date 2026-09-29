@@ -257,18 +257,6 @@ void amy_helpers_event_send(amy_event *event)
     xSemaphoreGive(s_event_mutex);
 }
 
-void amy_helpers_event_cancel(amy_event *event)
-{
-    if (event == &s_pump_event) {
-#if !defined(NDEBUG)
-        s_pump_event_busy = false;
-#endif
-        return;
-    }
-    configASSERT(event == &s_event);
-    xSemaphoreGive(s_event_mutex);
-}
-
 /* ── Typed ingress entry points ─────────────────────────────────────────
  * amy_add_event() routes by shape: an event with ticks[] set is serialized
  * to a wire string and tick-scheduled whole (sequencer_add_wire, under
@@ -309,12 +297,5 @@ void amy_send_patch(uint8_t synth, uint16_t patch_number, uint16_t num_voices,
     e->patch_number = patch_number;
     e->num_voices   = num_voices;
     e->synth_flags  = synth_flags;
-    amy_helpers_config_send(e);
-}
-
-void amy_send_all_notes_off(void)
-{
-    amy_event *e = amy_helpers_event_begin();
-    e->reset_osc = RESET_ALL_NOTES;
     amy_helpers_config_send(e);
 }

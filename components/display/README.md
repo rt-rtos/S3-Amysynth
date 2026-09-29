@@ -178,7 +178,7 @@ ESP_ERROR_CHECK(i2c_u8g2_init(&display, &cfg));
 
 u8g2_t *u8g2 = i2c_u8g2_get_u8g2(&display);
 u8g2_ClearBuffer(u8g2);
-u8g2_SetFont(u8g2, u8g2_font_ncenB08_tr);
+u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
 u8g2_DrawStr(u8g2, 0, 12, "Hello");
 u8g2_SendBuffer(u8g2);
 ```

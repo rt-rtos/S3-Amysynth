@@ -66,15 +66,6 @@ esp_err_t i2c_u8g2_deinit(i2c_u8g2_handle_t *handle);
 u8g2_t *i2c_u8g2_get_u8g2(i2c_u8g2_handle_t *handle);
 
 /**
- * @brief Whether a physical panel is currently believed present.
- *
- * When false (headless board, dead/unplugged panel), draw calls still render
- * into the u8g2 buffer but nothing is transmitted - flushes are silent
- * no-ops. Not terminal: i2c_u8g2_service() re-probes sparsely.
- */
-bool i2c_u8g2_display_present(void);
-
-/**
  * @brief Sparse recovery poll for an absent panel.
  *
  * Call periodically from the task that owns display flushing (the UI task
@@ -88,13 +79,6 @@ bool i2c_u8g2_display_present(void);
  *         is blank after init, so the caller must force a full redraw/flush.
  */
 bool i2c_u8g2_service(void);
-
-/**
- * @brief Set display power save mode.
- */
-esp_err_t i2c_u8g2_set_power_save(i2c_u8g2_handle_t *handle, bool enable);
-
-void demo_text_display(u8g2_t *u8g2);
 
 
 #ifdef __cplusplus

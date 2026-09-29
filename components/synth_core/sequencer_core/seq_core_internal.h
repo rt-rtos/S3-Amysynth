@@ -192,16 +192,16 @@ uint32_t sequencer_bars_elapsed_ahead(uint32_t ahead_ticks);
 /* From seq_core_engine.c - chord expansion shared with seq_core_trig.c.
  * seq_track_fire_notes resolves what a stored (possibly sentinel) note fires:
  * 1 plain note, or n transposed and clamped chord tones. Returns the tone
- * count; 0 = undefined chord slot, fire nothing. sequencer_chord_transpose is
- * the progression offset: the layer chord root relative to entry 0's root while
- * the progression is enabled, else 0. The _root variants take the chord root
- * explicitly instead of the layer's live one (a decorated step resolved ahead
- * of a chord change); same obligations and guarantees otherwise. */
+ * count; 0 = undefined chord slot, fire nothing. sequencer_chord_transpose_root
+ * is the progression offset: `root` relative to entry 0's root while the
+ * progression is enabled and the layer is in chord mode, else 0.
+ * seq_track_fire_notes_root takes the chord root explicitly instead of the
+ * layer's live one (a decorated step resolved ahead of a chord change); same
+ * obligations and guarantees otherwise. */
 uint8_t seq_track_fire_notes(const seq_layer_t *layer, uint8_t stored_note,
                              uint8_t out[SEQ_CHORD_MAX_NOTES]);
 uint8_t seq_track_fire_notes_root(const seq_layer_t *layer, uint8_t stored_note,
                                   uint8_t root, uint8_t out[SEQ_CHORD_MAX_NOTES]);
-int     sequencer_chord_transpose(const seq_layer_t *layer);
 int     sequencer_chord_transpose_root(const seq_layer_t *layer, uint8_t root);
 
 /* From seq_core_synth.c */
