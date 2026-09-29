@@ -179,7 +179,16 @@ Codegen-driven edits from the per-function probe, each marked in place:
   hardware `rems` twice per sample; `phase` is written once after the loop.
   The peak tracker uses `|value|` for every sample; upstream's first-sample
   special case took the signed value, a difference only when sample 0 is
-  negative and the reaper's threshold is at stake.
+  negative and the reaper's threshold is at stake. With the tuning stage on
+  and no dispersion stages (the default), `ks_render_tuned` runs instead:
+  the block is split at the ring's wrap so the inner loop has no wrap test,
+  and with pointer walks for the ring and the output it is a 29-insn
+  hardware loop carrying the gain ramp (the index loop was 35). Its tuning
+  allpass is the one-multiply form of the upstream PR candidate; the index
+  loop's tuning stage uses the same form, so both read the allpass memory
+  alike. On the bench this shape costs about 1,400 cycles per voice per
+  block less than the index-free PR loop without a ramp, bit-identical to a
+  per-sample ramp.
 - Constant divides folded to reciprocal multiplies (`freq * (1.0f / X)`
   with X a compile-time constant): `freq / AMY_SAMPLE_RATE` in
   `render_fm_sine`, `render_partial`, `unison_prepare`; `freq / mod_sr` in

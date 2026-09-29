@@ -1175,6 +1175,60 @@ static uint16_t ks_ring_len(float freq, uint8_t *stages, float *frac_period, SAM
 }
 
 
+// The default KS loop: tuning allpass, no dispersion. The block is split at
+// the ring's wrap, so the inner loop needs no wrap test: with the ring
+// pointer, output pointer and gain ramp it fits the registers and compiles to
+// a hardware loop. Kept out of render_ks so the other loop's state does not
+// crowd its registers. The sample after the wrap takes ring[0] as its
+// neighbour; a read position past a shrunk ring makes stop < o, skips the run
+// and wraps at once, as the index form does. *w0p is the allpass memory.
+static __attribute__((noinline)) SAMPLE ks_render_tuned(SAMPLE *buf, uint16_t osc,
+        SAMPLE *ring, uint16_t buflen, SAMPLE a, SAMPLE *w0p) {
+    SAMPLE half = MUL0_SS(F2S(0.5f), F2S(synth[osc]->feedback));
+    SAMPLE current_amp = F2S(msynth[osc]->last_amp);
+    SAMPLE incremental_amp = SHIFTR(F2S(msynth[osc]->amp) - current_amp, BLOCK_SIZE_BITS);
+    SAMPLE max_value = 0;
+    SAMPLE w0 = *w0p;
+    SAMPLE *p = ring + (uint16_t)synth[osc]->phase;
+    SAMPLE *last = ring + buflen - 1;
+    SAMPLE *o = buf, *bend = buf + AMY_BLOCK_SIZE;
+    while (o < bend) {
+        SAMPLE *stop = o + (last - p);
+        if (stop > bend) stop = bend;
+        while (o < stop) {
+            SAMPLE sample = p[0];
+            SAMPLE v = SMULR7((sample + p[1]), half);
+            // One-multiply allpass, (a + z^-1) / (1 + a z^-1).
+            SAMPLE m = SMULR7(a, v - w0);
+            p[0] = m + w0;
+            w0 = v + m;
+            p++;
+            SAMPLE value = SMULR7(sample, current_amp);
+            current_amp += incremental_amp;
+            *o++ += value;
+            if (value < 0) value = -value;
+            if (value > max_value) max_value = value;
+        }
+        if (o < bend) {
+            SAMPLE sample = *p;
+            SAMPLE v = SMULR7((sample + ring[0]), half);
+            SAMPLE m = SMULR7(a, v - w0);
+            *p = m + w0;
+            w0 = v + m;
+            p = ring;
+            SAMPLE value = SMULR7(sample, current_amp);
+            current_amp += incremental_amp;
+            *o++ += value;
+            if (value < 0) value = -value;
+            if (value > max_value) max_value = value;
+        }
+    }
+    synth[osc]->phase = (PHASOR)(p - ring);
+    *w0p = w0;
+    msynth[osc]->last_amp = msynth[osc]->amp;
+    return max_value;
+}
+
 SAMPLE render_ks(SAMPLE * buf, uint16_t osc) {
     SAMPLE half = MUL0_SS(F2S(0.5f), F2S(synth[osc]->feedback));
     // Ramp the gain across the block from the envelope's value at its start
@@ -1206,6 +1260,8 @@ SAMPLE render_ks(SAMPLE * buf, uint16_t osc) {
         }
         SAMPLE *w = ks_ap_state + synth[osc]->ks_index * (1 + KS_DISPERSION_MAX_STAGES);
         SAMPLE w0 = w[0];
+        if(tune && n == 0) return ks_render_tuned(buf, osc, ring, buflen, a, w);
+        // Tune off or dispersion stages on (DEV > KS loop).
         // LOCAL EDIT (S3-Amysynth): the ring index stays in a register for
         // the block and wraps by compare instead of the iterative hardware
         // remainder; an index past a shrunk buflen wraps to 0 as before.
@@ -1215,7 +1271,14 @@ SAMPLE render_ks(SAMPLE * buf, uint16_t osc) {
             if (next >= buflen) next = 0;
             SAMPLE sample = ring[index];
             SAMPLE v = SMULR7((sample + ring[next]), half);
-            if(tune) v = allpass1_chain(v, a, &w0, 1);
+            if(tune) {
+                // Same one-multiply form as the default loop, so the state in
+                // w0 means the same thing to both.
+                SAMPLE m = SMULR7(a, v - w0);
+                SAMPLE y = m + w0;
+                w0 = v + m;
+                v = y;
+            }
             // Unrolled: a nested loop here costs the sample loop its
             // hardware-loop form.
             if(n) {
