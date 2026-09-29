@@ -47,8 +47,8 @@ typedef struct {
 
 /* The single live-editable "custom" FM voice (SEQ_PATCH_FM_CUSTOM), owned by
  * this module. The FM UI screen mutates it (through the setters below for
- * anything topological) then calls sequencer_core_fm_voice_changed() /
- * sequencer_core_fm_voice_op_changed() to push to AMY. UI task only. */
+ * anything topological) then calls sequencer_core_fm_voice_changed() to push
+ * to AMY. UI task only. */
 extern fm_voice_t s_fm_voice;
 
 /* Safe, audible default: DX7 algorithm 1 with only the OP2->OP1 pair (indices

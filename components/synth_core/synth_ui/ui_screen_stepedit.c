@@ -8,17 +8,14 @@
 /* ════════════════════════════════════════════════════════════════════════
  *  Step Trig editor — per-step pitch offset / probability / ratchet / cond
  * ════════════════════════════════════════════════════════════════════════
- * Reuses the sequencer grid's cursor (active_layer_idx / selected_track /
- * selected_step) rather than a parallel one: the user navigates to a step as
- * usual, then opens this popup (MY_BUTTON_2 long-press, main.c). */
+ * Addressed by the sequencer grid's cursor (active_layer_idx / selected_track /
+ * selected_step), not a parallel one. Opened from main.c's dispatch; controls
+ * are in CONTROLS.md. */
 
 static bool    s_se_active  = false;
 static uint8_t s_se_field   = SE_FIELD_PITCH;
-/* Select/adjust phases, the same workflow as the LFO editor: turn
- * navigates fields, click enters adjust mode (inverted row), turn changes the
- * value, click confirms back to navigation. Prev is a boolean and follows the
- * LFO editor's checkbox convention: click toggles it directly, no adjust
- * phase. */
+/* Select/adjust phase. Prev is a boolean: click toggles it directly, with no
+ * adjust phase. */
 static bool    s_se_editing = false;
 /* Top of the visible window: the field list outgrew the panel, so navigation
  * drags the window along instead of the list being drawn whole. */

@@ -8,14 +8,9 @@
 // captured naturally: interrupts steal cycles from the idle loop, lowering
 // the observed rate.
 //
-// This replaced a uxTaskGetSystemState()-based sampler deliberately: that
-// call walks every TCB inside the kernel critical section with interrupts
-// masked on the calling core, and its occasional multi-ms walks under cache
-// pressure blocked the USB interrupt's isochronous endpoint re-arm -
-// audible as 1-2 ms holes in the UAC stream on the sampler's exact 1 s
-// grid (root-caused 2026-08-13; see UAC-EDITS.md). Any future
-// reimplementation must not take kernel critical sections on a periodic
-// grid.
+// Rule: a sampler must not take kernel critical sections on a periodic grid
+// (uxTaskGetSystemState() and similar TCB walks mask interrupts for
+// milliseconds).
 //
 // Obligations: call core_load_sample() from a single task only (static
 // delta state, no locking); never from an ISR. Keep the call interval

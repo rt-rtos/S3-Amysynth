@@ -147,9 +147,8 @@ void arp_set_dist(const seq_dist_t *d);
 void arp_reapply_dist(void);
 
 /* ── LFO (shared editor) ──
- * Patches with a reserved carrier pair (raw waves, wavetables, bass presets -
- * sequencer_core_lfo_native_layout) drive the AMY-native voice-local LFO;
- * every other patch runs the 20 Hz software stepper, as on melodic rows. */
+ * Native carrier or 20 Hz software stepper, chosen per patch as on melodic
+ * rows (sequencer_core_lfo_native_layout). */
 void arp_get_lfo(seq_lfo_t *out);
 void arp_set_lfo(const seq_lfo_t *lfo);
 

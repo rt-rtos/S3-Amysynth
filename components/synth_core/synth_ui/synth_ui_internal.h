@@ -92,12 +92,12 @@ uint32_t fm_view_signature(fm_view_t *out);
 uint32_t dev_view_signature(dev_view_t *out);       /* CONFIG_SYNTH_DEV_MENU */
 bool     synth_ui_dev_is_active(void);
 
-/* ─── DEV heap status bar (ui_screen_dev.c; CONFIG_SYNTH_DEV_MENU) ──────
- * While toggled on from the DEV menu it replaces the bottom hint strip on
- * every screen with live internal-heap stats. poll() samples (throttled);
- * call it from the UI task's pre-gate service pass only. active()/text()/
- * sig() are side-effect-free; sig() is 0 while off, text() is only
- * meaningful after a poll() with the bar active. UI task context only. */
+/* ─── DEV status bars, heap and dropout (mechanism in ui_screen_dev.c;
+ *     CONFIG_SYNTH_DEV_MENU) ───────────────────────────────────────────────
+ * poll() samples (throttled); call it from the UI task's pre-gate service pass
+ * only. active()/text()/sig() are side-effect-free; sig() is 0 while off,
+ * text() is only meaningful after a poll() with the bar active. UI task
+ * context only. */
 void        synth_ui_dev_heapbar_poll(void);
 bool        synth_ui_dev_heapbar_active(void);
 const char *synth_ui_dev_heapbar_text(void);
@@ -108,7 +108,7 @@ const char *synth_ui_dev_dropbar_text(void);
 uint32_t    synth_ui_dev_dropbar_sig(void);
 
 /* ─── DEV KS riff A/B (ui_dev_riff.c; CONFIG_SYNTH_DEV_MENU) ────────────
- * play_a: the host harness's six KS strings on six spare synths; play_b: the
+ * play_a: six bare KS strings on six spare synths; play_b: the
  * same riff on the first melodic layer's rows with their live voice. Each
  * stops the transport and schedules the whole riff on AMY's clock; a press
  * while one is sounding is ignored. dump: AMY's own osc state for both riffs'
@@ -123,8 +123,7 @@ void  synth_ui_dev_riff_toggle_duty(void);
 /* ─── View descriptor table (draw + hint), defined in ui_view_resolve.c ──
  * One scratch union holds whichever view struct the active screen builds:
  * signature() fills it and returns the FNV hash, draw() reuses it. Indexed by
- * synth_ui_active_view(), so the draw switch and the hint strip share one
- * precedence resolver instead of re-deriving it. */
+ * synth_ui_active_view() (synth_ui.h). */
 typedef union {
     menu_view_t      menu;
     fm_view_t        fm;
@@ -145,10 +144,8 @@ typedef struct {
     const char *b1, *b2, *b3;
     const char *(*b1_fn)(void);
     const char *(*b2_fn)(void);
-    /* Preferred X of the BLE badge plate (7 px, top row), chosen per screen to
-     * sit right of its left header label - the top-right corner belongs to
-     * editor readouts and CLIP/LOUD. Only a hint: display_badge_draw() keeps
-     * the badge off lit pixels regardless. 0 = let the probe choose. */
+    /* Preferred X of the BLE badge (see display_badge.h); 0 = let the probe
+     * choose. */
     uint8_t badge_x;
     /* Optional SHOULDER cell, appended as " LB:<label>" when it returns
      * non-NULL (LB = the left shoulder button, SHOULDER; RB = the right one,

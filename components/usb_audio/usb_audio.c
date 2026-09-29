@@ -166,7 +166,7 @@ static esp_err_t uac_input_cb(uint8_t *buf, size_t len, size_t *bytes_read, void
 // means a zero-length packet goes on the wire. Under the async-source pull
 // that happens only when the device genuinely had no audio across a full
 // EP FIFO's worth of frames - true starvation (render stalled or stream
-// gap), no longer a clock-beat artifact. Counting only; this path serves
+// gap). Counting only; this path serves
 // all USB traffic, so it must stay a bare increment. Must return true: the
 // driver TU_VERIFYs the result and would abort the transfer chain on false.
 bool tud_audio_tx_done_post_load_cb(uint8_t rhport, uint16_t n_bytes_copied,

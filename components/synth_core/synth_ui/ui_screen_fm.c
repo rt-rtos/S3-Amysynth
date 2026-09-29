@@ -13,9 +13,7 @@
  *
  * One flat cursor walks the six operator boxes (selecting as it goes) and
  * then the panel rows RATIO / LEVEL / TO / FB / ALGO for the selected
- * operator. Encoder click on a box jumps to its RATIO row; on a row it
- * toggles adjust mode. SHOULDER toggles feedback on the selected operator.
- * SHIFT+1 opens the ADSR editor on the selected operator (ui_editors.c). */
+ * operator. Controls: CONTROLS.md. */
 
 /* Curated DX7-style harmonic ratios plus a few inharmonic ones, kept short
  * enough to encoder through. Editing snaps to the nearest step, then walks. */

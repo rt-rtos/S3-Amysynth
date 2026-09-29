@@ -1,7 +1,7 @@
-// RTOS profiling dump. Non-SMP kernel: one uxTaskGetSystemState() snapshot
-// supplies the per-task table and, via xCoreID plus the IDLE task counters, the
-// per-core busy %, avoiding the SMP-only helpers that aren't declared on this
-// kernel variant.
+// RTOS profiling dump. IDF FreeRTOS (CONFIG_FREERTOS_SMP unset) does not
+// declare the SMP-kernel helpers, so one uxTaskGetSystemState() snapshot
+// supplies the task table and, via xCoreID and the IDLE task counters, the
+// per-core busy %.
 #include "rtos_stats.h"
 
 #if CONFIG_AMYSYNTH_RTOS_STATS

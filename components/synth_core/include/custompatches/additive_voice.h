@@ -7,24 +7,14 @@ extern "C" {
 #endif
 
 /* ── Additive / partials voice engine (AMY BYO_PARTIALS) ─────────────────────
- * Wraps AMY's build-your-own partials wave type as one melodic voice: a
- * BYO_PARTIALS control osc (osc 0) plus N PARTIAL sine oscs (osc 1..N), so
- * oscs_per_voice is N+1. There is no algo_source[] routing: partials_note_on()
- * derives the child set from the parent's `preset` (= N) and osc adjacency
- * (child i at parent+1+i), and render_partials() drives each child's per-block
- * amplitude from the parent's post-envelope amp via COEF_VEL. So the parent
- * carries the shared amplitude envelope (the per-track ADSR editor targets
- * osc 0, as with the FM control osc) and the children carry the spectrum.
- *
- * Pitch: AMY's logfreq is in octaves, so a partial at ratio r gets
- * freq_coefs[COEF_CONST] = log2f(r) on top of COEF_NOTE tracking - inharmonic
- * (bell) ratios are as expressible as harmonics.
- *
- * Per-partial `level` is that partial's amp_coefs[COEF_CONST]; 0 silences it,
- * which is how presets use fewer than ADD_MAX_PARTIALS without changing the
- * osc layout. Optional `decay_ms` adds a local decay-to-zero EG0 so upper
- * partials ring down faster than the parent envelope (the bell preset relies
- * on this); 0 follows the parent alone. */
+ * Additive voice: osc 0 is AMY's BYO_PARTIALS control osc and carries the
+ * shared amp envelope (the per-track ADSR editor targets it); oscs 1..N are
+ * PARTIAL sines carrying the spectrum, so oscs_per_voice is N+1. AMY finds the
+ * children by adjacency and the parent's preset (= N), with no algo_source
+ * routing.
+ * Per partial: ratio above the note, level (0 = silent, so presets use fewer
+ * partials without changing the layout), optional decay_ms (a local decay so
+ * upper partials ring down faster; the bell preset uses it). */
 
 /* Hard ceiling on the partial count: a voice costs ADD_MAX_PARTIALS + 1 oscs
  * from the global pool, so 13 oscs/voice worst case keeps a 4-row x 4-voice
@@ -40,10 +30,10 @@ typedef struct {
 } additive_voice_t;
 
 /* The single live-editable "custom" additive voice
- * (SEQ_PATCH_ADDITIVE_CUSTOM), owned by this module. A UI screen mutates it
- * directly (the s_fm_voice / s_fx convention) then calls
- * sequencer_core_additive_voice_changed(). No such screen exists yet, so it
- * plays the drawbar-organ default. */
+ * (SEQ_PATCH_ADDITIVE_CUSTOM), owned by this module. Editors mutate it
+ * directly (the s_fm_voice / s_fx convention) then call
+ * sequencer_core_additive_voice_changed(). It starts as the drawbar-organ
+ * default. */
 extern additive_voice_t s_additive_voice;
 
 /* Drawbar-organ default: first 8 harmonics at 1/n roll-off, all following the

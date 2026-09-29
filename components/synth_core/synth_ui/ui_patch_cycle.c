@@ -15,11 +15,9 @@
 static const char *TAG = "synth_ui";
 
 #if !CONFIG_SEQ_PATCH_BROWSE_FULL_RANGE
-/* THE shared patch catalog: one curated shortlist for every cycling consumer
- * (melodic, arp, drone), used only in "preselected" browse mode; full-range
- * mode walks 0..SEQ_PATCH_FULL_MAX instead. Consumers that cannot play an entry
- * EXCLUDE it via their domain's `excluded` predicate (patch_cycle.h), so
- * anything added here reaches every consumer automatically. */
+/* The shared patch catalog (consumers and exclusion: patch_cycle.h), used only
+ * in "preselected" browse mode; full-range mode walks 0..SEQ_PATCH_FULL_MAX
+ * instead. */
 static const uint16_t s_patch_catalog[] = {
     138, /* DX7 E.PIANO 1 */
     135, /* DX7 PIANO 1 */
@@ -77,11 +75,10 @@ static const patch_domain_t s_melodic_domain = {
     PATCH_DOMAIN_CATALOG, .excluded = sequencer_core_patch_compiled_out
 };
 
-/* Drone: same catalog minus what its excitation model cannot play (see
- * drone_patch_excluded() in drone_core.c, which folds in the compiled-out check
- * too). Excluded entries are skipped during stepping, so cycling stays
- * monotonic in both browse modes and never trips drone_set_patch()'s
- * snap-back. */
+/* Drone: same catalog minus what drone_patch_excluded() rejects (it folds in
+ * the compiled-out check too). Excluded entries are skipped during stepping,
+ * so cycling stays monotonic in both browse modes and never trips
+ * drone_set_patch()'s snap-back. */
 static const patch_domain_t s_drone_domain = {
     PATCH_DOMAIN_CATALOG, .excluded = drone_patch_excluded
 };
@@ -177,9 +174,8 @@ void synth_ui_cycle_drum_patch(int delta)
 }
 
 /* Shift+Turn on the SEQ screen: step the active melodic layer's FM algorithm
- * live (audible mid-note - the whole point is auditioning the 30+ variations
- * by ear). Non-FM patches get a "NOT FM" banner instead of a dead detent;
- * drum layers ignore the gesture. */
+ * live (audible mid-note). Non-FM patches get a "NOT FM" banner instead of a
+ * dead detent; drum layers ignore the gesture. */
 void synth_ui_cycle_fm_algo(int delta)
 {
     if (delta == 0) return;

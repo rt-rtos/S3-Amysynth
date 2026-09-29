@@ -60,16 +60,13 @@ typedef enum {
  * the plain periodic path and the decorated one-shot path (chord tones
  * transpose as a block - the intervals are the feature). Offset-relative by
  * design: track pitch edits and drum bank changes rewrite step_note only, so
- * an authored offset survives them untouched. Deliberately NOT re-quantized
- * (TODO: revisit quantizer interplay). */
+ * an authored offset survives them untouched. Deliberately NOT re-quantized. */
 #define SEQ_STEP_PITCH_OFS_MAX 24
 
 /* ── Per-step note transform ──
- * NONE is the zeroed default: the authored pitch, on the plain periodic-tag
- * path. Any other mode offsets the pitch per fire and so forces the step onto
- * the decorated one-shot path (sequencer_core_step_is_decorated) - the plain
- * path emits one repeating tag at a fixed pitch and AMY has no per-repetition
- * hook.
+ * NONE is the zeroed default: the authored pitch, on the plain path. Any other
+ * mode offsets the pitch per fire and so makes the step decorated
+ * (sequencer_core_step_is_decorated, seq_core_trig.c).
  *   RANDOM    re-pitches every fire by +/- a fixed semitone span.
  *   RAMP_UP   walks the pitch up across successive layer loops, then wraps.
  *   RAMP_DOWN walks it down.
@@ -143,9 +140,11 @@ typedef struct {
                               and arp_core.c). A row that owns the matrix - a
                               drum row, or any row whose filter block has been
                               authored - writes all eight slots, so a 0 clears
-                              the rail; every other row writes the nonzero ones
-                              only, leaving its patch string's own routing
-                              intact (see melodic_filter_push_osc). */
+                              the rail (skip-on-zero would leave the last value
+                              in AMY until the next patch load); every other
+                              row writes the nonzero ones only, leaving its
+                              patch string's own routing intact (see
+                              filter_push_eg_depths). */
 } seq_filter_t;
 
 /* Is any EG1 rail live? The cutoff slot counts only while the filter is on,
@@ -173,11 +172,9 @@ typedef enum {
     LFO_TARGET_SCAN,       /* AMY `duty`: wavetable cycle-scan position when
                                wave=WAVETABLE, pulse width when wave=PULSE */
     /* Distortion rails, one independent bit each - check either or both.
-       Drive and mix have COEF_MOD rails in AMY now (dist_*_coefs), so these
-       behave like every other target: native (carrier COEF_MOD) on wave/bass/
-       drone patches, 20 Hz software stepper on PATCH-mode tracks with no free
-       carrier osc. They live on a second target-checklist tab in the LFO
-       editor, so the panel stays 5 rows tall. */
+       They behave like every other target (ENGINE-SEMANTICS.md, "LFO: native
+       carrier vs software stepper") and live on a second target-checklist tab
+       in the LFO editor, so the panel stays 5 rows tall. */
     LFO_TARGET_DIST_DRIVE, /* pre-gain sweep (breathing distortion)        */
     LFO_TARGET_DIST_MIX,   /* wet/dry sweep on a preconfigured shaper      */
     LFO_TARGET_COUNT,
@@ -303,11 +300,10 @@ static inline const char *seq_dist_stage_label(uint8_t mask) {
  * Embedded by every engine's state: melodic layers (per track AND one shared
  * layer block, see seq_layer_t.vp_layer), the arp and the drone. Bundles the
  * runtime-editable env/EG1/filter/LFO/dist with their deferred-authority
- * flags - the patch owns a group until the user commits it, then our copy
- * wins - plus the output trim. ALWAYS initialise with
- * voice_params_init_defaults() (voice_config.h): it is the single place
- * amp_trim gets its unity default, so a memset-zeroed block is a silent
- * voice. */
+ * flags (ENGINE-SEMANTICS.md, "Voice blocks and deferred authority") plus the
+ * output trim. ALWAYS initialise with voice_params_init_defaults()
+ * (voice_config.h): it is the single place amp_trim gets its unity default, so
+ * a memset-zeroed block is a silent voice. */
 typedef struct {
     seq_env_t    env;             /* ADSR (EG0)                             */
     seq_env_t    env1;            /* second envelope (EG1)                  */
@@ -324,16 +320,14 @@ typedef struct {
 
 /* ── Voice-parameter source selector (melodic layers) ──
  * Which voice_params_t block a track reads its env/EG1/filter/LFO/dist from:
- * its own row (vp[track]) or the layer's shared block (vp_layer). The
- * deselected block keeps its contents, so flipping back restores it exactly.
- * amp_trim is always per row and never follows the selector. Drum layers are
- * always TRACK. */
+ * its own row (vp[track]) or the layer's shared block (vp_layer). Semantics:
+ * sequencer_core.h, "Voice-block source selector". */
 typedef enum {
     SEQ_VP_SRC_TRACK = 0,
     SEQ_VP_SRC_LAYER = 1,
 } seq_vp_src_t;
 
-/* ââ Unison spec (per melodic layer; PROTOTYPE - dev-menu backed, volatile) ââ
+/* ── Unison spec (per melodic layer; PROTOTYPE - dev-menu backed, volatile) ──
  * N detuned copies of the wave build's audible osc, fanned symmetrically in
  * pitch (detune_cents at the outermost copy) and stereo (spread_pct of full
  * width), blend_pct tapering the outer copies against the center. count = 1
@@ -472,32 +466,32 @@ typedef struct {
                                         of the core's per-track selection,
                                         refreshed each frame by
                                         seq_view_signature(). Drives the row
-                                        label and name banner.                  */
+                                        label and name banner. Only the UI's
+                                        copy is refreshed: on the core side
+                                        this and track_pcm_mode are stale
+                                        (zeros) - read the core getters,
+                                        sequencer_core_get_drum_pcm_preset()
+                                        / _mode().                              */
     uint8_t  track_pcm_mode[SEQ_TRACKS]; /* drum layer, PCM engine: AMY wave
                                         sub-mode (PCM_PLAY/PCM_LOOP*...);
                                         0 = engine default (one-shot). Same
-                                        mirror discipline as track_pcm_preset;
-                                        no UI writer yet.                       */
+                                        mirror discipline as track_pcm_preset. */
     uint32_t synth_flags;            /* shared flags across the layer's rows  */
     uint8_t  num_voices;             /* per-synth voice count                 */
 
     /* ── Per-step probability / ratchet / conditional trig ──
-     * A step with prob==100 && ratchet==1 && every<=1 && !prev is "plain" and
-     * keeps the always-on repeating AMY sequence tag at no extra cost. Any
-     * other combination makes it "decorated": the periodic tag is left cleared
-     * and sequencer_core_service_tick() decides per loop-iteration whether and
-     * how it fires. MUST be initialised to prob=100, ratchet=1, every=1 in
-     * sequencer_core_add_layer - memset's 0% probability would silence every
-     * step (the trig engine treats every==0 as 1 defensively, prev=0 is the
-     * correct zeroed default). */
+     * A step with all of these at neutral is "plain", anything else
+     * "decorated" (seq_core_trig.c). MUST be initialised to prob=100,
+     * ratchet=1, every=1 in sequencer_core_add_layer - memset's 0% probability
+     * would silence every step (the trig engine treats every==0 as 1
+     * defensively, prev=0 is the correct zeroed default). */
     uint8_t  step_prob[SEQ_TRACKS][SEQ_MAX_STEPS];       /* 0..100 %, trigger probability */
     uint8_t  step_ratchet[SEQ_TRACKS][SEQ_MAX_STEPS];    /* 1..SEQ_MAX_RATCHET sub-hits    */
     uint8_t  step_every[SEQ_TRACKS][SEQ_MAX_STEPS];      /* 1..SEQ_STEP_EVERY_MAX loop divisor, 1 = neutral */
     uint8_t  step_prev[SEQ_TRACKS][SEQ_MAX_STEPS];       /* 1 = fire only if prev attempt fired */
     /* ── Per-step note transform ──
-     * Both are neutral at 0: TRANSFORM_NONE keeps the authored pitch on the
-     * plain path, and quant_bypass=0 re-snaps a transformed pitch to the scale.
-     * A zeroed layer needs no init. */
+     * Neutral at 0 (TRANSFORM_NONE; quant_bypass=0 re-snaps a transformed pitch
+     * to the scale): a zeroed layer needs no init. */
     uint8_t  step_transform[SEQ_TRACKS][SEQ_MAX_STEPS];    /* seq_step_transform_t (0=NONE)  */
     uint8_t  step_quant_bypass[SEQ_TRACKS][SEQ_MAX_STEPS]; /* 1 = skip scale snap on transform */
 

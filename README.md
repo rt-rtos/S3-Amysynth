@@ -185,24 +185,16 @@ A few design decisions worth calling out:
   LFO + filter sweep derive their timing from AMY's sequencer tick counter (the
   same clock the grid rides). The AMY music clock is the master clock for all
   audio-path logic, so everything stays beat-locked across tempo changes.
-- **Deferred envelope authority.** A patch's own envelope plays by default; a
-  custom envelope only overrides it once committed in the ADSR editor, so
-  changing presets doesn't permanently shadow it. The same authored/unauthored
-  rule applies to the filter, LFO and distortion settings, and a committed tab
-  can be handed back to the patch (`MY_BUTTON_SHIFT` + `MY_BUTTON_2` in the
-  editor).
-- **Two voice blocks per melodic row.** Every row stores its own
-  envelope/filter/LFO/distortion set and the layer stores one shared set; a
-  per-row selector says which one the row reads and the editors write. Flipping
-  the selector never destroys the other set, so a per-track override and the
-  layer sound coexist and are one flip apart. Editor headers show the source:
-  `>T` / `>L` when the committed copy sounds, `PT` / `PL` when the patch still
-  owns that tab.
+- **Deferred envelope authority.** A patch's own envelope, filter, LFO and
+  distortion play until the user commits that tab in its editor; see
+  [ENGINE-SEMANTICS.md](components/synth_core/ENGINE-SEMANTICS.md#voice-blocks-and-deferred-authority).
+- **Two voice blocks per melodic row.** Each row stores its own voice
+  settings and the layer stores one shared set; a per-row selector says which
+  one the row reads and the editors write (same section of ENGINE-SEMANTICS.md).
 - **A shared voice-parameter layer.** The melodic rows, the arp, both drones
-  and the BLE live voice all embed one `voice_params_t` block (EG0/EG1
-  envelopes, filter, LFO, distortion, amp trim) and share the code that
-  builds 2-osc WAVE voices and wires the native AMY LFO - so a fix or feature
-  in one instrument's voice model lands in every instrument.
+  and the BLE live voice all embed one `voice_params_t` block and share the
+  code that builds 2-osc WAVE voices and wires the native AMY LFO, so a fix in
+  one instrument's voice model lands in every instrument.
 
 ### Project storage
 
@@ -488,26 +480,23 @@ cheap heartbeat and the status LED active, so shipping firmware pays effectively
 Buttons are named by their firmware enum (`my_button_id_t`): `MY_BUTTON_0`
 to `MY_BUTTON_3`, the encoder push `MY_BUTTON_ENC`, `MY_BUTTON_SHOULDER` and
 the hold-modifier `MY_BUTTON_SHIFT`. Pin assignments are in
-`components/my_buttons/include/my_buttons.h`.
+`s_button_gpios[]` in `components/my_buttons/my_buttons.c`.
+
+The full control scheme (global gestures, the SHIFT chords, and the encoder
+and button behavior of every screen, overlay and editor) is in
+[CONTROLS.md](CONTROLS.md). The commonly used ones:
 
 | Control | Description |
 |---|---|
-| **Encoder (rotate)** | Navigate / select; adjusts the value when a field is in edit mode |
-| `MY_BUTTON_ENC` (short) | Confirm / toggle step; enters edit mode on the focused field |
-| `MY_BUTTON_SHOULDER` | Per screen: toggle the step under the cursor (grid), flip the routing depth's sign (envelope editor, target stop up), switch target tab (LFO editor), toggle feedback on the selected operator (FM screen), back to the main list from a menu page (menu) |
-| `MY_BUTTON_SHIFT` + `MY_BUTTON_1` | Open the voice editors (ADSR first) for the active instrument |
-| `MY_BUTTON_SHIFT` + `MY_BUTTON_2` | Open / close the per-step popup (sequencer screen); inside a voice editor: release the open tab to the patch |
-| `MY_BUTTON_SHIFT` + `MY_BUTTON_3` | Inside a voice editor (melodic rows): flip the row between its own voice settings and the layer's shared ones |
-| `MY_BUTTON_0` (short) | Cycle active layer (sequencer screen); inside an editor: **commit** and close |
-| `MY_BUTTON_0` (long) | Toggle global playback; inside an editor: **cancel** and close |
-| `MY_BUTTON_1` (hold + encoder) | Cycle patch for the selected track / instrument |
-| `MY_BUTTON_2` (hold + encoder) | Transpose the selected track's base note by semitones |
-| `MY_BUTTON_3` (short) | Open / close the menu; it reopens on the page and row it was closed on. Inside an editor: next page |
+| Encoder turn / `MY_BUTTON_ENC` | Navigate; click to toggle a step or enter and leave editing |
+| `MY_BUTTON_0` | Tap: cycle active layer. Hold: play / stop. In an editor: tap commits, hold cancels |
+| `MY_BUTTON_1` / `MY_BUTTON_2` (hold + encoder) | Cycle patch / transpose the selected track |
+| `MY_BUTTON_3` | Open / close the menu. In an editor: next editor page |
+| `MY_BUTTON_SHIFT` + `MY_BUTTON_1` / `_2` / `_3` | Open the voice editors / Step Trig popup / flip the voice-block source |
 
 A one-line **hint strip** along the bottom of the screen shows what the
 buttons do in the current context. `LB` in it is `MY_BUTTON_SHOULDER`, the
-left shoulder button (the right one, RB, is `MY_BUTTON_SHIFT`); on a menu page
-`LB:Main` returns to the main list.
+left shoulder button (the right one, RB, is `MY_BUTTON_SHIFT`).
 
 ---
 
@@ -523,14 +512,11 @@ is open, `MY_BUTTON_3` cycles editor pages instead of toggling the menu.
 | Screen: Arp | Arpeggiator |
 | Screen: Drone | Free-running drone (the stutter drone is a dive row inside it) |
 | Screen: Prog | Chord progression editor |
-| Screen: TrackOpts | Per-track options (repeat rate, mute/solo, chord mode) |
 | Screen: FM | 6-op FM operator editor for patch 276 (with `CONFIG_SYNTH_CUSTOM_FM`) - see [FM operator editor](#fm-operator-editor) |
-| Chords / FX / Projects / Wireless | Dive pages inside the menu (see below) |
+| Layer / Chords / Bounce / Prog Gen / FX / Projects / Wireless | Dive pages inside the menu (see below) |
 | DEV | Developer screen (with `CONFIG_SYNTH_DEV_MENU`, default on): heap, per-core load, OOM count, status/drop bars |
 
-**Overlay precedence (highest first):** Filter editor > LFO editor >
-Distortion editor > per-step popup > ADSR graph > Menu > the mode screens
-(Seq / Arp / Drone / Prog / TrackOpts / FM / DEV).
+Overlay and screen precedence: [CONTROLS.md](CONTROLS.md#screen-and-overlay-precedence).
 
 ---
 
@@ -539,21 +525,7 @@ Distortion editor > per-step popup > ADSR graph > Menu > the mode screens
 The device boots to the sequencer with one drum layer (seeded with a
 four-on-the-floor groove) and one melodic layer already running at 108 BPM.
 
-**Controls:**
-
-| Input | Action |
-|---|---|
-| Encoder | Move step cursor (wraps track to track) |
-| `MY_BUTTON_ENC` (short) | Toggle step at cursor |
-| `MY_BUTTON_SHOULDER` | Toggle step at cursor (two-handed entry: one hand on the encoder, one on the button) |
-| `MY_BUTTON_SHIFT` + `MY_BUTTON_1` | Open the voice editors (bound to the selected track) |
-| `MY_BUTTON_SHIFT` + `MY_BUTTON_2` | Open the per-step popup for the step under the cursor |
-| `MY_BUTTON_SHIFT` + encoder | On an FM row: step the FM algorithm (banner `ALGO n` / `ALGO CUST`) |
-| `MY_BUTTON_0` (short) | Cycle active layer - resets cursor to track 0 step 0 |
-| `MY_BUTTON_0` (long) | Toggle play / stop |
-| `MY_BUTTON_1` (hold + encoder) | Cycle patch for the selected track |
-| `MY_BUTTON_2` (hold + encoder) | Transpose selected track's pitch (semitones, MIDI 0-127) |
-| `MY_BUTTON_3` (short) | Open menu |
+Controls: [CONTROLS.md](CONTROLS.md#sequencer-screen-seq).
 
 **Layers:**
 
@@ -564,27 +536,18 @@ four-on-the-floor groove) and one melodic layer already running at 108 BPM.
   in phase; the UI does not create 32-step layers yet.)
 - Melodic layers share one patch across all their tracks; drum tracks each carry their own patch.
 
-**Per-step popup** (`MY_BUTTON_SHIFT` + `MY_BUTTON_2` on a step):
+**Per-step popup** (`MY_BUTTON_SHIFT` + `MY_BUTTON_2` on a step): pitch
+offset, probability, ratchet, every-Nth-loop and previous-step conditions,
+velocity, nudge and ratchet taper. Fields, ranges and inputs:
+[CONTROLS.md](CONTROLS.md#step-trig-popup).
 
-| Field | Range |
-|---|---|
-| Pitch | -24 to +24 semitones on top of the track's base note |
-| Prob | 0-100 % (5 % steps) |
-| Ratchet | 1-4 sub-hits within the step |
-| Every | 1-4: fire only every Nth loop (1 = every loop) |
-| Prev | ON / OFF: fire only if the previous step fired |
+**Per-track options (menu -> Layer):**
 
-Every and Prev are independent conditions and both must hold. The encoder
-click cycles the fields and toggles adjust mode (Prev toggles directly);
-`MY_BUTTON_SHIFT` + `MY_BUTTON_2` again, or `MY_BUTTON_0`, closes it.
-
-**Track options (menu → Screen: TrackOpts):**
-
-Rows: layer selector, track selector, **Repeat Rate** (track fires every
-1/2/4/8 bars), **Mute**, **Solo** (solo overrides mute; a **CLR** row appears
-in the title bar while anything is soloed and clears all solos), and for
-melodic layers **Chord Mode / Root / Type** (read-only while the global
-progression is enabled).
+The Layer page carries the track selector, **Repeat** (the track fires every
+1/2/4/8 bars), **Mute**, **Solo** (solo overrides mute; a **ClrSolo** row
+appears while anything is soloed and clears all solos), and for melodic
+layers **Chord / Root / Type** (read-only while the global progression is
+enabled).
 
 **Patch selection:**
 
@@ -674,12 +637,11 @@ immediately and re-voice every melodic track that references that slot.
 ### Projects (menu → Projects)
 
 One row per slot (32 by default, `CONFIG_SYNTH_PROJECT_MAX_SLOTS`) under a
-storage-usage line. Clicking a slot cycles its action: **Load**, **Save**
-(armed on the first click, executed on the second, so a stray click never
-overwrites), **Ren** (inline character editor: A-Z, 0-9, space, `-`;
-`MY_BUTTON_1` saves the name, `MY_BUTTON_2` discards), **Del**, **Exit**.
-Results are written into the row itself. Load and save run on the UI task,
-never on the input path; a second click while one is in flight is ignored.
+storage-usage line. Each slot offers **Load**, **Save**, **Ren**, **Del** and
+**Exit**; Save on a used slot needs a second click, so a stray click never
+overwrites. Inputs: [CONTROLS.md](CONTROLS.md#projects-page). Results are
+written into the row itself. Load and save run on the UI task, never on the
+input path; a second click while one is in flight is ignored.
 The snapshot covers patterns, per-row voice parameters, arp, both drones,
 the chord progression, FX and tempo - see
 [Project storage](#project-storage).
@@ -730,16 +692,7 @@ layers. It schedules repeating AMY events that are always in sync with the
 sequencer's BPM and quantizes to its own scale / root (or the global one,
 per the menu's **ArpQ** row).
 
-**Controls on the ARP screen:**
-
-| Input | Action |
-|---|---|
-| Encoder | Navigate fields and note slots; adjust when editing |
-| `MY_BUTTON_ENC` (short) | Enter / exit edit mode on the focused field |
-| `MY_BUTTON_SHIFT` + `MY_BUTTON_1` | Open the voice editors (bound to the arp) |
-| `MY_BUTTON_1` (hold + encoder) | Cycle the arp's own patch |
-| `MY_BUTTON_3` | Menu |
-| `MY_BUTTON_0` (long) | Play / stop |
+Controls: [CONTROLS.md](CONTROLS.md#arp-screen).
 
 **Fields (cursor order):** Enable → Mode (UP / DOWN / SLOT) → Oct (1-4) →
 Rate (1/1 · 1/4 · 1/8 · 1/16 · 1/32 plus triplet variants 1/4T · 1/8T ·
@@ -800,10 +753,8 @@ editors (`MY_BUTTON_SHIFT` + `MY_BUTTON_1`); it is the drone with the full
 editor set.
 
 **Stutter drone** - a chord carrier chopped by a tempo-locked square gate.
-Controls: encoder moves the row cursor and adjusts when editing,
-`MY_BUTTON_ENC` toggles edit, `MY_BUTTON_1` hold + encoder cycles the patch
-(PATCH mode), `MY_BUTTON_SHIFT` + `MY_BUTTON_1` opens its envelope and filter
-editors.
+Controls: [CONTROLS.md](CONTROLS.md#drone-screens); `MY_BUTTON_SHIFT` +
+`MY_BUTTON_1` opens its envelope and filter editors.
 
 | Parameter | Range / notes |
 |---|---|
@@ -850,22 +801,13 @@ Each entry has three fields, cycled by the encoder click while editing:
 | Chord type | Maj, Min, Maj7, Min7, 7, Sus2, Sus4, Dim, Aug, Min9, Maj9, 6, Min6, 9 |
 | Duration | 1, 2, 3, 4, 8, or 16 bars |
 
-**Controls on the Prog screen:**
+Controls: [CONTROLS.md](CONTROLS.md#prog-screen).
 
-| Input | Action |
-|---|---|
-| Encoder | Scroll cursor (row 0 = enable toggle; rows 1-8 = entries); adjust when editing |
-| `MY_BUTTON_ENC` (short) | Enter / exit edit; advance to next sub-field within an entry |
-| `MY_BUTTON_1` | Delete the entry at the cursor |
-| `MY_BUTTON_2` | Append a new entry (default: C Maj 1 bar) |
-| `MY_BUTTON_3` | Menu |
-| `MY_BUTTON_0` (long) | Play / stop |
-
-**Per-layer chord mode** is set from TrackOpts (menu → Screen: TrackOpts).
+**Per-layer chord mode** is set on the Layer page (menu -> Layer).
 When a melodic layer has chord mode on, the progression overwrites its notes
 to the nearest chord tone on each bar change. Without chord mode on a layer,
 the progression advances visually but doesn't transpose that layer's steps.
-While the progression is enabled, the per-layer chord rows in TrackOpts are
+While the progression is enabled, the per-layer chord rows on the Layer page are
 locked out. The progression is part of the project snapshot.
 
 ---
@@ -899,7 +841,7 @@ the amplitude combine and the level jumps. The row allows 0; keep it above.
 
 **`MY_BUTTON_1` and `MY_BUTTON_2` change role per context.** Outside editors
 they are hold-gesture triggers (patch / pitch). In the envelope editor they
-become curve-type cycle (`MY_BUTTON_1`) and amp-trim mode (`MY_BUTTON_2`); in
+become curve-type cycle (`MY_BUTTON_1`) and sub-mode cycle (`MY_BUTTON_2`); in
 the filter editor `MY_BUTTON_1` is the enable toggle; on the Prog screen they
 are entry delete / entry append; in a project rename they are save / discard.
 
@@ -917,19 +859,20 @@ patch-hold or pitch-hold gesture does not survive the switch.
 
 Four modal editors - envelope, filter, LFO, distortion - reachable from any
 instrument screen with `MY_BUTTON_SHIFT` + `MY_BUTTON_1` and cycled with
-`MY_BUTTON_3`. They bind to whichever instrument opened them (a melodic row,
-the arp, either drone, the BLE live voice, or an FM operator) and audition
-every change live. On a melodic row the editors read and write either the
-row's own voice settings or the layer's shared set, whichever the row is
-currently following; `MY_BUTTON_SHIFT` + `MY_BUTTON_3` flips the row between
-the two (commits the current tab first, then re-seeds from the other set - a
-row following the layer picks up every layer edit without a visit), and
-`MY_BUTTON_SHIFT` + `MY_BUTTON_2` hands the open tab back to the patch. The
-header badge (`>T`, `>L`, `PT`, `PL`) shows which of track / layer / patch is
-sounding for that tab. A tab only takes over from the patch once you actually
-change something in it; cycling through untouched tabs commits nothing. In
-every editor `MY_BUTTON_0` tap commits and closes, `MY_BUTTON_0` long
-cancels.
+`MY_BUTTON_3` (EG0, EG1, Filter, LFO, DIST). They bind to whichever
+instrument opened them (a melodic row, the arp, either drone, the BLE live
+voice, or an FM operator) and audition every change live. Inputs:
+[CONTROLS.md](CONTROLS.md#adsr-graph-editor).
+
+On a melodic row the editors read and write either the row's own voice
+settings or the layer's shared set, whichever the row is following
+(`MY_BUTTON_SHIFT` + `MY_BUTTON_3` flips the row between the two;
+`MY_BUTTON_SHIFT` + `MY_BUTTON_2` hands the open tab back to the patch). The
+header badge shows which is sounding for that tab: `>T` / `>L` when the
+committed track / layer copy sounds, `PT` / `PL` when the patch still owns
+it. A tab only takes over from the patch once you change something in it;
+cycling through untouched tabs commits nothing. Semantics:
+[ENGINE-SEMANTICS.md](components/synth_core/ENGINE-SEMANTICS.md#voice-blocks-and-deferred-authority).
 
 ### Envelope (ADSR) editor
 
@@ -937,19 +880,7 @@ Press `MY_BUTTON_SHIFT` + `MY_BUTTON_1` from the sequencer, arp, drone or
 wireless screen to open the graphical envelope editor, bound to whichever
 instrument opened it.
 
-**Controls:**
-
-| Input | Action |
-|---|---|
-| Encoder | Move / adjust the selected envelope point |
-| `MY_BUTTON_ENC` (short) | Toggle between point-select and value-adjust mode |
-| `MY_BUTTON_0` (short) | **Commit** and close |
-| `MY_BUTTON_0` (long) | **Cancel** - close without saving |
-| `MY_BUTTON_1` | Cycle the envelope **curve type** (see below) |
-| `MY_BUTTON_2` | Toggle amp-trim mode (encoder adjusts amplitude trim 0-100 % instead of time/level) |
-| `MY_BUTTON_3` (short) | Next page: EG0 → EG1 → Filter editor |
-| `MY_BUTTON_SHOULDER` | On the EG1 page: flip the sweep polarity (upward / downward cutoff sweep) |
-| `MY_BUTTON_SHIFT` + `MY_BUTTON_3` | Toggle apply scope: this track only vs. all tracks in the layer |
+Controls: [CONTROLS.md](CONTROLS.md#adsr-graph-editor).
 
 Each voice carries **two envelopes**: EG0 shapes amplitude; EG1 is free for
 modulation and is what the custom bass presets use to sweep their filter.
@@ -969,8 +900,8 @@ auto-derived from attack time and sustain level - it is not a separately
 draggable point.
 
 A committed envelope persists across patch changes; an unedited row always
-follows the patch's own envelope (see *deferred authority* under Architecture
-notes).
+follows the patch's own envelope (see
+[deferred authority](components/synth_core/ENGINE-SEMANTICS.md#voice-blocks-and-deferred-authority)).
 
 Time range auto-switches between SHORT (0-2 s) and LONG (0-15 s,
 log-squashed) based on total envelope length. The transition has hysteresis
@@ -1006,7 +937,8 @@ stutter drone, whose editor shows the sweep midpoint rather than a cutoff.
 `MY_BUTTON_3` from the filter editor. The LFO rides AMY's native
 modulation oscillator on wave-based patches, so it is evaluated per audio
 block; on patch strings (Juno / DX7) and PCM it is re-sent as a 20 Hz
-staircase - same numbers and law, coarser stepping.
+staircase - same numbers and law, coarser stepping
+([ENGINE-SEMANTICS.md](components/synth_core/ENGINE-SEMANTICS.md#lfo-native-carrier-vs-software-stepper)).
 
 **Fields:** target checklist, wave (Sine / Triangle / Saw up / Saw down /
 Square / Random sample-and-hold), rate, depth (0-100 %), filter octave
@@ -1057,7 +989,7 @@ curve for the current stage set and drive as a visual hint - at 128x64 it
 shows the character of the setting (soft clip, fold-back, step size), not an
 accurate transfer function, and extreme settings turn it into noise; trust
 your ears here. Every change auditions live on the bound instrument. Commit, cancel and the
-layer-vs-track apply scope work as in the other editors. The stutter drone
+voice-block source flip work as in the other editors. The stutter drone
 has no distortion page; the free-running drone does.
 
 ## FM operator editor
@@ -1092,18 +1024,9 @@ selected operator's rows:
 
 ### Controls
 
-| Input | Action |
-|---|---|
-| Encoder | Walk the six operator boxes (selecting as it goes), then the panel rows. In adjust mode, change the row's value |
-| `MY_BUTTON_ENC` | On a box: jump to its rows. On a row: toggle adjust mode |
-| `MY_BUTTON_SHOULDER` | Toggle the feedback loop on the selected operator |
-| `MY_BUTTON_SHIFT` + `MY_BUTTON_1` | Open the envelope editor on the selected operator |
-| `MY_BUTTON_1` hold + encoder | Cycle patch (leaves the voice) |
-| `MY_BUTTON_3` | Menu |
-
-From the sequencer grid, `MY_BUTTON_SHIFT` + encoder on a row set to patch
-276 steps the same ALG ring without leaving the grid; the banner reads
-`ALGO n` or `ALGO CUST`.
+Controls: [CONTROLS.md](CONTROLS.md#fm-screen). From the sequencer grid,
+`MY_BUTTON_SHIFT` + encoder on an FM row steps the algorithm without leaving
+the grid ([CONTROLS.md](CONTROLS.md#sequencer-screen-seq)).
 
 ### Operator envelopes
 
@@ -1169,6 +1092,8 @@ flowchart LR
 ## Documentation
 
 - [RUNTIME-ARCHITECTURE.md](RUNTIME-ARCHITECTURE.md) - tasks, cores, clocks: the render loop, per-block sequencer tick, USB ring
+- [CONTROLS.md](CONTROLS.md) - the control scheme of every screen, overlay and editor
+- [ENGINE-SEMANTICS.md](components/synth_core/ENGINE-SEMANTICS.md) - app conventions over AMY: native vs software LFO, voice blocks, editor preview
 - [SEQUENCER-ARCHITECTURE.md](SEQUENCER-ARCHITECTURE.md) - sequencer core, layers, tags, timing
 - [ARP-ARCHITECTURE.md](components/synth_core/ARP-ARCHITECTURE.md) - the standalone arpeggiator
 - [DRONE.md](components/synth_core/custompatches/DRONE.md) - the stutter drone (voice model, chords, tempo sync)
@@ -1188,8 +1113,7 @@ idf.py flash monitor
 
 `sdkconfig.defaults` carries the project configuration (48 kHz UAC, PSRAM
 XIP, LTO, the custom partition table). The Gamma9001 drum blob
-(`components/amy/drums.bin`, generated by `tools/gen-gamma9001-drums.py`
-from the AMY sample library) is flashed to the `drums` partition by the
+(`components/amy/drums.bin`, built from the AMY sample library) is flashed to the `drums` partition by the
 normal `flash` target when present; without it the firmware boots with the
 808 bank only. Flashing over USB from a Windows host uses USBIPD passthrough.
 

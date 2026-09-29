@@ -7,7 +7,7 @@ extern "C" {
 #endif
 
 /* Live-play voice: a dedicated AMY synth slot played directly from a MIDI
- * transport (BLE MIDI in Phase 1), independent of the sequencer tracks.
+ * transport (BLE MIDI), independent of the sequencer tracks.
  * Compiled only under CONFIG_SYNTH_WIRELESS.
  *
  * The note entry points match midi_sink_t (wireless/midi_core) so main can
@@ -64,9 +64,9 @@ void live_play_refresh_lfo_freq(void);
 void live_play_lfo_service(void);
 
 /* ── Runtime-editable voice params (shared ADSR / filter / LFO editors) ──
- * Same contract as the arp's block: one voice, no layer/track scope, "patch
- * owns it until the user commits, then our copy wins" via the authored flags,
- * with everything re-applied after a patch change.
+ * Same contract as the arp's block: one voice, no layer/track scope, authored
+ * flags (ENGINE-SEMANTICS.md, deferred authority), everything re-applied after
+ * a patch change.
  *
  * Session-only: nothing here is written to a project, like the live slot's
  * patch number.
@@ -92,8 +92,7 @@ void live_play_set_lfo(const seq_lfo_t *lfo);
 float live_play_get_amp_scale(void);
 void  live_play_set_amp_scale(float v);
 
-/* Editor live-preview: AMY only, store + authored flags untouched (cancel
- * re-pushes the stored values). */
+/* Editor live-preview (ENGINE-SEMANTICS.md, "Editor preview and cancel"). */
 void live_play_preview_envelope(const seq_env_t *env);
 void live_play_preview_envelope2(const seq_env_t *env);
 void live_play_preview_filter(const seq_filter_t *f);

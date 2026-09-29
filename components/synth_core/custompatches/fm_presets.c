@@ -2,7 +2,7 @@
 #include "custompatches/fm_voice.h"
 #include "sequencer_core.h"   /* SEQ_PATCH_FM_* */
 
-/* Operator-array index -> role, for algorithm 0 (see fm_voice.h / algorithms.c):
+/* Operator-array index -> role, for algorithm 0 (index convention: fm_voice.h):
  *   0,1,2 : deep modulator stack (feeds index 3)
  *   3     : carrier A (chain-A output)
  *   4     : modulator (feeds index 5)

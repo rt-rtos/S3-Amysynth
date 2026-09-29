@@ -4,12 +4,11 @@
 #include "sdkconfig.h"
 
 /* ════════════════════════════════════════════════════════════════════════
- *  Single source of view precedence + the descriptor table over it
+ *  View resolver + the descriptor table over it
  * ════════════════════════════════════════════════════════════════════════
- * synth_ui_active_view() is the ONE place the screen/overlay precedence lives.
- * Every consumer calls it, indexes ui_view_table[] and dispatches, so input and
- * draw always resolve the same view. The STEPEDIT branch is only correct
- * because synth_ui_stepedit_is_active() self-gates to the sequencer screen. */
+ * Precedence is documented at synth_ui_active_view() in synth_ui.h. The
+ * STEPEDIT branch is only correct because synth_ui_stepedit_is_active()
+ * self-gates to the sequencer screen. */
 
 ui_view_id_t synth_ui_active_view(void)
 {
@@ -136,16 +135,8 @@ static const char *hint_menu_bs(void)
 }
 
 /* ─── The table: one row per view, indexed by ui_view_id_t ─────────────── */
-/* badge_x is the BLE badge's PREFERRED left edge, not a promise:
- * display_badge_draw() probes the finished frame buffer, lands the badge only
- * on blank pixels and slides (or drops it) when a header has grown into the
- * spot. These are a taste choice; a stale one cannot overdraw header text.
- * 0 = no preference, put it where it fits.
- *
- * Current picks, from left-header extents at ~6 px/char: SEQ 44 is the gap
- * between "BPM 123" and "L1 MEL"; MENU/FM 52 clears the longest page titles;
- * LFO 68 clears "LFO L1 T2>L"; DRONE_VIS 58 clears "DRONE VIS"; PROG 30 sits
- * after "PROG". STEPEDIT has no obvious slot, so it lets the probe choose. */
+/* Preferred x of the BLE badge per view; 0 lets display_badge_draw() choose.
+ * The badge never draws over lit pixels, so these only need to be close. */
 const ui_view_desc_t ui_view_table[UI_VIEW_COUNT] = {
     [UI_VIEW_FILTER]    = { "FILTER", sig_filter,    draw_filter,    "On/Off", "-",     "Next",  NULL,               NULL,                   52 },
     [UI_VIEW_LFO]       = { "LFO",    sig_lfo,       draw_lfo,       "-",      NULL,    "Next",  NULL,               hint_editor_b2,         68 },

@@ -8,7 +8,7 @@ extern "C" {
 
 /* Transport-agnostic MIDI byte-stream parser + router.
  *
- * Transports (ble_midi today, usb_midi later) strip their framing and feed
+ * Transports (ble_midi) strip their framing and feed
  * plain MIDI bytes here; complete note messages go to the application's sink.
  * Everything except note-on/note-off is parsed (keeping running status
  * coherent) and dropped.

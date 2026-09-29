@@ -14,7 +14,7 @@
  * The HUB is one row per AMY bus (dive rows, showing whether the bus carries
  * anything) plus the one setting that is not per-bus: the Preset FX guard.
  *
- * The BUS page is the old global-FX model, now bound to one bus: three-band
+ * The BUS page is the global-FX model bound to one bus: three-band
  * EQ, echo/chorus/reverb with their extended params, distortion (fx_state_t),
  * plus the group's Split toggle and the bus trim. fx_menu_set_bus() picks
  * which cache it reads and writes.

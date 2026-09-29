@@ -14,10 +14,8 @@
  * Item model for the Wireless page of the menu overlay (page state and input
  * routing live in ui_screen_menu.c, mirroring the Projects/Chords pages).
  *
- * Clicks run on the button task, where NimBLE init/teardown is too heavy to
- * run inline: the BLE MIDI row only queues radio_manager_request_start/stop,
- * and radio_manager_service() does the work on the synth_ui task (same
- * deferred pattern as the Projects page load/save). */
+ * The BLE MIDI row only queues radio_manager_request_start/stop
+ * (radio_manager.h). */
 
 enum {
     WI_BACK = 0,

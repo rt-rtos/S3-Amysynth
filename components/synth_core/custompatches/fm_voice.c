@@ -130,10 +130,9 @@ static void fm_voice_send_op(uint8_t synth_id, const fm_voice_t *voice, uint8_t 
     e->freq_coefs[COEF_NOTE] = 1.0f;
     e->amp_coefs[COEF_CONST] = voice->op_level[op];
     /* VEL must be 0 on operators: AMY never delivers velocity to
-     * SYNTH_IS_ALGO_SOURCE oscs, so their velocity input stays 0. Under the
-     * dB amp-combine a nonzero VEL coef with 0 input contributes -60 dB and
-     * amp_combine_controls floors the result to exactly 0 - every operator
-     * renders silence. Velocity comes from the ALGO control osc (VEL=1),
+     * SYNTH_IS_ALGO_SOURCE oscs, so a nonzero VEL coef on their 0 input would
+     * contribute -60 dB in the dB combine (voice_config.h) and floor the
+     * operator to silence. Velocity comes from the ALGO control osc (VEL=1),
      * whose amp scales the carriers in render_algo. Same convention as the
      * built-in DX7 patch strings. */
     e->amp_coefs[COEF_VEL]   = 0.0f;

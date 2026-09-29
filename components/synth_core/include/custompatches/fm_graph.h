@@ -12,9 +12,7 @@ extern "C" {
  * AMY's per-slot routing byte array (algorithms.c FmOperatorFlags); a graph
  * is who-modulates-whom over the 6 operators.
  *
- * Index convention: operator i is AMY algo_source slot i in table mode and
- * osc i+1 of the voice always. The UI labels it OP(6-i), matching DX7 charts
- * (table rows are authored DX7 op6 first). */
+ * Operator indexing: fm_voice.h. */
 
 #define FM_GRAPH_OPS   6
 #define FM_TO_OUT      0xFF   /* op_to[] value: carrier (final output)       */

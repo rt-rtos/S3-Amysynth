@@ -32,7 +32,7 @@ static const char * const TAG = "seq_core";
 /* ── External dependency ─────────────────────────────────────────────── */
 extern uint32_t sequencer_ticks(void);
 
-/* ── Shared step math (single owners; see architecture/sequencer-core.md §3.1,§3.3) ── */
+/* ── Shared step math (single owners) ── */
 
 /* Which step the playhead sits on for `layer` at `ticks`: position within the
  * bar divided by ticks-per-step. Returns 0 for an empty (num_steps == 0) layer;
@@ -229,11 +229,10 @@ void      sequencer_reconfigure_layer_paused(uint8_t layer_idx);
 void      sequencer_core_push_melodic_portamento(uint8_t layer_idx);
 seq_env_t *seq_layer_env(uint8_t layer_idx, uint8_t track);
 seq_env_t *seq_layer_env1(uint8_t layer_idx, uint8_t track);
-/* The voice block (layer, track) currently reads AND edits: vp_layer when the
- * row's vp_src is LAYER, else its own vp[track]. Every push, service and
- * editor path resolves through here; only amp_trim (always the row's own),
- * the drum bank seeding (drum layers are always TRACK) and the project store
- * touch the blocks directly. Out-of-range indices clamp to 0. */
+/* The voice block (layer, track) currently reads AND edits (source selector:
+ * sequencer_core.h). Every push, service and editor path resolves through
+ * here; only amp_trim, the drum bank seeding and the project store touch the
+ * blocks directly. Out-of-range indices clamp to 0. */
 voice_params_t *seq_track_vp(uint8_t layer_idx, uint8_t track);
 typedef struct {
     uint8_t carrier;     /* LFO carrier osc; wobble = carrier + 1 */
@@ -341,14 +340,10 @@ void sequencer_core_trig_clear_track(uint8_t layer_idx, uint8_t track);
 void trig_schedule_ratchets(uint8_t layer_idx, const seq_layer_t *layer,
                             uint8_t track, uint8_t step, uint32_t grid_tick);
 
-/* From seq_trig_pump.c - moves trig_schedule_ratchets() off the render task.
- * sequencer_core_service_tick() runs on amy_usb_render_task and must never
- * block or call into the amy_helpers ingress seam directly (that's what
- * trips amy_helpers_event_begin's render-task assert); it instead hands a
- * tiny job descriptor to the AMY ingest pump's urgent source via a
- * non-blocking enqueue + doorbell. All decision-making (edge detection,
- * condition eval, probability roll, the trig RNG) stays on the render task
- * unchanged - only the AMY-facing emission tail moves. */
+/* From seq_trig_pump.c - hands a decorated-step job from the render task to
+ * the pump's urgent source (why: the header of seq_trig_pump.c). Decisions
+ * (edge detection, conditions, probability, the trig RNG) stay on the render
+ * task; only the AMY-facing emission tail moves. */
 void sequencer_core_trig_pump_init(void);
 void sequencer_core_trig_enqueue(uint8_t layer_idx, uint8_t track, uint8_t step,
                                  uint32_t grid_tick);

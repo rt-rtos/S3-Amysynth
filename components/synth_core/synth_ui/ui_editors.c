@@ -29,11 +29,9 @@
 
 static const char *TAG = "synth_ui";
 
-/* ── Graph pop-up integration (isolated, easily removable) ───────────────────
+/* ── Graph pop-up integration ────────────────────────────────────────────────
  * Everything up to the "graph pop-up: end" marker wires the reusable
- * graph_popup widget. Removing it also means removing the gated branch in
- * synth_ui_task() and the public synth_ui_graph_* entry points.
- * Melodic envelope defaults come from seq_defaults.h. */
+ * graph_popup widget. Melodic envelope defaults come from seq_defaults.h. */
 
 static gpopup_t s_graph_popup;
 static bool     s_graph_popup_inited = false;
@@ -51,9 +49,7 @@ typedef enum {
     GRAPH_TGT_ARP       = 2,
     GRAPH_TGT_DRONE_STD = 3,
     /* BLE MIDI live-play voice (slot 11). Structurally the arp's twin - one
-     * voice, no layer/track scope - so it follows the arp branch everywhere,
-     * incl. the LFO split (native carrier on wave patches, 20 Hz software
-     * stepper on patch strings via live_play_lfo_service). */
+     * voice, no layer/track scope - so it follows the arp branch everywhere. */
     GRAPH_TGT_LIVE      = 4,
     /* One operator of the live FM_CUSTOM voice (s_fm_voice.op_env[op], the
      * amp-trim sub-mode edits its level). Bound from the FM screen off
@@ -177,11 +173,10 @@ static bool s_graph_long_range = false;   /* false = SHORT, true = LONG (auto-sw
  * is committed to the target on close and shown in the topbar right slot. */
 static bool  s_graph_amp_mode = false;
 static float s_graph_amp_edit = 1.0f;   /* scratch 0..1, seeds from target on open */
-/* Swing sub-mode, the second stop on MY_BUTTON_2's cycle. Swing is per LAYER,
- * so it is offered only on the EG0 page of a melodic row reading the layer's
- * shared voice block - the same rows the badge marks L. Unlike the amp trim it
- * has no separate store: the setter is the model, so the scratch exists purely
- * to throttle and to cancel back to the open-time value. */
+/* Swing sub-mode, the second stop on MY_BUTTON_2's cycle (offered per
+ * graph_swing_available()). Unlike the amp trim it has no separate store: the
+ * setter is the model, so the scratch exists purely to throttle and to cancel
+ * back to the open-time value. */
 static bool    s_graph_swing_mode = false;
 static uint8_t s_graph_swing_edit = 0;
 static bool  s_graph_env_dirty = false; /* set only when user moves an ADSR point */
@@ -201,12 +196,10 @@ static int8_t s_graph_eg_tgt = -1;               /* -1: no target stop up  */
 static const char *const s_eg_tgt_name[SEQ_EGT_COUNT] = { "PIT", "CUT", "DRV", "MIX" };
 static const char *const s_eg_tgt_hint[SEQ_EGT_COUNT] = { "Pit", "Cut", "Drv", "Mix" };
 
-/* Voice-block source. Which block a row reads and the editors write - its own
- * or the layer's shared one - is engine state (persisted per row, resolved by
- * every get/set/preview call). The editors only query it for the badge, run
- * previews and cancel-restores over the rows sharing the block, and flip it
- * via synth_ui_toggle_editor_source(). Commits are single setter calls: the
- * engine fans a shared block out to its readers. */
+/* Voice-block source (own vs layer block; sequencer_core.h). The editors only
+ * query it for the badge, run previews and cancel-restores over the rows
+ * sharing the block, and flip it via synth_ui_toggle_editor_source(). Commits
+ * are single setter calls: the engine fans a shared block out to its readers. */
 static bool editor_src_is_layer(uint8_t li, uint8_t tr)
 {
     return sequencer_core_get_melodic_vp_source(li, tr) == SEQ_VP_SRC_LAYER;
@@ -224,9 +217,8 @@ static void editor_src_badge(uint8_t li, uint8_t tr, seq_vp_group_t group,
 }
 
 /* Per-editor "user changed something" flags: a commit only takes authority
- * over a group when it was edited. Cycling through the tabs or flipping the
- * source must not author untouched groups - that would silently replace the
- * patch's own filter/LFO/dist with the editor's seed values. */
+ * over a group when it was edited (deferred authority, seq_model.h), so
+ * cycling tabs or flipping the source never authors untouched groups. */
 static bool s_filter_dirty = false;
 static bool s_lfo_dirty    = false;
 static bool s_dist_dirty   = false;
@@ -569,11 +561,8 @@ static bool graph_read_target_env(seq_env_t *env)
 }
 
 /* Open the editor seeded from the active screen's envelope: drone/arp screens
- * edit their own env, otherwise the selected melodic row.
- *
- * The Wireless page is a menu overlay, not a ui_mode, so it must be tested
- * BEFORE the mode ladder - the mode underneath an overlay is whatever screen
- * the user came from. */
+ * edit their own env, otherwise the selected melodic row. The Wireless page is
+ * tested before the mode ladder (synth_ui_wireless_page_is_open()). */
 void synth_ui_graph_open_envelope(void)
 {
     graph_popup_ensure_init();
@@ -728,12 +717,11 @@ static void graph_write_points_to_env(uint8_t eg_index)
 }
 
 /* ── Live preview while editing ──────────────────────────────────────────────
- * Edits are auditioned by pushing scratch values to AMY only; the store does
- * not change until confirm. Cancel re-pushes the store - or reloads the layer's
- * patch for a never-authored melodic row, whose live state came from the patch
- * string itself. Amp trim is the exception: it lives in the step-emit path, so
- * its live apply goes through the real setter (throttled, since each melodic
- * apply re-emits the track's steps) and cancel restores the open-time value. */
+ * Edits are auditioned by pushing scratch values to AMY only (the preview
+ * contract is in sequencer_core.h); the store does not change until confirm.
+ * Amp trim is the exception: it lives in the step-emit path, so its live apply
+ * goes through the real setter (throttled, since each melodic apply re-emits
+ * the track's steps) and cancel restores the open-time value. */
 #define GRAPH_AMP_LIVE_MS 200u               /* min spacing of amp re-emits   */
 
 static void graph_live_push_env(void)
@@ -861,10 +849,10 @@ static void graph_amp_live_flush(bool force)
 }
 
 /* Does MY_BUTTON_2's cycle offer the swing stop here? Swing is a property of the
- * layer, so only a melodic row reading the shared block (badge L) may edit it -
- * from a row on its own block the control would silently reach past what the
- * badge says the editor is touching. EG1 is the filter page and keeps the sweep
- * depth in the right slot. */
+ * layer, so only a melodic row reading the shared block (badge L) may edit it:
+ * from a row on its own block the control would reach past what the badge says
+ * the editor is touching. EG1 is the filter page and keeps the sweep depth in
+ * the right slot. */
 static bool graph_swing_available(void)
 {
     return s_graph_target == GRAPH_TGT_MELODIC && s_graph_eg_index == 0 &&
@@ -1134,8 +1122,7 @@ static void graph_auto_range_check(void)
  * (PIT/CUT/DRV/MIX), editing the shown envelope's row of the matrix; its EG1
  * page starts straight on them, having no amp trim of its own to edit there.
  * In a sub-mode the encoder edits that value instead of moving ADSR points.
- * Reset on editor open/close. (Name kept: main.c's press-down route and the header contract
- * both call it.) */
+ * Reset on editor open/close. */
 void synth_ui_graph_toggle_amp_mode(void)
 {
     if (!graph_popup_is_active(&s_graph_popup)) return;
@@ -1384,11 +1371,9 @@ bool synth_ui_graph_handle_button(bool is_long)
 {
     if (!graph_popup_is_active(&s_graph_popup)) return false;
 
-    /* Encoder press while the amp/EG1-bipolar sub-mode is active commits
-     * it (values are already live-pushed per turn) and returns the encoder
-     * to the ADSR points - the same enter/exit symmetry every other editor
-     * has. Without this, the press fell through to the popup widget and
-     * toggled a hidden cursor flag while the sub-mode stayed stuck on. */
+    /* Encoder press while a sub-mode (amp, swing, depth stop) is active
+     * commits it (values are already live-pushed per turn) and returns the
+     * encoder to the ADSR points. */
     if (s_graph_amp_mode || s_graph_swing_mode || s_graph_eg_tgt >= 0) {
         /* Exit, never advance: the press is the sub-mode's own confirm, so it
          * must not land on the next stop of MY_BUTTON_2's cycle. */
@@ -1441,7 +1426,7 @@ bool       s_lfo_active = false;
 static lfo_view_t s_lfo_view;
 #if CONFIG_SYNTH_WIRELESS
 /* Captured at open: the LFO editor targets the live voice (the Wireless page
- * is a menu overlay, not a ui_mode, so commit cannot route off seq_state). */
+ * is an overlay, so commit cannot route off seq_state). */
 static bool s_lfo_live_target = false;
 #endif
 
@@ -1492,23 +1477,9 @@ static float filter_detent_to_fb(int k)
                           : 1.0f - exp2f(-(float)k / (float)FB_DETENTS_PER_DOUBLING);
 }
 
-/* Which backend the FILTER editor is bound to. Unlike the graph editor (which
- * captures s_graph_target at open time) these are derived on every call off
- * seq_state.ui_mode. LIVE must be tested FIRST: the Wireless page is an
- * overlay, so the mode underneath is whichever screen the menu was opened from,
- * and a live filter opened over the drone screen would otherwise take the
- * drone's fixed-LPF24 cursor map and push to the drone's sweep.
- *
- * REFACTOR TARGET: deriving the edit target from UI state couples every editor
- * to which SCREEN is showing, when what they need is which VOICE they were
- * opened on - the same thing only for targets owning a top-level screen. Each
- * further non-screen target (second live slot, per-drum-track editor,
- * MIDI-learn) costs another predicate here plus a ladder arm at every call
- * site. The decoupled shape is s_graph_target's: bind once at open into a
- * backend vtable (get/set/preview env, env1, filter, amp, plus "has EG1 depth"
- * / "has LFO page" / "has track scope" flags), so seq_state is consulted only
- * when BINDING. That also retires s_graph_layer/s_graph_track for scopeless
- * targets. Worth doing when the third non-screen target lands. */
+/* Which backend the FILTER editor is bound to, derived per call from
+ * seq_state.ui_mode (the graph editor binds once at open instead). LIVE is
+ * tested first: the Wireless page is an overlay over whatever screen opened it. */
 static bool filter_tgt_is_live(void)
 {
     return synth_ui_wireless_page_is_open();
@@ -1721,8 +1692,7 @@ static void filter_load_from_target(void)
     seq_filter_t f = {0};
 #if CONFIG_SYNTH_WIRELESS
     if (synth_ui_wireless_page_is_open()) {
-        /* Same never-authored sentinel as the arp/melodic rows. Tested before
-         * the ui_mode ladder: the Wireless page is an overlay. */
+        /* Same never-authored sentinel as the arp/melodic rows. */
         live_play_get_filter(&f);
         if (f.cutoff_hz <= 0.0f) {
             f.filter_type = SEQ_FILTER_LPF24;
@@ -1794,10 +1764,9 @@ static void filter_load_from_target(void)
 }
 
 /* ── Filter live preview ─────────────────────────────────────────────────────
- * Same model as the envelope editor: edits push the scratch filter to AMY only;
- * cancel re-pushes the store (or reloads the layer when a touched melodic row
- * was never authored). The stutter drone has no preview path - its sweep
- * window/resonance ARE live state - so they are snapshotted at open. */
+ * Same model as the envelope editor's live preview. The stutter drone has no
+ * preview path - its sweep window/resonance ARE live state - so they are
+ * snapshotted at open. */
 static bool  s_filter_live = false;      /* any live push this session       */
 static float s_fdrone_open_lo, s_fdrone_open_hi, s_fdrone_open_res;
 
@@ -2147,10 +2116,9 @@ uint32_t lfo_view_signature(void)
                      NULL, NULL);
     s_lfo_view.wob_native = native;
 
-    /* Distortion drive/mix have COEF_MOD rails now, so every domain can drive
-     * them - natively on carrier patches (drone_std included), via the 20 Hz
-     * stepper on PATCH-mode tracks. Nothing is inert; the flag stays plumbed
-     * for the display struct but is never set. */
+    /* Distortion drive/mix have COEF_MOD rails, so every domain can drive
+     * them (native/software split: sequencer_core_lfo_native_layout()).
+     * dist_inert is part of the display struct and is never set. */
     s_lfo_view.dist_inert = false;
 
     const seq_lfo_t *l = &s_lfo_view.lfo;
@@ -2162,7 +2130,7 @@ uint32_t lfo_view_signature(void)
          | ((uint32_t)s_lfo_view.cursor  << 22)   /* 4 bits (0..14) */
          | ((uint32_t)s_lfo_view.editing << 26)
          | ((uint32_t)(native ? 1u : 0u) << 27)
-         /* bit 28 (dist_inert) retired - dist is never inert now */
+         /* bit 28 unused */
          | ((uint32_t)s_lfo_view.tgt_tab << 29);
 }
 
@@ -2171,9 +2139,8 @@ bool synth_ui_lfo_is_active(void) { return s_lfo_active; }
 void synth_ui_lfo_open(void)
 {
 #if CONFIG_SYNTH_WIRELESS
-    /* Wireless page first, before the mode ladder - it is a menu overlay. The
-     * live voice always takes the editor: wave patches drive the native
-     * carrier, patch strings the 20 Hz stepper (live_play_lfo_service). */
+    /* Wireless page first (synth_ui_wireless_page_is_open()). The live voice
+     * always takes the editor. */
     s_lfo_live_target = synth_ui_wireless_page_is_open();
     if (!s_lfo_live_target)
 #endif
@@ -2621,9 +2588,7 @@ typedef enum { EDITOR_NONE, EDITOR_GRAPH, EDITOR_FILTER, EDITOR_LFO, EDITOR_DIST
 
 static editor_id_t editor_open_melodic(void)
 {
-    /* The live voice has no track scope, and must be tested before the
-     * ui_mode ladder: its editor runs over the menu overlay, so the mode
-     * underneath would otherwise pass as MELODIC. */
+    /* The live voice (Wireless page) has no track scope. */
     if (synth_ui_wireless_page_is_open()) return EDITOR_NONE;
     if (seq_state.ui_mode == UI_MODE_ARP || seq_state.ui_mode == UI_MODE_DRONE ||
         seq_state.ui_mode == UI_MODE_DRONE_STD)

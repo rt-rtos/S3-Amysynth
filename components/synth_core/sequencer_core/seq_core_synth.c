@@ -50,30 +50,24 @@ static const patch_domain_t s_drum_domain = {
 /* ── Drum sample banks (menu "Drum Bank" selector) ──
  * One row per selectable PCM bank: the compiled-in 808 ROM bank plus the
  * gamma9001 banks streamed from the 'drums' flash partition. first/count are
- * PCM preset ranges; roles[] and notes[] seed the tracks on selection -
- * a bank pick is a full kit change, sounds AND pitches. Preset numbers
- * mirror the vendored amy/src/pcm_gamma9001.h map (256=909BD .. 391=Narrow) -
- * re-verify after any AMY re-vendor. Banks are contiguous in preset space, so
- * per-track cycling after a seed stays inside the bank until the user walks
- * out (cycled presets keep the role's note).
- * notes[] values are per-bank ear-tuned defaults; until a bank has had its
- * tuning pass they carry the legacy role defaults (39/45/53/82, the
- * pre-tuning 808 pitches). Editing a kit = touching one row: swap a
- * role's preset number, note, and/or voice-param blocks here.
- * eg0/eg1/flt are OPTIONAL per-role voice-param defaults (point rows at
- * named static const blocks; NULL = the transparent defaults: sample-
- * natural envelope, no EG1, no filter). Rows the user has NOT authored
- * get their editable vp model SEEDED from these on every (re)configure,
- * then the vp is pushed through the same appliers the graph editors use -
- * so the editors open on the curve that is actually sounding, and a first
- * touch tweaks from reality instead of a zeroed model. Authored vp wins
- * and is never re-seeded, same deferred-authority rule as melodic (where
- * the unauthored model stays zeroed because a patch string's baked
- * envelope is unreadable; drum defaults are our own data).
- * The bank is derived from the track's CURRENT preset (not the display
- * selector), so kit defaults follow cycling within a bank and survive
- * project reload; presets outside every bank range (e.g. the runtime-
- * recorded sample slot) fall back to legacy defaults.
+ * PCM preset ranges (they mirror the vendored amy/src/pcm_gamma9001.h map,
+ * 256=909BD .. 391=Narrow - re-verify after any AMY re-vendor); roles[] and
+ * notes[] seed the tracks on selection, so a bank pick is a full kit change,
+ * sounds and pitches. Banks are contiguous in preset space, so per-track
+ * cycling after a seed stays inside the bank until the user walks out
+ * (cycled presets keep the role's note). Banks without an ear-tuning pass
+ * share the placeholder notes 39/45/53/82.
+ * eg0/eg1/flt are OPTIONAL per-role voice-param defaults (NULL = the
+ * transparent defaults: sample-natural envelope, no EG1, no filter). Rows the
+ * user has NOT authored get their editable vp model seeded from these on every
+ * (re)configure and pushed through the same appliers the graph editors use, so
+ * the editors open on the curve that is sounding. Authored vp wins and is never
+ * re-seeded (deferred authority, as melodic; drum defaults are our own data,
+ * so the unauthored model is not left zeroed).
+ * The bank is derived from the track's CURRENT preset, not the display
+ * selector, so kit defaults follow cycling within a bank and survive project
+ * reload; presets outside every bank range (e.g. the runtime-recorded sample
+ * slot) get the transparent defaults.
  * Per-role arrays hold the four default rows; seq_default_row() gives a row
  * above them row 4's entry. */
 typedef struct {
@@ -103,8 +97,7 @@ static const seq_filter_t s_808_kick_flt =
     { .filter_type = SEQ_FILTER_LPF24, .cutoff_hz = 279.0f,
       .resonance = 1.75f, .enabled = true, .feedback = 0.0f,
       .eg_depth = { [1] = { [SEQ_EGT_CUTOFF] = -2.0f } } };
-/* 808 hat: HPF strips low-end rumble, adds crispness. Formerly a hardcoded
- * every-bank track-2 rule; now 808 bank data like any other tuning block, so
+/* 808 hat: HPF strips low-end rumble, adds crispness. 808 bank data only:
  * untuned banks play their hats as sampled. */
 static const seq_filter_t s_808_hat_flt =
     { .filter_type = SEQ_FILTER_HPF, .cutoff_hz = 3000.0f,
@@ -188,10 +181,8 @@ static inline bool drum_gamma_available(void)
 /* Boot-default kit = bank 0 (the 808 ROM bank). Layer init and the lazy
  * preset seed below both read the bank row directly, so the ear-tuned
  * roles[]/notes[] have a single source and boot sounds identical to an
- * explicit "808" pick in the Drum Bank menu. (Replaces the former
- * SEQ_DRUM_PCM_PRESET / SEQ_DRUM_DEFAULT_NOTE mirrors, which kept serving
- * the pre-tuning kit at boot. Bank preset numbering assumes
- * CONFIG_AMY_PCM_GAMMA808, as the table comment above notes.) */
+ * explicit "808" pick in the Drum Bank menu. Bank preset numbering assumes
+ * CONFIG_AMY_PCM_GAMMA808. */
 uint8_t sequencer_drum_default_note(uint8_t track)
 {
     return s_drum_banks[0].notes[seq_default_row(track)];
@@ -224,14 +215,11 @@ static uint16_t drum_pcm_preset_for(uint8_t layer_idx, uint8_t track)
 
 /* Apply one track's voice params after PCM wave/preset are set.
  *
- * Seed-then-push: unauthored blocks of the row's editable vp model are first
- * seeded from the bank's tuning blocks (or the transparent defaults when the
- * bank authors none), then the whole model is pushed through the same
- * appliers the graph editors use. One store sounds AND displays; bank blocks
- * get full apply fidelity (COEF_EG1 filter-env and pitch-env routing plus
- * the EG1 breakpoint guarantee in melodic_filter_apply). Authored blocks are never
- * re-seeded, so user edits survive kit changes - the melodic deferred-
- * authority rule, minus the zeroed unauthored model melodic is stuck with. */
+ * Seed-then-push (seeding rules: the bank table above): one store sounds AND
+ * displays, and bank blocks get full apply fidelity (COEF_EG1 filter-env and
+ * pitch-env routing plus the EG1 breakpoint guarantee in
+ * melodic_filter_apply). Authored blocks are never re-seeded, so user edits
+ * survive kit changes. */
 static void sequencer_configure_drum_pcm_track_params(uint8_t layer_idx,
                                                       uint8_t track)
 {
@@ -255,10 +243,9 @@ static void sequencer_configure_drum_pcm_track_params(uint8_t layer_idx,
     }
 
     sequencer_configure_melodic_envelope_track(layer_idx, track);
-    /* EG1 is pushed only when a shape exists (authored or bank-seeded): with
-     * neither, the preset reload's osc reset leaves it cleared, and
-     * melodic_filter_apply supplies the breakpoint guarantee if an authored
-     * filter env later needs one. */
+    /* EG1 is pushed only when a shape exists (authored or bank-seeded);
+     * otherwise melodic_filter_apply supplies the breakpoints if an authored
+     * filter env later needs them (seq_filter_eg1_live). */
     if (vp->env1_authored || (bank && bank->eg1[row])) {
         sequencer_configure_melodic_envelope1_track(layer_idx, track);
     }
@@ -311,10 +298,8 @@ uint8_t seq_track_num_voices(const seq_layer_t *layer, uint8_t track)
     /* A KS row plays s_ks_voices voices, whatever the layer asks for. Each
      * sounding KS voice needs its own ring in AMY's ks_buffer pool: voices
      * sharing a ring damp each other and a note-on re-excites the ring under
-     * the tail still reading it. Measured on a 4x2 layer over 4 rings, that
-     * cost 4x the sustained level and let one inaudible note-on lift the rest
-     * of the layer 386%. The ring count is sized for the ceiling, so the row
-     * count stays inside it. Clamping here rather than at the stored
+     * the tail still reading it. The ring count is sized for the ceiling, so
+     * the row count stays inside it. Clamping here rather than at the stored
      * num_voices keeps the layer's setting intact for when the patch changes
      * back, and covers chord rows too - a chord row on a KS layer sounds at
      * most s_ks_voices notes. */
@@ -361,11 +346,10 @@ uint8_t sequencer_core_ks_row_demand(uint8_t layers)
     return (uint8_t)(layers * SEQ_TRACKS * CONFIG_SEQ_KS_VOICES_MAX);
 }
 
-/* ââ Melodic per-layer unison (PROTOTYPE - dev-menu backed, volatile) ââââââ
+/* ── Melodic per-layer unison (PROTOTYPE - dev-menu backed, volatile) ──────
  * One spec per layer, applied to every wave-built row. Contract in
  * sequencer_core.h. Storage count 0 = never set -> the getter's defaults.
- * Deliberately not in seq_layer_t / the snapshot: dev state is volatile;
- * graduation to a voice_params_t group is the planned second pass. */
+ * Deliberately not in seq_layer_t / the snapshot: dev state is volatile. */
 static voice_unison_t s_unison[MAX_LAYERS];
 
 /* Effective copy count for one track's build: the authored count, gated to
@@ -578,13 +562,12 @@ static void sequencer_configure_melodic_wave_track(uint8_t synth_id,
 static void sequencer_configure_melodic_envelope(uint8_t layer_idx, uint8_t rows)
 {
     const seq_layer_t *layer = &s_layers[layer_idx];
-    /* Raw-wave primitives carry no patch envelope. With none pushed, the
-     * carrier's COEF_EG0 stays 1.0: AMY reads an empty breakpoint set as a
-     * permanently open gate (envelope.c) and a velocity-0 note-off never zeroes
-     * it (amy.c), so the oscillator rings forever - surviving patch changes and
-     * pause, which both silence voices via that same note-off. Push the row's
-     * stored envelope (seeded with the default) onto every such unauthored
-     * row. */
+    /* Raw-wave primitives carry no patch envelope. With none pushed, AMY reads
+     * the empty breakpoint set as an open gate (sequencer_core_push_envelope_eg1
+     * states the rule) and a velocity-0 note-off never zeroes it, so the
+     * oscillator rings forever - surviving patch changes and pause, which both
+     * silence voices via that same note-off. Push the row's stored envelope
+     * (seeded with the default) onto every such unauthored row. */
     for (uint8_t t = 0; t < rows; t++) {
         bool force_wave = sequencer_core_is_wave_patch(layer->track_patch[t]);
         if (seq_track_vp(layer_idx, t)->env_authored || force_wave) {
@@ -636,11 +619,10 @@ static void sequencer_configure_melodic_dist(uint8_t layer_idx, uint8_t rows)
     }
 }
 
-/* Single point of truth for "which voice block applies to (layer, track)":
- * the layer's shared block when the row follows the layer, else the row's own.
- * Each row owns its own AMY synth slot (synth_id[track]), so a shared block is
- * pushed once per follower - there is no shared synth to arbitrate. Per-step
- * support would add a step parameter here, callers unchanged. */
+/* Single point of truth for "which voice block applies to (layer, track)"
+ * (selector: sequencer_core.h). Each row owns its own AMY synth slot, so a
+ * shared block is pushed once per follower - there is no shared synth to
+ * arbitrate. */
 voice_params_t *seq_track_vp(uint8_t layer_idx, uint8_t track)
 {
     if (layer_idx >= s_num_layers) layer_idx = 0;
@@ -661,28 +643,12 @@ seq_env_t *seq_layer_env1(uint8_t layer_idx, uint8_t track)
     return &seq_track_vp(layer_idx, track)->env1;
 }
 
-/* AMY events are emitted through the shared amy_helpers scratch buffer - one
- * module-level event + mutex for all first-party callers, all of which are
- * FreeRTOS tasks, never ISRs. */
-
-/* Apply one routable patch (0..SEQ_PATCH_FULL_MAX) to a synth slot. The SINGLE
- * kind dispatch for every consumer (melodic tracks and the arp; the drone has
- * its own excitation model):
- *   raw wave / wavetable  -> direct oscillator config (no patch string)
- *   bass preset (264-266) -> bass_preset_configure_track (oscs_per_voice=4)
- *   FM/ALGO (272-276)     -> fm preset / live-editable custom voice (7 oscs)
- *   additive (277-279)    -> additive preset / custom voice (N+1 oscs)
- *   everything else       -> amy_send_patch() string loader
- * Returns true when a patch STRING was loaded: those carry EQ/chorus commands
- * for the bus the synth renders on, so the caller owes one
- * synth_ui_fx_reassert() afterwards, even when applying to several slots. */
 /* Clamp a string-patch load's polyphony so oscs_per_voice x voices fits the
- * per-track osc budget. Built-in piano is 25 oscs/voice: a layer-wide load at
- * 4 voices/track attempts 400 oscs against the 250-osc pool AND ~76 KB of
- * internal heap, exhausting ram_caps_events partway (every osc's synthinfo
- * lives there) - the 2026-08-07 incident. Degrading polyphony keeps the patch
- * usable and the heap intact. amy_patch_oscs_per_voice() returns 0 for
- * unknown/virtual numbers - no clamp, the loader rejects those itself. */
+ * per-track osc budget (SEQ_TRACK_OSC_BUDGET, seq_core_config.h). The built-in
+ * piano is 25 oscs/voice, so a layer-wide load at 4 voices/track would exhaust
+ * the osc pool and internal heap; degrading polyphony keeps the patch usable.
+ * amy_patch_oscs_per_voice() returns 0 for unknown/virtual numbers - no clamp,
+ * the loader rejects those itself. */
 static uint16_t seq_clamp_patch_voices(uint16_t patch, uint16_t num_voices)
 {
     uint16_t opv = amy_patch_oscs_per_voice(patch);
@@ -699,6 +665,17 @@ static uint16_t seq_clamp_patch_voices(uint16_t patch, uint16_t num_voices)
     return num_voices;
 }
 
+/* Apply one routable patch (0..SEQ_PATCH_FULL_MAX) to a synth slot. The SINGLE
+ * kind dispatch for every consumer (melodic tracks and the arp; the drone has
+ * its own excitation model). Ranges: the SEQ_PATCH_* map in sequencer_core.h.
+ *   raw wave / wavetable -> direct oscillator config (no patch string)
+ *   bass preset          -> bass_preset_configure_track
+ *   FM/ALGO              -> fm preset / live-editable custom voice
+ *   additive             -> additive preset / custom voice
+ *   everything else      -> amy_send_patch() string loader
+ * Returns true when a patch STRING was loaded: those carry EQ/chorus commands
+ * for the bus the synth renders on, so the caller owes one
+ * synth_ui_fx_reassert() afterwards, even when applying to several slots. */
 static bool sequencer_apply_patch_kind(uint8_t synth_id, uint16_t patch,
                                        uint16_t num_voices, uint32_t synth_flags,
                                        bool filter_authored, float ks_feedback,
@@ -760,12 +737,11 @@ static bool seq_apply_patch(uint8_t synth_id, uint16_t patch,
                                       ks_duty_ofs, uni);
 }
 
-/* Reassert bus FX iff a patch STRING was applied since the last flush: those
- * carry EQ/chorus commands that overwrite the user's FX state on the bus the
- * loaded synth renders on. Raw-wave, bass and FM patches owe nothing. Every
- * patch-load path flushes through here so no caller can forget the reassert.
- * synth_id names the slot that was configured; a batch caller passes any one
- * of its slots, since a batch never spans two groups. */
+/* Reassert bus FX iff a patch STRING was applied since the last flush
+ * (why: synth_ui_fx_reassert() in amy_fx.h). Raw-wave, bass and FM patches owe
+ * nothing. Every patch-load path flushes through here so no caller can forget
+ * the reassert. synth_id names the slot that was configured; a batch caller
+ * passes any one of its slots, since a batch never spans two groups. */
 static inline void seq_flush_patch_fx(bool owed, uint8_t synth_id)
 {
     if (owed) synth_ui_fx_reassert(synth_id);
@@ -891,10 +867,8 @@ void sequencer_reconfigure_layer_paused(uint8_t layer_idx)
     sequencer_resync_layer(layer_idx);
 }
 
-/* Per-layer patch access. The patch numbering the clamp below rides on:
- * 0..127 Juno, 128..255 DX7, 256 piano, 257..263 raw waves, 264..266 bass
- * presets, 267..271 wavetables (AMY_WAVETABLE only), 272..276 FM/ALGO,
- * 277..279 additive - SEQ_PATCH_ADDITIVE_MAX is the true ceiling. */
+/* Per-layer patch access. The clamps below use SEQ_PATCH_ROUTABLE_MAX, the top
+ * of the numbering space in sequencer_core.h. */
 
 uint16_t sequencer_core_get_layer_patch(uint8_t layer_idx)
 {
@@ -1039,9 +1013,9 @@ static bool seq_layer_patch_has_algo(uint16_t patch)
 }
 
 /* Send one algorithm value to osc 0 (the ALGO control osc) of every ALGO-capable
- * row of the layer; AMY resolves e->synth + e->osc to each voice's base_osc + 0.
- * One override per layer, applied to every ALGO row - rows on some other patch
- * have no control osc for it to land on and are skipped. The FM-preset voices
+ * row of the layer (osc addressing: voice_config.h, "Reach"). One override per
+ * layer, applied to every ALGO row - rows on some other patch have no control
+ * osc for it to land on and are skipped. The FM-preset voices
  * author ENVELOPE_NORMAL on osc 0, which the ALGORITHM delta force-switches to
  * DX7 curves - re-assert it in the same event (the eg_type delta applies after
  * the algorithm one). DX7-bank patches keep the DX7 curves their own patch load
@@ -1207,8 +1181,8 @@ void sequencer_core_set_drum_engine(seq_drum_engine_t engine)
 {
     if (engine != SEQ_DRUM_SYNTH && engine != SEQ_DRUM_PCM) return;
 #if !CONFIG_SYNTH_DRUM_SYNTH_MODE
-    /* Synth engine compiled out: coerce so old project snapshots saved in
-     * SYNTH mode still load (as PCM) instead of muting the drum layer. */
+    /* Synth engine compiled out: coerce to PCM so a stored SYNTH selection
+     * does not mute the drum layer. */
     engine = SEQ_DRUM_PCM;
 #endif
     if (s_drum_engine == engine) return;

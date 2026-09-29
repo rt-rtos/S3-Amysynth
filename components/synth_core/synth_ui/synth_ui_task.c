@@ -133,8 +133,7 @@ static void synth_ui_task(void *pvParameters)
             }
         }
 
-        /* Deferred layer-add: needs this task's 8192-byte stack for the patch
-         * parse's ~3.4 KB inline frame. */
+        /* Deferred layer-add (see synth_ui_request_add_layer()). */
         if (s_layer_add_pending) {
             s_layer_add_pending = false;
             /* Re-check the cap; num_layers may have moved since the request. */
@@ -153,11 +152,10 @@ static void synth_ui_task(void *pvParameters)
         }
 
 #if CONFIG_SYNTH_PROJECT_STORE
-        /* Project load/save queued by the Projects menu (clicks run on the
-         * button task). Must run here: a load rebuilds layer topology via core
-         * add/delete, which only this task - the single s_layers applier - may
-         * call. After the drains above, so pending structural edits resolve
-         * before a load replaces them. */
+        /* Project load/save queued by the Projects menu (radio_manager.h
+         * explains the queued-click pattern). Runs here as the s_layers applier
+         * (sequencer_core.h), after the drains above so pending structural
+         * edits resolve before a load replaces them. */
         projects_menu_service();
 #endif
 
@@ -166,10 +164,8 @@ static void synth_ui_task(void *pvParameters)
         bounce_menu_service();
 
 #if CONFIG_SYNTH_WIRELESS
-        /* Radio session start/stop queued by the Wireless page. Must run here:
-         * NimBLE init/teardown blocks briefly and needs this task's 8192-byte
-         * stack, and session_start loads the live slot's patch - both far too
-         * heavy for the input path. */
+        /* Radio session start/stop queued by the Wireless page (see
+         * radio_manager.h for why clicks defer to this task). */
         radio_manager_service();
 #endif
 
@@ -198,10 +194,9 @@ static void synth_ui_task(void *pvParameters)
         seq_state.current_step =
             sequencer_core_get_current_step(seq_state.active_layer_idx);
         if (s_u8g2) {
-            /* Screen/overlay precedence lives entirely in
-             * synth_ui_active_view(). signature() builds the active view into
-             * vw and returns the FNV render-gate hash; the draw below reuses
-             * vw, never rebuilding it. Adding a view is one row in
+            /* Precedence: synth_ui_active_view() (synth_ui.h). signature()
+             * builds the active view into vw and returns the FNV render-gate
+             * hash; the draw below reuses vw. Adding a view is one row in
              * ui_view_table[]. */
             ui_view_id_t view = synth_ui_active_view();
             const ui_view_desc_t *desc = &ui_view_table[view];
@@ -234,11 +229,8 @@ static void synth_ui_task(void *pvParameters)
                  * redraw. Sending twice (without the hint, then with) makes the
                  * strip visibly flicker on every redraw. */
 #if CONFIG_SYNTH_DEV_MENU
-                /* A DEV status bar claims the strip on every screen while on
-                 * - even where the hint normally hides - so headroom/dropout
-                 * counts stay visible under whatever load scenario is being
-                 * exercised. The two bars are mutually exclusive (each's
-                 * toggle switches the other off). */
+                /* A DEV status bar (ui_screen_dev.c) claims the strip on every
+                 * screen while on. */
                 if (synth_ui_dev_heapbar_active()) {
                     display_hint_draw(s_u8g2, synth_ui_dev_heapbar_text());
                 } else if (synth_ui_dev_dropbar_active()) {
@@ -262,20 +254,15 @@ static void synth_ui_task(void *pvParameters)
                     u8g2_SetDrawColor(s_u8g2, 1);
                 }
 #if CONFIG_SYNTH_WIRELESS
-                /* BLE session badge: a 5x8 Bluetooth rune, inverted plate while
-                 * a central is connected, bare while merely advertising.
-                 * Composited last so display_badge_draw() can read the finished
-                 * buffer back and place the rune in blank top-row pixels only -
-                 * badge_x is the preferred slot, and header text growing into
-                 * it pushes the badge aside rather than being overdrawn. */
+                /* BLE badge, last: it reads the finished buffer back
+                 * (display_badge.h). */
                 if (radio_manager_state() == RADIO_ACTIVE) {
                     display_badge_draw(s_u8g2, ui_view_table[view].badge_x,
                                        radio_manager_connected());
                 }
 #endif
                 /* Loop-bounce REC badge while a bounce is armed, recording or
-                 * folding its tail; placed by the same top-row rules as the
-                 * BLE rune, so it steps aside from header text and the rune. */
+                 * folding its tail; same placement rules as the BLE badge. */
                 if (clip_bounce_get_state() != CLIP_BOUNCE_IDLE) {
                     display_badge_draw_text(s_u8g2, ui_view_table[view].badge_x, "REC");
                 }
@@ -362,9 +349,7 @@ void synth_ui_init(u8g2_t *u8g2)
 
     /* First melodic layer. Added HERE, before the UI task exists: running
      * single-threaded on the main stack, before the applier is registered,
-     * satisfies the single-applier contract with no cross-task handoff. Keep it
-     * here - deferring boot work into the seq_ui drain buys nothing and once
-     * wedged boot on a stack overflow under s_event_mutex + amy_queue_lock. */
+     * satisfies the single-applier contract with no cross-task handoff. */
     synth_ui_add_layer(SEQ_LAYER_MELODIC, SEQ_STEPS);
     DIAG_HEAP_CHECK("ui_init: after add_layer(melodic)");
 
@@ -379,10 +364,10 @@ void synth_ui_init(u8g2_t *u8g2)
 #endif
 
     /* Pin to Core 0: the OLED refresh does blocking I2C and is not latency
-     * critical, so keep it off Core 1 where the AMY DSP runs. 8192 stack: the
-     * deferred Add-Layer drain runs a patch-string load whose amy_parse_message
-     * frame is ~3.4 KB inline here, which 4096 could not absorb. Re-trim once
-     * the amy_ingest pump moves the parse to its own task. */
+     * critical, so keep it off Core 1 where the AMY DSP runs. 8192 stack:
+     * sized when the deferred Add-Layer drain ran amy_parse_message's ~3.4 KB
+     * frame inline here (4096 could not absorb it); not re-measured since the
+     * ingest pump took the parse. */
     TaskHandle_t ui_task = NULL;
     xTaskCreatePinnedToCore(synth_ui_task, "seq_ui", 8192, NULL, 5, &ui_task, 0);
     /* From here this task is the single applier for structural s_layers edits;

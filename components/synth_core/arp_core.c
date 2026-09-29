@@ -176,12 +176,9 @@ static void arp_kill_voices(void)
     amy_helpers_event_send(e);
 }
 
-/* Push the arp filter plus its envelope routing matrix (eg_depth, the same
- * eight bipolar depths melodic rows carry). Mirrors melodic_filter_apply(): the
- * depths go out in their own event - all eight slots once the arp's filter
- * block is authored, so a 0 clears the rail, the nonzero ones only before that
- * - and EG1 breakpoints ride along whenever an EG1 rail is live, since AMY
- * treats a never-configured breakpoint set as an always-open unity gate. */
+/* Push the arp filter plus its envelope routing matrix (seq_filter_t.eg_depth,
+ * in its own event). Mirrors melodic_filter_apply(); the EG1 breakpoints ride
+ * along whenever an EG1 rail is live (sequencer_core_push_envelope_eg1()). */
 static void arp_apply_filter(const seq_filter_t *f)
 {
     if (!f) return;
@@ -221,9 +218,8 @@ void arp_core_refresh_lfo_freq(void)
 {
     if (!s_arp.vp.lfo_authored || !s_arp.vp.lfo.enabled)
         return;
-    /* Only patches with a reserved carrier pair (wave numbers / wavetables /
-     * bass presets) run the native LFO; the software stepper tracks BPM
-     * per-step on its own. */
+    /* Only native-layout patches carry a BPM-synced carrier; the software
+     * stepper tracks BPM per step on its own. */
     uint8_t carrier;
     if (!sequencer_core_lfo_native_layout(s_arp.patch, &carrier, NULL))
         return;
@@ -259,12 +255,8 @@ static void arp_push_portamento(void)
  * re-impose any authored ADSR / filter. Mirrors drone_rebuild().
  *
  * Scheduled events are cleared FIRST and re-emitted afterwards (arp_mark_dirty
- * at the end): AMY's 500 µs sequencer poll runs on its own task and fires arp
- * note-ons autonomously, so a live schedule during a patch rebuild lets a
- * note-on resolve against half-updated voice/osc tables. That strands an osc
- * AUDIBLE outside any voice, unreachable by later kills (which resolve through
- * the CURRENT voice map) - permanent ringing when scrolling arp patches.
- * Cost: the arp is quiet for at most one UI frame around a rebuild. */
+ * at the end); why: see sequencer_reconfigure_layer_paused(). Cost: the
+ * arp is quiet for at most one UI frame around a rebuild. */
 static void arp_rebuild(void)
 {
     arp_core_clear_all();
@@ -280,8 +272,8 @@ static void arp_rebuild(void)
     if (sequencer_core_is_wave_patch(s_arp.patch) || s_arp.vp.env_authored) {
         sequencer_core_push_envelope(sequencer_core_arp_synth(), &s_arp.vp.env);
     }
-    /* Patches with a reserved carrier pair (wave numbers, bass presets)
-     * take the native LFO here; the software stepper excludes them. */
+    /* Native-layout patches take the native LFO here; the software stepper
+     * skips them. */
     uint8_t carrier, coupled;
     if (sequencer_core_lfo_native_layout(s_arp.patch, &carrier, &coupled)) {
         bool lfo_on = s_arp.vp.lfo_authored && s_arp.vp.lfo.enabled;
@@ -714,12 +706,10 @@ void arp_core_mark_dirty(void)
 }
 
 /* ── Software LFO fallback ───────────────────────────────────────────────
- * Patches with a reserved carrier pair get the AMY-native voice-local LFO
- * (arp_rebuild). Every other patch owns its whole osc layout, so it runs the
- * same 20 Hz software stepper as non-wave melodic tracks (canonical impl:
- * sequencer_core_lfo_service), modulating each checked target's COEF_CONST
- * rail. WOBBLE has no software analog and is ignored, as on melodic patch
- * tracks. */
+ * Native-layout patches get the AMY-native LFO (arp_rebuild); every other
+ * patch runs the 20 Hz software stepper (canonical impl:
+ * sequencer_core_lfo_service; split: ENGINE-SEMANTICS.md, "LFO: native carrier
+ * vs software stepper"). */
 static float   s_swlfo_phase   = 0.0f;
 static float   s_swlfo_rnd    = 0.0f;
 static bool    s_swlfo_active = false;
@@ -756,11 +746,8 @@ static float arp_swlfo_eval(lfo_wave_t wave, float ph)
 static void arp_swlfo_service(void)
 {
     const seq_lfo_t *lfo = &s_arp.vp.lfo;
-    /* Only patches with NO reserved carrier pair - wave numbers and bass
-     * presets are served natively by arp_rebuild, so stepping them here would
-     * double-modulate. Distortion now has COEF_MOD rails too (dist_*_coefs),
-     * so it rides the carrier on native patches like every other target and
-     * the stepper is fully off there (mirrors sequencer_core_lfo_service). */
+    /* Native-layout patches are served by arp_rebuild; stepping them here
+     * would double-modulate (mirrors sequencer_core_lfo_service). */
     bool native = sequencer_core_lfo_native_layout(s_arp.patch, NULL, NULL);
     bool want = s_arp.enabled && lfo->enabled && lfo->targets != 0 && !native;
 
@@ -824,17 +811,14 @@ static void arp_swlfo_service(void)
     amy_helpers_event_send(e);
     } /* !native */
 
-    /* DIST targets on a PATCH-mode arp (no carrier): step around the committed
-     * dist block, same law as the native rail (voice_push_dist_lfo). Native
-     * patches drive it via COEF_MOD, so !native excludes them like the rest. */
+    /* DIST on a PATCH-mode arp: step around the committed dist block
+     * (voice_push_dist_lfo). */
     if (!native && (lfo->targets & LFO_TGT_DIST_MASK))
         voice_push_dist_lfo(sequencer_core_arp_synth(), &s_arp.vp.dist, lfo, val);
 
     if (!native && LFO_HAS_TGT(lfo, LFO_TARGET_PITCH)) {
-        /* Absolute Hz: see SEQ_LFO_PITCH_BASE_HZ - a bare ratio here lands
-         * ~8.8 octaves down. Osc 0 only: a synth-wide push would rewrite
-         * patch-internal modulator oscs' rates (stopgap - revisit, see the
-         * sequencer stepper). */
+        /* Absolute Hz anchored on SEQ_LFO_PITCH_BASE_HZ, sent to osc 0 only
+         * (ENGINE-SEMANTICS.md, software stepper). */
         amy_event *pe = amy_helpers_event_begin();
         pe->synth = sequencer_core_arp_synth();
         pe->osc   = 0;

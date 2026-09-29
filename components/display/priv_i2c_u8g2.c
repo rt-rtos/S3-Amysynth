@@ -213,10 +213,9 @@ esp_err_t i2c_u8g2_init(i2c_u8g2_handle_t *handle, const i2c_u8g2_config_t *conf
     /* Brief delay to allow display to stabilize after bus init */
     vTaskDelay(pdMS_TO_TICKS(10));
 
-    /* Initial presence probe. u8g2 setup continues either way so callers can
-     * keep drawing into the buffer (and a harness can read it back); only the
-     * wire traffic is skipped. Absence is not terminal: i2c_u8g2_service()
-     * keeps re-probing sparsely. */
+    /* Initial presence probe (state machine above). u8g2 setup continues
+     * either way so callers can keep drawing into the buffer; only the wire
+     * traffic is skipped. */
     s_display_present =
         (i2c_master_probe(s_i2c_bus_handle, config->device_address, 100) == ESP_OK);
     if (!s_display_present) {
@@ -304,11 +303,10 @@ bool i2c_u8g2_service(void)
         return false;
     }
 
-    /* Panel answered: run the full init sequence - a panel that missed or
-     * lost init (absent at boot, power-cycled) has no charge pump or
-     * addressing state, so resuming raw data would show garbage. Present
-     * must flip first so the init transfers actually reach the wire; if the
-     * panel vanishes mid-init, the failure counter demotes it again. */
+    /* Panel answered: run the full init (a panel that missed or lost init has
+     * no charge pump or addressing state). Present must flip first so the
+     * init transfers reach the wire; the failure counter demotes it again if
+     * the panel vanishes mid-init. */
     s_display_present = true;
     s_consec_fail = 0;
     u8g2_InitDisplay(&s_active_handle->u8g2);

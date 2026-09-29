@@ -12,25 +12,34 @@ the `display` component for rendering.
 
 | File | Role |
 | --- | --- |
-| `amy_helpers.c` | shared AMY event scratch + mutex (an `amy_event` is ~800 B and never lives on a task stack) |
+| `amy_helpers.c` | AMY ingress seam: shared event scratch and the ingest pump (contract in `amy_helpers.h`) |
 | `amy_fx.c` | per-bus FX caches and post-patch-load reassert (`synth_ui_fx_reassert`) |
 | `fx_bus.c` | synth-group -> AMY bus routing table (the Split toggles) |
 | `quantizer.c` | scale tables and chord math (shared by grid, arp, progression, drone) |
 | `arp_core.c` | arpeggiator engine — see [ARP-ARCHITECTURE.md](ARP-ARCHITECTURE.md) |
 | `voice_config.c` | shared voice-parameter layer: builds 2-osc WAVE voices, wires the native AMY LFO |
 
+Conventions that span several of these modules (native vs software LFO, voice
+blocks and deferred authority, editor preview/cancel) are written up once in
+[ENGINE-SEMANTICS.md](ENGINE-SEMANTICS.md).
+
 **`sequencer_core/`** — the engine, split by concern: `seq_model.h` (data
 model), `seq_core_state.c` (layer lifecycle), `seq_core_engine.c` (tag
 scheduling, transport, mute/solo), `seq_core_trig.c` (per-step
 probability/ratchet/conditional trigs), `seq_core_synth.c` (patch loading,
-drum Synth/PCM engines), `seq_core_editors.c` (envelope/filter/LFO commits),
+drum Synth/PCM engines), `seq_core_editors.c` (envelope/filter/LFO/distortion commits),
 `seq_core_tempo.c` (BPM), `seq_core_progression.c` (chord progression).
 
-**`synth_ui/`** — the 20 Hz UI task (`synth_ui_task.c`), the per-screen input
-handlers (`ui_screen_menu/arp/drone/prog/layermenu/stepedit/fxmenu/fm.c`),
-the modal editors (`ui_editors.c`: ADSR graph, filter, LFO), the screen/overlay
+**`synth_ui/`** - the 20 Hz UI task (`synth_ui_task.c`), the per-screen
+handlers (`ui_screen_menu.c`, `ui_screen_arp.c`, `ui_screen_drone.c`,
+`ui_screen_drone_std.c`, `ui_screen_prog.c`, `ui_screen_proggen.c`,
+`ui_screen_chords.c`, `ui_screen_layermenu.c`, `ui_screen_stepedit.c`,
+`ui_screen_fxmenu.c`, `ui_screen_bounce.c`, `ui_screen_projects.c`,
+`ui_screen_wireless.c`, `ui_screen_fm.c`, `ui_screen_dev.c`), the modal
+editors (`ui_editors.c`: ADSR graph, filter, LFO, DIST), the screen/overlay
 precedence resolver (`ui_view_resolve.c`), patch cycling
-(`ui_patch_cycle.c`), and the bottom hint strip (`synth_ui_hint.c`).
+(`ui_patch_cycle.c`), and the bottom hint strip (`synth_ui_hint.c`). Controls:
+[CONTROLS.md](../../CONTROLS.md).
 
 **`custompatches/`** — instruments and presets built on AMY's event API:
 `drone_core.c` (see [DRONE.md](custompatches/DRONE.md)), `bass_presets.c`
@@ -53,9 +62,9 @@ precedence resolver (`ui_view_resolve.c`), patch cycling
   decorated steps (probability / ratchet / conditional trigs) are evaluated
   per loop pass in `seq_core_trig.c`. No FreeRTOS timer fires audio.
 - **One shared voice-parameter block.** `voice_params_t` (EG0 + EG1
-  envelopes, filter, LFO, amp trim - each with a deferred-authority flag) is
-  embedded per melodic row, by the arp, and by the drone, so editor behavior
-  and patch-vs-user authority rules are identical across instruments.
+  envelopes, filter, LFO, distortion, amp trim, with authored flags for each
+  group) is embedded per melodic row, by the arp, and by the drone; rules in
+  [ENGINE-SEMANTICS.md](ENGINE-SEMANTICS.md#voice-blocks-and-deferred-authority).
 
 ## Initialization
 
@@ -101,25 +110,15 @@ Kconfig defaults ──seed──> layer->vp[track].env ──push──> AMY sy
    `sequencer_core_set_melodic_envelope()`, which overwrites the same
    `vp[track].env` struct, marks the row **authored**, and immediately
    re-pushes to AMY. The EG1 breakpoint set follows the same path via its own
-   store (`vp[track].env1`), switched in the editor with MY_BUTTON_3
-   long-press.
+   store (`vp[track].env1`), switched in the editor with a MY_BUTTON_3
+   tap (EG0, EG1, Filter, LFO, DIST).
 
 ### Deferred authority over patches
 
-A patch preset carries its own envelope. We don't want a one-time custom curve
-to permanently shadow every future preset on that row, so authority is
-**deferred**:
-
-- Each row's envelope has an `env_authored` flag (in `voice_params_t`),
-  starting `false`.
-- A **patch change** only re-imposes a row's stored envelope **if that row is
-  authored**. Unauthored rows adopt the freshly-loaded patch's own envelope.
-- A row becomes authored **only** when the user commits in the graph editor.
-  Custom values are always *retained*, but they don't override a new preset
-  until committed again.
-
-The filter and LFO settings carry their own `filter_authored` /
-`lfo_authored` flags with identical semantics.
+A patch preset carries its own envelope, so a row's stored envelope is pushed
+over a freshly loaded patch only once the user has committed it in the editor
+(`env_authored`; the filter, LFO, EG1 and distortion have their own flags).
+Full rules: [ENGINE-SEMANTICS.md](ENGINE-SEMANTICS.md#voice-blocks-and-deferred-authority).
 
 ```mermaid
 flowchart TD
@@ -130,10 +129,6 @@ flowchart TD
     E -->|yes| G["re-push row env over patch"]
     H["user opens graph + commits"] --> I["set_melodic_envelope: authored=true; push env"]
 ```
-
-Net effect: switch an *unauthored* row to a Juno preset and you hear Juno's
-envelope; customize a row in the editor (authoring it) and it keeps your curve
-across later patch changes.
 
 ### Kconfig options
 

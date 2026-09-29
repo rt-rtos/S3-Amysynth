@@ -1,21 +1,14 @@
 /* ── Sequencer state dump (DEV menu one-shot) ──
- * Prints every layer's track config and step exceptions to the console so
- * runtime-tuned values (drum pitches/presets above all) can be read back in
- * one block instead of scraped from per-edit log lines. Deliberately scoped
- * to sequencer layer/track/step state - global FX, arp and drone have their
- * own screens and are not this tool's job.
+ * Prints every layer's track config and step exceptions to the console, so
+ * runtime-tuned values (drum pitches/presets above all) can be read back in one
+ * block. Scoped to sequencer layer/track/step state; FX, arp and drone have
+ * their own screens.
  *
- * Output discipline: plain printf (no ESP_LOG prefixes to strip when copying
- * from the monitor), BEGIN/END markers carrying the firmware version and a
- * printed-line count so a truncated copy is detectable. Track lines lead
- * with note= and the drum preset so the tuning harvest reads column-wise;
- * step state prints lazily - a pattern string per track, plus one line per
- * step only where something differs from the plain-step neutral values
- * (prob=100, ratchet=1, every<=1, note==track base, all else 0). Voice
- * params print lazily too: eg1/flt/dist lines only when authored
- * (unauthored = the patch owns it, nothing to harvest), trim only when off
- * unity; eg0 always, since raw-wave rows get it pushed regardless. The
- * layer's shared block prints as LB after its rows. */
+ * Plain printf, BEGIN/END markers with the firmware version and a printed-line
+ * count (a truncated copy is detectable). Step state and voice params print
+ * lazily: one line per step only where it differs from the plain-step neutral
+ * values, eg1/flt/dist only when authored, trim only when off unity; eg0
+ * always, since raw-wave rows get it pushed regardless. */
 
 #include "seq_core_internal.h"
 #include "sequencer_core.h"
@@ -120,10 +113,8 @@ void sequencer_core_dump_state(void)
         for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
             /* Track line: pitch and timbre first (the harvest columns). */
             if (drum) {
-                /* PCM preset/mode via the core getters: the seq_layer_t
-                 * fields of the same name are UI mirrors refreshed on the
-                 * UI's copy only - on this side they hold stale zeros until
-                 * a project load writes them. */
+                /* PCM preset/mode via the core getters; the seq_layer_t
+                 * fields are stale on this side (seq_model.h). */
                 uint16_t pcm = sequencer_core_get_drum_pcm_preset(li, t);
                 uint8_t pcm_mode = sequencer_core_get_drum_pcm_mode(li, t);
                 DP("  T%u note=%u patch=%u pcm=%u mode=%u(%s) rep=%u"

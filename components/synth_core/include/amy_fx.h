@@ -14,8 +14,7 @@ extern "C" {
  * AMY exposes no getters, so we keep our own copy for menu display; there is
  * one fx_state_t per bus (s_fx[], indexed 0..FX_BUS_COUNT-1) and the routing
  * table in fx_bus.h decides which synths feed which.
- * All pushes go through the shared amy_helpers mutex (amy_event is ~800 B;
- * never allocate it on a task stack). */
+ * All pushes go through the amy_helpers ingress seam (amy_helpers.h). */
 
 /* Sentinel for the extended FX params. While a field holds it, fx_push_*
  * leaves the matching amy_event field at AMY_UNSET so AMY keeps its factory
@@ -79,12 +78,8 @@ typedef struct {
  * the matching fx_push_* below with that bus. */
 extern fx_state_t s_fx[FX_BUS_COUNT];
 
-/* False: loading a patch must NOT change the FX of the bus it loads onto.
- * Every built-in Juno patch string ends with `x<eq>k<chorus>` commands writing
- * the loading synth's bus FX, so without this guard a preset change on any
- * synth re-skins that whole bus. Patch-load sites call synth_ui_fx_reassert(),
- * which re-imposes the cached values right after the patch's FX deltas, making
- * presets timbre-only.
+/* False: loading a patch must NOT change the FX of the bus it loads onto
+ * (mechanism: synth_ui_fx_reassert() below), making presets timbre-only.
  * True: the most-recently-loaded preset's FX applies to its bus. */
 extern bool s_fx_presets_alter_global;
 

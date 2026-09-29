@@ -16,18 +16,20 @@ extern "C" {
 
 /* ── Built-in AMY patch banks (real patch strings, 0..256) ──────────────────
  * Named so FM-aware code (algorithm stepping) can range-check the DX7 bank
- * without magic numbers; the full bank map is the comment above
- * sequencer_core_get_layer_patch(). */
+ * without magic numbers; the full number map is the block below. */
 #define SEQ_PATCH_DX7_BASE    128
 #define SEQ_PATCH_DX7_MAX     255
 
-/* ── Virtual wave-patch IDs ─────────────────────────────────────────────────
- * Patch numbers beyond the 0..256 built-in (Juno/DX7/piano) range, intercepted
- * before amy_send_patch() so they never collide with real patches. Melodic and
- * arp route the FULL 0..SEQ_PATCH_FULL_MAX range; the drone opts out of what
- * its excitation model can't play via drone_patch_excluded() (drone_core.c).
- * Exclusions are per-consumer predicates over one shared catalog
- * (patch_cycle.h / ui_patch_cycle.c) - never per-consumer copies. */
+/* ── Virtual patch numbering (the SEQ_PATCH_* ranges below) ─────────────────
+ * The single map of patch numbers; other files cite it instead of restating
+ * ranges. Numbers past the 0..256 built-in (Juno/DX7/piano) range are virtual:
+ * intercepted before amy_send_patch(), so they never collide with real patches.
+ * Every range is numbered unconditionally, above the previous one, so a number
+ * never shifts under a build flag; a range whose feature is compiled out is
+ * skipped by sequencer_core_patch_compiled_out(). Melodic and arp route the
+ * FULL 0..SEQ_PATCH_FULL_MAX range; each consumer opts out of what it cannot
+ * play with an `excluded` predicate over the one shared catalog (patch_cycle.h),
+ * e.g. drone_patch_excluded() - never per-consumer copies. */
 #define SEQ_PATCH_WAVE_BASE   257
 #define SEQ_PATCH_SINE        257   /* AMY SINE     */
 #define SEQ_PATCH_SAW_DOWN    258   /* AMY SAW_DOWN */
@@ -38,24 +40,19 @@ extern "C" {
 #define SEQ_PATCH_KS          263   /* AMY KS       - drone excludes */
 #define SEQ_PATCH_WAVE_MAX    263
 
-/* ── Multi-osc bass presets (melodic only; oscs_per_voice=2) ────────────
- * Intercepted before amy_send_patch(). Osc 0 is the primary carrier, osc 1 the
- * secondary/sub layer. Osc 0's envelope is overwritten by
- * sequencer_configure_melodic_envelope() after configure; the character comes
- * from osc structure + filter. */
+/* ── Multi-osc bass presets (bass_presets.c) ────────────────────────────
+ * Two audible oscs plus a reserved LFO carrier pair (oscs_per_voice=4). A bass
+ * preset keeps its own envelope until the user authors one for the row. */
 #define SEQ_PATCH_BASS_BASE   264
-#define SEQ_PATCH_BASS_1      264   /* Classic Sub-Heavy Detune (PULSE + detuned SAW, LPF24) */
-#define SEQ_PATCH_BASS_2      265   /* Solid Sine-Reinforced Acid/Pluck (SINE + SAW, LPF24) */
-#define SEQ_PATCH_BASS_3      266   /* FM DX7-Style (SINE carrier + sub-octave SINE, DX7 env) */
+#define SEQ_PATCH_BASS_1      264   /* PULSE + detuned SAW_DOWN, LPF24 swept by EG1 */
+#define SEQ_PATCH_BASS_2      265   /* Acid pluck: SINE + SAW_DOWN, LPF24 on osc 1 */
+#define SEQ_PATCH_BASS_3      266   /* Bright synth bass: PULSE + SAW_DOWN sub-octave, no filter */
 #define SEQ_PATCH_BASS_MAX    266
 
 /* ── Wavetable virtual patches (melodic, arp, drone; AMY_WAVETABLE only) ──
  * One virtual patch per built-in wavetable bank (pcm_tiny.h /
  * pcm_wavetable_base): wave=WAVETABLE, preset=pcm_wavetable_base+index,
- * intercepted like SEQ_PATCH_WAVE_BASE. Its own range so it could be added
- * without renumbering the bass presets. The numbers exist unconditionally, like
- * every virtual range, so sequencer_core_patch_compiled_out() can name them in
- * any build; only routability is Kconfig-gated. */
+ * intercepted like SEQ_PATCH_WAVE_BASE. Only routability is Kconfig-gated. */
 #define SEQ_PATCH_WAVETABLE_BASE  267
 #define SEQ_PATCH_WAVETABLE_0     267   /* 111.WAV      */
 #define SEQ_PATCH_WAVETABLE_1     268   /* BRAIDS01.WAV */
@@ -86,7 +83,9 @@ static inline bool sequencer_core_is_wave_patch(uint16_t patch)
  * means the 20 Hz software stepper serves the LFO. THE single
  * native-vs-software predicate - every gate must use it, since a site left on
  * sequencer_core_is_wave_patch would stack the software stepper on a native
- * carrier (double modulation). Out-params may be NULL. */
+ * carrier (double modulation). Out-params may be NULL. Both paths, the target
+ * rails and the DIST behaviour: ENGINE-SEMANTICS.md, "LFO: native carrier vs
+ * software stepper". */
 static inline bool sequencer_core_lfo_native_layout(uint16_t patch,
                                                     uint8_t *carrier_osc,
                                                     uint8_t *coupled_mask)
@@ -106,13 +105,11 @@ static inline bool sequencer_core_lfo_native_layout(uint16_t patch,
 
 /* ── DX7-style 6-operator FM/ALGO voices (melodic only; oscs_per_voice=7) ──
  * Osc 0 is the AMY ALGO control osc (algorithm + algo_source[0..5] wired to
- * relative oscs 1..6); oscs 1..6 are SINE operators. Intercepted before
- * amy_send_patch() like the bass presets. FM_BASS/EPIANO/BELL/LEAD are fixed
- * starter presets (fm_presets.c). FM_CUSTOM is the single live-editable voice
- * driven by the FM UI screen (custompatches/fm_voice.h); its parameters are
- * global, so every melodic row on this patch shares one voice. Numbered
- * unconditionally after the wavetable range rather than reusing it, so patch
- * numbers never shift under a build-flag change. */
+ * relative oscs 1..6); oscs 1..6 are SINE operators (operator-index convention:
+ * custompatches/fm_voice.h). Intercepted before amy_send_patch() like the bass
+ * presets. FM_BASS/EPIANO/BELL/LEAD are fixed starter presets (fm_presets.c).
+ * FM_CUSTOM is the single live-editable voice driven by the FM UI screen; its
+ * parameters are global, so every melodic row on this patch shares one voice. */
 #define SEQ_PATCH_FM_BASE     272
 #define SEQ_PATCH_FM_BASS     272   /* FM Bass (2-op chain, algorithm 0) */
 #define SEQ_PATCH_FM_EPIANO   273   /* FM E.Piano (2 carriers, algorithm 0) */
@@ -122,14 +119,10 @@ static inline bool sequencer_core_lfo_native_layout(uint16_t patch,
 #define SEQ_PATCH_FM_MAX      276
 
 /* ── Additive/partials voices (melodic + arp; oscs_per_voice = N+1) ────────
- * Osc 0 is the AMY BYO_PARTIALS control osc (preset = partial count, shared
- * envelope); oscs 1..N are PARTIAL sines summed additively - no algo_source
- * routing, AMY derives the child set from preset + osc adjacency. Intercepted
- * before amy_send_patch() like the FM range. ORGAN/BELL are fixed presets
- * (additive_presets.c); ADDITIVE_CUSTOM is the single live-editable voice
- * (custompatches/additive_voice.h), global not per-layer, playing its
- * drawbar-organ default until an additive editor screen lands. Numbered
- * unconditionally after the FM range, same reason as FM above the wavetables. */
+ * Osc topology: custompatches/additive_voice.h. Intercepted before
+ * amy_send_patch() like the FM range. ORGAN/BELL are fixed presets
+ * (additive_presets.c); ADDITIVE_CUSTOM is the single live-editable voice,
+ * global not per-layer, playing its drawbar-organ default. */
 #define SEQ_PATCH_ADDITIVE_BASE    277
 #define SEQ_PATCH_ADDITIVE_ORGAN   277   /* drawbar organ, 8 harmonics, 1/n  */
 #define SEQ_PATCH_ADDITIVE_BELL    278   /* inharmonic free-bar bell ratios  */
@@ -140,7 +133,7 @@ static inline bool sequencer_core_lfo_native_layout(uint16_t patch,
  * Tables generated from Vital exports, served as AMY memory presets. A fixed
  * block of slots so the numbering space stays positional; slots past
  * wavetable_bank_count() are permanent holes skipped like a compiled-out
- * range. Numbered above additive so nothing below moves. */
+ * range. */
 #define SEQ_PATCH_WAVETABLE_APP_BASE  280
 #define SEQ_PATCH_WAVETABLE_APP_SLOTS 8
 #define SEQ_PATCH_WAVETABLE_APP_MAX   (SEQ_PATCH_WAVETABLE_APP_BASE + SEQ_PATCH_WAVETABLE_APP_SLOTS - 1)
@@ -288,8 +281,7 @@ void sequencer_core_fm_voice_changed(uint8_t what);
 int sequencer_core_cycle_layer_fm_algo(uint8_t layer_idx, int dir);
 
 /* Re-push the live custom additive voice (s_additive_voice) to every melodic
- * row on SEQ_PATCH_ADDITIVE_CUSTOM, plus the arp if it is playing it. For the
- * future additive UI screen. */
+ * row on SEQ_PATCH_ADDITIVE_CUSTOM, plus the arp if it is playing it. */
 void sequencer_core_additive_voice_changed(void);
 
 /* ── Drum per-track patch (curated Juno list) ──
@@ -340,35 +332,28 @@ uint16_t sequencer_core_get_drum_pcm_preset(uint8_t layer_idx, uint8_t track);
  * right on presets whose loopstart/loopend are musically set. Live-reloads
  * the track's osc (via the preset reload path, so envelope/HPF re-apply) when
  * PCM is active; otherwise takes effect on the next engine toggle. Call from
- * the UI task only; no-op for non-drum/out-of-range layers. Persisted in
- * LAYR v10+. No UI writer yet - groundwork for a loop toggle. */
+ * the UI task only; no-op for non-drum/out-of-range layers. Persisted. */
 void    sequencer_core_set_drum_pcm_mode(uint8_t layer_idx, uint8_t track,
                                          uint8_t pcm_mode);
 uint8_t sequencer_core_get_drum_pcm_mode(uint8_t layer_idx, uint8_t track);
 
-/* ââ Melodic per-layer unison (PROTOTYPE - dev menu) ââ
- * N detuned/spread copies of the wave build's audible osc, per melodic layer,
- * applied to all of its rows. count 1 = off (the exact single-osc build).
- * Raw-wave/wavetable patches only (KS excluded), native-LFO builds only; a
- * spec set while another patch is loaded is stored and applies on the next
- * wave build. `layout` (voice_unison_layout_t) picks the form: FAN spreads
- * the copies unchained (a filter, envelope, dist stage and pan mixdown each),
- * HEADED chains them under two SILENT L/R heads that carry those stages once
- * per group, ENGINE renders each group inside one AMY unison-cluster osc (the
- * experimental LOCAL EDIT; two audible oscs per voice at any count). Headed
- * and engine take even counts only, so an odd count floors (3 -> 2, 5 -> 4)
- * and 1 stays off in every layout. A count or layout change rebuilds the
- * layer's voices (sounding notes stop, like a wave change);
- * detune/spread/blend changes push live. The getter serves
- * defaults until the first set (count 1 = inactive). Volatile - not
- * serialized. UI task only; no-op for the drum layer / out-of-range. */
+/* ── Melodic per-layer unison (PROTOTYPE - dev menu) ──
+ * Spec and layouts: voice_unison_t in seq_model.h. One spec per melodic layer,
+ * applied to all of its rows; count 1 = off. Raw-wave/wavetable patches only
+ * (KS excluded), native-LFO builds only; a spec set while another patch is
+ * loaded is stored and applies on the next wave build. A count or layout
+ * change rebuilds the layer's voices (sounding notes stop, like a wave
+ * change); detune/spread/blend changes push live. The getter serves defaults
+ * until the first set (count 1 = inactive). Volatile - not serialized. UI task
+ * only; no-op for the drum layer / out-of-range. */
 void           sequencer_core_set_unison(uint8_t layer_idx,
                                          const voice_unison_t *u);
 voice_unison_t sequencer_core_get_unison(uint8_t layer_idx);
 
 /* KS voices per melodic row, 1..CONFIG_SEQ_KS_VOICES_MAX (clamped): every row
  * whose patch is KS plays exactly this many voices, chord rows included,
- * overriding the layer's own voice count. Default 1. A change rebuilds each
+ * overriding the layer's own voice count. Default 2, capped by the ceiling. A
+ * change rebuilds each
  * layer holding a KS row (sounding notes on it stop, like a wave change).
  * Volatile - not serialized. UI task only. */
 void    sequencer_core_set_ks_voices(uint8_t n);
@@ -447,8 +432,8 @@ void sequencer_core_set_melodic_envelope(uint8_t layer_idx, uint8_t track,
 /* ── Per-row second envelope (EG1, runtime-editable) ──
  * Independent AMY breakpoint generator, parallel to the EG0 accessors above.
  * Audible only if some coef (typically filter_freq_coefs) targets COEF_EG1,
- * whether baked into a patch string or into one of our custom presets (see
- * AMY-EDITS.md / bass_presets.c). Same deferred-authority model as EG0. */
+ * whether baked into a patch string or a custom preset (bass_presets.c).
+ * Same deferred-authority model as EG0. */
 bool sequencer_core_get_melodic_envelope2(uint8_t layer_idx, uint8_t track,
                                           seq_env_t *out);
 void sequencer_core_set_melodic_envelope2(uint8_t layer_idx, uint8_t track,
@@ -486,16 +471,15 @@ void sequencer_core_preview_melodic_dist(uint8_t layer_idx, uint8_t track,
 void sequencer_core_reapply_melodic_dist(uint8_t layer_idx, uint8_t track);
 
 /* Push a filter directly to an arbitrary AMY synth slot (shared by arp/drone).
- * is_ks also pushes f->resonance through sequencer_core_ks_feedback_from_q()
- * into the synth's KS feedback field, independent of f->enabled: KS feedback is
- * intrinsic to the oscillator, not the optional post-render filter. */
+ * is_ks also pushes the authored KS feedback (when set) and the pluck duty,
+ * independent of f->enabled: they belong to the oscillator, not the optional
+ * post-render filter. */
 void sequencer_core_push_filter(uint8_t synth, const seq_filter_t *f, bool is_ks);
 
 /* ── Editor live-preview (AMY only; store and authored flags untouched) ──
- * Audition scratch editor values against the running engine. Cancel re-pushes
- * the stored state through these same calls - or, for never-authored rows whose
- * live state came from the patch itself, calls
- * sequencer_core_reload_layer_synth() (brief voice restart). */
+ * Audition scratch editor values against the running engine. The full
+ * preview/cancel/commit contract: ENGINE-SEMANTICS.md, "Editor preview and
+ * cancel". */
 void sequencer_core_preview_melodic_envelope(uint8_t layer_idx, uint8_t track,
                                              const seq_env_t *env);
 void sequencer_core_preview_melodic_envelope2(uint8_t layer_idx, uint8_t track,
@@ -510,7 +494,8 @@ void sequencer_core_reload_layer_synth(uint8_t layer_idx);
 /* Map a Q value (the [0.51, 8.0] range set_melodic_filter enforces) linearly
  * onto AMY's KS feedback range [0.0, 1.0]. Q=8.0 -> feedback=1.0 is the safe
  * ceiling (lossless two-tap average, classic infinite-sustain Karplus-Strong);
- * above 1.0 the KS buffer diverges. */
+ * above 1.0 the KS buffer diverges. Predates seq_filter_t.feedback; no caller
+ * uses it. */
 float sequencer_core_ks_feedback_from_q(float q);
 
 /* ── Per-track melodic LFO (tempo-synced software modulator) ─────────────
@@ -529,12 +514,11 @@ void sequencer_core_lfo_service(void);
 void sequencer_core_oom_service(void);
 #endif
 
-/* LFO live preview: apply the editor's scratch to the engine per detent
- * WITHOUT storing (native tracks hear it immediately; software tracks are
- * served from the preview slot by lfo_service). Store untouched, authored
- * flag untouched. Cancel = reapply (re-push the committed state); commit =
- * the normal setter. Editors must call preview_clear on every close path
- * (commit AND cancel) so the service returns to reading the store. */
+/* LFO live preview: apply the editor's scratch per detent WITHOUT storing
+ * (native tracks hear it immediately; software tracks are served from the
+ * preview slot by lfo_service). Cancel = reapply; commit = the normal setter.
+ * Editors must call preview_clear on every close path (commit AND cancel) so
+ * the service returns to reading the store. */
 void sequencer_core_preview_melodic_lfo(uint8_t layer_idx, uint8_t track,
                                         const seq_lfo_t *lfo);
 void sequencer_core_reapply_melodic_lfo(uint8_t layer_idx, uint8_t track);
@@ -628,17 +612,16 @@ void sequencer_core_audition_chord(uint8_t layer_idx, uint8_t track,
                                    const seq_chord_t *chord);
 
 /* ── Per-step probability / ratchet / conditional trig ────────────────────
- * A step with prob==100 && ratchet==1 && cond==NONE is "plain" and costs
- * nothing extra: an always-on periodic AMY tag. Any other combination routes
- * that step through sequencer_core_service_tick()'s one-shot per-loop
- * scheduling instead (engine in seq_core_trig.c). Setters clamp and re-emit the
- * step immediately; getters return the "plain" default when out of range. */
+ * A step with any of these set is "decorated" and takes the one-shot per-loop
+ * path instead of the always-on periodic tag (definition: seq_core_trig.c).
+ * Setters clamp and re-emit the step immediately; getters return the neutral
+ * default when out of range. */
 /* Per-step pitch offset in chromatic semitones from the step's stored pitch,
  * clamped to +-SEQ_STEP_PITCH_OFS_MAX; 0 is neutral (plain path unaffected).
  * Relative by design: survives track pitch edits and drum bank changes.
- * Deliberately not re-quantized (TODO: revisit quantizer interplay). The
- * setter re-emits the step and kills a melodic track's ringing note (the
- * rewritten off tag would no longer match the sounding pitch). */
+ * Deliberately not re-quantized. The setter re-emits the step and kills a
+ * melodic track's ringing note (the rewritten off tag would no longer match the
+ * sounding pitch). */
 void    sequencer_core_set_step_pitch_ofs(uint8_t layer_idx, uint8_t track,
                                           uint8_t step, int8_t ofs);
 int8_t  sequencer_core_get_step_pitch_ofs(uint8_t layer_idx, uint8_t track,
@@ -716,7 +699,14 @@ void sequencer_core_push_envelope(uint8_t synth, const seq_env_t *env);
 /* Push env into the given synth/osc's EG1 breakpoint set (bp_is_set[1]).
  * `osc` lets a caller target a non-zero oscillator (a bass preset whose filter
  * lives on osc 1); melodic rows, arp and drone all target osc 0. This supplies
- * only the timing - whatever coef is wired to COEF_EG1 is what moves. */
+ * only the timing - whatever coef is wired to COEF_EG1 is what moves.
+ *
+ * Any coef wired to COEF_EG1 needs this push: AMY reads a never-configured
+ * breakpoint set as a constant 1.0 (an open gate), so the coef would sit at its
+ * full depth. Callers that route depths (sequencer_core_push_eg_depths) push
+ * the set whenever seq_filter_eg1_live(f); a preset that wires COEF_EG1 itself
+ * sends the set in the same event. This is the one statement of the rule; other
+ * sites cite it. */
 void sequencer_core_push_envelope_eg1(uint8_t synth, uint8_t osc, const seq_env_t *env);
 
 /* Push f's envelope routing depths into one synth as a single event: osc < 0
@@ -724,10 +714,8 @@ void sequencer_core_push_envelope_eg1(uint8_t synth, uint8_t osc, const seq_env_
  * `own` true writes all eight slots, so a 0 clears the rail; false writes the
  * nonzero ones only, leaving a patch string's own routing alone. The cutoff
  * slots go out only while f->enabled. Supplies the coef rails only - pair it
- * with sequencer_core_push_envelope_eg1() whenever seq_filter_eg1_live(f), or
- * AMY reads the never-configured EG1 breakpoints as a constant 1.0. Same
- * execution context as sequencer_core_push_envelope_eg1(): it goes through the
- * shared amy_helpers event buffer. */
+ * with sequencer_core_push_envelope_eg1() whenever seq_filter_eg1_live(f).
+ * Same execution context as sequencer_core_push_envelope_eg1(). */
 void sequencer_core_push_eg_depths(uint8_t synth, int osc, const seq_filter_t *f, bool own);
 
 /* ── Arpeggiator support ──────────────────────────────────────────────────

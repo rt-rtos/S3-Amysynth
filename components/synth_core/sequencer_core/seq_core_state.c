@@ -20,11 +20,10 @@ bool        s_playing      = true;
  * which reads s_layers[] live: the tick early-returns while this is set. */
 volatile bool s_layers_mutating = false;
 
-/* Single-applier enforcement for structural s_layers edits. Once boot init
- * registers the applier (synth_ui_task, which drains the deferred add/delete
- * requests), debug builds assert every structural edit runs there. Complements
+/* Single-applier enforcement for structural s_layers edits (contract:
+ * sequencer_core_set_layers_applier() in sequencer_core.h). Complements
  * s_layers_mutating: that guard fences the one concurrent READER, this pins all
- * WRITERS to one task, the same discipline s_prog_apply_pending uses. */
+ * WRITERS to one task. */
 static TaskHandle_t s_layers_applier = NULL;
 
 void sequencer_core_set_layers_applier(TaskHandle_t applier)
@@ -214,10 +213,8 @@ uint8_t sequencer_core_add_layer(seq_layer_type_t type, uint8_t num_steps)
         layer->vp_layer.env1 = seq_default_melodic_env1();
     }
 
-    /* step_prob (0% silences every step), step_ratchet (0 sub-hits fire
-     * nothing) and step_every (canonical neutral is 1, though the trig engine
-     * treats 0 the same defensively) need explicit non-zero defaults. The
-     * prev and transform arrays are correct at their zeroed no-op. */
+    /* step_prob, step_ratchet and step_every need explicit non-zero defaults
+     * (seq_model.h); prev and transform are correct zeroed. */
     for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
         for (uint8_t s = 0; s < SEQ_MAX_STEPS; s++) {
             layer->step_prob[t][s]    = 100;

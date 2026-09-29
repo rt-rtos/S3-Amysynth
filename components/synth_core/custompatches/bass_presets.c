@@ -1,26 +1,10 @@
-/* bass_presets.c - three two-oscillator bass presets for melodic layers.
+/* bass_presets.c - three two-oscillator bass presets (SEQ_PATCH_BASS_1..3),
+ * dispatched from sequencer_configure_synth(). UI task, via amy_helpers.
  *
- * Patch IDs 264-266 (SEQ_PATCH_BASS_1/2/3), dispatched from
- * sequencer_configure_synth() when is_bass_patch is true.
- *
- * All AMY interaction goes through the queued event API - never direct synth[]
- * access. These run from synth_ui_task (Core 0), outside the render body
- * (amy_render lock rules: AMY-EDITS.md).
- *
- * filter_freq_coefs[]: COEF_CONST is in Hz; non-CONST coefs are dimensionless
- * logfreq-delta weights in octaves (COEF_EG1 = 4.06 sweeps 120 Hz -> ~2000 Hz
- * at EG1 peak).
- *
- * freq_coefs[COEF_CONST] is also Hz, stored by AMY as log2(f/ZERO_LOGFREQ_IN_HZ)
- * and added to the note term - so ZERO_LOGFREQ_IN_HZ * r is a note-tracking
- * pitch offset of log2(r) octaves. `ratio` is not that: AMY reads logratio
- * only in render_fm_sine, so on a non-ALGO osc it is a no-op.
- *
- * BASS_1/BASS_2 route the filter sweep through EG1, separate from the amp
- * envelope (EG0): plucky amp decay over a slower-settling filter tail. Each
- * EG1 breakpoint set is pushed in the SAME event as the coef reading it - an
- * unconfigured breakpoint set reads as a permanent 1.0 gate in AMY and would
- * pin the sweep fully open. BASS_3 has no filter section. */
+ * BASS_1/BASS_2 sweep the filter with EG1, separately from the EG0 amp
+ * envelope: a plucky amp decay over a slower filter tail. The EG1
+ * breakpoints go in the same event as the coef reading them
+ * (seq_filter_eg1_live()). BASS_3 has no filter. */
 
 #include "custompatches/bass_presets.h"
 #include "sequencer_core.h"    /* SEQ_PATCH_BASS_* */

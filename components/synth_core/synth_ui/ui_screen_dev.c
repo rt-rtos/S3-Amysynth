@@ -73,11 +73,10 @@ static void pcm_mode_adjust(int delta, int arg)
     sequencer_core_set_drum_pcm_mode(0, (uint8_t)arg, (uint8_t)m);
 }
 
-/* Melodic unison prototype (sequencer_core_set_unison): pick a melodic
- * layer (L2-L4), then edit its spec. The field id rides `arg`; LAYER is
- * dev-local navigation state, the spec itself lives in the core. COUNT and
- * LAYOUT changes rebuild the layer's voices (notes stop); the rest push
- * live. */
+/* Melodic unison prototype (sequencer_core_set_unison; spec in seq_model.h):
+ * pick a melodic layer (L2-L4), then edit its spec. The field id rides `arg`;
+ * LAYER is dev-local navigation state. COUNT and LAYOUT changes rebuild the
+ * layer's voices (notes stop); the rest push live. */
 enum { UNI_LAYER, UNI_COUNT, UNI_LAYOUT, UNI_DETUNE, UNI_SPREAD, UNI_BLEND };
 
 static uint8_t s_uni_layer = 1;   /* layer INDEX 1..3 = UI L2..L4 */
@@ -139,18 +138,11 @@ static void uni_adjust(int delta, int arg)
     sequencer_core_set_unison(s_uni_layer, &u);
 }
 
-/* Karplus-Strong loop allpass (ks_loop_set/ks_loop_get in oscillators.c):
- * Tune runs the stage that completes the fractional period, so a KS note
- * plays in tune instead of up to a semitone sharp; Stages/Stiff add
- * allpasses that push the upper modes sharp like a string of inharmonicity B
- * (Stiff steps a 1-2-5 ladder, 0 = none). Release
- * (ks_release_set) lets note-off start the amp release on KS voices, so the
- * gate damps the string; off, strings ring on at sustain. Voices is
- * the voice count of every KS row (sequencer_core_set_ks_voices), up to the
- * CONFIG_SEQ_KS_VOICES_MAX ceiling the rings are sized for; a change rebuilds
- * the layers holding KS rows. Volatile like everything else here - boot
- * leaves Tune on, Stages 0, Stiff 1e-3, Release on and Voices 2 (or the
- * ceiling, if lower). */
+/* Karplus-Strong loop controls: Tune (fractional-period allpass, ks_loop_set),
+ * Stages/Stiff (dispersion allpasses; Stiff steps a 1-2-5 ladder, 0 = none),
+ * Release (ks_release_set: note-off starts the amp release on KS voices) and
+ * Voices (sequencer_core_set_ks_voices, up to CONFIG_SEQ_KS_VOICES_MAX; a
+ * change rebuilds the layers holding KS rows). Volatile like everything here. */
 enum { KSL_TUNE, KSL_STAGES, KSL_STIFF, KSL_RELEASE, KSL_VOICES };
 
 static const float s_ksl_stiff[] = {
@@ -240,7 +232,7 @@ static void rows_adjust(int delta, int arg)
                                                              SEQ_TRACKS));
 }
 
-/* KS riff A/B (ui_dev_riff.c): A plays the host harness's strings at the
+/* KS riff A/B (ui_dev_riff.c): A plays six bare KS strings at the
  * "A duty" row's duty (0.50 or 0.37), B the same riff on the first melodic
  * layer's rows. */
 static void riff_fmt(char *buf, size_t n, int arg)
@@ -297,11 +289,10 @@ static void cpu_fmt(char *buf, size_t n, int arg)
 }
 
 /* Heap+CPU status bar: while enabled, replaces the bottom hint strip on EVERY
- * screen (including ones that normally hide the hint) so internal-heap and
- * CPU headroom can be watched live under real load. Sampled from the UI
+ * screen (including ones that normally hide the hint). Sampled from the UI
  * task's pre-gate service pass at HEAPBAR_PERIOD frames (20 Hz loop ->
  * 500 ms); the sampled text feeds the render gate so the bar refreshes on
- * change. Dev-facing abbreviations (deliberately terse, not end-user text):
+ * change. The two DEV bars are mutually exclusive. Abbreviations:
  *   TF  = total free internal heap (MALLOC_CAP_INTERNAL|8BIT), K
  *   LB  = largest free block of the same heap, K
  *   CPU = core0/core1 busy %, from the status-LED sampler via
@@ -374,14 +365,8 @@ uint32_t synth_ui_dev_heapbar_sig(void)
     return s_heapbar_on ? s_heapbar_sig : 0;
 }
 
-/* Dropout status bar: same mechanism as the heap bar (claims the bottom hint
- * strip on every screen, sampled at the same throttle, text feeds the render
- * gate), showing the cumulative dropout counters so an audible gap can be
- * attributed live to its pipeline layer (see dropout_stats.h):
- *   Z = wire ZLPs (TinyUSB EP-IN FIFO dry - clock-beat fingerprint)
- *   U = ring underruns (render behind realtime, chunk zero-padded)
- *   O = render-clock overruns (blocks of realtime lost)
- *   D = ring-full drops (host stalled draining) */
+/* Dropout bar: the heap bar's mechanism over dropout_stats counters
+ * (Z wire_zlp, U ring_underrun, O render_overrun, D ring_overrun). */
 
 static void dropbar_fmt(char *buf, size_t n, int arg)
 {

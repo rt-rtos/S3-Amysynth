@@ -45,8 +45,7 @@ typedef struct {
 } harness_hooks_t;
 
 /* Start the harness: installs the UART0 RX driver and spawns the command
- * task (Core 0, priority 3 - below input/UI dispatch at 5, above the status
- * LED at 2).
+ * task (Core 0, priority 3, below input/UI dispatch).
  *
  * Obligations: call ONCE from init context after the button queue and
  * sequencer are up (hooks must be valid for the lifetime of the system;

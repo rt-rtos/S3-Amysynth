@@ -68,8 +68,7 @@ uint8_t    fx_bus_of_group(fx_group_t g);
 uint8_t    fx_bus_for_synth(uint8_t slot);
 /* True when anything renders on this bus: bus 0 always, FX_BUS_CLIPS while a
  * clip is loaded, the rest only while their group is split. An inactive bus
- * must be left muted (amy_fx.c) - a reverb tail keeps costing render time on
- * a bus nothing feeds. */
+ * is held muted (rule in amy_fx.h at fx_push_eq). */
 bool       fx_bus_is_active(uint8_t bus);
 /* Clip-bus liveness, stored by the clip player when the first slot loads and
  * the last one clears. Store only; the caller syncs the bus (amy_fx.c). */

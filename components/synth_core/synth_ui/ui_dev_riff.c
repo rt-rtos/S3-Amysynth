@@ -1,11 +1,11 @@
 #include "sdkconfig.h"
 #if CONFIG_SYNTH_DEV_MENU
 
-/* DEV: KS riff A/B. Plays the riff of the host harness ks_riff_pr_sim.c (the
- * KS pluck/ring PR demo) on the device, so a host capture and the device's
- * own voice can be heard on the same hardware:
+/* DEV: KS riff A/B. A fixed six-string Karplus-Strong riff, played two ways
+ * so a bare KS string and the device's own melodic voice can be heard on the
+ * same hardware:
  *
- *   A - the harness's setup: six fresh synths, one voice and one KS osc each
+ *   A - bare strings: six fresh synths, one voice and one KS osc each
  *       (one string per synth), feedback 0.996, amp = velocity, no envelope,
  *       duty 0.50 or 0.37; a string's next note cuts its last one, and nothing
  *       else releases until the tail ends. The synths are the six slots after
@@ -18,8 +18,7 @@
  *
  * Both passes stop the transport and schedule every event on AMY's clock at
  * the press, so nothing runs afterwards. Both render on the melodic bus, so
- * that bus's FX apply to both. Level is the device's own; the host captures
- * were gain-matched and are louder. */
+ * that bus's FX apply to both. */
 
 #include "synth_ui/synth_ui_internal.h"
 #include "synth_ui.h"
@@ -37,7 +36,7 @@
 
 typedef struct { uint8_t t8; uint8_t string; uint8_t note; float vel; } riff_ev_t;
 
-/* ks_riff_pr_sim.c's event list, verbatim. */
+/* Riff events: 8th-note offset, string, MIDI note, velocity. */
 static const riff_ev_t s_evs[] = {
     { 0, 0, 40, 0.8f }, { 0, 1, 47, 0.8f }, { 0, 2, 52, 0.8f },
     { 2, 3, 55, 0.7f }, { 3, 3, 57, 0.7f }, { 4, 4, 59, 0.7f }, { 5, 3, 55, 0.7f },
@@ -54,7 +53,7 @@ static float    s_duty = 0.5f;
 static uint32_t s_busy_until;    /* amy_sysclock() ms; 0 = idle */
 
 /* Offset in ms of event i from the riff start: its 8th, plus STRUM per
- * string below it in the same shape (the harness's rank). */
+ * string below it in the same shape (its rank). */
 static uint32_t riff_on_ms(unsigned i)
 {
     unsigned rank = 0;
@@ -130,7 +129,7 @@ void synth_ui_dev_riff_play_a(void)
         e->wave                   = KS;
         e->feedback               = RIFF_FEEDBACK;
         e->freq_coefs[COEF_NOTE]  = 1.0f;
-        /* amp = velocity: the same dB-model gain as the harness's per-note
+        /* amp = velocity: the same dB-model gain as a per-note
          * COEF_CONST = vel with COEF_VEL 0 (amp_combine_controls; a CONST
          * of 1 adds 0 dB). CONST must stay nonzero: render_osc_wave skips
          * an osc whose amp CONST is 0. */

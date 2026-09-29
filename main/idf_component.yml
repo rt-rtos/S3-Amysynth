@@ -25,8 +25,8 @@ dependencies:
   # constraint; kept as an explicit statement of the version we build against.
   # 0.19 is REQUIRED: its audio class re-arms the ISO IN endpoint in ISR
   # context, fixing the 0.17 tud_task re-arm race that dropped ~0.74
-  # frames/s (1 ms host-inserted silence about once a second; root-caused
-  # 2026-08-13, see UAC-EDITS.md). 0.19.0~3 still PREDATES the
+  # frames/s (1 ms host-inserted silence about once a second; see
+  # UAC-EDITS.md). 0.19.0~3 still PREDATES the
   # hathach/tinyusb#3809 EP-IN flow-control guard fix (inverted
   # norminal <= depth*4); harmless at our >=4-packet FIFO depth, but on
   # any bump verify audiod_tx_packet_size() carries the corrected guard

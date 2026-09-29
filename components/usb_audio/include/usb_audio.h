@@ -12,8 +12,9 @@ typedef struct {
 	uint32_t write_calls;
 	uint32_t write_drop_events;
 	/* underrun_events and zlp_events mirror dropout_stats (diagnostics
-	 * component) and are valid in every build; the other counters above are
-	 * live only with CONFIG_USB_AUDIO_DIAGNOSTICS. */
+	 * component) and are valid in every build (underrun_events always reads
+	 * 0); the other counters above are live only with
+	 * CONFIG_USB_AUDIO_DIAGNOSTICS. */
 	uint32_t underrun_events;
 	uint32_t zlp_events;
 	int16_t  peak_abs_sample;
@@ -24,18 +25,19 @@ extern "C" {
 #endif
 
 /**
- * @brief Initialize USB Audio Class device (UAC Microphone – ESP → Host only)
+ * @brief Initialize the USB Audio Class device (UAC microphone, ESP to host).
  *
- * After this call the board appears as a USB audio input device on your PC/DAW.
- * Configure channels / sample rate in menuconfig → Component config → ESP-IoT-Solution → USB Device UAC
+ * On failure returns the uac_device_init error with the ring buffer freed.
  */
 esp_err_t usb_audio_init(void);
 
 /**
- * @brief Write interleaved stereo 16-bit samples (L, R, L, R, ...)
+ * @brief Write interleaved stereo 16-bit frames (L, R, L, R, ...)
  *
- * Call this from your sequencer mixing task (every 5–10 ms is perfect).
- * If the internal ring buffer is full, samples are dropped (safe underrun behaviour).
+ * Single producer: the AMY render task. Returns ESP_OK without writing while
+ * no host is consuming, ESP_ERR_NO_MEM with nothing written when the ring
+ * lacks room for the whole block, and ESP_ERR_INVALID_STATE if uninitialized,
+ * data is NULL or num_frames is 0.
  */
 esp_err_t usb_audio_write_stereo(const int16_t *data, size_t num_frames);
 

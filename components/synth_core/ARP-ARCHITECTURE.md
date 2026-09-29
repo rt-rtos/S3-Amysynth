@@ -1,6 +1,6 @@
 # Standalone Arpeggiator Architecture
 
-> Build target: ESP32-S3-WROOM-1 (N16R8), ESP-IDF 6.0.
+> Build target: ESP32-S3-WROOM-1 (N16R8), ESP-IDF 6.1.
 > Companion to `SEQUENCER-ARCHITECTURE.md`. Read that first — the arp reuses the
 > sequencer's AMY event plumbing, mutex, and OLED task.
 
@@ -122,7 +122,7 @@ seeds a note at the arp root.
 
 Flat, render-only snapshot built fresh each frame. The renderer is pure — it
 never calls back into `arp_core`. Cursor index space:
-`0=ENABLE, 1=MODE, 2=OCT, 3=RATE, 4=GATE, 5=GLIDE, 6..13 = slots 0..7`
+`0=ENABLE, 1=MODE, 2=OCT, 3=RATE, 4=GATE, 5=PORTA, 6=QUANT, 7..14 = slots 0..7`
 (the patch changes via the hold+turn gesture, not a cursor).
 
 ### Compile-time limits
@@ -133,7 +133,7 @@ never calls back into `arp_core`. Cursor index space:
 | `ARP_OCT_MAX` | 4 | `arp_core.h` | Max octave span |
 | `ARP_MAX_STEPS` | `ARP_MAX_SLOTS × ARP_OCT_MAX` = 32 | `arp_core.c` | Max distinct scheduled arp notes |
 | `ARP_REST` | −2 | `arp_core.h` | Rest sentinel in `slots[]` |
-| `ARP_PORTAMENTO_MAX_MS` | 2000 | `arp_core.h` | Glide ceiling |
+| `ARP_PORTAMENTO_MAX_MS` | 100 | `arp_core.h` | Glide ceiling |
 | `ARP_RATE_COUNT` | 9 | `arp_core.h` | Rate subdivisions |
 
 ---
@@ -221,32 +221,23 @@ One flat patch number walks the full melodic catalog
 (`sequencer_core_arp_configure()` runs the same kind dispatch as the melodic
 rows): Juno/DX7/piano string patches, raw waves (`SEQ_PATCH_WAVE_BASE`), bass
 presets, wavetable banks, FM and additive voices. Raw-wave and bass patches
-reserve a native LFO carrier pair (`sequencer_core_lfo_native_layout()` — the
-same voice model the drone and melodic wave patches use, so the LFO editor's
-targets behave identically); every other patch runs the 20 Hz software LFO
-stepper, as on melodic rows.
+reserve a native LFO carrier pair; every other patch runs the 20 Hz software
+stepper, as on melodic rows (see
+[ENGINE-SEMANTICS.md](ENGINE-SEMANTICS.md#lfo-native-carrier-vs-software-stepper)).
 
 **Portamento** is AMY-native: `arp_set_portamento_ms()` sends one
-`portamento_ms` event to the arp synth (0–2000 ms). It is re-pushed on every
+`portamento_ms` event to the arp synth (0-`ARP_PORTAMENTO_MAX_MS`, 100 ms). It is re-pushed on every
 rebuild because patch changes reset AMY's internal glide state.
 
 ---
 
 ## AMY Synth Slot
 
-| Consumer | Synth slots | Default patch | Voices |
-|---|---|---|---|
-| **Arp** | **1** | `CONFIG_SEQ_ARP_DEFAULT_PATCH` (138) | 4 |
-| Drone | 2 / 3 | build-your-own / preset | 5 / 1 |
-| Drone (free-running) | 4 / 5 | build-your-own / preset | chord / 1 |
-| Drum layer | 6-10 (one per track) | curated drum list / PCM presets | 1 |
-| Clip players | 12-13 (`CLIP_SYNTH_BASE`) | bounce clips (runtime PCM) | 1 |
-| Melodic layers | `SEQ_MEL_SYNTH_BASE`..`SEQ_MAX_SYNTH` (blocks of 5) | `CONFIG_SEQ_MELODIC_PATCH` | 1/row |
+The full slot map is `synth_slots.h`. Arp default patch is
+`CONFIG_SEQ_ARP_DEFAULT_PATCH` (138); it uses `SEQ_ARP_VOICES` (4) voices.
 
-The arp owns slot **1** in the static pool at the bottom of the slot map
-(`synth_slots.h`), below the clip slots and the melodic base, so it never
-collides with a melodic layer's per-row block. `main.c` derives
-`amy_cfg.max_synths` from `SYNTH_SLOT_COUNT` (66). The arp
+The arp owns slot **1** in the static pool at the bottom of the slot map, so it never
+collides with a melodic layer's per-row block. The arp
 synth uses 4 voices to allow note overlap at fast rates.
 
 ---
@@ -276,11 +267,10 @@ re-schedule), so it does **not** mark dirty. `arp_core_init()` marks dirty once
 so a boot-enabled arp emits on its first service tick.
 
 > Companion behavior in `components/amy/src/sequencer.c` (upstream since AMY
-> v1.2.121, superseding an earlier local active-tag index): the per-tick scan
-> walks a threaded ascending list of occupied slots instead of `0..highest_tag`,
-> so the arp pinning a high tag no longer makes every tick scan ~1383
-> mostly-empty slots. The tick itself runs once per rendered block on the
-> core-1 render task.
+> v1.2.121): the per-tick scan walks a threaded ascending list of occupied
+> slots instead of `0..highest_tag`, so the arp pinning a high tag does not make
+> every tick scan mostly-empty slots. The tick itself runs once per rendered
+> block on the core-1 render task.
 
 ---
 
@@ -310,7 +300,7 @@ int16_t  arp_get_slot(uint8_t idx);          // raw chromatic, -1 = empty
 int16_t  arp_get_slot_snapped(uint8_t idx);  // pitch actually played
 
 /* Portamento — pushed straight to the synth, does not mark dirty */
-void     arp_set_portamento_ms(uint16_t ms); // 0..ARP_PORTAMENTO_MAX_MS (2000)
+void     arp_set_portamento_ms(uint16_t ms); // 0..ARP_PORTAMENTO_MAX_MS (100)
 ```
 
 > This list is illustrative, not exhaustive — `arp_core.h` also exposes
@@ -340,26 +330,14 @@ void sequencer_core_arp_clear_note(uint32_t tag_base);  // clears base & base+1
 
 `ui_mode` is switched from the **menu overlay** ("Screen: Seq" / "Screen: Arp"
 action items). The active view is resolved once per frame by
-`ui_view_resolve.c`; the overlay precedence is:
-
-```
-step-trig popup > filter editor > LFO editor > ADSR graph > menu > mode screens > sequencer
-```
-
+`ui_view_resolve.c`; the overlay precedence is in
+[CONTROLS.md](../../CONTROLS.md#screen-and-overlay-precedence).
 The arp screen's input handlers only see events when the resolver says the arp
 view is on top.
 
 ### Arp screen input
 
-| Control | Action |
-|---|---|
-| Encoder turn (not editing) | Move cursor across fields then 8 slots (`ARP_CUR_*`) |
-| Encoder turn (editing) | Adjust the focused field / slot value |
-| `MY_BUTTON_ENC` short press | Toggle edit on the focused field |
-| `MY_BUTTON_ENC` long press | Open ADSR graph editor (bound to arp) |
-| `MY_BUTTON_1` hold + turn | Cycle the arp's OWN patch |
-| `MY_BUTTON_3` single-click | Toggle menu overlay (or cycle editor tabs while one is open) |
-| `MY_BUTTON_0` long-press | Global play/pause (shared with sequencer) |
+See [CONTROLS.md](../../CONTROLS.md#arp-screen).
 
 ### Seq/Arp isolation (`main.c`)
 
@@ -409,7 +387,7 @@ changes; the draw itself is fill-only (the single `u8g2_SendBuffer` lives in
 | Field | Kconfig | Default |
 |---|---|---|
 | enabled | `SEQ_ARP_DEFAULT_ENABLED` | n (off) |
-| scale | `SEQ_ARP_DEFAULT_SCALE` | 1 (Major) |
+| scale | `SEQ_ARP_DEFAULT_SCALE` | 0 (Chromatic) |
 | root | `SEQ_ARP_DEFAULT_ROOT_NOTE` | 40 (E2) |
 | gate % | `SEQ_ARP_DEFAULT_GATE_PCT` | 75 |
 | octaves | `SEQ_ARP_DEFAULT_OCTAVES` | 1 |
@@ -418,6 +396,16 @@ changes; the draw itself is fill-only (the single `u8g2_SendBuffer` lives in
 `arp_core_init()` is called from `synth_ui_init()`, after
 `sequencer_core_init()`. All slots start empty (`-1`); the arp produces no sound
 until enabled and at least one slot is filled.
+
+---
+
+## Persistence
+
+The arp is saved with the project (`TAG_ARP` section, `ser_arp()` /
+`parse_arp()` in `project/project_snapshot.c`): enable, patch, direction,
+octaves, rate, gate, scale, root, portamento, level, the slots, quant mode,
+and its EG0, EG1, filter, LFO and distortion blocks. Storage format and slots:
+[Project storage](../../README.md#project-storage).
 
 ---
 
@@ -435,6 +423,3 @@ until enabled and at least one slot is filled.
 - **Tempo-change refresh.** Period is in ticks, so a BPM change retimes the arp
   automatically (AMY scales ticks). No re-emit needed unless `rate`/`octaves`/
   `slots` change. If a future feature needs a re-time, call `arp_core_refresh()`.
-- **Persistence (NVS).** `arp_state_t` is a flat, pointer-free struct — directly
-  serialisable with `nvs_set_blob`. Save under one key; re-emit via
-  `arp_core_refresh()` after restore.

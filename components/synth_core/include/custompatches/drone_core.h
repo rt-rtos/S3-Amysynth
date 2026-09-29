@@ -12,14 +12,15 @@ extern "C" {
 
 /* ── Stutter house drone ──────────────────────────────────────────────────
  * A standalone drone synth, independent of the sequencer layers and the arp:
- * its own AMY synth slots (above the 0..63 map), state and screen.
+ * its own AMY synth slots (2/3, synth_slots.h), state and screen.
  *
  * Sound design (WAVE mode):
  *   osc0 = NOTE-following carrier, one voice per chord note, amplitude gated
- *          via mod_source by a continuously-running square LFO. AMY's dB/exp
- *          amp model: amp = const_sent * 10^(3*m*LFO), LFO in {-1,+1}, giving
- *          peak_lin on-beat and peak_lin * 10^(-duck_db/20) off-beat. Knob
- *          mapping: drone_set_amp_peak / drone_set_amp_duck.
+ *          via mod_source by a continuously-running square LFO. Under the dB
+ *          amp combine (voice_config.h), amp = const_sent * 10^(3*m*LFO) with
+ *          LFO in {-1,+1}, giving peak_lin on-beat and
+ *          peak_lin * 10^(-duck_db/20) off-beat. Knob mapping:
+ *          drone_set_amp_peak / drone_set_amp_duck.
  *   osc1 = PULSE LFO at a tempo-locked division (the "stutter rate").
  *   LPF24 cutoff swept slowly, tempo-locked in bars.
  *   A single "sub" voice tracks the chord ROOT a fixed interval below.
@@ -99,11 +100,10 @@ void drone_set_amp_duck(float m);         /* 0.0..1.0 duck depth (0=flat,1=-40dB
 void drone_set_rate(drone_rate_t rate);   /* stutter LFO note division            */
 void drone_set_patch(uint16_t patch);     /* PATCH-mode preset                    */
 
-/* The drone's opt-out from the shared patch catalog: true for ranges its
- * excitation model can't play (NOISE, KS, bass presets, FM voices, anything
- * past its wavetable/raw-wave ceiling). Feeds both the cycling domain's
- * `excluded` predicate and drone_set_patch()'s snap-back, so the exclusion
- * list lives in exactly one place. */
+/* The drone's opt-out from the shared patch catalog (patch_cycle.h): true for
+ * ranges its excitation model can't play (NOISE, KS, bass presets, FM voices,
+ * anything past its wavetable/raw-wave ceiling). Feeds both the cycling
+ * domain's `excluded` predicate and drone_set_patch()'s snap-back. */
 bool drone_patch_excluded(uint16_t patch);
 void drone_set_sub_enabled(bool on);      /* sub drone on/off                     */
 void drone_set_sub_interval(int8_t st);   /* sub interval, semitones (e.g. -12)   */

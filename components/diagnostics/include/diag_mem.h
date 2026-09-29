@@ -13,8 +13,7 @@
  * notable allocations as they are made and print the map once, not to poll.
  *
  * Cost when unused: the tracking table (DIAG_MEM_MAX_ENTRIES * 12 bytes of
- * DRAM) and nothing else. Deliberately not Kconfig-gated - a placement check
- * you have to rebuild to enable is one you will not run.
+ * DRAM) and nothing else. Not Kconfig-gated.
  */
 #include <stddef.h>
 #include <stdbool.h>

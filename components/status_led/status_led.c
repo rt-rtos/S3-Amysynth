@@ -30,14 +30,9 @@ typedef struct {
     uint8_t r, g, b;
 } rgb_t;
 
-// Full-scale band colors, scaled by BRIGHTNESS/255 at write time. Each color
-// is pre-normalized to roughly equal photopic luma (weights R 0.30 / G 0.59 /
-// B 0.11, anchored to red = dimmest primary at full scale): the eye - and the
-// WS2812 green die - make an unweighted green read far brighter than red, and
-// two-die yellow brighter still. led_strip offers no gamma/luma facility (its
-// HSV V is just the max channel), so the weighting lives in this table.
-// Orange keeps a low green share so it stays distinct from yellow after the
-// brightness scaling quantizes the channels.
+// Band colors at full scale, scaled by BRIGHTNESS at write time. Hand-balanced
+// for similar perceived brightness (green reads far brighter than red on the
+// WS2812); orange keeps little green so it stays distinct from yellow.
 static const rgb_t s_band_color[] = {
     {0, 130, 0},    // green:  < 50 %
     {86, 86, 0},    // yellow: >= 50 %

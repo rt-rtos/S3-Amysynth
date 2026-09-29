@@ -10,9 +10,8 @@
  *  NORMAL DRONE SCREEN
  * ════════════════════════════════════════════════════════════════════════
  * Free-running drone (custompatches/drone_std_core). Scrollable list; the
- * stutter screen stays reachable through the STUTTER row. Filter/LFO/ADSR
- * have no rows here - they live in the shared editors (SHIFT+1 opens ADSR,
- * MY_BUTTON_3 cycles ADSR -> Filter -> LFO). */
+ * stutter screen is reached through the STUTTER row. Filter/LFO/ADSR have no
+ * rows here; they live in the shared editors. Controls: CONTROLS.md. */
 
 static uint8_t s_dstd_cursor  = 0;
 static bool    s_dstd_editing = false;

@@ -1,6 +1,6 @@
 # Multi-Layer Sequencer Architecture
 
-> Build target: ESP32-S3-N16R8, ESP-IDF 6.0.
+> Build target: ESP32-S3-N16R8, ESP-IDF 6.1.
 
 ---
 
@@ -32,7 +32,7 @@ The engine side is split by concern rather than living in one file:
 | `seq_core_engine.c` | tag scheduling, transport, mute/solo gating |
 | `seq_core_trig.c` | per-step probability / ratchet / conditional-trig evaluation |
 | `seq_core_synth.c` | patch loading, drum Synth/PCM engine switch |
-| `seq_core_editors.c` | envelope / filter / LFO commits from the editors |
+| `seq_core_editors.c` | envelope / filter / LFO / distortion commits from the editors |
 | `seq_core_tempo.c` | BPM |
 | `seq_core_progression.c` | chord progression |
 
@@ -58,8 +58,8 @@ typedef struct {
     uint8_t  track_base_note[SEQ_TRACKS];         // base pitch shown on OLED
 
     voice_params_t vp[SEQ_TRACKS];                // per-row EG0+EG1 envelopes, filter,
-                                                  // LFO (each with deferred-authority
-                                                  // flag) + output trim
+                                                  // LFO, distortion (each with a
+                                                  // deferred-authority flag) + output trim
     uint8_t  repeat_rate[SEQ_TRACKS];             // fires every N bars (1/2/4/8)
     bool     mute[SEQ_TRACKS];                    // per-track mute
     bool     solo[SEQ_TRACKS];                    // per-track solo (overrides mute)
@@ -83,8 +83,8 @@ typedef struct {
     uint8_t  step_ratchet[SEQ_TRACKS][SEQ_MAX_STEPS];   // 1..SEQ_MAX_RATCHET (4)
     uint8_t  step_every[SEQ_TRACKS][SEQ_MAX_STEPS];     // loop divisor, 1 = every pass
     uint8_t  step_prev[SEQ_TRACKS][SEQ_MAX_STEPS];      // 1 = only if prev attempt fired
-    // further per-step fields (note transform, micro-timing nudge, velocity
-    // offset, ratchet taper) exist in the model ahead of their UI
+    // further per-step fields: velocity offset, micro-timing nudge, ratchet
+    // taper (edited in the Step Trig popup)
     ...
 } seq_layer_t;
 ```
@@ -96,7 +96,8 @@ Two structural points worth noting:
   from collapsing into one voice and lets each drum track carry its own patch.
 - **`voice_params_t` is the shared voice-config block.** The same struct is
   embedded by the arp (`s_arp.vp`) and the drone (`s_d.vp`), so the editors and
-  the deferred-authority rules behave identically across all three engines.
+  the deferred-authority rules behave identically across all three engines
+  (rules: [ENGINE-SEMANTICS.md](components/synth_core/ENGINE-SEMANTICS.md#voice-blocks-and-deferred-authority)).
 
 ### UI state
 
@@ -149,10 +150,12 @@ classDiagram
         seq_env_t env1
         seq_filter_t filter
         seq_lfo_t lfo
+        seq_dist_t dist
         bool env_authored
         bool env1_authored
         bool filter_authored
         bool lfo_authored
+        bool dist_authored
         float amp_trim
     }
     seq_state "1" *-- "0..4" seq_layer_t : layers
@@ -345,28 +348,9 @@ decorated-step trig path consult it.
 
 ## Button Mapping
 
-Seven logical buttons (`components/my_buttons/`), dispatched by
-`dispatch_button_event()` in `main/main.c`:
-
-| Button (GPIO) | Gesture | Action |
-|---|---|---|
-| MY_BUTTON_0 (17) | single click | Cycle active layer; with an editor open: commit and close it |
-| MY_BUTTON_0 (17) | long press | Toggle play / stop; with an editor open: cancel / discard it |
-| MY_BUTTON_ENC (16) | press | Sequencer: toggle the focused step. Editors: toggle select <-> adjust. Menu and mode screens: activate the focused item |
-| MY_BUTTON_SHOULDER (15) | press | Sequencer: toggle the step under the cursor (two-handed entry). ADSR editor: flip the sign of the routing depth under the target stop |
-| MY_BUTTON_1 (18) | held + encoder | Cycle the active screen's patch (drone / arp / selected drum track / melodic) |
-| MY_BUTTON_1 (18) | press, per editor | Filter editor: toggle enabled. ADSR editor: cycle EG curve type. Progression screen: delete entry. Rename editor: save |
-| MY_BUTTON_2 (8) | held + encoder | Transpose the selected track's base note (semitones) |
-| MY_BUTTON_2 (8) | press, per screen | ADSR editor: toggle amp-edit mode. Progression screen: add entry. Track Options: delete shown layer. Rename editor: discard |
-| MY_BUTTON_3 (42) | single click | Open / close the menu overlay; with an editor open: cycle editor pages (EG0 -> EG1 -> filter -> LFO); Step Trig popup: close |
-| MY_BUTTON_SHIFT (47) | held | Chord modifier - a bare tap does nothing |
-| SHIFT + 1 | chord | Open the ADSR editor, or close-commit whichever editor is open |
-| SHIFT + 2 | chord | Toggle the Step Trig (probability / ratchet / cond-trig) popup |
-| SHIFT + 3 | chord | Toggle apply-to-whole-layer scope inside the envelope / LFO editors |
-
-Track Options additionally maps button 1 click = add melodic layer. BPM is set
-via the menu overlay's `BPM` item, or with a bare encoder turn when
-`edit_mode=false`.
+Per-button behavior: [CONTROLS.md](CONTROLS.md). GPIOs: `s_button_gpios[]` in
+`components/my_buttons/my_buttons.c`. Buttons are dispatched by
+`dispatch_button_event()` in `main/main.c`.
 
 Dispatch model: `iot_button` delivers events on the system `esp_timer` task,
 where the callback only enqueues them (depth-16 queue in `main.c`; a full queue
@@ -378,7 +362,7 @@ flowchart TD
     EV["button event (button_task)"] --> P0{"SHOULDER or SHIFT?"}
     P0 -->|yes| A0["per-view step/polarity action,<br/>or arm the SHIFT modifier"]
     P0 -->|no| P1{"SHIFT chord (1/2/3)?"}
-    P1 -->|yes| A1["editor open/close, Step Trig,<br/>apply-scope - press latched"]
+    P1 -->|yes| A1["editor open/close, Step Trig,<br/>voice-block flip, release to patch - press latched"]
     P1 -->|no| P2{"editor- or screen-specific<br/>override for this button?"}
     P2 -->|yes| A2["per-editor / per-screen action<br/>(isolation guards keep play/pause live)"]
     P2 -->|no| P3["route by synth_ui_active_view()"]
@@ -515,16 +499,14 @@ slot map, not memory, is the limit.
 ### Whole-layer mute / play-stop per layer
 
 Per-track mute/solo (scoped within a layer) is implemented and editable from
-TrackOpts. A whole-layer mute, or per-layer transport independent of the
+the menu's Layer page. A whole-layer mute, or per-layer transport independent of the
 global `sequencer_core_set_playing(bool)`, remains open.
 
-### Saving patterns (NVS)
+### Saving patterns
 
-No persistence is implemented. `seq_layer_t` is a flat struct with no
-pointers, so it is directly serialisable to NVS with `nvs_set_blob`. Key
-design decision: use a fixed blob key per slot index (e.g. `"layer_0"`,
-`"layer_1"`) and save the layer count separately. The chord progression and
-the resampler's PCM capture are similarly RAM-only today.
+Projects (patterns, voice parameters, arp, drones, progression, FX, tempo)
+are saved to LittleFS slots as a TLV snapshot; see the project-store section
+of [README.md](README.md#project-storage).
 
 ### AMY `write_samples_fn` / future upstream UAC support
 

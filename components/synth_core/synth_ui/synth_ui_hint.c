@@ -3,11 +3,9 @@
 #include "synth_ui.h"
 #include <stdio.h>
 
-/* The button-hint strip reads its labels from the view descriptor table,
- * indexed by the single precedence resolver (synth_ui_active_view()), so it can
- * never disagree with the draw switch about which view is active. A NULL static
- * label means the cell is dynamic - it depends on ui_mode, which the view id
- * does not carry - and is filled by the row's b*_fn. */
+/* Labels come from ui_view_table[] for synth_ui_active_view(). A NULL static
+ * label means the cell is dynamic (it depends on ui_mode, which the view id
+ * does not carry) and is filled by the row's b*_fn. */
 static const char *hint_cell(const char *label, const char *(*fn)(void))
 {
     return label ? label : fn();

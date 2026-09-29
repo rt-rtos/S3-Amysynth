@@ -8,6 +8,11 @@
 extern "C" {
 #endif
 
+/* AMY ingress seam. All app-side AMY access goes through this queued API
+ * (never direct synth[]/msynth[] access). amy_event is ~800 B, too large for
+ * small task stacks, so begin() hands out one shared scratch event held under
+ * the ingress mutex until the matching send(); do not keep the pointer after
+ * send(), and pair every begin() with a send(). */
 void amy_helpers_init(void);
 /* Register the AMY render task so debug builds can assert that no ingress
  * helper is ever called from the locked render body. Lock order is
@@ -18,7 +23,9 @@ void amy_helpers_set_render_task(TaskHandle_t render_task);
 amy_event *amy_helpers_event_begin(void);
 /* Hands the event to the ingest pump: a send is NOT an apply. Ordering between
  * sends is preserved, but the engine applies them asynchronously - never read
- * AMY state right after a send to observe its effect. Task context only.
+ * AMY state right after a send to observe its effect (it races the pump);
+ * express dependencies as send order. There is deliberately no flush barrier.
+ * Task context only.
  * Exception: on the pump task itself (urgent-source callbacks) a send applies
  * inline and returns only once applied.
  * A synth-creating or re-patching event is routed to its slot's bus (fx_bus.h)

@@ -8,29 +8,9 @@
 extern "C" {
 #endif
 
-/* ── Step Trig editor renderer ─────────────────────────────────────────────
- * Full-screen popup (same convention as the ADSR / filter / LFO editors) for
- * one step's probability / ratchet / conditional trig / micro-timing, addressed
- * by the sequencer grid's existing cursor - no separate cursor of its own.
- *
- *   STEP L1 T2 S05
- *   ───────────────
- *  >Pitch   : +3
- *   Prob    : 75%
- *   Ratchet : 2
- *   Every   : 2
- *   Prev    : OFF   v   <- more fields below
- *
- * Eight fields behind a five-row window: only the panel height limits it, so
- * the window scrolls with the cursor and a triangle at the right edge marks the
- * hidden direction. The first five are the opening screen, unchanged.
- *
- * Select/adjust workflow, as on the DEV screen: encoder turns navigate the
- * field cursor (triangle marker), short-press enters adjust mode (row
- * inverted), turns change the value, short-press confirms. Prev is a boolean
- * and click-toggles directly, with no adjust phase. Every and Prev are
- * independent conditions (both must hold for the step to fire); Every 1 =
- * every loop. */
+/* Step Trig popup for the step under the sequencer grid cursor: eight fields
+ * in a five-row window that scrolls with the cursor, a triangle marking the
+ * hidden direction. Controls: CONTROLS.md. */
 
 typedef enum {
     SE_FIELD_PITCH   = 0,

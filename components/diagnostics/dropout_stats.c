@@ -7,8 +7,9 @@
 /* Single-writer-per-counter (see header contract), read cross-core by the UI
  * task and the idle diagnostics loop: volatile keeps every increment a real
  * store, and aligned 32-bit loads are atomic on Xtensa, so readers may lag by
- * one update but never tear. Always compiled - four rare-branch increments
- * cost nothing, and the DEV-menu dropout bar must work in every build. */
+ * one update but never tear. Always compiled - the three rare-branch
+ * increments cost nothing, and the DEV-menu dropout bar must work in every
+ * build. s_ring_underrun and s_chunk_drop have no writer; they read 0. */
 static volatile uint32_t s_wire_zlp;
 static volatile uint32_t s_ring_underrun;
 static volatile uint32_t s_ring_overrun;
@@ -16,11 +17,9 @@ static volatile uint32_t s_render_overrun;
 static volatile uint32_t s_chunk_drop;
 
 #if CONFIG_AMYSYNTH_DROPOUT_TS
-/* Written only by the wire_zlp writer (TinyUSB task). volatile on the slot
- * array as well as seq keeps the slot store ordered before the seq publish,
- * so a reader that saw seq finds every index below it fully written; the
- * snapshot's seq re-read catches the one remaining hazard (slot reuse while
- * copying). */
+/* Written only from dropout_count_wire_zlp() (TinyUSB task). volatile orders
+ * each slot store before the seq publish; the snapshot re-reads seq to catch
+ * slot reuse mid-copy. */
 static volatile int64_t s_zlp_ts[DROPOUT_TS_RING];
 static volatile uint32_t s_zlp_ts_seq;
 #endif

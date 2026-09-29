@@ -9,11 +9,7 @@
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 
-/*
- * amy_event is large enough to be risky on small task stacks. First-party synth
- * modules share one scratch event and serialize access around the ingress seam.
- * Callers must not hold the returned pointer after send/cancel.
- */
+/* Shared scratch event and ingress mutex: see amy_helpers.h. */
 static amy_event s_event;
 static SemaphoreHandle_t s_event_mutex = NULL;
 static TaskHandle_t s_render_task = NULL;
@@ -21,44 +17,28 @@ static TaskHandle_t s_render_task = NULL;
 /*
  * AMY ingest pump.
  *
- * amy_add_event() runs AMY's full ingest in the caller's context, and for a
- * patch-number event that includes the patch-string parse - a multi-KB stack
- * frame with millisecond-scale runtime. Applying it inline meant two things:
- * every emitting task had to be sized for that worst case, and the parse ran
- * while holding the ingress mutex, so a UI gesture could stall the sequencer,
- * arp and live-play senders for the duration of the parse.
+ * amy_add_event() runs AMY's whole ingest in the caller's context, including
+ * the patch-string parse for a patch-number event: a multi-KB stack frame and
+ * milliseconds of runtime. Producers therefore only copy their event into a
+ * FIFO (the ingress mutex is held for that copy), and this one task drains
+ * the FIFO into amy_add_event(), so only its stack is sized for the parse.
  *
- * Instead, producers copy their filled event into a FIFO and one pump task -
- * holding the single copy of the parse-frame stack rent - drains it into
- * amy_add_event(). The mutex hold collapses to a memcpy.
+ * Ordering: the copy happens before the mutex is released, so FIFO order is
+ * the global emission order across producers (voice-kill -> patch-load ->
+ * note-on cannot reorder). Events carry their own time fields, so AMY-side
+ * scheduling is unchanged.
  *
- * The pump also serves one URGENT SOURCE: a registered drain callback for
- * deadline-sensitive jobs produced by a context that may not block on the
- * FIFO (the render task's decorated-step trigs, seq_trig_pump.c). The loop
- * drains the urgent source before every FIFO item, and sends made ON the
- * pump task (i.e. from that callback) apply inline instead of re-entering
- * the FIFO - so a decorated note never waits out a parse backlog, and the
- * pump cannot deadlock against its own queue. One doorbell (a task
- * notification) covers both sources; producers ring it after enqueueing.
+ * Urgent source: one registered callback (seq_trig_pump.c, jobs from the
+ * render task) is drained before every FIFO item, and sends made on this task
+ * apply inline, so a decorated step never waits behind a parse backlog. Those
+ * jobs never take the producer mutex, so skipping the FIFO breaks no order.
+ * Producers ring one task-notification doorbell for both sources.
  *
- * Ordering: the copy into the FIFO happens BEFORE the mutex is released, so
- * FIFO order equals the global emission order the previous inline scheme
- * produced. Voice-kill -> patch-load -> note-on chains cannot reorder across
- * producers, and events carry their own time/sequence fields, so AMY-side
- * scheduling is untouched. Urgent jobs jumping the FIFO does not weaken
- * this: they originate on the render task, which never participates in the
- * producer mutex, so no order between them and FIFO events ever existed.
+ * Backpressure: a full FIFO blocks the producer; nothing is dropped.
  *
- * Backpressure: a full queue blocks the producer rather than dropping - losing
- * a patch-define or a note-off is worse than a short stall, and the wait is
- * strictly narrower than the old "block for someone else's whole parse".
- *
- * The pump loop must never acquire a lock beyond what amy_add_event() takes
- * internally - in particular never s_event_mutex, which a producer can hold
- * while blocked on a full FIFO only this task drains - and must never block
- * on anything but its own doorbell: it inherits the failure potential the
- * inline scheme had, where one stalled parse froze render, the tick-slaved
- * sequencer and all controls at once.
+ * The pump must never take s_event_mutex (a producer can hold it while
+ * blocked on the full FIFO this task drains) and must block only on its
+ * doorbell: a stalled pump stalls render, the sequencer and all controls.
  */
 #define AMY_INGEST_QUEUE_DEPTH          64
 /* Shallower internal-RAM queue used only when the PSRAM storage alloc fails;
@@ -66,8 +46,7 @@ static TaskHandle_t s_render_task = NULL;
 #define AMY_INGEST_QUEUE_DEPTH_FALLBACK 16
 #define AMY_INGEST_TASK_STACK           8192
 /* Same tier as the UI producers AND the TinyUSB device task: a long patch
- * parse time-slices with USB exactly as the old inline scheme did, instead of
- * strictly preempting it. Note the pump does NOT outrank every producer - the
+ * parse time-slices with USB instead of strictly preempting it. Note the pump does NOT outrank every producer - the
  * NimBLE host and the render task sit far above it - so drain latency is
  * bounded by scheduling, not priority alone; the 64-deep FIFO absorbs bursts. */
 #define AMY_INGEST_TASK_PRIO            5
@@ -163,15 +142,8 @@ void amy_helpers_pump_wake(void)
     if (s_pump_task != NULL) xTaskNotifyGive(s_pump_task);
 }
 
-/* Lock hierarchy: s_event_mutex is the OUTERMOST first-party lock. It is held
- * across the FIFO enqueue only; the AMY-side locks are taken later, on the pump
- * task, so the acquisition order is
- *     s_event_mutex -> ingest FIFO, then amy_queue_lock on the pump.
- * The render body (amy_render on Core 1) holds amy_queue_lock for its whole
- * duration, so it must NEVER call an ingress helper: it would both invert that
- * order and risk blocking on a FIFO the pump cannot drain. Register its handle
- * here so a debug build can catch that inversion. Optional: the guard is
- * skipped until a handle is set. */
+/* Lock order and the render-task rule: amy_helpers.h. The guard is skipped
+ * until a handle is set. */
 void amy_helpers_set_render_task(TaskHandle_t render_task)
 {
     s_render_task = render_task;
@@ -186,10 +158,7 @@ amy_event *amy_helpers_event_begin(void)
                  xTaskGetCurrentTaskHandle() != s_render_task);
 #endif
     if (s_pump_task != NULL && xTaskGetCurrentTaskHandle() == s_pump_task) {
-        /* Pump-context send (urgent-source expansion): private scratch, no
-         * mutex. A producer can legitimately hold s_event_mutex while blocked
-         * on a full FIFO that only this task drains - taking it here would
-         * close that cycle into a deadlock. */
+        /* Pump-context send: private scratch, no mutex (see the pump block). */
 #if !defined(NDEBUG)
         configASSERT(!s_pump_event_busy &&
                      "amy_helpers: nested pump-context begin");
@@ -207,13 +176,7 @@ amy_event *amy_helpers_event_begin(void)
     return &s_event;
 }
 
-/* INVARIANT: a send is not an apply. This hands the event to the pump; the
- * engine applies it later. Reading AMY state (synth[]/msynth[], patch or voice
- * info) right after a send to observe that send's effect is a bug class - the
- * read will race the pump. Express dependencies as send ORDER, which the FIFO
- * preserves exactly, or poll state that self-heals across UI frames. There is
- * deliberately no flush/drain barrier; add one only when a caller genuinely
- * needs synchronous apply. */
+/* A send is not an apply (amy_helpers.h). */
 void amy_helpers_event_send(amy_event *event)
 {
     /* Slot -> bus routing policy (fx_bus.h): a synth (re)creating event lands
@@ -258,12 +221,7 @@ void amy_helpers_event_send(amy_event *event)
 }
 
 /* ── Typed ingress entry points ─────────────────────────────────────────
- * amy_add_event() routes by shape: an event with ticks[] set is serialized
- * to a wire string and tick-scheduled whole (sequencer_add_wire, under
- * amy_queue_lock); one without is applied now (add_delta_to_queue /
- * amy_queue_lock). These entry points make the route visible at the call
- * site; the note-send signature is also where per-step parameter-lock
- * fields will attach. */
+ * NOTE vs CONFIG route: see amy_helpers.h. */
 
 void amy_helpers_note_send(uint8_t synth, float midi_note, float velocity,
                            uint32_t tag, uint32_t tick, uint32_t period)

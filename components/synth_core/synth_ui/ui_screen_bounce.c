@@ -11,24 +11,13 @@
 /* ════════════════════════════════════════════════════════════════════════
  *  BOUNCE PAGE (Main Menu -> "Bounce")
  * ════════════════════════════════════════════════════════════════════════
- * Item model for the loop-bounce recorder; page state and input routing live
- * in ui_screen_menu.c (same split as the FX/Layer/Projects/Chords pages).
- *
- * Top block is the shape of the next bounce (target slot, max bars, mono or
- * stereo, tail, what becomes of the sources), a read-only memory line, the
- * Rec row that starts and stops
- * (the same transport as the SHIFT+0 chord, with the page's slot instead of
- * the first empty one), a Cancel row and a one-level Undo. Below it, four
- * rows per clip slot: play/mute, level, tempo mode, clear. Last, the runtime
- * sampler (sample_rec): the same mix capture into one drum pad instead of a
- * clip, driven by a Sample row and its cancel.
- *
- * The shape survives leaving the page, so a second bounce after one
- * recording is one click on Rec. Only the failure text is per-visit.
- *
- * Arm failures have nowhere to go - this UI has no toast overlay - so the
- * reason is shown inline in the Rec row's value until the next arm, exactly
- * how the Projects page reports its action results. */
+ * Item model for the loop-bounce recorder and the clip players; page state
+ * and input routing live in ui_screen_menu.c. Rows: the next bounce's shape,
+ * Rec (the SHIFT+0 chord's transport, on the page's slot instead of the first
+ * empty one), Cancel, Undo, four rows per clip slot, then the runtime sampler
+ * (sample_rec: the same mix capture into one drum pad). The shape survives
+ * leaving the page; only the failure text is per-visit, shown inline in the
+ * Rec row's value until the next arm. */
 
 /* Row indices. The clip block is four rows per slot, so the sampler rows, the
  * Back row and the total all derive from CLIP_SLOT_COUNT. */

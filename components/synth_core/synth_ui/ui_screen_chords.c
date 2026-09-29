@@ -20,16 +20,8 @@
  * mid-edit can never lose a voicing.
  *
  * Authoring is root + chord type, the same model the drone and progression
- * screens use, so one mental model covers every place chords are chosen.
- * STORAGE IS UNCHANGED: seq_chord_t still holds absolute MIDI pitches, which
- * the engine expands and transposes exactly as before - root/type are an
- * authoring surface, generated into pitches on every edit. That is why this
- * needed no snapshot version change.
- *
- * The previous editor let each note position be set freely. If that is ever
- * wanted back, it is in git before this commit; nothing it relied on
- * (normalization, the engine sweep, audition) lives in this file, so it is a
- * self-contained restore rather than a rewrite.
+ * screens use; seq_chord_t still holds absolute MIDI pitches, generated from
+ * root/type on every edit.
  *
  * Changes audition through the selected melodic track's actual patch; falls
  * back to the first melodic track on a drum layer, silent with none. */

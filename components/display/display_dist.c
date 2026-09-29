@@ -8,15 +8,10 @@
  * so the curve IS the effect - the soft knee of CLIP, the fold count of FOLD,
  * the quantization staircase of CRUSH.
  *
- * The curve shows the SHAPER ALONE, at full wet, against a dotted unity
- * diagonal. Mix is deliberately excluded even though folding it in would be
- * mathematically honest (blending dry and wet is memoryless, so the composite
- * is still a valid transfer function): at low Mix every type collapses to a
- * near-diagonal, which is exactly where the shapes differ most and the picture
- * is needed most. Keeping Mix out isolates Drive's effect, holds the picture
- * still while Mix is swept by ear, and loses nothing - Mix is a scalar that
- * reads fine as a number. CRUSH's sample-hold rate has memory and therefore no
- * transfer-curve form at all; it is not drawn either. */
+ * The curve shows the shaper alone at full wet, against a dotted unity
+ * diagonal: Mix is not drawn, so the picture stays still while Mix is swept.
+ * CRUSH's sample-hold rate has memory and no transfer-curve form; it is not
+ * drawn either. */
 #define DIST_DIV_X      60      /* vertical divider between the two panels */
 #define DIST_RCOL_X     64      /* right-column text x                     */
 
@@ -74,11 +69,8 @@ static void draw_curve(u8g2_t *u8g2, const seq_dist_t *d)
     const uint8_t y_top = DIST_CV_CY - DIST_CV_HH;
     const uint8_t y_bot = DIST_CV_CY + DIST_CV_HH;
 
-    /* Unity diagonal (y = x), dotted so the curve stays the dominant mark. It
-     * is the reference a transfer plot actually wants: the shaper's departure
-     * from it IS the effect, and it passes through the origin, so it carries
-     * the zero point too - which is why it replaces a plain horizontal axis
-     * rather than joining one. */
+    /* Unity diagonal (y = x), dotted so the curve stays the dominant mark; it
+     * also carries the zero point, so no separate horizontal axis. */
     for (int i = 0; i <= 2 * DIST_CV_HW; i += 3) {
         int px = DIST_CV_X0 + i;
         int py = DIST_CV_CY + DIST_CV_HH - (i * DIST_CV_HH) / DIST_CV_HW;

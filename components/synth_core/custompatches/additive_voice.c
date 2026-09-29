@@ -48,9 +48,9 @@ void additive_voice_configure_track(uint8_t synth_id, uint16_t num_voices,
     e->oscs_per_voice = (uint8_t)(n + 1);
     amy_helpers_event_send(e);
 
-    /* 2) osc 0: BYO_PARTIALS control osc. preset = N drives the child count
-     *    spawned by partials_note_on(). Carries the shared amp envelope +
-     *    velocity + overall pitch; produces no sound of its own. */
+    /* 2) osc 0: BYO_PARTIALS control osc (topology: additive_voice.h).
+     *    preset = N drives the child count spawned by partials_note_on();
+     *    produces no sound of its own. */
     e = amy_helpers_event_begin();
     e->synth                 = synth_id;
     e->osc                   = 0;
@@ -68,9 +68,9 @@ void additive_voice_configure_track(uint8_t synth_id, uint16_t num_voices,
 
     /* 3) oscs 1..N: one PARTIAL sine per harmonic. partials_note_on() sets
      *    each child's status/pitch base but NOT its wave - PARTIAL selects the
-     *    render_partial path and hold_and_modify's fade-in special case.
-     *    Pitch offset is log2(ratio); amp is the spectrum level, scaled per
-     *    block by the parent's envelope through COEF_VEL. */
+     *    render_partial path and hold_and_modify's fade-in special case. Amp is
+     *    the spectrum level, scaled per block by the parent's envelope through
+     *    COEF_VEL. */
     for (uint8_t i = 0; i < n; i++) {
         e = amy_helpers_event_begin();
         e->synth                  = synth_id;

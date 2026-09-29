@@ -79,7 +79,7 @@ config AMYSYNTH_DROPOUT_TS
         recent 128 events, readable via dropout_ts_snapshot() and the serial
         harness st.dropts command. Event-level timing distinguishes
         contiguous stall bursts (one ZLP per 1 ms USB frame) from sparse
-        clock-beat drain, which per-second counter polling cannot resolve.
+        isolated events, which per-second counter polling cannot resolve.
         Also compiles in usb_device_uac's mic pull-cadence counters
         (uac_device_get_pull_stats / harness st.uacpull).
         When disabled (default) the ring and the stamping compile to nothing.

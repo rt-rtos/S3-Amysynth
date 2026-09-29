@@ -28,7 +28,9 @@ bool    synth_ui_set_layer_steps(uint8_t li, uint8_t num_steps);
  * Resets the cursor to track 0, step 0. */
 void synth_ui_cycle_active_layer(void);
 
-/* Input dispatch ── called from encoder / button tasks */
+/* Input dispatch ── called from encoder / button tasks. The user-facing
+ * control scheme (buttons, chords, per-screen behavior) is CONTROLS.md; the
+ * gesture dispatcher is main.c. */
 void synth_ui_handle_encoder(long delta);
 void synth_ui_handle_button(void);
 /* Toggle the grid step under the cursor. Returns true if a step was
@@ -48,14 +50,11 @@ void synth_ui_cycle_fm_algo(int delta);
 void synth_ui_set_drum_select_mode(bool held);
 void synth_ui_set_patch_select_mode(bool held);
 
-/* ── Menu overlay (opened by the GPIO1 menu button) ──────────────────────
- * The menu is a modal overlay above the active screen (but below the graph
- * editor). While open it captures the encoder + encoder-button:
- *   - not editing: encoder scrolls items, click enters an item (or runs an
- *     action item like switching screens)
- *   - editing:     encoder changes the item's value, click exits editing
- * Opening reopens the page and row the menu was closed on; the Projects page
- * comes back disarmed (no pending load/save confirm, no rename). */
+/* ── Menu overlay ────────────────────────────────────────────────────────
+ * A modal overlay above the active screen (below the graph editor); while
+ * open it captures the encoder and encoder click. Opening reopens the page and
+ * row the menu was closed on; the Projects page comes back disarmed (no
+ * pending load/save confirm, no rename). */
 void synth_ui_menu_toggle(void);
 bool synth_ui_menu_is_active(void);
 bool synth_ui_menu_handle_encoder(long delta); /* true if consumed */
@@ -65,24 +64,22 @@ bool synth_ui_menu_handle_button(void);        /* true if consumed */
  * on the main list. UI input task only. */
 bool synth_ui_menu_go_main(void);
 
-/* Projects-page rename editor: while a name is being typed, MY_BUTTON_1 saves
- * and MY_BUTTON_2 discards, so the user need not walk to the end of the field
- * or dial the '#' sentinel. These live on the menu overlay, which composes the
- * projects module's rename state with its own page tracking, so _active() is
- * authoritative (false unless the menu is open on the projects page mid-rename)
- * and button dispatch can gate on it with no cross-module stale-flag cleanup.
- * It also drives the naming-aware hint labels. No-ops when
- * CONFIG_SYNTH_PROJECT_STORE is off. */
+/* Projects-page rename editor hooks (buttons: CONTROLS.md). They live on the
+ * menu overlay, which composes the projects module's rename state with its own
+ * page tracking, so _active() is authoritative (false unless the menu is open
+ * on the projects page mid-rename) and button dispatch can gate on it with no
+ * cross-module stale-flag cleanup. It also drives the naming-aware hint
+ * labels. No-ops when CONFIG_SYNTH_PROJECT_STORE is off. */
 bool synth_ui_menu_rename_active(void);
 void synth_ui_menu_rename_save(void);
 void synth_ui_menu_rename_discard(void);
 
-/* True while the menu overlay is open on its Wireless page. The ADSR/filter
- * editors bind to the BLE MIDI live-play voice on this rather than a ui_mode,
- * since the page is an overlay and the mode underneath is whatever screen the
- * user came from; the SHIFT+1 open chord uses it to allow the editor from a
- * page at all. Stays true while an editor draws over the overlay. Always false
- * when CONFIG_SYNTH_WIRELESS is off. */
+/* True while the menu overlay is open on its Wireless page. The Wireless page
+ * is an overlay, not a ui_mode: the mode underneath is whatever screen the
+ * user came from, so the editors bind to the BLE MIDI live-play voice on this
+ * predicate, tested before any ui_mode, and the editor open chord uses it to
+ * allow the editor from a page at all. Stays true while an editor draws over
+ * the overlay. Always false when CONFIG_SYNTH_WIRELESS is off. */
 bool synth_ui_wireless_page_is_open(void);
 
 /* ── Arp screen ──────────────────────────────────────────────────────────
@@ -97,9 +94,7 @@ void synth_ui_cycle_live_patch(int delta);
 
 /* ── Drone screen ────────────────────────────────────────────────────────
  * Standalone "stutter house drone" synth (custompatches/drone_core). Active
- * when seq_state.ui_mode == UI_MODE_DRONE and no overlay is up. A simple
- * scrollable parameter list; encoder scrolls rows, encoder-click toggles edit,
- * encoder turns the value. */
+ * when seq_state.ui_mode == UI_MODE_DRONE and no overlay is up. */
 bool synth_ui_drone_is_active(void);
 void synth_ui_drone_handle_encoder(long delta);
 void synth_ui_drone_handle_button(void);
@@ -108,8 +103,7 @@ void synth_ui_drone_cycle_patch(int delta);
 
 /* ── Normal drone screen ─────────────────────────────────────────────────
  * Free-running drone (custompatches/drone_std_core). Active when
- * seq_state.ui_mode == UI_MODE_DRONE_STD and no overlay is up. Same list
- * model as the stutter screen; its STUTTER row dives to UI_MODE_DRONE. */
+ * seq_state.ui_mode == UI_MODE_DRONE_STD and no overlay is up. */
 bool synth_ui_drone_std_is_active(void);
 void synth_ui_drone_std_handle_encoder(long delta);
 void synth_ui_drone_std_handle_button(void);
@@ -130,11 +124,8 @@ bool synth_ui_dev_handle_button(void);
 
 /* FM/ALGO operator-graph editor for the live SEQ_PATCH_FM_CUSTOM voice (see
  * custompatches/fm_voice.h). Active when seq_state.ui_mode == UI_MODE_FM and
- * no overlay is up. Reached via the menu ("Screen: FM"). The encoder walks
- * the six operator boxes (selecting) then the selected operator's panel rows;
- * click on a box jumps to its rows, click on a row toggles adjust. SHOULDER
- * toggles feedback on the selected operator; SHIFT+1 opens the ADSR editor
- * bound to it (synth_ui_graph_open_envelope binds GRAPH_TGT_FM_OP off
+ * no overlay is up. The envelope editor binds to the selected operator
+ * (synth_ui_graph_open_envelope binds GRAPH_TGT_FM_OP off
  * synth_ui_fm_selected_op()). All UI/input task. */
 bool    synth_ui_fm_is_active(void);
 bool    synth_ui_fm_handle_encoder(int delta);
@@ -150,9 +141,9 @@ uint8_t synth_ui_fm_selected_op(void);
 uint16_t seq_get_bpm(void);
 uint8_t  seq_get_active_layer_idx(void);
 
-/* ── Graph pop-up integration (isolated, easily removable) ───────────────────
+/* ── Graph pop-up integration ────────────────────────────────────────────────
  * Hooks for the reusable graph_popup widget, called from main.c; the pop-up
- * state and U8g2 plumbing stay inside synth_ui.c. */
+ * state and U8g2 plumbing stay inside the synth_ui module. */
 
 /* True while the graph pop-up overlay is open. */
 bool synth_ui_graph_is_active(void);
@@ -172,67 +163,54 @@ void synth_ui_bounce_chord(bool long_press);
 bool synth_ui_graph_handle_encoder(long delta);
 bool synth_ui_graph_handle_button(bool is_long);
 
-/* Commit the current edits and close the editor (encoder long-press, symmetric
- * with the long-press that opens it). Distinct from
+/* Commit the current edits and close the editor. Distinct from
  * synth_ui_graph_handle_button(true), which discards. */
 bool synth_ui_graph_close_commit(void);
 
 /* Cycle the graph editor's MY_BUTTON_2 sub-modes: the encoder adjusts the
- * target's amplitude trim (0..1) instead of moving ADSR points; on a melodic
- * EG1 page the same stop edits the filter sweep depth. Every row carrying the
- * depth matrix (melodic and drum rows, the arp, the live voice) adds one stop
- * per envelope routing target (PIT/CUT/DRV/MIX) on both envelope pages, each
- * editing the shown envelope's depth for that target; its EG1 page carries no
- * AMP stop. Committed on close (confirm), reset on every open. */
+ * target's amplitude trim (0..1), the layer swing, or an envelope routing
+ * depth (PIT/CUT/DRV/MIX) instead of moving ADSR points; which stops exist
+ * for a target is decided in ui_editors.c. Committed on close (confirm),
+ * reset on every open. */
 void synth_ui_graph_toggle_amp_mode(void);
 
 /* Flip the sign of the depth the target stop is editing, on either envelope
- * page (MY_BUTTON_SHOULDER in the envelope editor). The target stops exist on
- * every row carrying the depth matrix (melodic and drum rows, the arp, the
- * live voice). No-op with no stop up and at 0.0 depth. */
+ * page. No-op with no stop up and at 0.0 depth. */
 void synth_ui_graph_flip_depth_polarity(void);
 
 /* Cycle the shown EG's curve type Normal->Linear->DX7->TrueExp (AMY eg_type
- * 0..3), MY_BUTTON_1 while the envelope editor is open. Applies to AMY
- * immediately, honoring the current apply scope. */
+ * 0..3). Applies to AMY immediately, honoring the current apply scope. */
 void synth_ui_graph_cycle_eg_type(void);
 
-/* ── Filter editor (per-synth LPF/HPF/BPF/LPF24 curve editor) ───────────────
- * Opened by long-press encoder (same as ADSR); toggled with MY_BUTTON_3 while
- * either editor is open. Controls: encoder adjusts the selected parameter
- * (cutoff/resonance/type), short press cycles the cursor, long-press commits. */
+/* ── Filter editor (per-synth LPF/HPF/BPF/LPF24 curve editor) ─────────────── */
 bool synth_ui_filter_is_active(void);
 void synth_ui_filter_open(void);
 bool synth_ui_filter_handle_encoder(long delta);
 bool synth_ui_filter_handle_button(bool is_long);
 bool synth_ui_filter_close_commit(void);
 
-/* Toggle the filter on/off (MY_BUTTON_1 while editor is open). No-op when closed. */
+/* Toggle the filter on/off. No-op when closed. */
 void synth_ui_filter_toggle_enabled(void);
 
 /* ── LFO editor (per-track tempo-synced modulator) ─────────────────────────
- * Opened as the third tab in the ADSR→Filter→LFO→DIST cycle (MY_BUTTON_3).
- * Controls: encoder scrolls cursor / adjusts field (short press to toggle);
- * encoder long-press commits; MY_BUTTON_0 long-press cancels; the shoulder
- * button flips the target checklist between its two tabs. */
+ * The third tab in the ADSR -> Filter -> LFO -> DIST cycle (synth_ui_cycle_editor). */
 bool synth_ui_lfo_is_active(void);
 void synth_ui_lfo_open(void);
 bool synth_ui_lfo_handle_encoder(long delta);
 bool synth_ui_lfo_handle_button(bool is_long);
 bool synth_ui_lfo_close_commit(void);
 
-/* Flip the target checklist to the other tab (MY_BUTTON_SHOULDER while the
- * editor is open). The panel shows five checkbox rows, so the distortion
- * targets live on a second tab. A cursor parked on a checkbox row of the tab
+/* Flip the target checklist to the other tab. The panel shows five checkbox
+ * rows, so the distortion targets live on a second tab. A cursor parked on a checkbox row of the tab
  * being hidden moves to the first row of the tab being shown; cursors on the
  * shared parameter rows are untouched. No-op when the editor is closed.
  * UI-task only. */
 void synth_ui_lfo_toggle_target_tab(void);
 
 /* ── Distortion editor (per-target waveshaper: CLIP / FOLD / CRUSH) ────────
- * The fourth tab in the same cycle, with identical controls. Type OFF is the
- * bypass, so there is no separate enable gesture. Applies to whatever the
- * target's base osc is, patch-backed or wave-backed alike. */
+ * The fourth tab in the same cycle. Type OFF is the bypass, so there is no
+ * separate enable gesture. Applies to whatever the target's base osc is,
+ * patch-backed or wave-backed alike. */
 bool synth_ui_dist_is_active(void);
 void synth_ui_dist_open(void);
 bool synth_ui_dist_handle_encoder(long delta);
@@ -240,41 +218,38 @@ bool synth_ui_dist_handle_button(bool is_long);
 bool synth_ui_dist_close_commit(void);
 
 /* Flip the selected row between its own voice block and the layer's shared
- * one (SHIFT+3 while the ADSR, filter, LFO or DIST editor is open). The open
+ * one (block semantics: sequencer_core.h). The open ADSR/filter/LFO/DIST
  * editor commits its pending edits to the departing block, the engine
- * re-pushes the row, and the editor re-seeds from the block now selected - so
- * both blocks keep independent state and the flip is the only "which one
- * sounds" control. Returns true when an editor over a melodic row was active;
- * ARP/DRONE/LIVE have no track scope and drum layers no layer block. */
+ * re-pushes the row, and the editor re-seeds from the block now selected.
+ * Returns true when an editor over a melodic row was active; ARP/DRONE/LIVE
+ * have no track scope and drum layers no layer block. */
 bool synth_ui_toggle_editor_source(void);
 
 /* Hand the open editor's tab (EG0 or EG1 page, filter, LFO, DIST) back to the
- * patch (SHIFT+2 while it is open): the group's authored flag is cleared on
- * the block the row reads, the layer reloads so the patch's own values sound,
- * and the editor re-seeds showing the P badge. Same gating as the flip. */
+ * patch: the group's authored flag is cleared on the block the row reads, the
+ * layer reloads so the patch's own values sound, and the editor re-seeds
+ * showing the P badge. Same gating as the flip. */
 bool synth_ui_editor_release_to_patch(void);
 
-/* Cycle between the ADSR, Filter and LFO editors (MY_BUTTON_3 while any is
- * open). Commits the departing editor and opens the next. */
+/* Cycle ADSR (EG0, EG1) -> Filter -> LFO -> DIST -> ADSR. Commits the
+ * departing editor and opens the next. */
 void synth_ui_cycle_editor(void);
 
-/* ── Step Trig editor (per-step probability / ratchet / conditional trig) ──
+/* ── Step Trig editor (per-step pitch / probability / ratchet / conditional) ─
  * Full-screen popup addressed by the sequencer grid's own cursor (active layer
- * / selected track / selected step) - no separate cursor. Opened/closed by
- * MY_BUTTON_2 long-press while navigating the grid (main.c); while open the
- * encoder adjusts the focused field and a short encoder press cycles focus
- * (Prob -> Ratchet -> Cond -> Param). */
+ * / selected track / selected step). Opened and closed from main.c's SHIFT+2
+ * chord; input model in ui_screen_stepedit.c. */
 bool synth_ui_stepedit_is_active(void);
 void synth_ui_stepedit_open(void);
 void synth_ui_stepedit_close(void);
 bool synth_ui_stepedit_handle_encoder(long delta);
 bool synth_ui_stepedit_handle_button(void);
 
-/* ─── Canonical view precedence - the single source of truth ─────────────
+/* ─── View precedence - the single source of truth ──────────────────────
  * synth_ui_active_view() is the ONLY place the "which screen/overlay is
  * showing" precedence lives. Every consumer (draw, hint strip, both main.c
- * input routers) resolves once and dispatches on the result, so input and draw
- * can never disagree.
+ * input routers, ui_view_table[]) resolves once and dispatches on the result,
+ * so input and draw can never disagree.
  *
  * Order (high to low): FILTER > LFO > DIST > STEPEDIT > GRAPH > MENU >
  * mode-tail. The first six are the input-capturing overlays

@@ -3,7 +3,8 @@
 A standalone, tempo-synced **drone synth** translated from an AMYboard
 "stutter house drone" Python sketch. It is fully independent of the sequencer
 layers, the arp, and the chord progression — its own AMY synth slots, its own
-state, its own screen, reached from the main menu. It was the first inhabitant
+state, its own screen, reached from the normal drone's STUTTER row (the
+free-running drone is `Screen: Drone` in the menu). It was the first inhabitant
 of the `custompatches/` subfolder, now also home to the bass presets, the FM
 voice, and the resampler.
 
@@ -130,8 +131,8 @@ Chord voicing is derived at runtime from the shared `quantizer_chord_intervals(c
 table — the same table used by the Prog screen and the scale quantizer.
 
 **Root** is a drone-local MIDI note (24–72, C1–C5; default 45 = A2); all chord
-intervals are computed relative to it. **Chord type** is any of the 11 shared
-types:
+intervals are computed relative to it. **Chord type** is any of the shared
+chord types (`chord_types.h`; `CHORD_OFF`, the boot default, is root only):
 
 | Type | Intervals (semitones from root) |
 |---|---|
@@ -139,13 +140,16 @@ types:
 | Min  | 0, 3, 7 |
 | Maj7 | 0, 4, 7, 11 |
 | Min7 | 0, 3, 7, 10 |
-| Dom7 | 0, 4, 7, 10 |
+| 7    | 0, 4, 7, 10 |
 | Sus2 | 0, 2, 7 |
 | Sus4 | 0, 5, 7 |
 | Dim  | 0, 3, 6 |
 | Aug  | 0, 4, 8 |
 | Min9 | 0, 3, 7, 10, 14 |
 | Maj9 | 0, 4, 7, 11, 14 |
+| 6    | 0, 4, 7, 9 |
+| Min6 | 0, 3, 7, 9 |
+| 9    | 0, 4, 7, 10, 14 |
 
 `drone_set_chord()` releases the old chord's held notes, rebuilds the main synth
 to the new voice count, then re-triggers — so switching to a smaller chord never
@@ -202,18 +206,19 @@ envelope.
 ## ADSR envelope (shared graph editor)
 
 The drone reuses the shared ADSR **graph_popup** editor (the same widget the
-melodic layers and the arp use). On the drone screen, **MY_BUTTON_ENC
-long-press** opens the editor bound to the drone; commit calls
+melodic layers and the arp use). On the drone screen, SHIFT + `MY_BUTTON_1`
+opens the editor bound to the drone; commit calls
 `drone_set_envelope()`. The drone's editable state lives in the same shared
 `voice_params_t` block (`s_d.vp`) as the other instruments.
 
-- The envelope is **deferred-authority**: not pushed until the user commits, so
-  an un-edited drone holds at full sustain (EG0 = 1.0 on a held note). Once
-  authored, it is re-applied after any rebuild/source/chord change.
+- The envelope is **deferred-authority**: an un-edited drone holds at full
+  sustain (EG0 = 1.0 on a held note); once authored it is re-applied after any
+  rebuild/source/chord change. Rules:
+  [ENGINE-SEMANTICS.md](../ENGINE-SEMANTICS.md#voice-blocks-and-deferred-authority).
 - It is pushed via the shared envelope helper (the same EG0 breakpoint delta
   path the melodic layers use), to both the main and sub synths.
-- The editor's tab cycle skips the LFO tab for the drone (the stutter LFO *is*
-  the drone's modulation; ADSR → Filter → ADSR).
+- The stutter drone's editor cycle has no LFO or DIST tab (the stutter LFO *is*
+  the drone's modulation); the free-running drone has no EG1 page.
 
 ## PATCH mode
 
@@ -260,21 +265,10 @@ amplitude, so:
 
 ## Synth slots & tag budget
 
-| Slot range | Owner |
-|---|---|
-| 1 | arp |
-| **2** | **drone main carrier** (`DRONE_SYNTH_MAIN`) |
-| **3** | **drone sub** (`DRONE_SYNTH_SUB`) |
-| 4 / 5 | free-running drone main / sub (`drone_std_core.c`) |
-| 6–9 | drum layer (one per track) |
-| 11–12 | bounce clip players |
-| 13–64 | melodic layers |
-
-The full map lives in `synth_slots.h` (statics at the bottom, melodic arena on
-top). `main/main.c` sets `amy_cfg.max_synths = SYNTH_SLOT_COUNT` (66). AMY's
-instrument table is sized
-from config (`instruments_init(config.max_synths)`). AMY's default 250 oscs leave
-ample headroom (5-voice main × 2 oscs + sub × 2 = ~12 oscs).
+The slot map is `components/synth_core/include/synth_slots.h`; this drone owns
+`DRONE_SYNTH_MAIN` / `DRONE_SYNTH_SUB`. AMY's instrument table is sized from
+`amy_cfg.max_synths`, and the default 250 oscs leave ample headroom (5-voice
+main x 2 oscs + sub x 2 = ~12 oscs).
 
 **Sequencer tags: zero.** The drone uses **direct** (immediate, non-scheduled)
 note-on/param events, so it consumes no entries in AMY's `sequences[]` table —
@@ -282,23 +276,14 @@ no interaction with the sequencer/arp/ratchet tag windows.
 
 ## Concurrency / safety
 
-All AMY interaction goes through the queued event API (`amy_add_event`) using
-the shared scratch `amy_event` + mutex in `amy_helpers` (an `amy_event` is
-~800 B and must never sit on a task stack). The drone **never** touches
-`synth[]` directly — this respects the render-lock rule (the render path walks
-`synth[]` under the queue lock; all config/notes must be deltas). See
-`AMY-EDITS.md`.
+All AMY interaction goes through the `amy_helpers` ingress seam
+(`amy_helpers.h`). The drone **never** touches `synth[]` directly — this
+respects the render-lock rule (the render path walks `synth[]` under the queue
+lock; all config/notes must be deltas).
 
 ## Input map (drone screen)
 
-| Control | Action |
-|---|---|
-| Encoder turn | Move cursor / (in edit) adjust the focused row's value |
-| MY_BUTTON_ENC short press | Toggle edit on the focused row |
-| MY_BUTTON_ENC long press | Open the ADSR graph editor (bound to the drone) |
-| MY_BUTTON_1 hold + turn | Cycle PATCH preset (PATCH mode only) |
-| MY_BUTTON_3 | Menu toggle (global) |
-| MY_BUTTON_0 long press | Play/stop (global) |
+Inputs: [CONTROLS.md](../../../CONTROLS.md#drone-screens).
 
 A drone-screen isolation guard in `main.c` (mirroring the arp guard) suppresses
 the sequencer's editing gestures while the drone screen is up, but keeps the

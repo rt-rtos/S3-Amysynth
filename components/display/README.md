@@ -20,7 +20,7 @@ into the home for all the OLED rendering as the UI expanded.
 only draws the flat view structs it is handed)
 
 - Every screen: sequencer grid, arp, drone (list + visualizer), menu overlay,
-  chord progression, track options, step-trig popup, and the bottom hint strip
+  chord progression, step-trig popup, and the bottom hint strip
 - A reusable ADSR/curve **graph-popup** widget used by the envelope editor,
   plus the filter-response and LFO editor renderers
 - Patch-name tables for the on-screen patch browser
@@ -38,6 +38,7 @@ only draws the flat view structs it is handed)
 | `display_stepedit.{c,h}` | per-step probability / ratchet / conditional-trig popup |
 | `display_hint.{c,h}` | bottom hint-strip compositor (rows 57–63) |
 | `display_lfo.{c,h}` | LFO editor overlay renderer |
+| `display_dist.{c,h}` | DIST editor overlay renderer |
 | `graph_popup.{c,h}` | reusable graph/curve editor widget (ADSR) |
 | `filter_graph.{c,h}` | per-synth filter frequency-response renderer |
 | `patch_names.{c,h}` | AMY patch number → name tables for the browser |
@@ -67,10 +68,8 @@ Two conventions matter for anyone adding a screen:
 
 ### UI overview
 
-The filter editor is a full-screen overlay reached from the ADSR editor
-(long-press the encoder button to open the editors, then MY\_BUTTON\_3
-single-click cycles ADSR → Filter → LFO). Long-pressing MY\_BUTTON\_0 cancels;
-a long-press on the encoder commits.
+The filter editor is a full-screen overlay, one tab of the editor cycle (see
+[CONTROLS.md](../../CONTROLS.md)).
 
 The screen is split into two zones:
 
@@ -100,20 +99,14 @@ The screen is split into two zones:
 amplitude (top = louder). The filled area under the curve is drawn with vertical
 lines to the baseline. An XOR cursor column marks the cutoff frequency.
 
-### Cursor cycle and controls
+### Cursor and controls
 
-| Cursor | Parameter | Encoder step |
-|--------|-----------|-------------|
-| 0 | Cutoff frequency (log-scaled) | ±1.5 % of full range per detent |
-| 1 | Resonance Q | ±2 % of full range per detent |
-| 2 | Filter type (melodic/arp only) | ±1 step through LPF/BPF/HPF/LPF24 |
+Cursor 0 is cutoff (one semitone per detent), 1 resonance (2 % of range per
+detent); the rows after them (KS feedback and duty, filter type, enable) and
+the key bindings are in [CONTROLS.md](../../CONTROLS.md).
 
-Short-press encoder cycles the cursor (0 → 1 → 2 → 0) and enters editing mode.
-While editing, encoder turns adjust the highlighted parameter. Another short-press
-exits editing without advancing the cursor.
-
-Drone target: the filter type is always LPF24 (fixed by the drone architecture),
-so cursor 2 is skipped. Committing moves the filter sweep midpoint to the chosen
+Stutter drone target: the filter type is always LPF24 (fixed by the drone
+architecture), so only cutoff and resonance are on the cursor. Committing moves the filter sweep midpoint to the chosen
 cutoff while preserving the sweep width; resonance maps directly to the drone
 resonance parameter.
 

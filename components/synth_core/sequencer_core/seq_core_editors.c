@@ -14,21 +14,17 @@ uint32_t s_lfo_rng_state = 0xDEADBEEFu;
 #if CONFIG_SEQ_MELODIC_AMY_NATIVE_LFO
 
 /* True when an authored track should use the AMY native LFO. Caller must
- * already know the layer's patch reserves a carrier pair. PAN rides
- * pan_coefs[COEF_MOD] around a 0.5 baseline and RANDOM maps to a native NOISE
- * S&H carrier, so every enabled LFO on such a patch is native; the 20 Hz
- * software poll serves the rest. */
+ * already know the patch is native-layout (sequencer_core_lfo_native_layout);
+ * every enabled LFO on such a patch is native. */
 static bool is_native_lfo_track(const seq_lfo_t *lfo)
 {
     return lfo->enabled;
 }
 
-/* Push native LFO config to one track's AMY synth (patches with a reserved
- * carrier pair). Handles activation and deactivation (carrier dormant,
- * COEF_MOD cleared) so the caller always reaches a consistent AMY state. */
 /* Apply an EXPLICIT lfo struct (stored or an editor's live scratch) to one
- * track's native topology; the wrapper below keeps the stored-state callers
- * unchanged. */
+ * track's native topology, activating or deactivating it (carrier dormant,
+ * COEF_MOD cleared) so the caller always reaches a consistent AMY state; the
+ * wrapper below keeps the stored-state callers unchanged. */
 static void melodic_native_lfo_apply(const seq_layer_t *layer, uint8_t track,
                                      const seq_lfo_t *lfo)
 {
@@ -59,9 +55,8 @@ static uint8_t melodic_heads_mask(uint8_t layer_idx, uint8_t track)
     return vl.heads_mask;
 }
 
-/* Push one EG1 breakpoint set to every osc that can carry a filter-env rail.
- * AMY reads a never-configured breakpoint set as a constant 1.0, so an osc
- * left out would sit at the full EG1 depth offset instead of sweeping.
+/* Push one EG1 breakpoint set to every osc that can carry a filter-env rail
+ * (sequencer_core_push_envelope_eg1() says why each needs it).
  * voice_mask is where the per-voice stages live: the SILENT heads on a headed
  * row, the two cluster oscs on an engine row, the copies on a fan row, osc 0
  * on a plain wave row. */
@@ -83,17 +78,11 @@ static void melodic_filter_apply(uint8_t layer_idx, uint8_t track,
                                  const seq_filter_t *f);
 
 /* Write the row's eight envelope-routing depths into a pending event, one per
- * target coef vector and envelope slot. An owning row writes every slot, so
- * dialling a depth back to 0 clears the rail instead of leaving the last value
- * in AMY - skip-on-zero would make a depth sticky until the next patch load.
- * A row owns the matrix when it is a drum row (nothing else authors these
- * rails on a drum voice) or once its filter block has been authored: from then
- * on the app's matrix is the only source of truth for these rails, the same way
- * an authored filter type overrides the patch's. Every other row writes only
- * the nonzero slots, so a never-authored row keeps its patch string's routing.
- * The dist push and this one never clobber each other - amy_event slots start
- * at the unset sentinel and voice_apply_dist_osc() authors CONST only. The
- * cutoff rails ride the filter and go out only while it is enabled. */
+ * target coef vector and envelope slot. `own`: seq_filter_t.eg_depth says which
+ * rows own the matrix (a drum row, or a row whose filter block is authored). The
+ * dist push and this one never clobber each other - amy_event slots start at
+ * the unset sentinel and voice_apply_dist_osc() authors CONST only. The cutoff
+ * rails ride the filter and go out only while it is enabled. */
 static void filter_push_eg_depths(amy_event *e, bool own, const seq_filter_t *f)
 {
     for (uint8_t eg = 0; eg < 2u; eg++) {
@@ -184,10 +173,9 @@ static void lfo_restore_target_neutrals(uint8_t layer_idx, uint8_t track,
 }
 
 /* ── Shared-block fan-out ────────────────────────────────────────────────────
- * A row's voice block is either its own or the layer's (seq_track_vp). Writing
- * a block must reach every row that reads it, so the committing setters push
- * through here instead of to `track` alone: the peer set is {track} for an
- * own-block row and every LAYER-source row otherwise. */
+ * Voice-block source selector: sequencer_core.h. Committing setters push to
+ * every row that reads the written block (the peer set) through here instead of
+ * to `track` alone. */
 uint8_t sequencer_core_melodic_vp_peers(uint8_t layer_idx, uint8_t track,
                                         uint8_t peers[SEQ_TRACKS])
 {
@@ -334,10 +322,9 @@ void sequencer_core_set_melodic_envelope2(uint8_t layer_idx, uint8_t track,
 
 /* ── Per-row melodic filter (runtime-editable) ─────────────────────────── */
 
-/* LEGACY SNAPSHOT IMPORT ONLY. Older project files had no feedback field: KS
- * string decay was derived from filter Q. This [0.51,8.0] -> [0,1] mapping
- * exists so de_filter() can reconstruct what those files audibly had. Live
- * apply paths use seq_filter_t.feedback directly. */
+/* Maps filter Q [0.51,8.0] linearly onto [0,1]. Predates
+ * seq_filter_t.feedback, when KS string decay was derived from Q; live apply
+ * paths use the feedback field directly and nothing calls this. */
 float sequencer_core_ks_feedback_from_q(float q)
 {
     float n = (q - 0.51f) / (8.0f - 0.51f);
@@ -394,10 +381,8 @@ static void melodic_filter_apply(uint8_t layer_idx, uint8_t track,
                 melodic_filter_push_osc(layer_idx, track, f, (int)o);
     }
 
-    /* Guarantee valid EG1 breakpoints whenever any EG1 depth is live, so
-     * the COEF_EG1 rails modulate a real ramp: AMY treats a never-configured
-     * breakpoint set as a permanent 1.0 (a pitch depth would park the note at
-     * the full offset instead of dropping). Uses the row's stored EG1
+    /* Guarantee valid EG1 breakpoints whenever any EG1 depth is live
+     * (sequencer_core_push_envelope_eg1()), from the row's stored EG1
      * (authored shape or the seeded default). */
     if (seq_filter_eg1_live(f)) {
         melodic_eg1_push(layer_idx, track, seq_layer_env1(layer_idx, track));
@@ -586,11 +571,8 @@ static void melodic_lfo_apply_runtime(uint8_t layer_idx, uint8_t track,
         if (!lfo->enabled || !is_native_lfo_track(lfo)) {
             lfo_restore_target_neutrals(layer_idx, track, lfo);
         }
-        /* s_lfo_hz = 0 makes the software service loop skip native tracks.
-         * Distortion drive/mix now have COEF_MOD rails (dist_*_coefs), driven
-         * by the carrier in melodic_native_lfo_apply, so a native track no
-         * longer arms the stepper for the DIST bits either - every target
-         * rides the carrier. */
+        /* s_lfo_hz = 0 makes the software service loop skip native tracks;
+         * every target, DIST included, rides the carrier. */
         s_lfo_hz[layer_idx][track] = 0.0f;
         return;
     }
@@ -703,11 +685,10 @@ void __attribute__((optimize("O3", "unroll-loops", "fast-math"))) sequencer_core
             uint8_t syn = s_layers[li].synth_id[tr];
 
 #if CONFIG_SEQ_MELODIC_AMY_NATIVE_LFO
-            /* Native-carrier tracks disarm the stepper wholesale (s_lfo_hz = 0
-             * in melodic_lfo_apply_runtime), so in practice they never reach
-             * this body - every rail, distortion included, rides the carrier's
-             * COEF_MOD. This guard stays as a belt-and-braces: were a native
-             * track ever armed, stepping its rails here would double-modulate. */
+            /* Native tracks disarm the stepper (s_lfo_hz = 0 in
+             * melodic_lfo_apply_runtime) and never reach this body; the guard
+             * is belt-and-braces, since stepping a native track would
+             * double-modulate. */
             bool native_track =
                 s_layers[li].type == SEQ_LAYER_MELODIC &&
                 sequencer_core_lfo_native_layout(s_layers[li].track_patch[tr],
@@ -719,10 +700,9 @@ void __attribute__((optimize("O3", "unroll-loops", "fast-math"))) sequencer_core
             amy_event *e = amy_helpers_event_begin();
             e->synth = syn;
             /* Multi-target: each checked target modulates its own COEF_CONST
-             * from the same LFO value. SCAN has no software analog - it needs a
-             * wavetable voice, which always takes the native path. DIST is
-             * handled after this block: native on carrier patches, stepped here
-             * only on PATCH-mode tracks with no free carrier osc. */
+             * from the same LFO value. SCAN has no software analog (a
+             * wavetable voice always takes the native path); DIST is handled
+             * after this block. */
             if (LFO_HAS_TGT(lfo, LFO_TARGET_FILTER)) {
                 const seq_filter_t *fb = (prev_here && prev.filter_valid)
                                          ? &prev.filter
@@ -739,28 +719,17 @@ void __attribute__((optimize("O3", "unroll-loops", "fast-math"))) sequencer_core
             amy_helpers_event_send(e);
             } /* !native_track */
 
-            /* DIST target on a PATCH-mode track (no carrier for a native rail):
-             * step drive/mix around the committed dist block, same law as the
-             * native rail (voice_push_dist_lfo). Native tracks drive it via
-             * COEF_MOD instead, so they are excluded like every other target.
-             * Inert while the shaper is OFF. */
+            /* DIST on a PATCH-mode track: step drive/mix around the committed
+             * dist block (voice_push_dist_lfo). Inert while the shaper is OFF. */
             if (!native_track && (lfo->targets & LFO_TGT_DIST_MASK))
                 voice_push_dist_lfo(syn, &vp->dist, lfo, val);
 
             if (!native_track && LFO_HAS_TGT(lfo, LFO_TARGET_PITCH)) {
-                /* freq COEF_CONST is an ABSOLUTE frequency in Hz - AMY maps it
-                 * through logfreq_of_freq(x) = log2(x/440). Anchoring the swing
-                 * at SEQ_LFO_PITCH_BASE_HZ makes the constant term exactly
-                 * d*val octaves, matching the note-neutral reset default of 0.
-                 * (A bare ratio here lands ~-8.8 octaves down and mutes the
-                 * track - sub-audible playback rate on PCM oscs.)
-                 *
-                 * Pitch is pushed to osc 0 ONLY: a synth-wide event fans out to
-                 * every osc of the voice, rewriting patch-internal modulator
-                 * oscs' freq CONST - their RATE - and wrecking patch LFOs
-                 * (chorus/PWM) beyond repair short of a patch reload. Stopgap:
-                 * multi-carrier patches get vibrato on their first osc only;
-                 * revisit with a per-voice offset or a reserved-carrier topo. */
+                /* Anchored on SEQ_LFO_PITCH_BASE_HZ, so the constant term is
+                 * exactly d*val octaves. Pushed to osc 0 ONLY: a synth-wide
+                 * event would rewrite patch-internal modulator oscs' freq
+                 * CONST, which is their rate, and patch LFOs (chorus/PWM)
+                 * would not recover short of a patch reload. */
                 amy_event *pe = amy_helpers_event_begin();
                 pe->synth = syn;
                 pe->osc   = 0;
@@ -789,9 +758,8 @@ void sequencer_configure_melodic_lfo(uint8_t layer_idx, uint8_t rows)
             continue;
         if (!seq_track_vp(layer_idx, t)->lfo_authored) continue;
         melodic_configure_native_lfo_track(layer_idx, t);
-        /* Keep s_lfo_hz in sync so the service loop skips native tracks. DIST
-         * rides the carrier now too (COEF_MOD), so nothing keeps the stepper
-         * armed on a native track (mirrors melodic_lfo_apply_runtime). */
+        /* Keep s_lfo_hz in sync so the service loop skips native tracks
+         * (mirrors melodic_lfo_apply_runtime). */
         s_lfo_hz[layer_idx][t] = 0.0f;
     }
 #else
@@ -866,10 +834,8 @@ void sequencer_core_set_melodic_amp_scale(uint8_t layer_idx, uint8_t track,
 }
 
 /* ── Live-preview pushes (AMY only; the store is untouched) ──────────────────
- * Editors audition scratch values while the committed store stays the source of
- * truth. Cancel re-pushes the stored state (or reloads the layer's patch for a
- * never-authored row); confirm goes through the normal setters. A preview never
- * modifies the authored flags.
+ * Contract (preview, commit, cancel): ENGINE-SEMANTICS.md, "Editor preview and
+ * cancel".
  *
  * The single active-preview slot below is what makes RELATIONAL edits
  * composable: the software-LFO service recomputes swept COEF_CONST values

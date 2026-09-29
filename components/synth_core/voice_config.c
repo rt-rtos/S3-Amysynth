@@ -1,7 +1,7 @@
 #include "voice_config.h"
 #include "amy.h"            /* wave constants, COEF_* indices */
 #include "amy_helpers.h"    /* shared scratch-event begin/send */
-#include "sequencer_core.h" /* sequencer_core_ks_feedback_from_q */
+#include "sequencer_core.h" /* lfo_rate_to_hz */
 #include "seq_clamp.h"
 #include <math.h>           /* powf: wobble downward-only center offset */
 #include <string.h>
@@ -54,11 +54,10 @@ uint8_t voice_wob_db_to_depth(uint8_t db)
     return (uint8_t)(((unsigned)db * 100u + VOICE_WOB_DB_MAX / 2u) / VOICE_WOB_DB_MAX);
 }
 
-/* ââ Unison copy math (spec: voice_unison_t, seq_model.h) âââââââââââââââ
+/* ── Unison copy math (spec: voice_unison_t, seq_model.h) ───────────────
  * Copy i of n sits at position s in -1..+1 (0 alone for n = 1; the center
- * copy of an odd n at 0). Detune fans log-linearly: freq CONST is Hz through
- * the event API and logfreq_of_freq() anchors it at 440 Hz, so a
- * note-tracking offset of c cents is SEQ_LFO_PITCH_BASE_HZ * 2^(c/1200).
+ * copy of an odd n at 0). Detune fans log-linearly: a note-tracking offset of
+ * c cents is SEQ_LFO_PITCH_BASE_HZ * 2^(c/1200) (voice_config.h).
  * Blend tapers the outer copies (weight 1 - (1-blend)*|s|), normalized so
  * summed power stays at the single-copy level (detuned copies decorrelate,
  * so power - not amplitude - is what adds). */
@@ -215,8 +214,8 @@ void voice_build_wave(const voice_wave_cfg_t *cfg)
 {
     if (!cfg) return;
 
-    /* Pool definition. AMY resets every osc of every existing voice on each
-     * one (patches_load_patch), unchanged shape or not. */
+    /* Pool definition; resets every osc of every existing voice
+     * (voice_wave_cfg_t). */
     amy_event *e = amy_helpers_event_begin();
     e->synth          = cfg->synth;
     e->num_voices     = cfg->num_voices;
@@ -226,7 +225,7 @@ void voice_build_wave(const voice_wave_cfg_t *cfg)
     /* Audible copies: osc 0 alone, or the unison fan 0..n-1 (any reserved
      * LFO pair sits above it - the caller sized oscs_per_voice). n == 1
      * emits exactly the single-osc skeleton, with no pan/phase/freq CONST
-     * terms, so unison off is bit-for-bit the old build. Each copy is a
+     * terms, so unison off is bit-for-bit the single-osc build. Each copy is a
      * note-following carrier (COEF_NOTE=1) with EG0-gated amplitude. */
     uint8_t n = 1;
     if (cfg->unison && cfg->unison->count > 1u && cfg->wave != KS)
@@ -239,11 +238,12 @@ void voice_build_wave(const voice_wave_cfg_t *cfg)
     if (headed || engine) n = (uint8_t)(n & ~1u);   /* two equal groups */
 
     /* A fan-N pool and a headed-(N-2) pool have the same shape (so do a fan-2
-     * and an engine pool), and AMY does not reset a re-sent shape, so a layout
-     * switch would inherit the previous build's chained_osc, filter_type,
-     * unison count and MOD rails. Wipe every audible osc first
-     * (voice-relative; a no-op on one AMY has not allocated yet). The
-     * reserved oscs above the audible layout are parked below instead. */
+     * and an engine pool). Wipe every audible osc explicitly so the build
+     * never depends on what the previous layout left in chained_osc,
+     * filter_type, unison count or MOD rails; the pool definition's own reset
+     * (patches_load_patch) covers the same state. Voice-relative; a no-op on
+     * an osc AMY has not allocated yet. The reserved oscs above the audible
+     * layout are parked below instead. */
     uint8_t audible = (uint8_t)(headed ? n + 2u : engine ? 2u : n);
     if (n > 1u) {
         for (uint8_t i = 0; i < audible; i++) {
@@ -316,10 +316,8 @@ void voice_build_wave(const voice_wave_cfg_t *cfg)
     }
 
     /* Park every osc the caller reserved above the audible layout (the native
-     * LFO carrier pair). A note with no osc named reaches every osc of the
-     * voice, and AMY brings an unconfigured osc up at its reset defaults - a
-     * full-level SINE on the note - so a reserved osc is only silent once
-     * parked. The LFO path raises the carrier when one is authored. */
+     * LFO carrier pair; why: voice_wave_cfg_t). The LFO path raises the
+     * carrier when one is authored. */
     voice_park_oscs(cfg->synth, audible, cfg->oscs_per_voice);
 
     /* A rebuild must not drop the stage, so the owner's block rides every
@@ -387,12 +385,9 @@ void voice_dist_clamp(seq_dist_t *d)
 
 void voice_apply_dist(uint8_t synth, const seq_dist_t *d)
 {
-    /* osc 0 addresses the BASE osc of every voice in the synth (AMY's
-     * patches_event_has_voices). For wave voices and for ALGO/FM voices - where
-     * osc 0 already carries the summed operator output - that is the whole
-     * voice. Multi-osc patch strings distort their base osc only; distorting
-     * each osc and summing afterwards is a different, harsher effect, so the
-     * reach stops here deliberately. */
+    /* Reach note: voice_config.h. Multi-osc patch strings distort their base
+     * osc only; distorting each osc and summing afterwards is a different,
+     * harsher effect, so the reach stops here deliberately. */
     voice_apply_dist_osc(synth, 0, d);
 }
 
@@ -412,7 +407,7 @@ void voice_apply_dist_osc(uint8_t synth, uint8_t osc, const seq_dist_t *d)
     e->dist_crush = !!(v.type & 4u);
     e->dist_bits  = (uint8_t)v.bits;
     e->dist_rate  = (uint16_t)v.rate;
-    /* Drive and mix ride AMY's control-coef rails now: author the CONST term
+    /* Drive and mix ride AMY's control-coef rails: author the CONST term
      * only, leaving the MOD rail for a native LFO. Drive's CONST is linear
      * (AMY maps it onto its log2 drive rail on the way in); mix is linear 0..1. */
     e->dist_drive_coefs[COEF_CONST] = (float)v.drive;
@@ -492,7 +487,7 @@ void voice_apply_native_lfo_topo(uint8_t synth, const seq_lfo_t *lfo,
                 if (LFO_HAS_TGT(lfo, LFO_TARGET_AMP))    e->amp_coefs[COEF_MOD]         = d * VOICE_LFO_DEPTH_AMP;
                 /* Drive rides AMY's log2 rail, so the drive COEF_MOD is in
                  * octaves: the carrier's +/-1 swing is +/-(d*OCT) octaves of
-                 * pre-gain, matching the old software stepper's law. Mix is a
+                 * pre-gain, matching the software stepper's law. Mix is a
                  * linear rail. Both stay inert until a dist stage is enabled. */
                 if (LFO_HAS_TGT(lfo, LFO_TARGET_DIST_DRIVE))
                     e->dist_drive_coefs[COEF_MOD] = d * VOICE_LFO_DEPTH_DIST_OCT;

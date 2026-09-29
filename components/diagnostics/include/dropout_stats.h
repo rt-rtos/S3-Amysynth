@@ -9,42 +9,27 @@ extern "C" {
 
 /* Audio dropout counters - one per distinct silence/gap mechanism in the
  * render -> ring -> USB pipeline, so a click heard on the host can be
- * attributed to its layer instead of guessed at:
+ * attributed to its layer:
  *
  *   wire_zlp        TinyUSB's EP-IN FIFO was dry when the next isochronous
- *                   frame was loaded -> a zero-length packet went on the wire
- *                   (host/device clock-beat fingerprint; the ring below it
- *                   may be perfectly healthy).
- *   ring_underrun   RETIRED (no writer) since the async-source pull: the
- *                   UAC pull hands back only the audio the SPSC ring has,
- *                   and short reads are the normal rate-tracking mechanism,
- *                   not a fault. True starvation now surfaces as wire_zlp.
- *                   Field kept so existing readers compile and report 0.
+ *                   frame was loaded, so a zero-length packet went on the
+ *                   wire. Under the async-source pull this is starvation:
+ *                   render stalled or the stream had a gap (usb_audio.c).
+ *   ring_underrun   No writer; reads 0.
  *   ring_overrun    A rendered block was dropped whole because the ring was
- *                   full while a host was consuming (host stalled draining).
+ *                   full while a host was consuming.
  *   render_overrun  Render-clock ticks that fired while the previous block
- *                   was still rendering; strict 1:1 pacing never renders the
- *                   backlog, so each one is a block of realtime lost.
- *   chunk_drop      A produced 1 ms mic chunk was overwritten before the USB
- *                   frame callback consumed it - the lossy single-slot
- *                   handoff usb_device_uac used to have between its
- *                   tick-clocked mic task and the SOF-clocked frame
- *                   callback. The handoff was removed (SOF-domain pull, no
- *                   second clock in the supply path), so this MUST read 0;
- *                   the field stays as the failure class's record, and any
- *                   re-vendor that brings a tick-clocked mic task back must
- *                   also bring the increment back.
+ *                   was still rendering; each is a block of realtime lost
+ *                   (the render pacing is strictly 1:1).
+ *   chunk_drop      No writer; reads 0.
  *
- * Reading the pattern (async-source era): wire_zlp = the device had no
- * audio for a full EP FIFO's worth of frames - render stalled, or a real
- * stream gap. render_overrun climbing alongside it = render-side overload.
- * ring_overrun climbing = host stalled draining while render kept
+ * render_overrun climbing alongside wire_zlp points at render-side overload;
+ * ring_overrun climbing means the host stalled draining while render kept
  * producing.
  *
  * Contract:
  *  - Each counter has exactly ONE writer task (wire_zlp: TinyUSB task;
- *    ring_overrun + render_overrun: render task; ring_underrun +
- *    chunk_drop: currently no writer, see above). A new call site for an
+ *    ring_overrun + render_overrun: render task). A new call site for an
  *    increment must keep that single-writer rule or the lock-free
  *    counters tear.
  *  - Increments are a bare counter add: safe on the render path, but still
@@ -70,9 +55,7 @@ void dropout_stats_get(dropout_stats_t *out);
 #if CONFIG_AMYSYNTH_DROPOUT_TS
 /* Optional wire-ZLP event timestamps: every dropout_count_wire_zlp() also
  * records esp_timer microseconds into a ring of the most recent
- * DROPOUT_TS_RING events, so host tooling can resolve burst microstructure
- * (contiguous ~1 ms-spaced events = data-supply stall; sparse events =
- * clock-beat drain) instead of inferring from counter deltas.
+ * DROPOUT_TS_RING events (CONFIG_AMYSYNTH_DROPOUT_TS).
  *
  * Contract:
  *  - Stamping inherits wire_zlp's single-writer rule (TinyUSB task) and

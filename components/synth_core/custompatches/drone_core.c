@@ -1,12 +1,10 @@
 /* drone_core.c - standalone "stutter house drone" synth.
  * Design notes: drone_core.h.
  *
- * Race safety: every AMY interaction goes through the queued event API
- * (amy_add_event), never direct synth[] access - the render path walks synth[]
- * under the queue lock, so all config/notes must be deltas (AMY-EDITS.md).
- *
- * amy_event is ~800 bytes: use the shared mutex-guarded module scratch event,
- * never a task stack. All callers here are FreeRTOS tasks, never ISRs. */
+ * Race safety: every AMY interaction goes through the amy_helpers ingress seam
+ * (amy_helpers.h), never direct synth[] access - the render path walks synth[]
+ * under the queue lock, so all config/notes are queued deltas. All callers here
+ * are FreeRTOS tasks, never ISRs. */
 
 #include "custompatches/wavetable_bank.h"
 #include "custompatches/drone_core.h"
@@ -56,9 +54,9 @@ static const char *TAG = "drone_core";
 #define DRONE_BARS_MIN     1
 #define DRONE_BARS_MAX     16
 #define DRONE_PATCH_MIN    0
-/* Drone PATCH-mode ceiling: wave patches 257-261 (SINE..TRIANGLE), plus the
- * wavetable banks 267-271 (AMY_WAVETABLE only). NOISE (262), KS (263) and the
- * bass presets (264-266) are excluded - their excitation/multi-osc model
+/* Drone PATCH-mode ceiling: the raw waves SINE..TRIANGLE, plus the vendored
+ * wavetable banks (AMY_WAVETABLE only); ranges in sequencer_core.h. NOISE, KS
+ * and the bass presets are excluded - their excitation/multi-osc model
  * misbehaves with the drone's one-shot trigger style; drone_set_patch() snaps
  * values in that gap down to TRIANGLE. */
 #if CONFIG_AMY_WAVETABLE
@@ -162,10 +160,9 @@ typedef struct {
 static drone_state_t s_d;
 
 /* Schedule-affecting setters mark dirty; drone_core_service() rebuilds once per
- * UI frame, so an encoder spin collapses to one rebuild instead of one per
- * detent (mirrors the arp's s_arp_dirty discipline). Setters run on Core-0
- * input tasks, the drain on the Core-0 synth_ui_task - single-core, one-way
- * flag, so volatile is for compiler ordering only.
+ * UI frame (the arp's s_arp_dirty discipline, arp_core.c). Setters run on
+ * Core-0 input tasks, the drain on the Core-0 synth_ui_task - single-core,
+ * one-way flag, so volatile is for compiler ordering only.
  * Enable/chord/root stay synchronous: enable must sound NOW, and chord/root
  * must note-off the OLD voicing before state changes or voices stick. */
 static volatile bool s_d_dirty = false;
@@ -177,8 +174,9 @@ static inline void drone_mark_dirty(void) { s_d_dirty = true; }
  *
  * Knobs:  peak_lin = amp_peak; duck_db = amp_duck * 40 (0..-40 dB floor).
  * Coefs:  m = duck_db/120; const_sent = peak_lin * 10^(-duck_db/40), solved so
- *         AMY's amp = const_sent * 10^(3*m*LFO) gives peak_lin on-beat (LFO=+1)
- *         and peak_lin * 10^(-duck_db/20) off-beat (LFO=-1).
+ *         the dB combine (voice_config.h), amp = const_sent * 10^(3*m*LFO),
+ *         gives peak_lin on-beat (LFO=+1) and peak_lin * 10^(-duck_db/20)
+ *         off-beat (LFO=-1).
  */
 static inline float s_amp_peak_lin(void)
 {

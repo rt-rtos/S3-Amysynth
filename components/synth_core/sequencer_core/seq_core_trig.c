@@ -6,8 +6,12 @@
  * ════════════════════════════════════════════════════════════════════════
  *
  * A step is "plain" when step_prob==100 && step_ratchet==1 &&
- * step_every<=1 && !step_prev: it keeps sequencer_emit_step()'s always-on
- * repeating AMY sequence tag (seq_core_engine.c) at zero added cost.
+ * step_every<=1 && !step_prev && no note transform && no chord sentinel: it
+ * keeps sequencer_emit_step()'s always-on repeating AMY sequence tag
+ * (seq_core_engine.c) at zero added cost. The predicate is
+ * sequencer_core_step_is_decorated(). The plain path emits one repeating tag at
+ * a fixed pitch and AMY has no per-repetition hook, so a step whose pitch or
+ * firing varies per loop cannot use it.
  *
  * Any other combination makes the step "decorated". sequencer_emit_step()
  * leaves such a step's plain ON/OFF tag pair cleared and
@@ -213,11 +217,8 @@ static bool trig_roll_probability(uint8_t prob_pct)
  * shortening) so a merely probabilistic or conditional step feels identical to
  * a plain one when it fires; n>1 subdivides the slot.
  *
- * Not static: called only from seq_trig_pump.c's urgent-source drain on the
- * AMY ingest pump task, never from this file's own render-task tick hook
- * below (which only enqueues a job) - this function ends in
- * amy_helpers_note_send(), which asserts if called from the render task and
- * would block that task even if it didn't. */
+ * Not static: pump task only (seq_trig_pump.c); never call it from the render
+ * task. */
 void trig_schedule_ratchets(uint8_t layer_idx, const seq_layer_t *layer,
                             uint8_t track, uint8_t step, uint32_t grid_tick)
 {
@@ -290,8 +291,7 @@ void trig_schedule_ratchets(uint8_t layer_idx, const seq_layer_t *layer,
     }
     /* Per-step pitch offset, applied last so the transform's re-snap above
      * cannot quantize it away: chromatic semitones on single notes and chord
-     * tones alike (block transpose preserves the chord's intervals).
-     * TODO: revisit quantizer interplay - bypassed by design for now. */
+     * tones alike (block transpose preserves the chord's intervals). */
     int8_t pofs = layer->step_pitch_ofs[track][step];
     if (pofs != 0) {
         for (uint8_t i = 0; i < ntones; i++)
@@ -397,13 +397,8 @@ void sequencer_core_service_tick(void)
                  * keep evaluating, so a track resumes its rhythmic position
                  * seamlessly on unmute instead of freezing. */
                 if (fire && rr_bar && !frozen && sequencer_track_audible(layer, tr)) {
-                    /* trig_schedule_ratchets() ends in amy_helpers_note_send(),
-                     * which asserts if called from this (the render) task and
-                     * can block for up to 250ms even when it doesn't - both
-                     * forbidden on the render path. Hand off a tiny job
-                     * descriptor to the ingest pump's urgent source instead
-                     * (seq_trig_pump.c); the non-blocking enqueue + doorbell
-                     * is the render task's entire touch on this path. */
+                    /* Render task cannot send: hand the job to the pump's
+                     * urgent source (seq_trig_pump.c). */
                     sequencer_core_trig_enqueue(li, tr, cur_step, grid_tick);
                 }
             }
@@ -413,9 +408,8 @@ void sequencer_core_service_tick(void)
 }
 
 /* ── Public setters/getters ──────────────────────────────────────────────
- * Every setter re-emits the step so sequencer_emit_step() re-resolves
- * plain-vs-decorated. The trig service reads step_prob/step_ratchet/step_every/step_prev
- * live, so no other propagation is needed. */
+ * Every setter re-emits the step, which re-resolves plain vs decorated; the
+ * trig service reads the step fields live, so nothing else propagates. */
 void sequencer_core_set_step_prob(uint8_t layer_idx, uint8_t track, uint8_t step,
                                   uint8_t prob_pct)
 {
@@ -462,11 +456,10 @@ void sequencer_core_set_step_pitch_ofs(uint8_t layer_idx, uint8_t track, uint8_t
     if (layer->step_pitch_ofs[track][step] == ofs) return;
     layer->step_pitch_ofs[track][step] = ofs;
     sequencer_emit_step(layer_idx, track, step);
-    /* The re-emit rewrote the pending off tag at the NEW pitch; a melodic
-     * note already sounding at the old pitch would never match it (offs
-     * match by note number since AMY v1.2.121) and ring on - kill, same as
-     * the track pitch scroll. Drum tracks are 1-voice instruments whose
-     * offs skip note matching, and PCM drums schedule no offs at all. */
+    /* The re-emit rewrote the off tag at the NEW pitch, which a note already
+     * sounding at the old pitch would never match (note-off matching:
+     * seq_apply_track_note) - kill, same as the track pitch scroll. Drum tracks
+     * skip note matching and PCM drums schedule no offs. */
     if (layer->type == SEQ_LAYER_MELODIC) {
         amy_event *kill = amy_helpers_event_begin();
         kill->synth    = layer->synth_id[track];
@@ -584,10 +577,9 @@ bool sequencer_core_get_step_prev(uint8_t layer_idx, uint8_t track, uint8_t step
 }
 
 /* ── Per-step note transform + quantize bypass ────────────────────────────
- * Both re-emit the step so sequencer_emit_step() re-resolves plain-vs-decorated
- * (a non-NONE transform forces the decorated path). The quantize bypass rides
- * on the transform and only alters output while one is active: under NONE the
- * base note is already snapped and uniform per track. */
+ * A non-NONE transform makes the step decorated. The quantize bypass rides on
+ * the transform and only alters output while one is active: under NONE the base
+ * note is already snapped and uniform per track. */
 void sequencer_core_set_step_transform(uint8_t layer_idx, uint8_t track, uint8_t step,
                                        seq_step_transform_t mode, bool quant_bypass)
 {

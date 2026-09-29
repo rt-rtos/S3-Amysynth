@@ -29,12 +29,13 @@
 #define VOICE_LFO_DEPTH_DIST_OCT 2.0f
 #define VOICE_LFO_DEPTH_DIST_MIX 0.5f
 
-/* Anchor for software-LFO pitch pushes (every software stepper: sequencer
- * layers, arp, live voice). AMY's freq COEF_CONST is an absolute frequency in
- * Hz, converted via logfreq_of_freq(x) = log2(x / 440) (amy.c,
- * ZERO_LOGFREQ_IN_HZ). Multiplying the desired ratio by this base makes the
- * resulting logfreq constant the pure octave offset - 440 Hz itself is the
- * neutral push, identical to the reset default of 0. */
+/* Anchor for every pitch push through freq COEF_CONST: software-LFO steppers
+ * (sequencer layers, arp, live voice), unison detune, bass-preset offsets.
+ * AMY takes that constant as an absolute frequency in Hz and stores it as
+ * log2(f / 440) (AMY docs/synth.md, Control Coefficients), so a desired ratio
+ * r is sent as SEQ_LFO_PITCH_BASE_HZ * r; a bare ratio lands about 8.8 octaves
+ * down and mutes the voice. 440 Hz itself is the neutral push, identical to
+ * the reset default of 0. */
 #define SEQ_LFO_PITCH_BASE_HZ 440.0f
 
 /* FILTER-target swing ceiling, in quarter-octave steps (16 = 4.0 octaves). */
@@ -53,13 +54,13 @@ static inline float voice_lfo_filter_octaves(const seq_lfo_t *l)
 }
 
 /* WOBBLE (second-order LFO): osc2 chained as the osc1 carrier's mod_source.
- * AMP rides the dB combine (contribution is linear in the exponent: amp
- * multiplier = 10^(3 * coef * wob)) and is applied DOWNWARD-ONLY: the
- * carrier's amp CONST is pre-dropped by the swing (10^(-3*coef)) so the
- * breathing peaks exactly at the authored LFO depth and dips below it, never
- * above. Untamed, the +half of the swing multiplies the effective LFO depth
- * through the unclamped exponential MOD rail (2.8x at the former 0.15 coef)
- * and overdrives every target - the "too loud" wobble finding, 2026-08-03.
+ * AMY's amp combine is in dB (AMY docs/synth.md, Control Coefficients): each
+ * coefficient's contribution is linear in the exponent, amp multiplier =
+ * 10^(3 * coef * x). Wobble AMP therefore applies DOWNWARD-ONLY: the carrier's
+ * amp CONST is pre-dropped by the swing (10^(-3*coef)), so the breathing peaks
+ * exactly at the authored LFO depth and dips below it. The +half of the swing
+ * would otherwise multiply the effective LFO depth through the unclamped
+ * exponential MOD rail and overdrive every target.
  * RATE is linear in log2-frequency: 1.0 => +/-1 octave rate swing. */
 #define VOICE_WOB_DEPTH_AMP    0.075f
 #define VOICE_WOB_DEPTH_RATE   1.0f
@@ -70,14 +71,12 @@ static inline float voice_lfo_filter_octaves(const seq_lfo_t *l)
  * authored depth: the LFO breathes from full authored depth down to -N dB and
  * back (downward-only, see above).
  *
- * The AMP coefficient enters AMY's dB combine linearly (amp = 10^(3*coef*mod),
- * amp_combine_controls) and the carrier CONST is dropped by the same swing, so
- * total dip = 120 * coef dB with coef = wob/100 * VOICE_WOB_DEPTH_AMP: full
- * scale is 120 * VOICE_WOB_DEPTH_AMP = 9 dB in 1 dB steps.
+ * With the dB combine above, total dip = 120 * coef dB with
+ * coef = wob/100 * VOICE_WOB_DEPTH_AMP: full scale is
+ * 120 * VOICE_WOB_DEPTH_AMP = 9 dB in 1 dB steps.
  *
  * 0 dB is OFF, not a distinct setting: at zero swing the modulator is parked
- * (osc2 silenced), so nothing exists between "off" and "1 dB". The stored byte
- * keeps its 0..100 meaning, so old snapshots load unchanged.
+ * (osc2 silenced), so nothing exists between "off" and "1 dB".
  *
  * The same control also swings carrier RATE by up to +/-1 octave
  * (VOICE_WOB_DEPTH_RATE) when the reach includes rate; rate-only reach has no
@@ -214,10 +213,11 @@ void voice_push_unison_live(uint8_t synth, const voice_unison_t *u,
  * arp / both drones / live-play hold one each. There is no global or
  * per-domain set - a synth's distortion is whatever its owner last pushed.
  *
- * Reach: the event addresses osc 0, which AMY resolves to the BASE osc of every
- * voice in the synth. Wave voices and ALGO/FM voices (whose osc 0 carries the
- * summed operator output) are fully covered; multi-osc patch strings distort
- * their base osc only. That is deliberate - see voice_apply_dist.
+ * Reach: an event naming osc N (voice-relative) reaches osc N of every voice
+ * in the synth; osc 0 is the BASE osc. Wave voices and ALGO/FM voices (whose
+ * osc 0 carries the summed operator output) are fully covered; multi-osc patch
+ * strings distort their base osc only. That is deliberate - see
+ * voice_apply_dist.
  *
  * Applies to any synth the caller names, patch-backed or wave-backed. If a
  * future patch layout needs excluding, gate at the call sites the way the LFO
@@ -241,11 +241,11 @@ void voice_apply_dist_osc(uint8_t synth, uint8_t osc, const seq_dist_t *d);
  * swept drive and/or mix - whichever of LFO_TARGET_DIST_DRIVE / DIST_MIX the
  * caller checked in lfo->targets - around the committed `base` block, and
  * writes ONLY the drive/mix coefs' CONST term (type/bits/rate stay whatever the
- * dist editor last applied). Drive and mix have COEF_MOD rails in AMY now, so
- * native-carrier tracks drive distortion through voice_apply_native_lfo_topo()
- * instead; only PATCH-mode tracks (no free carrier osc) reach it through this
- * stepper. The law here matches the native rail exactly. No-op when the shaper
- * is OFF - an inert target, not an implicit enable. Core-0 / UI-task only. */
+ * dist editor last applied). Only tracks that
+ * sequencer_core_lfo_native_layout() rejects reach this stepper; the others
+ * drive distortion through voice_apply_native_lfo_topo(). The law here matches
+ * the native rail exactly. No-op when the shaper is OFF - an inert target, not
+ * an implicit enable. Core-0 / UI-task only. */
 void voice_push_dist_lfo(uint8_t synth, const seq_dist_t *base,
                          const seq_lfo_t *lfo, float val);
 
@@ -263,9 +263,10 @@ void voice_park_oscs(uint8_t synth, uint8_t first, uint8_t end);
  * coupling is cleared and the carrier silenced.
  *
  * Idempotent and state-clean: every target's COEF_MOD is cleared before the
- * selected one is set, because re-sending the same voice count does not reset
- * the osc pool - a prior target's coef would persist and keep modulating (the
- * stale-AMP case rides AMY's convex dB combine and ramps to a DC rail).
+ * selected one is set. An LFO edit re-applies this on live oscs with no pool
+ * definition (and so no osc reset) in between, so a prior target's coef would
+ * persist and keep modulating (the stale-AMP case rides AMY's dB combine and
+ * ramps to a DC rail).
  *
  * Core-0 / UI-task only; pushes through amy_helpers (never amy_queue_lock). */
 void voice_apply_native_lfo(uint8_t synth, const seq_lfo_t *lfo, uint16_t bpm);

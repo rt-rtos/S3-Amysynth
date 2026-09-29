@@ -25,8 +25,9 @@ extern "C" {
 /* Storage width: wide enough for the 9th chords. Authoring is capped below
  * that at SEQ_CHORD_MAX_SELECT, because a chord-carrying row widens its voice
  * count to the tone count and seq_clamp_patch_voices caps voices at
- * SEQ_TRACK_OSC_BUDGET / oscs_per_voice, which is 32/8 = 4 for the DX7 family:
- * a 9th on a DX7 patch would clamp to four voices and lose its top tone.
+ * SEQ_TRACK_OSC_BUDGET / oscs_per_voice (seq_core_config.h), which is 4 for the
+ * DX7 family: a 9th on a DX7 patch would clamp to four voices and lose its top
+ * tone.
  * Storage stays 5-wide so admitting 5-tone voicings again (e.g. by spreading
  * tones across a track pair) is a picker-ceiling change, not a format change. */
 #define SEQ_CHORD_MAX_NOTES  5

@@ -5,8 +5,8 @@
  * LFO, graph-editor envelopes) instead of the stutter machinery. Design split:
  * drone_std_core.h; shared concurrency rationale: drone_core.c.
  *
- * All AMY interaction goes through amy_helpers deltas - never amy_queue_lock,
- * never direct synth[] access. Callers are FreeRTOS tasks, never ISRs. */
+ * AMY access rules as in drone_core.c; callers are FreeRTOS tasks, never
+ * ISRs. */
 
 #include "custompatches/wavetable_bank.h"
 #include "custompatches/drone_std_core.h"
@@ -56,10 +56,9 @@ typedef struct {
 
 static drone_std_state_t s_ds;
 
-/* Coalesced rebuild, mirroring drone_core's s_d_dirty discipline: Core-0 input
- * tasks mark dirty; drone_std_core_service() (Core-0 UI task) drains once per
- * frame. Enable/chord/root stay synchronous - they must note-off the old
- * voicing before state changes or voices stick. */
+/* Coalesced rebuild (drone_core.c s_d_dirty): drone_std_core_service() drains
+ * once per frame. Enable/chord/root stay synchronous - they must note-off the
+ * old voicing before state changes or voices stick. */
 static volatile bool s_ds_dirty = false;
 static inline void drone_std_mark_dirty(void) { s_ds_dirty = true; }
 

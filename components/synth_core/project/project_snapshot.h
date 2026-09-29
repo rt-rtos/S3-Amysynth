@@ -3,8 +3,8 @@
 /* Whole-session save/load: walks every persistable subsystem (global mix,
  * sequencer layers, arp, drone, chord progression) through the TLV container
  * (project_tlv.h) and the atomic slot store (project_store.h). synth_ui task
- * ONLY - it owns the single-writer contract for layer topology edits and
- * drains the deferred UI mirror. */
+ * ONLY - it is the layers applier (sequencer_core_set_layers_applier(),
+ * sequencer_core.h) and drains the deferred UI mirror. */
 
 #include <stdint.h>
 #include <stdbool.h>

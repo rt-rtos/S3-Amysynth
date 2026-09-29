@@ -18,10 +18,9 @@ bool sequencer_core_export_layer(uint8_t layer_idx, seq_layer_t *out)
     if (layer_idx >= s_num_layers || !out) return false;
     *out = s_layers[layer_idx];   /* RAM-to-RAM copy is fine; only flash
                                      serialization must be field-by-field */
-    /* track_pcm_preset/track_pcm_mode in the core-side struct are UI mirrors
-     * that only the UI's copy ever refreshes - here they hold stale zeros.
-     * Serialize core truth instead, or a saved project resets every drum kit
-     * to preset 0 on load (import_layer replays these through the setters). */
+    /* track_pcm_preset/track_pcm_mode are stale on the core side (seq_model.h):
+     * serialize core truth, or a saved project resets every drum kit to preset
+     * 0 on load (import_layer replays these through the setters). */
     if (out->type == SEQ_LAYER_DRUM) {
         for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
             out->track_pcm_preset[t] = sequencer_core_get_drum_pcm_preset(layer_idx, t);

@@ -142,8 +142,9 @@ uint8_t sequencer_core_pattern_period_bars(void)
  *   Preview = MAX_LAYERS * (SEQ_TRACKS * SEQ_MAX_STEPS * 2)
  *             + layer * SEQ_TRACKS + track
  *
- * Per layer: 5*32*2 = 320 slots; all 4 layers occupy tags 0..1279.
- * Preview tags start at 1280; ON and OFF previews end at 1319, below the arp.
+ * The layers' ON/OFF tags come first, then the preview tags, which the
+ * _Static_assert below keeps under the arp's tag space. Whole-space layout:
+ * seq_core_config.h.
  */
 static inline uint32_t seq_tag_on(uint8_t layer, uint8_t track, uint8_t step)
 {
@@ -282,11 +283,10 @@ float sequencer_step_velocity(const seq_layer_t *layer,
  * (and testable) with no arp/drone modules linked in at all. */
 static seq_solo_change_cb_t s_solo_change_cb = NULL;
 
-/* True when any track of any layer has solo engaged. Solo is a GLOBAL mode, not
- * a per-layer one: soloing a row on one layer has to silence the other layers
- * too, or the feature cannot do the one job it exists for. Scans only the
- * rows each layer has (num_tracks): a row dropped by a shrink keeps its stored
- * flag, which must not gate the rows still in use. */
+/* True when any track of any layer has solo engaged (solo is global:
+ * sequencer_core.h). Scans only the rows each layer has (num_tracks): a row
+ * dropped by a shrink keeps its stored flag, which must not gate the rows
+ * still in use. */
 bool sequencer_core_any_solo(void)
 {
     for (uint8_t li = 0; li < s_num_layers; li++) {
@@ -448,11 +448,8 @@ void sequencer_emit_step(uint8_t layer_idx, uint8_t track, uint8_t step)
     note_velocity = SEQ_CLAMP_F32(note_velocity, 0.0f, 1.0f);
     if (tick_off == 0) tick_off = 1; /* avoid the reserved tick 0 */
 
-    /* Stopped, step off, track inaudible, or the step carries a
-     * probability/ratchet/conditional decoration: cancel the plain periodic tag
-     * pair instead of emitting. Decorated steps are one-shot scheduled per
-     * loop-iteration by sequencer_core_service_tick() (seq_core_trig.c),
-     * because AMY's period-repeat has no hook to gate one repetition. */
+    /* Stopped, step off, track inaudible, or decorated (seq_core_trig.c):
+     * cancel the plain periodic tag pair instead of emitting. */
     if (!s_playing || !layer->grid[track][step] ||
         !sequencer_track_audible(layer, track) ||
         sequencer_core_step_is_decorated(layer, track, step)) {
@@ -464,11 +461,10 @@ void sequencer_emit_step(uint8_t layer_idx, uint8_t track, uint8_t step)
     /* Drum and melodic layers alike have one synth slot per track. */
     uint8_t synth = layer->synth_id[track];
 
-    /* Per-step pitch offset, chromatic on top of the resolved step pitch
-     * (TODO: revisit quantizer interplay - bypassed by design for now). The
-     * plain path never carries a chord sentinel (chords force the decorated
-     * path), so plain arithmetic is safe. On and off use the same value:
-     * offs match by note number since AMY v1.2.121. */
+    /* Per-step pitch offset, chromatic on top of the resolved step pitch, not
+     * re-quantized. The plain path never carries a chord sentinel (chords force
+     * the decorated path), so plain arithmetic is safe. On and off use the same
+     * value (note-off matching: seq_apply_track_note). */
     uint8_t note = layer->step_note[track][step];
     int8_t pofs = layer->step_pitch_ofs[track][step];
     if (pofs != 0)
@@ -1015,10 +1011,7 @@ seq_repeat_rate_t sequencer_core_get_track_repeat_rate(uint8_t layer_idx,
 /* ── Per-layer swing ─────────────────────────────────────────────────────
  * Whole-layer feel control, not per-track: every odd step across all tracks
  * shifts by the same fraction, so the layer grooves as a unit. Re-emit the
- * whole layer so AMY reschedules each step at its swung tick.
- *
- * TODO(ui): engine + public API only, no UI wiring yet. A layer-level menu
- * item should call these from the TrackOpts/UI dispatch. */
+ * whole layer so AMY reschedules each step at its swung tick. */
 void sequencer_core_set_layer_swing(uint8_t layer_idx, uint8_t swing_pct)
 {
     if (layer_idx >= s_num_layers) return;
@@ -1112,12 +1105,10 @@ bool sequencer_core_get_track_mute(uint8_t layer_idx, uint8_t track)
     return s_layers[layer_idx].mute[track];
 }
 
-/* Re-emit every layer and hard-kill whatever just went inaudible. Solo is
- * global, so one toggle changes the audibility of every track in the project,
- * not just the toggled layer's - a note already sounding on a now-silenced row
- * would otherwise ring on to its scheduled note-off. Ducking the non-sequencer
- * voices (arp, drones) is the hook's job: they are driven by their own modules,
- * which sequencer_core deliberately does not depend on. */
+/* Re-emit every layer and hard-kill whatever just went inaudible: a note
+ * already sounding on a now-silenced row would otherwise ring on to its
+ * scheduled note-off. Ducking the arp and drones is the hook's job
+ * (sequencer_core.h). */
 static void sequencer_apply_solo_change(void)
 {
     for (uint8_t li = 0; li < s_num_layers; li++) {

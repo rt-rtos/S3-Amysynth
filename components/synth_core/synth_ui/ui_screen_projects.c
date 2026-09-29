@@ -19,15 +19,9 @@
  * routing live in ui_screen_menu.c, mirroring the global-FX page).
  *
  * Layout: item 0 = Back, item 1 = a read-only storage-usage line, items 2..N+1
- * = one row per slot. Clicking a slot enters a per-slot ACTION sub-state
- * (Load/Save/Ren/Del/Exit, cycled with the encoder); clicking again executes
- * it. Save on a used slot arms on the first click and executes on the second
- * ("Save!"); Rename swaps the value field for a compact character editor
- * (encoder cycles the alphabet, click advances, '#' commits early).
- *
- * This UI has no toast/transient-message overlay - the hint strip is a static
- * per-view button label, not a message queue - so action results are shown
- * inline in the acted-on row's value field until the cursor moves off it. */
+ * = one row per slot; the per-slot action flow is in CONTROLS.md. There is no
+ * toast overlay, so action results are shown inline in the acted-on row's
+ * value field until the cursor moves off it. */
 
 typedef enum { PA_LOAD = 0, PA_SAVE, PA_REN, PA_DEL, PA_EXIT, PA_COUNT } proj_action_t;
 
@@ -55,10 +49,8 @@ static uint8_t s_status_idx    = 0;
 static char    s_status_msg[MENU_VALUE_LEN];
 
 /* Deferred Load/Save request, executed by projects_menu_service() on the
- * synth_ui task. Clicks run on the button task, but project_snapshot_load()
- * rebuilds layer topology through sequencer_core_add/delete_layer, which only
- * the registered single-applier task may call, so a click just queues here.
- * Save defers the same way, keeping project flash I/O off the input path. */
+ * synth_ui task (the s_layers applier, sequencer_core.h). Save defers too,
+ * keeping project flash I/O off the input path. */
 typedef enum { PREQ_NONE = 0, PREQ_LOAD, PREQ_SAVE } proj_req_t;
 static volatile proj_req_t s_req = PREQ_NONE;   /* set last: publishes the fields below */
 static uint8_t             s_req_slot     = 0;

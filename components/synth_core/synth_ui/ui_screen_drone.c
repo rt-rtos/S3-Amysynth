@@ -11,8 +11,8 @@
  *  DRONE SCREEN
  * ════════════════════════════════════════════════════════════════════════
  * Standalone stutter-drone synth (custompatches/drone_core): a scrollable
- * parameter list whose rows depend on the WAVE/PATCH source. The cursor walks
- * the visible rows, encoder-click toggles edit, turning edits the value. */
+ * parameter list whose rows depend on the WAVE/PATCH source. Controls:
+ * CONTROLS.md. */
 
 static uint8_t s_drone_cursor   = 0;
 static bool    s_drone_editing  = false;

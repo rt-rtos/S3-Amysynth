@@ -9,27 +9,18 @@
  *  PROG GEN PAGE (Main Menu -> "Prog Gen")
  * ════════════════════════════════════════════════════════════════════════
  * Item model for the chord-progression generator; page state and input
- * routing live in ui_screen_menu.c (same split as the Bounce/Chords pages).
+ * routing live in ui_screen_menu.c. The parameters live in sequencer_core
+ * beside the progression they produce; this page keeps no copy. Generate
+ * overwrites the progression and enables it; Undo restores what the last
+ * Generate replaced.
  *
- * The top block is the generator's parameters, which live in sequencer_core
- * beside the progression they produce - this page keeps no copy, so a project
- * load shows the settings that made the chords on screen. Generate overwrites
- * the progression and enables it; one level of Undo puts back whatever the
- * last Generate replaced.
- *
- * Key and scale are the global quantizer's, not the page's: the generated
- * roots are diatonic to what the rest of the instrument is already playing.
- * The Root and Scale rows edit that quantizer through the same setters as the
- * main menu's rows, so either place shows the other's edits, and Arp Q is the
- * arp screen's quant source setting. The quantizer's enable flag stays on the
- * main menu.
- *
- * Style walks one list, the major family's presets and then the minor
- * family's. prog_gen_params_t.style stays an index within the family; the
- * combined index is page arithmetic only. A step across the family boundary
- * sets the global scale to that family's default (Major / Natural Minor, root
- * unchanged); a step within the family leaves the scale alone, so a modal
- * scale survives browsing its family's styles. */
+ * Root and Scale edit the global quantizer through the same setters as the
+ * main menu, so the generated roots are diatonic to what the rest of the
+ * instrument plays. Style walks one list, the major family's presets then the
+ * minor family's (prog_gen_params_t.style stays an index within the family).
+ * Stepping across the family boundary sets the global scale to that family's
+ * default (Major / Natural Minor, root unchanged); stepping within it leaves
+ * the scale alone. */
 
 enum {
     PGEN_ROW_ROOT = 0,

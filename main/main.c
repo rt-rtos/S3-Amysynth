@@ -65,8 +65,7 @@ static volatile uint32_t s_last_seq_tick = 0;
 static volatile uint32_t s_seq_tick_hook_count = 0;
 static volatile uint32_t s_render_block_count = 0;
 // Render overruns and USB-ring drops are counted in dropout_stats
-// (diagnostics component) alongside the ring-underrun and wire-ZLP counters,
-// so one snapshot attributes any audible gap to its pipeline layer.
+// (diagnostics component) alongside the wire-ZLP counter.
 // MY_BUTTON_1 held: encoder turns cycle the active screen's patch instead of
 // moving the selection.
 static volatile bool s_patch_held = false;
@@ -649,10 +648,9 @@ static void dispatch_button_event(my_button_id_t button_id, button_event_t event
  * concurrently, see harness.h). */
 static void encoder_process_steps(long steps)
 {
-    /* Same precedence resolver as the buttons: the overlays
-     * (FILTER>LFO>STEPEDIT>GRAPH>MENU) capture the encoder outright;
-     * below them the mode screens dispatch by view, with the
-     * patch-hold / drum-select modifiers applied. */
+    /* Same resolver as the buttons (synth_ui_active_view()): the overlays
+     * capture the encoder outright; below them the mode screens dispatch by
+     * view, with the patch-hold / drum-select modifiers applied. */
     ui_view_id_t v = synth_ui_active_view();
     switch (v) {
         case UI_VIEW_FILTER:   synth_ui_filter_handle_encoder(steps);   return;
@@ -750,10 +748,10 @@ static void encoder_init_task(void *pvParameters)
     esp_err_t err = rotary_encoder_new_with_config(&enc_cfg, &enc);
     ESP_LOGI(TAG, "[encoder_init] rotary_encoder_new_with_config returned %d", err);
     if (err == ESP_OK && enc) {
-        // 8192: the patch-toggle gesture runs amy_parse_message's ~3.4 KB
-        // frame inline on this stack; 4096 overflowed intermittently. Re-trim
-        // once the amy_ingest pump moves the parse to its own task. Pinned to
-        // Core 0 so the poll never jitters the Core 1 DSP.
+        // 8192: sized when the patch-toggle gesture ran amy_parse_message's
+        // ~3.4 KB frame inline on this stack (4096 overflowed); not
+        // re-measured since the ingest pump took the parse. Pinned to Core 0
+        // so the poll never jitters the Core 1 DSP.
         xTaskCreatePinnedToCore(encoder_task,
              "encoder_task",
              8192,
@@ -874,9 +872,8 @@ void app_main(void)
     /* Per-osc synthinfo/msynth blocks: read per-BLOCK (control state), not
      * per-sample - the sample-hot buffers are fbl/block above. The osc arena
      * grows lazily and frees a voice's oscs on release, and a 25-osc/voice
-     * patch (built-in piano) grows it by ~46 KB in one apply - measured
-     * 2026-08-11 emptying internal to 7.5 KB when this inherited
-     * ram_caps_events. PSRAM is cached and per-block access is cheap. */
+     * patch (built-in piano) grows it by ~46 KB in one apply, too much for
+     * the internal pool. PSRAM is cached and per-block access is cheap. */
     amy_cfg.ram_caps_oscs = MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT;
     /* Sequencer wire strings are cold control-plane data (read once per
      * fire, parse is us-scale) - PSRAM-first keeps them out of the internal
@@ -893,10 +890,9 @@ void app_main(void)
     /* Default 256 covers only layer 0. The tag space is laid out in
      * seq_core_config.h (sequencer, arp, ratchet trigs, chord one-shots, chord
      * previews, clip starts) and its top depends on SEQ_CHORD_MAX_NOTES and
-     * CLIP_SLOT_COUNT, so this is derived
-     * rather than a literal - a wider chord silently moved the ceiling past a
-     * hardcoded 1730 once. sequencer_add_wire rejects tag >= this, and the
-     * layout comment requires two above the top tag. */
+     * CLIP_SLOT_COUNT, so this is derived rather than a literal.
+     * sequencer_add_wire rejects tag >= this, and the layout comment requires
+     * two above the top tag. */
     amy_cfg.max_sequencer_tags = SEQ_CLIP_TAG_MAX + 2;
     /* Slot map lives in synth_slots.h: statics pack 1..SEQ_MEL_SYNTH_BASE-1, melodic is the
      * open-ended arena SEQ_MEL_SYNTH_BASE..SYNTH_SLOT_COUNT-1. This is the polyphony knob. */
@@ -1041,16 +1037,15 @@ void app_main(void)
 
     ESP_LOGI(TAG, "AMY + USB Audio ready (48 kHz stereo to PC)");
 
-    // Initialize push buttons (GPIO15, GPIO18, GPIO8, GPIO42)
+    // Initialize push buttons (pins: my_buttons.c)
     ESP_LOGI(TAG, "[startup] before my_buttons_init");
     s_button_queue = xQueueCreate(BUTTON_QUEUE_DEPTH, sizeof(button_msg_t));
     if (s_button_queue == NULL) {
         ESP_LOGW(TAG, "Button queue creation failed; callbacks will run inline");
     } else {
-        // 8192: dispatch_button_event shares the patch-toggle path that runs
-        // amy_parse_message's ~3.4 KB frame inline; 4096 overflowed
-        // intermittently (same exposure as encoder_task). Re-trim once the
-        // amy_ingest pump moves the parse to its own task.
+        // 8192: sized when the patch-toggle path ran amy_parse_message's
+        // ~3.4 KB frame inline (4096 overflowed, as for encoder_task); not
+        // re-measured since the ingest pump took the parse.
         if (xTaskCreatePinnedToCore(button_handler_task,
              "button_task",
              8192,

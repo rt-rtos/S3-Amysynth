@@ -24,8 +24,7 @@ extern "C" {
  *
  * Owns AMY synth slots 4/5 (DRONE_STD_SYNTH_MAIN/_SUB, just above the stutter
  * drone's 2/3) so both drones can sound together; the slot map is in
- * synth_slots.h. All AMY interaction goes through amy_helpers deltas, never
- * amy_queue_lock. */
+ * synth_slots.h. AMY access goes through amy_helpers.h. */
 
 /* ── Lifecycle ── */
 void drone_std_core_init(void);

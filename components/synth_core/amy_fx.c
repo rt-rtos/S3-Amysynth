@@ -3,9 +3,8 @@
  * synth_ui.c so the sequencer/arp/drone cores can call synth_ui_fx_reassert()
  * without depending on the UI headers (u8g2, display_*).
  *
- * One cache per bus; fx_bus.c decides which synths feed which bus. A bus that
- * carries nothing is held muted in the engine regardless of what its cache
- * holds, so an unused bus costs no render time. */
+ * One cache per bus; fx_bus.c decides which synths feed which bus. Inactive
+ * buses are held muted (rule in amy_fx.h at the fx_push_* group). */
 
 #include "amy_fx.h"
 #include "fx_bus.h"
@@ -304,14 +303,10 @@ void amy_fx_apply_routing(void)
     for (uint8_t b = 0; b < FX_BUS_COUNT; b++) fx_bus_sync(b);
 }
 
-/* Re-impose a bus's cached FX after a patch load so a preset cannot hijack the
- * EQ/chorus/echo/reverb of the bus the loading synth renders on. No-op when the
- * user opted into letting presets drive bus FX. Safe from the sequencer/arp/
- * drone task contexts: each fx_push_* serialises through the shared
- * amy_helpers mutex.
- *
- * These events are queued AFTER the patch's own FX deltas, so they win, and
- * both drain in the same render quantum - no audible blip. */
+/* Why and when: see synth_ui_fx_reassert() in amy_fx.h. These events are
+ * queued AFTER the patch's own FX deltas, so they win, and both drain in the
+ * same render quantum - no audible blip. Safe from the sequencer/arp/drone
+ * task contexts: each fx_push_* goes through the amy_helpers seam. */
 void synth_ui_fx_reassert(uint8_t slot)
 {
     if (s_fx_presets_alter_global) return;

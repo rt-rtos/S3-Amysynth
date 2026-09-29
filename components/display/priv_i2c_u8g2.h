@@ -66,17 +66,10 @@ esp_err_t i2c_u8g2_deinit(i2c_u8g2_handle_t *handle);
 u8g2_t *i2c_u8g2_get_u8g2(i2c_u8g2_handle_t *handle);
 
 /**
- * @brief Sparse recovery poll for an absent panel.
- *
- * Call periodically from the task that owns display flushing (the UI task
- * loop). No-op while the panel is present, and at most one address probe
- * (tens of us on NACK) per retry period while absent. When a panel answers,
- * runs the full u8g2 init sequence in place - that call blocks the caller
- * for the panel's init time (~100-200 ms), only on an actual (re)attach.
- * Not ISR- or render-path-safe.
- *
- * @return true when a panel was (re)attached by THIS call - the panel's RAM
- *         is blank after init, so the caller must force a full redraw/flush.
+ * Re-probe an absent panel; no-op while present. Call from the task that
+ * flushes the display. Returns true after a (re)attach, which blocks for the
+ * panel init (~100-200 ms); the caller must then redraw, the panel RAM is
+ * blank. Not ISR- or render-path-safe.
  */
 bool i2c_u8g2_service(void);
 
