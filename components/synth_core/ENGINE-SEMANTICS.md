@@ -36,7 +36,9 @@ law in `arp_core.c` and `live_play.c`; mechanics in
 and re-sends it. The rate is capped at `SEQ_LFO_SW_MAX_HZ`. WOBBLE
 and SCAN have no software analog. Pitch is written to osc 0 only, because a
 synth-wide event would also rewrite the patch's internal modulator oscs' freq
-CONST, which is their rate.
+CONST, which is their rate. On ALGO voices (the FM range and the DX7 bank) AMP
+is written to osc 0 as well, because an operator's amp CONST is its output
+level (`sequencer_core_patch_amp_osc()`).
 
 **One predicate.** Every gate must use `sequencer_core_lfo_native_layout()`. A
 site left on `sequencer_core_is_wave_patch()` would run the stepper on a native

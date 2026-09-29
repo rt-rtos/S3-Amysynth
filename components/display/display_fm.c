@@ -17,6 +17,26 @@
 #define FM_PANEL_Y0   22
 #define FM_PANEL_ROW_H 8
 
+/* Page 1 grid: six 7 px rows fill the blue band above the hint strip (y 57).
+ * The two full-width lines have two columns; a column's '>' marker sits at
+ * its x, the text 5 px right of it. The four T/L lines are a compact column
+ * with fixed cell boxes (framed while navigating, filled while adjusting) and
+ * the plot to their right, spanning those four rows. */
+#define FM2_COL0_X    2
+#define FM2_COL1_X    66
+#define FM2_COL_W     64
+#define FM2_Y0        21
+#define FM2_ROW_H     7
+#define FM2_WIDE_ROWS 2         /* OP/FRQ and coarse/fine */
+#define FM2_T_BOX_X   0
+#define FM2_T_BOX_W   35
+#define FM2_L_BOX_X   36
+#define FM2_L_BOX_W   14
+#define FM2_PLOT_X    (128 - FM_PLOT_W)
+#define FM2_PLOT_TOP  (FM2_Y0 + FM2_WIDE_ROWS * FM2_ROW_H - 6)
+#define FM2_PLOT_BOT  56        /* last row above the hint strip */
+#define FM2_LEVEL_MAX 99
+
 #define FM_NO_OP      0xFF
 
 typedef struct {
@@ -133,6 +153,130 @@ static void draw_feedback_loop(u8g2_t *u8g2, uint8_t x, uint8_t y)
     u8g2_DrawVLine(u8g2, (uint8_t)(x + FM_BOX_W - 2), (uint8_t)(y - 2), 2);
 }
 
+/* Box outline with every other pixel lit (a refused link target). */
+static void draw_frame_dotted(u8g2_t *u8g2, uint8_t x, uint8_t y, uint8_t w, uint8_t h)
+{
+    for (uint8_t i = 0; i < w; i += 2u) {
+        u8g2_DrawPixel(u8g2, (uint8_t)(x + i), y);
+        u8g2_DrawPixel(u8g2, (uint8_t)(x + i), (uint8_t)(y + h - 1u));
+    }
+    for (uint8_t j = 0; j < h; j += 2u) {
+        u8g2_DrawPixel(u8g2, x, (uint8_t)(y + j));
+        u8g2_DrawPixel(u8g2, (uint8_t)(x + w - 1u), (uint8_t)(y + j));
+    }
+}
+
+static uint8_t plot_y(uint8_t level)
+{
+    const uint16_t h = FM2_PLOT_BOT - FM2_PLOT_TOP;
+    if (level > FM2_LEVEL_MAX) level = FM2_LEVEL_MAX;
+    return (uint8_t)(FM2_PLOT_BOT - (level * h + FM2_LEVEL_MAX / 2) / FM2_LEVEL_MAX);
+}
+
+/* One trace line (Bresenham). Chained lines share their joint, so every line
+ * but the first skips its start pixel. Dotted lights every other pixel, the
+ * phase carried across calls so the dots stay even; thick adds the pixel
+ * above. */
+static void plot_line(u8g2_t *u8g2, int x0, int y0, int x1, int y1,
+                      bool skip_first, bool dotted, bool thick, uint8_t *phase)
+{
+    int dx = (x1 > x0) ? x1 - x0 : x0 - x1;
+    int dy = (y1 > y0) ? y0 - y1 : y1 - y0;          /* -|dy| */
+    int sx = (x0 < x1) ? 1 : -1, sy = (y0 < y1) ? 1 : -1;
+    int err = dx + dy;
+    for (;;) {
+        if (skip_first) {
+            skip_first = false;
+        } else if (!dotted || ((*phase)++ & 1u) == 0u) {
+            u8g2_DrawPixel(u8g2, (uint8_t)x0, (uint8_t)y0);
+            if (thick) u8g2_DrawPixel(u8g2, (uint8_t)x0, (uint8_t)(y0 - 1));
+        }
+        if (x0 == x1 && y0 == y1) break;
+        int e2 = 2 * err;
+        if (e2 >= dy) { err += dy; x0 += sx; }
+        if (e2 <= dx) { err += dx; y0 += sy; }
+    }
+}
+
+/* The read-only envelope plot. Segments g = 0..4 run between breakpoint
+ * columns g and g+1: T1, T2, T3, the sustain stub, T4. */
+static void draw_eg_plot(u8g2_t *u8g2, const fm_view_t *view, bool dotted)
+{
+    static const uint8_t seg_of_t[4] = { 0, 1, 2, 4 };
+    static const uint8_t bp_of_l[4]  = { 1, 2, 3, 5 };   /* L4 also marks bp 0 */
+    static const uint8_t prev_l[4]   = { 3, 0, 1, 2 };   /* level a Tn starts from */
+    int hl_seg = -1, hl_pt = -1;
+    if (view->cursor >= FM2_CUR_T1 && view->cursor <= FM2_CUR_L4) {
+        uint8_t n = (uint8_t)((view->cursor - FM2_CUR_T1) / 2u);
+        if (((view->cursor - FM2_CUR_T1) & 1u) == 0u) hl_seg = n;
+        else                                          hl_pt  = n;
+    }
+
+    const uint8_t *bp = view->plot_bp_x;
+    uint8_t phase = 0;
+    for (uint8_t g = 0; g + 1u < FM_PLOT_BPS; g++) {
+        bool thick = (hl_seg >= 0 && seg_of_t[hl_seg] == g);
+        for (uint8_t x = bp[g]; x < bp[g + 1u]; x++) {
+            plot_line(u8g2, FM2_PLOT_X + x, plot_y(view->plot_level[x]),
+                      FM2_PLOT_X + x + 1, plot_y(view->plot_level[x + 1u]),
+                      x != 0u, dotted, thick, &phase);
+        }
+        if (thick && bp[g] == bp[g + 1u]) {
+            /* A zero-time segment is a jump: mark it as a double vertical. */
+            uint8_t ya = plot_y(view->eg_level[prev_l[hl_seg]]);
+            uint8_t yb = plot_y(view->eg_level[hl_seg]);
+            uint8_t top = (ya < yb) ? ya : yb, len = (uint8_t)((ya < yb ? yb - ya : ya - yb) + 1u);
+            u8g2_DrawVLine(u8g2, (uint8_t)(FM2_PLOT_X + bp[g]), top, len);
+            u8g2_DrawVLine(u8g2, (uint8_t)(FM2_PLOT_X + bp[g] + 1u), top, len);
+        }
+    }
+    if (hl_pt >= 0) {
+        uint8_t y = plot_y(view->eg_level[hl_pt]);
+        u8g2_DrawBox(u8g2, (uint8_t)(FM2_PLOT_X + bp[bp_of_l[hl_pt]] - 1u), (uint8_t)(y - 1), 3, 3);
+        if (hl_pt == 3) u8g2_DrawBox(u8g2, (uint8_t)(FM2_PLOT_X + bp[0] - 1u), (uint8_t)(y - 1), 3, 3);
+    }
+}
+
+/* Page 1 below the title: "MUTE" top-right, the two wide lines with page 0's
+ * cursor convention ('>' while navigating, inverted while adjusting), the
+ * compact T/L column, and the plot. */
+static void draw_page_freq_eg(u8g2_t *u8g2, const fm_view_t *view)
+{
+    bool muted = (view->muted & (1u << view->selected_op)) != 0u;
+    if (muted) u8g2_DrawStr(u8g2, 104, 8, "MUTE");
+
+    u8g2_SetFont(u8g2, u8g2_font_4x6_tr);
+    for (uint8_t c = 0; c < FM2_CUR_COUNT; c++) {
+        uint8_t y = (uint8_t)(FM2_Y0 + (c / 2u) * FM2_ROW_H);
+        bool on = (view->cursor == c);
+        if (c < FM2_CUR_T1) {
+            uint8_t x = (c & 1u) ? FM2_COL1_X : FM2_COL0_X;
+            if (on && view->editing) {
+                u8g2_DrawBox(u8g2, (uint8_t)(x + 4), (uint8_t)(y - 6), FM2_COL_W - 6, FM2_ROW_H);
+                u8g2_SetDrawColor(u8g2, 0);
+                u8g2_DrawStr(u8g2, (uint8_t)(x + 5), y, view->cells[c]);
+                u8g2_SetDrawColor(u8g2, 1);
+            } else {
+                if (on) u8g2_DrawStr(u8g2, x, y, ">");
+                u8g2_DrawStr(u8g2, (uint8_t)(x + 5), y, view->cells[c]);
+            }
+            continue;
+        }
+        uint8_t bx = (c & 1u) ? FM2_L_BOX_X : FM2_T_BOX_X;
+        uint8_t bw = (c & 1u) ? FM2_L_BOX_W : FM2_T_BOX_W;
+        if (on && view->editing) {
+            u8g2_DrawBox(u8g2, bx, (uint8_t)(y - 6), bw, FM2_ROW_H);
+            u8g2_SetDrawColor(u8g2, 0);
+            u8g2_DrawStr(u8g2, (uint8_t)(bx + 2), y, view->cells[c]);
+            u8g2_SetDrawColor(u8g2, 1);
+        } else {
+            if (on) u8g2_DrawFrame(u8g2, bx, (uint8_t)(y - 6), bw, FM2_ROW_H);
+            u8g2_DrawStr(u8g2, (uint8_t)(bx + 2), y, view->cells[c]);
+        }
+    }
+    draw_eg_plot(u8g2, view, muted);
+}
+
 void display_fm_draw_frame(u8g2_t *u8g2, const fm_view_t *view)
 {
     u8g2_ClearBuffer(u8g2);
@@ -143,6 +287,10 @@ void display_fm_draw_frame(u8g2_t *u8g2, const fm_view_t *view)
         return;
     }
     u8g2_DrawStr(u8g2, 2, 8, view->title);
+    if (view->page == 1) {
+        draw_page_freq_eg(u8g2, view);
+        return;
+    }
     char opl[6];
     snprintf(opl, sizeof(opl), "OP%u", (unsigned)(FM_GRAPH_OPS - view->selected_op));
     u8g2_DrawStr(u8g2, 106, 8, opl);
@@ -181,11 +329,24 @@ void display_fm_draw_frame(u8g2_t *u8g2, const fm_view_t *view)
             u8g2_DrawStr(u8g2, (uint8_t)(x + 3), (uint8_t)(y + 6), d);
             u8g2_SetDrawColor(u8g2, 1);
         } else {
-            u8g2_DrawFrame(u8g2, x, y, FM_BOX_W, FM_BOX_H);
+            if (view->linking && (view->link_bad & (1u << i))) {
+                draw_frame_dotted(u8g2, x, y, FM_BOX_W, FM_BOX_H);
+            } else {
+                u8g2_DrawFrame(u8g2, x, y, FM_BOX_W, FM_BOX_H);
+            }
             u8g2_DrawStr(u8g2, (uint8_t)(x + 3), (uint8_t)(y + 6), d);
         }
-        if (view->cursor == FM_CUR_OP_BASE + i) {
-            /* Cursor on the box itself (vs. parked in the panel): outer frame. */
+        if (view->muted & (1u << i)) {
+            /* Corner to corner, inverted over the filled selected box. */
+            if (sel) u8g2_SetDrawColor(u8g2, 0);
+            u8g2_DrawLine(u8g2, x, (uint8_t)(y + FM_BOX_H - 1), (uint8_t)(x + FM_BOX_W - 1), y);
+            u8g2_SetDrawColor(u8g2, 1);
+        }
+        bool framed = view->linking ? (i == view->link_src || i == view->link_cursor)
+                                    : (view->cursor == FM_CUR_OP_BASE + i);
+        if (framed) {
+            /* Cursor on the box itself (vs. parked in the panel), or the link
+             * source / link cursor: outer frame. */
             u8g2_DrawFrame(u8g2, (uint8_t)(x - 2), (uint8_t)(y - 2), FM_BOX_W + 4, FM_BOX_H + 4);
         }
         if (view->graph.fb_op == i) draw_feedback_loop(u8g2, x, y);
@@ -194,7 +355,7 @@ void display_fm_draw_frame(u8g2_t *u8g2, const fm_view_t *view)
     /* Parameter panel for the selected operator. */
     for (uint8_t r = 0; r < FM_PANEL_ROWS; r++) {
         uint8_t y = (uint8_t)(FM_PANEL_Y0 + r * FM_PANEL_ROW_H);
-        bool on = (view->cursor == FM_CUR_RATIO + r);
+        bool on = !view->linking && (view->cursor == FM_CUR_RATIO + r);
         bool struck = (FM_CUR_RATIO + r == FM_CUR_FB) && !view->fb_applies;
         uint8_t w = (uint8_t)u8g2_GetStrWidth(u8g2, view->rows[r]);
         if (on && view->editing) {

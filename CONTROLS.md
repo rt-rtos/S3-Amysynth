@@ -16,7 +16,7 @@ is right and this file is stale.
 | Button 1 | `MY_BUTTON_1` | Hold modifier (acts on press, released on release), or a press action in some views |
 | Button 2 | `MY_BUTTON_2` | Same as button 1 |
 | Button 3 | `MY_BUTTON_3` | Acts on tap |
-| SHOULDER (LB) | `MY_BUTTON_SHOULDER` | Left shoulder button. Acts on press, except the LFO tab flip (tap) |
+| SHOULDER (LB) | `MY_BUTTON_SHOULDER` | Left shoulder button. Acts on press, except the LFO tab flip and the FM page flip (tap) |
 | SHIFT (RB) | `MY_BUTTON_SHIFT` | Right shoulder button. Hold modifier; a bare tap does nothing |
 
 Pin assignments: `components/my_buttons/my_buttons.c` (`s_button_gpios[]`).
@@ -43,7 +43,7 @@ Screens are changed only through the Menu.
 |---|---|
 | SHIFT + Button 0 (press) | Loop bounce: start into the first empty clip slot, cancel one still waiting for its bar line, or stop a running one at the next pattern-period boundary. Works from any screen |
 | SHIFT + Button 0 (hold) | Discard a running bounce |
-| SHIFT + Button 1 | Open the ADSR editor on the current instrument (Seq, Arp, Drone screens, FM, or the Wireless menu page). With an editor open: commit and close it |
+| SHIFT + Button 1 | Open the ADSR editor on the current instrument (Seq, Arp, Drone screens, or the Wireless menu page). With an editor open: commit and close it |
 | SHIFT + Button 2 | Sequencer screen, no menu: open the Step Trig popup. Popup open: close it. Filter/LFO/DIST/ADSR editor open: release the open tab to the patch |
 | SHIFT + Button 3 | Filter/LFO/DIST/ADSR editor open on a melodic row: flip the row between its own voice block and the layer's shared block |
 | Button 3 (tap) | Toggle the menu; it reopens on the page and row it was closed on. With an editor open: next editor. With the Step Trig popup open: close it |
@@ -55,7 +55,8 @@ preconditions are not met does nothing.
 ## Hint strip
 
 The bottom line shows `1:<b1> 2:<b2> 3:<b3>` and, in the menu on a sub-page,
-` LB:Main`. It is read from `ui_view_table[]` (`ui_view_resolve.c`) for the
+` LB:Main`; on the FM screen ` LB:Pg2` or ` LB:Pg1` (the page SHOULDER flips
+to). It is read from `ui_view_table[]` (`ui_view_resolve.c`) for the
 active view. SHIFT chords are not shown. The strip is hidden on the Prog
 screen and on the drone visualiser; a DEV status bar replaces it on every screen
 while on.
@@ -63,7 +64,8 @@ while on.
 | View | 1 | 2 | 3 |
 |---|---|---|---|
 | Seq | Patch | Pitch | Menu |
-| Arp, Stutter, Normal drone, FM | Patch | - | Menu |
+| Arp, Stutter, Normal drone | Patch | - | Menu |
+| FM | Link (page 1), - (page 2) | Mute | Menu (Done while linking) |
 | Menu | - (Save while naming) | - (Disc while naming) | Menu |
 | Prog | Del | +Add | Menu |
 | DEV | - | - | Menu |
@@ -173,7 +175,7 @@ selected and adjusted with the encoder.
 | Button 1 (press) | Cycle the shown envelope's curve type: Normal, Linear, DX7, TrueExp |
 | Button 2 (press) | Cycle the sub-mode: off, AMP (amplitude trim, 5 % steps), SWG (layer swing; melodic rows reading the layer block, EG0 page only), then one stop per routing target PIT / CUT / DRV / MIX on rows carrying the depth matrix. The EG1 page starts straight on the target stops |
 | SHOULDER (press) | Target stop up: flip the sign of that depth |
-| Button 3 (tap) | Next editor: EG0, EG1, Filter, LFO, DIST, back to EG0. Targets without an EG1 page skip it; the FM operator editor has one page and re-opens itself |
+| Button 3 (tap) | Next editor: EG0, EG1, Filter, LFO, DIST, back to EG0. Targets without an EG1 page skip it |
 | Button 0 (tap) | Commit and close |
 | Button 0 (hold) | Cancel (restores the stored state) and close |
 | SHIFT + Button 1 | Commit and close |
@@ -264,20 +266,68 @@ Both are a scrollable parameter list.
 
 ## FM screen
 
-Requires `CONFIG_SYNTH_CUSTOM_FM`. One cursor walks the six operator boxes
-(selecting as it goes), then the panel rows RATIO, LEVEL, TO, FB, ALGO of the
-selected operator.
+Requires `CONFIG_SYNTH_CUSTOM_FM`. Two pages over the selected operator,
+flipped with SHOULDER; each page keeps its own cursor.
+
+Page 1: one cursor walks the six operator boxes (selecting as it goes), then
+the panel rows RAT, LVL, TO, FB, ALG of the selected operator. The RAT row
+shows `RAT 2.00` for a ratio operator and `FIX 440` for a fixed-frequency one,
+and adjusts like page 2's coarse cell. The TO row shows `TO  OP1` for one
+target and the target labels for several: `TO 1+2+3` up to three, `TO 1234`
+above that. A muted operator's box is struck diagonally.
+
+Page 2: the selected operator's frequency and 4-level envelope, `MUTE` in the
+title while it is muted. Cursor stops, in order: OP, FRQ, coarse, fine, T1,
+L1, T2, L2, T3, L3, T4, L4. From L4 a note rises to L1 over T1, then L2 over
+T2, then L3 over T3, and holds L3; the release returns to L4 over T4. Levels
+are DX7 levels (0.75 dB per step, 99 full, 0 silent).
 
 | Input | Action |
 |---|---|
 | Encoder turn, browsing | Move the cursor (clamped) |
-| Encoder click | On a box: jump to its RATIO row. On a row: enter / leave adjusting |
-| Encoder turn, adjusting | RATIO: curated steps. LEVEL: 5 %. TO: target operator or OUT. FB: 5 %, 0..120 %. ALGO: step the algorithm |
-| SHOULDER (press) | Toggle feedback on the selected operator |
-| SHIFT + Button 1 | Open the ADSR editor on the selected operator |
-| Button 1 hold + turn | Cycle the active layer's patch (leaves the FM voice) |
+| Encoder click, page 1 | On a box: jump to its RAT row. On FB when the selected operator is not the feedback operator: make it the feedback operator. On another row (or FB on the feedback operator): enter / leave adjusting |
+| Encoder turn, adjusting, page 1 | RAT: coarse, as below. LVL: 5 %. TO: one target operator or OUT, replacing any set of targets. FB: 5 %, 0..120 %. ALG: step the algorithm |
+| Encoder click, page 2 | FRQ: toggle RAT / FIX (seeded from the operator's pitch at A4). Other cells: enter / leave adjusting |
+| Encoder turn, adjusting, page 2 | OP: select OP1..OP6. Coarse: ratio mode steps the curated ratios, keeping the fine offset; fixed mode 1 semitone. Fine: 0.1 Hz (ratio mode shown as Hz at A4). T1..T4: about 8 % of the time, at least 1 ms. L1..L4: 1 |
+| Button 2 (press) | Mute / unmute the selected operator (not saved) |
+| SHOULDER (tap) | Flip the page |
+| Button 1 (press), page 1 | Start linking from the selected operator (below). Page 2: nothing |
+| SHIFT + turn | Step the algorithm, as the ALG row does |
 | Button 0 (tap / hold) | Cycle the active layer / play-stop |
 | Button 3 (tap) | Menu |
+
+Ratios clamp to 0.25..20, fixed frequencies to 1..9772 Hz.
+
+### Linking
+
+Linking sets which operators the selected operator (the source) modulates,
+so one operator can modulate several. While linking, the title reads
+`LINK OP<n>`, the source box and the link cursor's box are framed, and the
+panel cursor is hidden.
+
+| Input | Action |
+|---|---|
+| Encoder turn | Move the link cursor over the boxes (clamped) |
+| Button 1 (press) | Click the box under the link cursor (rule below) |
+| Button 3 (tap), encoder click | End linking |
+| SHOULDER (tap) | End linking and flip the page |
+| Button 2 (press) | Mute / unmute the source |
+| SHIFT + turn | Ignored |
+
+Clicking the source's own box does nothing. Until a click has been accepted,
+a click replaces the source's targets with that operator, as TO does; this
+includes a first click on a member of a fan-out seeded from a table
+algorithm, which replaces the whole set. After that, a click on an operator
+outside the set adds it, and a click on a member removes it unless it is
+the only target.
+
+Linking reaches operators only: making the source a carrier (OUT) stays on
+the TO row. A click that would close a loop, or that needs a third
+modulation bus, is refused and changes nothing; the title shows
+`LINK: LOOP` or `LINK: NO BUS` until the next turn or click. Boxes whose
+click would be refused have a dotted outline. A source that is the only
+carrier refuses every link with LOOP, since a graph with no carrier is a
+loop. An accepted click switches ALG to CUST and sounds at once.
 
 ## DEV screen
 

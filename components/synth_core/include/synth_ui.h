@@ -122,16 +122,34 @@ bool synth_ui_prog_delete_entry(void);
 bool synth_ui_dev_handle_encoder(int delta);
 bool synth_ui_dev_handle_button(void);
 
-/* FM/ALGO operator-graph editor for the live SEQ_PATCH_FM_CUSTOM voice (see
+/* FM/ALGO operator editor for the live SEQ_PATCH_FM_CUSTOM voice (see
  * custompatches/fm_voice.h). Active when seq_state.ui_mode == UI_MODE_FM and
- * no overlay is up. The envelope editor binds to the selected operator
- * (synth_ui_graph_open_envelope binds GRAPH_TGT_FM_OP off
- * synth_ui_fm_selected_op()). All UI/input task. */
+ * no overlay is up; the handle/toggle calls return false and do nothing
+ * otherwise. Two pages (ui_screen_fm.c): page 0 the operator graph and panel,
+ * page 1 the selected operator's frequency and envelope.
+ * toggle_mute flips the selected operator's audition mute (op_mute),
+ * toggle_page ends link mode and flips the page, page() reads it for the
+ * hint strip. step_algorithm is SHIFT+turn: the ALG row's step, ignored
+ * while linking.
+ *
+ * Link mode (page 0 only): link_button is the Button 1 press. Not linking,
+ * it starts with the selected operator as the source and the link cursor on
+ * its box; linking, it applies the click rule (CONTROLS.md) to the box under
+ * the link cursor, which the encoder moves. link_end leaves it (Button 3,
+ * encoder click, SHOULDER). link_active is false off the screen or off page
+ * 0, so state left over from leaving the screen never counts; link_button
+ * discards it before deciding to start.
+ * All UI/input task. */
 bool    synth_ui_fm_is_active(void);
 bool    synth_ui_fm_handle_encoder(int delta);
 bool    synth_ui_fm_handle_button(void);
-bool    synth_ui_fm_toggle_feedback(void);
-uint8_t synth_ui_fm_selected_op(void);
+bool    synth_ui_fm_toggle_mute(void);
+bool    synth_ui_fm_toggle_page(void);
+uint8_t synth_ui_fm_page(void);
+bool    synth_ui_fm_step_algorithm(int delta);
+bool    synth_ui_fm_link_button(void);
+bool    synth_ui_fm_link_active(void);
+void    synth_ui_fm_link_end(void);
 
 /* Global-FX reassert after a patch load (every Juno patch ends with global
  * EQ/chorus commands) is declared in amy_fx.h - include that header. */

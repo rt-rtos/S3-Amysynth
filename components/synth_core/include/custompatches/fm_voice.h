@@ -2,8 +2,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-#include "seq_model.h"               /* seq_env_t */
-#include "custompatches/fm_graph.h"  /* fm_graph_view_t, FM_TO_OUT, FM_OP_NONE */
+#include "custompatches/fm_graph.h"  /* fm_graph_view_t, FM_OUT_BIT, FM_OP_NONE */
 
 #ifdef __cplusplus
 extern "C" {
@@ -21,28 +20,57 @@ extern "C" {
  *
  * Routing comes from one of two sources:
  *   algorithm < FM_ALGO_CUSTOM : AMY algorithms[] row (DX7 numbering, row 0
- *                                aliases row 1); op_to/fb_op are ignored.
- *   algorithm == FM_ALGO_CUSTOM: the authored forest op_to[] + fb_op,
+ *                                aliases row 1); op_targets/fb_op are ignored.
+ *   algorithm == FM_ALGO_CUSTOM: the authored op_targets[] + fb_op,
  *                                compiled onto AMY's two buses at push time.
+ * op_targets[i] is operator i's target set in the fm_graph_view_t.out_mask
+ * encoding (fm_graph.h): FM_OUT_BIT alone (carrier), or one or more other
+ * operators (fan-out). A fan-out connection has no depth of its own: the
+ * modulator's level and envelope drive every target equally.
  * `feedback` is the amount on whichever operator the routing marks FB.
  *
  * Per-operator "level" is that operator's amp_coefs[COEF_CONST]: for a
  * modulator it IS the modulation index/brightness, for a carrier it scales
  * that carrier. Level 0 silences the operator. Each operator has its own EG0
  * (op_env); the ALGO control osc keeps the row's per-track ADSR as a VCA over
- * the carriers, so both shape the note. */
+ * the carriers, so both shape the note.
+ *
+ * Frequency: an operator either tracks the note at op_ratio (bit clear in
+ * op_fixed) or sounds op_fixed_hz regardless of the note (bit set).
+ *
+ * op_mute is audition state: a muted operator is pushed at level 0 while its
+ * op_level is kept. Presets and fm_voice_default() leave it 0, and it is never
+ * serialized when the FM voice gets a snapshot section. */
 
 #define FM_NUM_OPS      6
-#define FM_ALGO_CUSTOM  0xFF   /* algorithm: use op_to[]/fb_op */
+#define FM_ALGO_CUSTOM  0xFF   /* algorithm: use op_targets[]/fb_op */
+
+/* DX7-style 4-level operator envelope. From L4 the note-on rises to L1 over
+ * T1, then L2 over T2, then L3 over T3, and holds L3 while the key is down;
+ * the release returns to L4 over T4. Levels are DX7 0..99 (0.75 dB per step,
+ * 99 = full scale, 0 = silence). */
+typedef struct {
+    uint16_t time_ms[4];   /* T1..T4: segment durations; T4 is the release */
+    uint8_t  level[4];     /* L1..L4: DX7 levels 0..99; L4 = start and release target */
+    uint8_t  eg_type;      /* ENVELOPE_DX7 by default; no UI row */
+} fm_op_env_t;
+
+/* DX7 level (0..99) to linear amplitude: 0.75 dB per step below 99, the law of
+ * AMY's fm.py dx7level_to_linear, except that L0 is exact silence. The one
+ * home of this law: the envelope push and the page-2 plot both use it. */
+float fm_voice_level_to_amp(uint8_t level);
 
 typedef struct {
-    uint8_t   algorithm;
-    uint8_t   fb_op;                 /* custom mode: FM_OP_NONE or 0..5    */
-    uint8_t   op_to[FM_NUM_OPS];     /* custom mode: FM_TO_OUT or 0..5     */
-    float     op_ratio[FM_NUM_OPS];  /* per-operator frequency ratio       */
-    float     op_level[FM_NUM_OPS];  /* per-operator output level, 0..1    */
-    seq_env_t op_env[FM_NUM_OPS];    /* per-operator EG0                   */
-    float     feedback;              /* 0..~1.2                            */
+    uint8_t     algorithm;
+    uint8_t     fb_op;                   /* custom mode: FM_OP_NONE or 0..5    */
+    uint8_t     op_targets[FM_NUM_OPS];  /* custom mode: target mask, see above */
+    float       op_ratio[FM_NUM_OPS];    /* per-operator frequency ratio       */
+    float       op_fixed_hz[FM_NUM_OPS]; /* fixed-mode frequency, Hz           */
+    float       op_level[FM_NUM_OPS];    /* per-operator output level, 0..1    */
+    fm_op_env_t op_env[FM_NUM_OPS];      /* per-operator EG0                   */
+    float       feedback;                /* 0..~1.2                            */
+    uint8_t     op_fixed;                /* bit i: operator i is fixed-frequency */
+    uint8_t     op_mute;                 /* bit i: operator i muted (audition)  */
 } fm_voice_t;
 
 /* The single live-editable "custom" FM voice (SEQ_PATCH_FM_CUSTOM), owned by
@@ -69,30 +97,45 @@ void fm_voice_push_live(uint8_t synth_id, const fm_voice_t *voice);
 /* Push scope for the "voice changed" fan-out (sequencer_core_fm_voice_changed,
  * arp_core_fm_voice_changed): an operator index pushes that operator only,
  * FM_PUSH_ROUTING the osc-0 routing event only (algorithm/topology/feedback),
- * FM_PUSH_ALL everything. Keeps encoder-rate edits to one event per synth. */
+ * FM_PUSH_ALL everything. Keeps encoder-rate edits to one event per synth.
+ * FM_PUSH_OP_RESET(op) resets that operator's osc before pushing it: AMY
+ * cannot clear a set ratio by event, so a ratio -> fixed switch needs it
+ * (fixed -> ratio does not; a set ratio overrides the osc's own pitch). */
 #define FM_PUSH_ALL      0xF0
 #define FM_PUSH_ROUTING  0xF1
+#define FM_PUSH_OP_RESET(op)  ((uint8_t)(0xE0u + (op)))
 void fm_voice_push(uint8_t synth_id, const fm_voice_t *voice, uint8_t what);
 
 /* ── Routing queries / edits (no AMY traffic; the caller pushes) ────────── */
 
 /* The routing the voice is playing, decoded from the table row in table mode
- * or built from op_to/fb_op in custom mode. */
+ * or copied from op_targets/fb_op in custom mode. */
 void fm_voice_graph(const fm_voice_t *v, fm_graph_view_t *out);
 
-/* Switch to custom mode seeded from the current routing (fan-out rows keep
- * each operator's first target). No-op when already custom. */
+/* Switch to custom mode seeded from the current routing: the row's decoded
+ * target masks, fan-out included, and its feedback operator. No-op when
+ * already custom. */
 void fm_voice_make_custom(fm_voice_t *v);
 
-/* Custom-mode edits: enter custom mode if needed, apply, and keep the change
- * only if the result compiles onto AMY's buses (false = rejected, voice
- * unchanged). target is FM_TO_OUT or an operator index. */
-bool fm_voice_set_op_target(fm_voice_t *v, uint8_t op, uint8_t target);
+/* Why fm_voice_set_op_targets() refused a change. */
+typedef enum { FM_ROUTE_OK, FM_ROUTE_INVALID, FM_ROUTE_LOOP, FM_ROUTE_NO_BUS } fm_route_err_t;
+
+/* Set operator op's target set to mask, entering custom mode if needed. The
+ * change is kept only if the mask is shape-valid (fm_graph.h; else
+ * FM_ROUTE_INVALID), the graph stays acyclic (else FM_ROUTE_LOOP) and it
+ * compiles onto AMY's buses (else FM_ROUTE_NO_BUS). On failure *v is
+ * unchanged, including its algorithm. *err gets the outcome (FM_ROUTE_OK on
+ * success); err may be NULL. UI task only. */
+bool fm_voice_set_op_targets(fm_voice_t *v, uint8_t op, uint8_t mask, fm_route_err_t *err);
+
+/* Custom-mode feedback operator (FM_OP_NONE or an operator index), entering
+ * custom mode if needed. Feedback never changes bus needs, so any valid value
+ * is kept (false = out of range, voice unchanged). */
 bool fm_voice_set_fb_op(fm_voice_t *v, uint8_t fb_op);
 
 /* Step the algorithm through table rows 1..N-1 then FM_ALGO_CUSTOM (wrapping).
- * Entering custom seeds op_to/fb_op from the row being left. Returns the new
- * `algorithm` value. */
+ * Entering custom seeds op_targets/fb_op from the row being left. Returns the
+ * new `algorithm` value. */
 uint8_t fm_voice_step_algorithm(fm_voice_t *v, int dir);
 
 #ifdef __cplusplus

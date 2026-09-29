@@ -15,13 +15,17 @@ extern "C" {
  * Operator indexing: fm_voice.h. */
 
 #define FM_GRAPH_OPS   6
-#define FM_TO_OUT      0xFF   /* op_to[] value: carrier (final output)       */
+#define FM_TO_OUT      0xFF   /* TO row candidate token: OUT (make a carrier) */
 #define FM_OP_NONE     0xFF   /* fb_op: no feedback operator                 */
 #define FM_OUT_BIT     0x40   /* out_mask[] bit: routes to the final output  */
 
-/* Display-side graph: one target bitmask per operator (bit t = modulates op
- * t, FM_OUT_BIT = carrier). Multi-bit masks come from decoded table rows
- * (fan-out); authored graphs are forests (one bit each). */
+/* Search-node cap of fm_graph_compile(); reaching it fails the compile. */
+#define FM_GRAPH_COMPILE_BUDGET 4096u
+
+/* One target bitmask per operator (bit t = modulates op t, FM_OUT_BIT =
+ * carrier). An operator's output goes to exactly one place in AMY, so a
+ * shape-valid mask is exactly FM_OUT_BIT, or a nonzero subset of 0x3F without
+ * the operator's own bit (fan-out: every target gets the same signal). */
 typedef struct {
     uint8_t out_mask[FM_GRAPH_OPS];
     uint8_t fb_op;              /* FM_OP_NONE or the self-feedback operator */
@@ -38,25 +42,32 @@ typedef struct {
  * unknown bus reads see whatever was last written there. */
 void fm_graph_decode(const uint8_t ops[FM_GRAPH_OPS], fm_graph_view_t *out);
 
-/* Forest view of an authored topology (each op one target). */
-void fm_graph_from_forest(const uint8_t op_to[FM_GRAPH_OPS], uint8_t fb_op,
-                          fm_graph_view_t *out);
+/* True when no operator reaches itself through its targets. Precondition:
+ * every mask shape-valid. A graph without a carrier is always cyclic. */
+bool fm_graph_is_acyclic(const uint8_t targets[FM_GRAPH_OPS]);
 
-/* Reduce a (possibly fan-out) view to a forest: each op keeps its lowest
- * target bit; unreachable/cyclic ops become carriers. */
-void fm_graph_to_forest(const fm_graph_view_t *g, uint8_t op_to[FM_GRAPH_OPS]);
-
-/* True when making `op` modulate `target` (FM_TO_OUT allowed) keeps the
- * forest acyclic, i.e. `target` is not `op` or one of its modulators. */
-bool fm_graph_edge_allowed(const uint8_t op_to[FM_GRAPH_OPS], uint8_t op,
-                           uint8_t target);
-
-/* Compile a forest onto AMY's two modulation buses. Returns false when the
- * graph has a cycle or needs more than two live buses at some point; *out is
- * then unspecified. Operators are emitted carriers-in-index-order, subtree
- * before parent, so every modulator renders before what it modulates. */
-bool fm_graph_compile(const uint8_t op_to[FM_GRAPH_OPS], uint8_t fb_op,
+/* Compile target masks onto AMY's two modulation buses. Depth-first search
+ * over render orders (lowest operator index first) and bus choices, so the
+ * result is deterministic for a given input and every modulator renders
+ * before what it modulates. Returns false when a mask is not shape-valid,
+ * the graph has a cycle, no order fits two buses, or the search reaches
+ * FM_GRAPH_COMPILE_BUDGET nodes; *out is then unspecified. On success all
+ * six operators are emitted.
+ *
+ * Besides the byte forms the DX7 table uses, the search may emit 0x26 (read
+ * BUS_TWO, add to BUS_TWO): render_algo does not zero BUS_TWO for an adding
+ * write, and every FM kernel reads mod[i] before writing buf[i], so the bus
+ * ends up holding the operator's input plus its output. That is what compiles
+ * the shape A -> B, A -> C, B -> C. The table never uses it. Refused forms:
+ * 0x15 (render_algo takes the bus-one scratch path and never zeroes it) and
+ * 0x22 (the bus is zeroed before the operator reads it). */
+bool fm_graph_compile(const uint8_t targets[FM_GRAPH_OPS], uint8_t fb_op,
                       fm_program_t *out);
+
+#ifdef FM_GRAPH_STATS
+/* Host check only: search nodes used by the last fm_graph_compile(). */
+extern uint32_t fm_graph_stats_nodes;
+#endif
 
 #ifdef __cplusplus
 }

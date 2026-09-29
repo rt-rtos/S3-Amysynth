@@ -121,6 +121,23 @@ static const char *hint_menu_bs(void)
 {
     return menu_shoulder_goes_main() ? "Main" : NULL;
 }
+#if CONFIG_SYNTH_CUSTOM_FM
+/* FM SHOULDER: flips to the page not shown. */
+static const char *hint_fm_bs(void)
+{
+    return synth_ui_fm_page() ? "Pg1" : "Pg2";
+}
+/* FM button 1: link mode, page 0 only. */
+static const char *hint_fm_b1(void)
+{
+    return synth_ui_fm_page() ? "-" : "Link";
+}
+/* FM button 3: ends link mode while linking, else the menu. */
+static const char *hint_fm_b3(void)
+{
+    return synth_ui_fm_link_active() ? "Done" : "Menu";
+}
+#endif
 
 /* ─── The table: one row per view, indexed by ui_view_id_t ─────────────── */
 /* Preferred x of the BLE badge per view; 0 lets display_badge_draw() choose.
@@ -138,7 +155,7 @@ const ui_view_desc_t ui_view_table[UI_VIEW_COUNT] = {
     [UI_VIEW_DRONE_STD] = { "DRONST", sig_drone_std, draw_drone_std, "Patch",  "-",     "Menu",  NULL,               NULL,                   52 },
     [UI_VIEW_PROG]      = { "PROG",   sig_prog,      draw_prog,      "Del",    "+Add",  "Menu",  NULL,               NULL,                   30 },
 #if CONFIG_SYNTH_CUSTOM_FM
-    [UI_VIEW_FM]        = { "FM",     sig_fm,        draw_fm,        "Patch",  "-",     "Menu",  NULL,               NULL,                   64 },
+    [UI_VIEW_FM]        = { "FM",     sig_fm,        draw_fm,        NULL,     "Mute",  NULL,    hint_fm_b1,         NULL,                   64, hint_fm_bs, hint_fm_b3 },
 #else
     [UI_VIEW_FM]        = { "FM",     NULL,          NULL,           "Patch",  "-",     "Menu",  NULL,               NULL,                   64 },
 #endif

@@ -273,7 +273,10 @@ static inline float seq_lfo_sw_hz(lfo_rate_t rate, uint16_t bpm)
     return (hz > SEQ_LFO_SW_MAX_HZ) ? SEQ_LFO_SW_MAX_HZ : hz;
 }
 float    lfo_next_rand(void);
-void     lfo_push_target_neutral(uint8_t synth_id, lfo_target_t target);
+/* Software-LFO AMP write, addressed per sequencer_core_patch_amp_osc(). */
+void     lfo_push_amp(uint8_t synth_id, uint16_t patch, float amp);
+void     lfo_push_target_neutral(uint8_t synth_id, uint16_t patch,
+                                 lfo_target_t target);
 
 /* From seq_core_progression.c */
 void chord_progression_apply_current(void);

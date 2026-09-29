@@ -66,13 +66,27 @@ float lfo_next_rand(void)
     return (float)(s_lfo_rng_state >> 17) / 32767.0f * 2.0f - 1.0f;
 }
 
-void lfo_push_target_neutral(uint8_t synth_id, lfo_target_t target)
+void lfo_push_amp(uint8_t synth_id, uint16_t patch, float amp)
 {
+    amy_event *e = amy_helpers_event_begin();
+    e->synth = synth_id;
+    int osc = sequencer_core_patch_amp_osc(patch);
+    if (osc >= 0) e->osc = (uint16_t)osc;
+    e->amp_coefs[COEF_CONST] = amp;
+    amy_helpers_event_send(e);
+}
+
+void lfo_push_target_neutral(uint8_t synth_id, uint16_t patch,
+                             lfo_target_t target)
+{
+    if (target == LFO_TARGET_AMP) {
+        lfo_push_amp(synth_id, patch, 1.0f);
+        return;
+    }
     amy_event *e = amy_helpers_event_begin();
     e->synth = synth_id;
     switch (target) {
         case LFO_TARGET_FILTER: e->filter_freq_coefs[COEF_CONST] = 8000.0f; break;
-        case LFO_TARGET_AMP:    e->amp_coefs[COEF_CONST]  = 1.0f;           break;
         /* Absolute Hz: SEQ_LFO_PITCH_BASE_HZ is the note-neutral reset
          * default. Osc 0 only, mirroring the service push. */
         case LFO_TARGET_PITCH:  e->osc = 0;

@@ -139,8 +139,8 @@ typedef struct {
     uint32_t  (*signature)(ui_view_vw_t *vw);   /* builds vw, returns FNV hash */
     void      (*draw)(u8g2_t *g, ui_view_vw_t *vw);
     /* Button-hint labels. A NULL static label means "compute dynamically" via
-     * the matching *_fn; only the editors' b1/b2 depend on state the view id
-     * does not carry. b3 is always static. */
+     * the matching *_fn (b1_fn, b2_fn, b3_fn), for cells that depend on state
+     * the view id does not carry. */
     const char *b1, *b2, *b3;
     const char *(*b1_fn)(void);
     const char *(*b2_fn)(void);
@@ -151,6 +151,8 @@ typedef struct {
      * non-NULL (LB = the left shoulder button, SHOULDER; RB = the right one,
      * SHIFT). NULL fn (the default for rows that omit it) = no cell. */
     const char *(*bs_fn)(void);
+    /* Dynamic button 3 label for a NULL b3; rows that omit it leave it NULL. */
+    const char *(*b3_fn)(void);
 } ui_view_desc_t;
 
 extern const ui_view_desc_t ui_view_table[UI_VIEW_COUNT];

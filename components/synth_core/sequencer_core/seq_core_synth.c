@@ -1399,13 +1399,30 @@ uint8_t sequencer_core_clamp_melodic_note(int32_t midi_note)
     return SEQ_CLAMP_U8(midi_note, SEQ_MEL_NOTE_MIN, SEQ_MEL_NOTE_MAX);
 }
 
+int sequencer_core_patch_voice_osc(uint16_t patch)
+{
+    return (patch >= SEQ_PATCH_FM_BASE && patch <= SEQ_PATCH_FM_MAX) ? 0 : -1;
+}
+
+int sequencer_core_patch_amp_osc(uint16_t patch)
+{
+    if (patch >= SEQ_PATCH_DX7_BASE && patch <= SEQ_PATCH_DX7_MAX) return 0;
+    return sequencer_core_patch_voice_osc(patch);
+}
+
 void sequencer_core_push_envelope(uint8_t synth, const seq_env_t *env)
+{
+    sequencer_core_push_envelope_osc(synth, -1, env);
+}
+
+void sequencer_core_push_envelope_osc(uint8_t synth, int osc, const seq_env_t *env)
 {
     if (env == NULL) return;
     float sustain = (float)env->sustain_pct / 100.0f;
 
     amy_event *e = amy_helpers_event_begin();
     e->synth         = synth;
+    if (osc >= 0) e->osc = (uint16_t)osc;
     e->bp_is_set[0]  = 1;
     e->eg_type[0]    = env->eg_type;
     uint32_t attack_ms  = SEQ_CLAMP_U32(env->attack_ms,

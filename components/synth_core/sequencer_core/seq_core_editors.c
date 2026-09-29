@@ -124,7 +124,9 @@ static void melodic_dist_apply(uint8_t layer_idx, uint8_t track,
     bool own = drum || seq_track_vp(layer_idx, track)->filter_authored;
     if (!heads) {
         voice_apply_dist(synth, d);
-        if (own) sequencer_core_push_eg_depths(synth, -1,
+        if (own) sequencer_core_push_eg_depths(synth,
+                                               sequencer_core_patch_voice_osc(
+                                                   s_layers[layer_idx].track_patch[track]),
                                                &seq_track_vp(layer_idx, track)->filter,
                                                true);
         return;
@@ -160,6 +162,7 @@ static void lfo_restore_target_neutrals(uint8_t layer_idx, uint8_t track,
         }
         else
             lfo_push_target_neutral(s_layers[layer_idx].synth_id[track],
+                                    s_layers[layer_idx].track_patch[track],
                                     (lfo_target_t)t);
     }
     /* The AMP and PAN neutrals are voice-wide pushes: they overwrite the
@@ -221,6 +224,8 @@ void sequencer_configure_melodic_envelope_track(uint8_t layer_idx, uint8_t track
 
     amy_event *e = amy_helpers_event_begin();
     e->synth = layer->synth_id[track];
+    int osc = sequencer_core_patch_voice_osc(layer->track_patch[track]);
+    if (osc >= 0) e->osc = (uint16_t)osc;
     e->bp_is_set[0] = 1;
     e->eg_type[0] = env.eg_type;
     e->eg0_times[0] = SEQ_CLAMP_U32(env.attack_ms,
@@ -374,7 +379,9 @@ static void melodic_filter_apply(uint8_t layer_idx, uint8_t track,
 {
     uint8_t heads = melodic_heads_mask(layer_idx, track);
     if (!heads) {
-        melodic_filter_push_osc(layer_idx, track, f, -1);
+        melodic_filter_push_osc(layer_idx, track, f,
+                                sequencer_core_patch_voice_osc(
+                                    s_layers[layer_idx].track_patch[track]));
     } else {
         for (uint8_t o = 0; (uint8_t)(heads >> o) != 0u; o++)
             if (heads & (uint8_t)(1u << o))
@@ -712,11 +719,12 @@ void __attribute__((optimize("O3", "unroll-loops", "fast-math"))) sequencer_core
                 e->filter_freq_coefs[COEF_CONST] =
                     base * powf(2.0f, voice_lfo_filter_octaves(lfo) * val);
             }
-            if (LFO_HAS_TGT(lfo, LFO_TARGET_AMP))
-                e->amp_coefs[COEF_CONST] = 1.0f - d*(0.5f - 0.5f*val);
             if (LFO_HAS_TGT(lfo, LFO_TARGET_PAN))
                 e->pan_coefs[COEF_CONST] = 0.5f + d*0.5f*val;
             amy_helpers_event_send(e);
+            if (LFO_HAS_TGT(lfo, LFO_TARGET_AMP))
+                lfo_push_amp(syn, s_layers[li].track_patch[tr],
+                             1.0f - d*(0.5f - 0.5f*val));
             } /* !native_track */
 
             /* DIST on a PATCH-mode track: step drive/mix around the committed
@@ -859,7 +867,9 @@ void sequencer_core_preview_melodic_envelope(uint8_t layer_idx, uint8_t track,
 {
     if (!env || layer_idx >= s_num_layers || track >= SEQ_TRACKS) return;
     const seq_layer_t *layer = &s_layers[layer_idx];
-    sequencer_core_push_envelope(layer->synth_id[track], env);
+    sequencer_core_push_envelope_osc(layer->synth_id[track],
+                                     sequencer_core_patch_voice_osc(layer->track_patch[track]),
+                                     env);
 }
 
 void sequencer_core_preview_melodic_envelope2(uint8_t layer_idx, uint8_t track,

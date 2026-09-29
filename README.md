@@ -73,8 +73,9 @@ melodic layer, running at 108 BPM. From there:
   opened them. See
   [Voice editors](#voice-editors).
 - **FM operator editor** - a DX7-chart editor for a live 6-operator FM
-  voice: custom operator topologies, per-operator envelopes, ratio, level
-  and feedback, with the 32 DX7 algorithms as starting points. See
+  voice: custom operator topologies, per-operator 4-level envelopes, ratio
+  or fixed frequency, level, mute and feedback, with the 32 DX7 algorithms
+  as starting points. See
   [FM operator editor](#fm-operator-editor).
 - **Patches** - AMY's Juno (128) and DX7 (128) banks, piano, seven raw
   oscillator waves (including noise and Karplus-Strong), three designed
@@ -860,8 +861,8 @@ patch-hold or pitch-hold gesture does not survive the switch.
 Four modal editors - envelope, filter, LFO, distortion - reachable from any
 instrument screen with `MY_BUTTON_SHIFT` + `MY_BUTTON_1` and cycled with
 `MY_BUTTON_3` (EG0, EG1, Filter, LFO, DIST). They bind to whichever
-instrument opened them (a melodic row, the arp, either drone, the BLE live
-voice, or an FM operator) and audition every change live. Inputs:
+instrument opened them (a melodic row, the arp, either drone, or the BLE
+live voice) and audition every change live. Inputs:
 [CONTROLS.md](CONTROLS.md#adsr-graph-editor).
 
 On a melodic row the editors read and write either the row's own voice
@@ -885,8 +886,8 @@ Controls: [CONTROLS.md](CONTROLS.md#adsr-graph-editor).
 Each voice carries **two envelopes**: EG0 shapes amplitude; EG1 is free for
 modulation and is what the custom bass presets use to sweep their filter.
 Both are edited on the same graph; the first `MY_BUTTON_3` from EG0 opens
-the EG1 page (targets without one - the free-running drone and FM operators
-- go straight to the filter). On EG1 the editor also carries the sweep
+the EG1 page (the free-running drone has none and goes straight to the
+filter). On EG1 the editor also carries the sweep
 **depth** in octaves, and `MY_BUTTON_SHOULDER` flips its sign.
 
 **Curve types.** Every envelope has one of four shapes, cycled with
@@ -1006,19 +1007,22 @@ The voice is not yet stored in project snapshots: it resets to its default
 
 ### Screen
 
-Left, the operator chart in DX7 algorithm-sheet layout: carriers on the
-bottom row over a shared output bus, each modulator stacked above what it
-modulates, a small loop on the feedback operator. Operators are labelled
+Two pages, flipped with `MY_BUTTON_SHOULDER`. Page 1 is the chart and the
+panel below; page 2 holds the selected operator's frequency and envelope.
+
+Left on page 1, the operator chart in DX7 algorithm-sheet layout: carriers
+on the bottom row over a shared output bus, each modulator stacked above what
+it modulates, a small loop on the feedback operator. Operators are labelled
 OP1-OP6 as on the DX7 sheets (OP1 is the leftmost carrier of every
-algorithm); the selected one is drawn inverted, and a frame around a box
-means the cursor is on the chart rather than in the panel. Right, the
-selected operator's rows:
+algorithm); the selected one is drawn inverted, a muted one is struck
+diagonally, and a frame around a box means the cursor is on the chart rather
+than in the panel. Right, the selected operator's rows:
 
 | Row | Meaning |
 |---|---|
-| RAT | Frequency ratio, curated steps 0.5, 1, 1.5, 2 ... 12, 14, 16 (snaps to the nearest step, then walks) |
+| RAT | Coarse frequency, the same control as page 2's coarse cell: `RAT 2.00` for a ratio operator, `FIX 440` for a fixed-frequency one |
 | LVL | 0-100 %. For a modulator this *is* the modulation index (brightness); for a carrier it is that carrier's gain. 0 silences the operator |
-| TO | What the operator modulates: OUT (carrier) or one other operator |
+| TO | What the operator modulates: OUT (carrier), or one or more other operators (`TO  OP2`, `TO 2+3`) |
 | FB | Feedback amount 0-120 %, voice-level - see below |
 | ALG | DX7 algorithm 1-32, or CUST for an authored topology |
 
@@ -1028,30 +1032,44 @@ Controls: [CONTROLS.md](CONTROLS.md#fm-screen). From the sequencer grid,
 `MY_BUTTON_SHIFT` + encoder on an FM row steps the algorithm without leaving
 the grid ([CONTROLS.md](CONTROLS.md#sequencer-screen-seq)).
 
-### Operator envelopes
+### Page 2: frequency and envelope
 
-Each operator has its own amplitude envelope (EG0), defaulting to a short
-percussive shape (4 / 300 ms, 60 %, 200 ms) on the DX7 curve - the curve is
-what makes a modulator envelope sound like FM instead of a fading sine.
-`MY_BUTTON_SHIFT` + `MY_BUTTON_1` opens the ADSR editor titled `FM OPn EG0`
-on the selected operator. Compared with the other editor targets:
-`MY_BUTTON_2`'s amp-trim mode edits that operator's LVL; there is no EG1
-page and no filter / LFO / distortion tab (operators render before the
-per-voice filter), so `MY_BUTTON_3` "Next" commits and reopens the same
-editor; there is no track/layer scope. The row's ordinary ADSR, opened from
+The FRQ cell switches the operator between ratio mode (it tracks the note
+at its ratio) and fixed mode (it sounds one frequency whatever the note);
+each switch is seeded from what the operator sounds at A4. Coarse steps the
+curated ratios 0.5, 1, 1.5, 2 ... 12, 14, 16 while keeping any fine offset,
+or a semitone in fixed mode. Fine moves 0.1 Hz, shown in ratio mode as the
+operator's frequency at A4.
+
+Each operator has its own DX7-style 4-level amplitude envelope (EG0), edited
+as numbers: from L4 a note rises to L1 over T1, then L2 over T2, then L3
+over T3, and holds L3 while the key is down; the release returns to L4 over
+T4. Levels are DX7 output levels 0-99 (0.75 dB per step, 0 silent). The
+default is a short percussive shape (T 4 / 300 / 0 / 200 ms, L 99 / 93 /
+93 / 0) on the DX7 curve - the curve is what makes a modulator envelope
+sound like FM instead of a fading sine. The row's ordinary ADSR, opened from
 the sequencer, still applies on top as a VCA over the carriers - both shape
 the note.
 
+Beside the T/L column a read-only plot draws the envelope: level on the
+vertical axis, segment widths log-compressed in time, a short fixed stub for
+the sustain. The segment of the T or the point of the L under the cursor is
+marked, and the trace is dotted while the operator is muted.
+
+`MY_BUTTON_2` mutes the selected operator on either page, for auditioning;
+mute is not saved.
+
 ### Custom topologies and their limits
 
-Turning TO or toggling feedback switches ALG to CUST, seeded from the
-algorithm you were on, so you always start from what you were hearing. The
-ALG row walks 1 ... 32 then CUST and wraps; CUST keeps the last authored
-topology until you edit it again.
+Turning TO, linking, or moving the feedback loop switches ALG to CUST,
+seeded from the algorithm you were on, fan-out included, so you always start
+from what you were hearing. The ALG row (or `MY_BUTTON_SHIFT` + encoder on
+this screen) walks 1 ... 32 then CUST and wraps; CUST keeps the last
+authored topology until you edit it again.
 
 ```mermaid
 flowchart LR
-    UI["FM screen<br/>RAT / LVL / TO / FB / ALG"] --> Voice["fm_voice_t<br/>op_to[] forest + fb_op"]
+    UI["FM screen<br/>RAT / LVL / TO / FB / ALG"] --> Voice["fm_voice_t<br/>op_targets[] + fb_op"]
     Voice --> Compile["fm_graph_compile<br/>order + bus assignment"]
     Compile -- "rejects" --> Voice
     Compile --> Row["AMY custom algorithm row<br/>(alternating rows, never half-written)"]
@@ -1060,31 +1078,34 @@ flowchart LR
     Table["DX7 rows 1-32"] -- "decode" --> Voice
 ```
 
-- **One target per operator.** An authored graph is a forest: each operator
-  modulates exactly one thing. DX7 rows where one modulator feeds two
-  operators draw correctly, but the first topology edit keeps each
-  operator's first target only.
+- **Fan-out.** An operator either goes to OUT or modulates one or more
+  other operators, as in the DX7 algorithms where one modulator feeds two.
+  The TO row sets a single target; link mode (`MY_BUTTON_1` on page 1, see
+  [CONTROLS.md](CONTROLS.md#linking)) adds and removes targets. A fan-out
+  connection has no depth of its own: the modulator's level and envelope
+  drive every target equally. The chart stacks a modulator above its first
+  target only, so a further target's connector may cross other boxes.
 - **Two modulation buses.** AMY renders the six operators in sequence through
   two shared block buses (plus a scratch copy for the read-and-overwrite
   case), which is why routing is a compiled program rather than free wiring.
-  The compiler orders operators so every modulator renders before what it
-  modulates and refuses a graph that would need a third live bus. With six
+  The compiler searches render orders and bus assignments so every modulator
+  renders before what it modulates, and refuses a graph that would need a
+  third bus; link mode shows such a link as `LINK: NO BUS`. With six
   single-target operators every acyclic wiring fits (all 16,807 of them), so
-  in practice the TO row only ever skips cycles; the guard is what makes the
-  one-target rule sufficient, and it would bite on fan-out, which the UI does
-  not author.
+  the TO row only ever skips cycles; some fan-out shapes do not fit.
 - **No cycles.** TO skips the operator itself and anything already modulating
-  it. The buses hold whole 256-sample blocks, so a routing loop would be
-  block-delayed feedback, not FM feedback - that is what the FB flag is for.
+  it, and link mode refuses a loop (`LINK: LOOP`). The buses hold whole
+  256-sample blocks, so a routing loop would be block-delayed feedback, not
+  FM feedback - that is what the FB flag is for.
 - **One feedback operator, one amount.** Self-feedback is the DX7 kind (the
   operator's own last two output samples, averaged, added to its phase every
   sample) and is a flag on exactly one operator; the amount lives on the
-  voice, which is the FB row. `MY_BUTTON_SHOULDER` moves the loop. The FB row
-  is struck through while the selected operator is not the one carrying the
-  loop: the value still edits, but it applies to whichever operator has it.
-  FB at 0 % disables the path, so a loop with no amount is silent.
-- **Level, not on/off.** There is no operator enable; an unused operator is
-  one at LVL 0 %. The default voice ships with four operators at 0 % for
+  voice, which is the FB row. The FB row is struck through while the
+  selected operator is not the one carrying the loop; clicking it there moves
+  the loop to that operator, clicking it on the loop's operator adjusts the
+  amount. FB at 0 % disables the path, so a loop with no amount is silent.
+- **Level, not on/off.** There is no operator enable (mute is audition
+  only); an unused operator is one at LVL 0 %. The default voice ships with four operators at 0 % for
   exactly this reason.
 
 ---

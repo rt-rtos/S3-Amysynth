@@ -37,139 +37,145 @@ void fm_graph_decode(const uint8_t ops[FM_GRAPH_OPS], fm_graph_view_t *out)
     }
 }
 
-void fm_graph_from_forest(const uint8_t op_to[FM_GRAPH_OPS], uint8_t fb_op,
-                          fm_graph_view_t *out)
+#define ALL_OPS ((uint8_t)((1u << FM_GRAPH_OPS) - 1u))
+
+#ifdef FM_GRAPH_STATS
+uint32_t fm_graph_stats_nodes;
+#endif
+
+static bool mask_valid(uint8_t op, uint8_t m)
 {
-    memset(out, 0, sizeof(*out));
-    out->fb_op = (fb_op < FM_GRAPH_OPS) ? fb_op : FM_OP_NONE;
-    for (uint8_t i = 0; i < FM_GRAPH_OPS; i++) {
-        out->out_mask[i] = (op_to[i] < FM_GRAPH_OPS) ? (uint8_t)(1u << op_to[i])
-                                                     : FM_OUT_BIT;
-    }
+    if (m == FM_OUT_BIT) return true;
+    return m != 0u && (m & (uint8_t)~ALL_OPS) == 0u && (m & (1u << op)) == 0u;
 }
 
-/* Follow op_to[] upward from `op`; true if `target` is met (or op == target). */
-static bool forest_reaches(const uint8_t op_to[FM_GRAPH_OPS], uint8_t op, uint8_t target)
+/* in[t] = the operators whose mask has bit t, i.e. t's modulators. */
+static void graph_inputs(const uint8_t targets[FM_GRAPH_OPS], uint8_t in[FM_GRAPH_OPS])
 {
-    uint8_t guard = 0;
-    while (op < FM_GRAPH_OPS && guard++ < FM_GRAPH_OPS) {
-        if (op == target) return true;
-        op = op_to[op];
-    }
-    return false;
-}
-
-bool fm_graph_edge_allowed(const uint8_t op_to[FM_GRAPH_OPS], uint8_t op, uint8_t target)
-{
-    if (op >= FM_GRAPH_OPS) return false;
-    if (target == FM_TO_OUT) return true;
-    if (target >= FM_GRAPH_OPS || target == op) return false;
-    /* A cycle would exist if op already sits on target's path to the output. */
-    return !forest_reaches(op_to, target, op);
-}
-
-void fm_graph_to_forest(const fm_graph_view_t *g, uint8_t op_to[FM_GRAPH_OPS])
-{
-    for (uint8_t i = 0; i < FM_GRAPH_OPS; i++) {
-        uint8_t m = g->out_mask[i];
-        op_to[i] = FM_TO_OUT;
-        for (uint8_t t = 0; t < FM_GRAPH_OPS; t++) {
-            if (m & (1u << t)) { op_to[i] = t; break; }
+    for (uint8_t t = 0; t < FM_GRAPH_OPS; t++) {
+        in[t] = 0;
+        for (uint8_t i = 0; i < FM_GRAPH_OPS; i++) {
+            if (targets[i] & (1u << t)) in[t] |= (uint8_t)(1u << i);
         }
     }
-    /* Break cycles / orphan chains: anything that never reaches the output
-     * becomes a carrier. */
-    for (uint8_t i = 0; i < FM_GRAPH_OPS; i++) {
-        uint8_t op = i, guard = 0;
-        while (op_to[op] != FM_TO_OUT && guard++ < FM_GRAPH_OPS) op = op_to[op];
-        if (op_to[op] != FM_TO_OUT) op_to[i] = FM_TO_OUT;
+}
+
+bool fm_graph_is_acyclic(const uint8_t targets[FM_GRAPH_OPS])
+{
+    uint8_t in[FM_GRAPH_OPS], placed = 0;
+    graph_inputs(targets, in);
+    /* Place every op whose modulators are all placed; ops on a cycle never
+     * become ready. Six sweeps cover the longest chain. */
+    for (uint8_t pass = 0; pass < FM_GRAPH_OPS; pass++) {
+        for (uint8_t i = 0; i < FM_GRAPH_OPS; i++) {
+            if (!(placed & (1u << i)) && (in[i] & (uint8_t)~placed) == 0u) {
+                placed |= (uint8_t)(1u << i);
+            }
+        }
     }
+    return placed == ALL_OPS;
 }
 
 /* ── compiler ─────────────────────────────────────────────────────────── */
 
 typedef struct {
-    const uint8_t *op_to;
+    const uint8_t *targets;
+    uint8_t in[FM_GRAPH_OPS];
     uint8_t fb_op;
     fm_program_t *prog;
-    uint8_t n;               /* slots emitted so far */
-    uint8_t emitted;         /* bitmask of ops already placed (cycle guard) */
+    uint32_t nodes;
 } compile_ctx_t;
 
-static uint8_t subtree_size(const compile_ctx_t *c, uint8_t node, uint8_t depth)
+/* Output choices of a modulator, in search order. */
+static const struct { uint8_t bus; bool add; } s_mod_outs[] = {
+    { BUS_ONE, false }, { BUS_TWO, false }, { BUS_ONE, true }, { BUS_TWO, true },
+};
+
+/* Bus contents only grow by adding newly placed ops or get overwritten, so an
+ * unplaced op whose modulators are partly placed needs a bus holding exactly
+ * that placed part right now, or it can never read its input. */
+static bool inputs_reachable(const compile_ctx_t *c, uint8_t placed, uint8_t c1, uint8_t c2)
 {
-    uint8_t size = 1;
-    if (depth >= FM_GRAPH_OPS) return size;
-    for (uint8_t i = 0; i < FM_GRAPH_OPS; i++) {
-        if (c->op_to[i] == node) size = (uint8_t)(size + subtree_size(c, i, (uint8_t)(depth + 1)));
+    for (uint8_t t = 0; t < FM_GRAPH_OPS; t++) {
+        if (placed & (1u << t)) continue;
+        uint8_t s = (uint8_t)(c->in[t] & placed);
+        if (s != 0u && s != c1 && s != c2) return false;
     }
-    return size;
-}
-
-/* Emit `node` so that its output lands on `out` (BUS_ONE/BUS_TWO/BUS_OUT),
- * accumulating when `add`. `live` = buses holding data that must survive. */
-static bool emit(compile_ctx_t *c, uint8_t node, uint8_t out, bool add, uint8_t live)
-{
-    if (c->emitted & (1u << node)) return false;     /* cycle */
-    c->emitted |= (uint8_t)(1u << node);
-
-    /* Children, largest subtree first: only the first child may still use a
-     * bus that later children would find live. */
-    uint8_t kids[FM_GRAPH_OPS], nk = 0;
-    for (uint8_t i = 0; i < FM_GRAPH_OPS; i++) {
-        if (c->op_to[i] == node) kids[nk++] = i;
-    }
-    for (uint8_t a = 1; a < nk; a++) {           /* insertion sort, desc size */
-        uint8_t k = kids[a], sk = subtree_size(c, k, 0);
-        int b = a - 1;
-        while (b >= 0 && subtree_size(c, kids[b], 0) < sk) { kids[b + 1] = kids[b]; b--; }
-        kids[b + 1] = k;
-    }
-
-    uint8_t in = BUS_NONE;
-    if (nk > 0) {
-        uint8_t busy = live;
-        if (add && out != BUS_OUT) busy |= (uint8_t)(1u << out);
-        for (uint8_t cand = BUS_ONE; cand <= BUS_TWO; cand++) {
-            if (busy & (1u << cand)) continue;
-            /* Reading and overwriting the same bus is the 0x11 scratch case
-             * AMY only implements for bus one, and never with ADD. */
-            if (cand == out && (add || out != BUS_ONE)) continue;
-            in = cand;
-            break;
-        }
-        if (in == BUS_NONE) return false;
-        for (uint8_t k = 0; k < nk; k++) {
-            uint8_t child_live = busy;
-            if (k > 0) child_live |= (uint8_t)(1u << in);
-            if (!emit(c, kids[k], in, k > 0, child_live)) return false;
-        }
-    }
-
-    if (c->n >= FM_GRAPH_OPS) return false;
-    uint8_t byte = 0;
-    if (in == BUS_ONE) byte |= IN_BUS_ONE;
-    if (in == BUS_TWO) byte |= IN_BUS_TWO;
-    if (out == BUS_OUT) {
-        byte |= OUT_BUS_ADD;                 /* carriers always sum into buf */
-    } else {
-        byte |= (out == BUS_ONE) ? OUT_BUS_ONE : OUT_BUS_TWO;
-        if (add) byte |= OUT_BUS_ADD;
-    }
-    if (node == c->fb_op) byte |= FB_IN | FB_OUT;
-    c->prog->ops[c->n]     = byte;
-    c->prog->slot_op[c->n] = node;
-    c->n++;
     return true;
 }
 
-bool fm_graph_compile(const uint8_t op_to[FM_GRAPH_OPS], uint8_t fb_op, fm_program_t *out)
+/* State: `placed` ops rendered in slots 0..n-1, c1/c2 the ops summed on
+ * BUS_ONE/BUS_TWO. 0 means stale data from the last voice (render_algo never
+ * clears the buses between calls), so it is neither read nor added onto. */
+static bool search(compile_ctx_t *c, uint8_t placed, uint8_t c1, uint8_t c2, uint8_t n)
 {
-    compile_ctx_t c = { .op_to = op_to, .fb_op = fb_op, .prog = out, .n = 0, .emitted = 0 };
-    memset(out, 0, sizeof(*out));
-    for (uint8_t i = 0; i < FM_GRAPH_OPS; i++) {
-        if (op_to[i] != FM_TO_OUT) continue;
-        if (!emit(&c, i, BUS_OUT, true, 0)) return false;
+    if (++c->nodes > FM_GRAPH_COMPILE_BUDGET) return false;
+    if (placed == ALL_OPS) return true;
+    for (uint8_t x = 0; x < FM_GRAPH_OPS; x++) {
+        uint8_t bit = (uint8_t)(1u << x);
+        uint8_t in = c->in[x];
+        if ((placed & bit) || (in & (uint8_t)~placed)) continue;
+
+        uint8_t ins[2], n_in = 0;
+        if (in == 0u) {
+            ins[n_in++] = BUS_NONE;
+        } else {
+            if (c1 == in) ins[n_in++] = BUS_ONE;
+            if (c2 == in) ins[n_in++] = BUS_TWO;
+        }
+        bool carrier = (c->targets[x] == FM_OUT_BIT);
+        uint8_t n_out = carrier ? 1u : (uint8_t)(sizeof(s_mod_outs) / sizeof(s_mod_outs[0]));
+
+        for (uint8_t a = 0; a < n_in; a++) {
+            for (uint8_t o = 0; o < n_out; o++) {
+                uint8_t ob  = carrier ? BUS_OUT : s_mod_outs[o].bus;
+                bool    add = carrier ? true    : s_mod_outs[o].add;
+                uint8_t n1 = c1, n2 = c2;
+                if (ob == BUS_ONE) {
+                    if (add && (c1 == 0u || ins[a] == BUS_ONE)) continue;   /* stale, 0x15 */
+                    n1 = add ? (uint8_t)(c1 | bit) : bit;
+                } else if (ob == BUS_TWO) {
+                    if (add ? c2 == 0u : ins[a] == BUS_TWO) continue;       /* stale, 0x22 */
+                    n2 = add ? (uint8_t)(c2 | bit) : bit;
+                }
+                uint8_t np = (uint8_t)(placed | bit);
+                if (!inputs_reachable(c, np, n1, n2)) continue;
+
+                uint8_t byte = 0;
+                if (ins[a] == BUS_ONE) byte |= IN_BUS_ONE;
+                if (ins[a] == BUS_TWO) byte |= IN_BUS_TWO;
+                if (ob == BUS_OUT) {
+                    byte |= OUT_BUS_ADD;             /* carriers always sum into buf */
+                } else {
+                    byte |= (ob == BUS_ONE) ? OUT_BUS_ONE : OUT_BUS_TWO;
+                    if (add) byte |= OUT_BUS_ADD;
+                }
+                if (x == c->fb_op) byte |= FB_IN | FB_OUT;
+                c->prog->ops[n]     = byte;
+                c->prog->slot_op[n] = x;
+                if (search(c, np, n1, n2, (uint8_t)(n + 1u))) return true;
+                if (c->nodes > FM_GRAPH_COMPILE_BUDGET) return false;
+            }
+        }
     }
-    return c.n == FM_GRAPH_OPS;      /* every op reachable from a carrier */
+    return false;
+}
+
+bool fm_graph_compile(const uint8_t targets[FM_GRAPH_OPS], uint8_t fb_op, fm_program_t *out)
+{
+    compile_ctx_t c = { .targets = targets, .fb_op = fb_op, .prog = out, .nodes = 0 };
+    memset(out, 0, sizeof(*out));
+    bool ok = true;
+    for (uint8_t i = 0; i < FM_GRAPH_OPS; i++) {
+        if (!mask_valid(i, targets[i])) ok = false;
+    }
+    if (ok) ok = fm_graph_is_acyclic(targets);
+    if (ok) {
+        graph_inputs(targets, c.in);
+        ok = search(&c, 0, 0, 0, 0);
+    }
+#ifdef FM_GRAPH_STATS
+    fm_graph_stats_nodes = c.nodes;
+#endif
+    return ok;
 }

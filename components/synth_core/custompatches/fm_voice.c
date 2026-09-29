@@ -3,6 +3,7 @@
 #include "amy_helpers.h"   /* amy_helpers_event_begin/send */
 #include "voice_config.h"  /* VOICE_ENV_* clamps */
 #include "seq_clamp.h"
+#include <math.h>
 #include <string.h>
 
 /* FM_NUM_OPS must track amy.h's MAX_ALGO_OPS (algo_source[] size): an AMY
@@ -15,11 +16,21 @@ _Static_assert(FM_NUM_OPS == FM_GRAPH_OPS, "fm_graph and fm_voice disagree on op
 fm_voice_t s_fm_voice;
 
 /* Default operator envelope: short and percussive so a fresh voice decays
- * before any operator ADSR is authored. */
-#define FM_OP_ATTACK_MS  4u
-#define FM_OP_DECAY_MS   300u
-#define FM_OP_SUSTAIN    60u
-#define FM_OP_RELEASE_MS 200u
+ * before any operator envelope is authored. L93 is ~0.59 linear. */
+static const fm_op_env_t s_fm_op_env_default = {
+    .time_ms = { 4u, 300u, 0u, 200u },
+    .level   = { 99u, 93u, 93u, 0u },
+    .eg_type = ENVELOPE_DX7,       /* the DX7 attack curve: what makes modulator envelopes sound right */
+};
+
+#define FM_FIXED_HZ_DEFAULT 440.0f
+
+float fm_voice_level_to_amp(uint8_t level)
+{
+    if (level == 0u) return 0.0f;
+    if (level > 99u) level = 99u;
+    return exp2f(((float)level - 99.0f) / 8.0f);
+}
 
 /* ── Custom program double-buffer ─────────────────────────────────────────
  * The compiled program lives in one of AMY's AMY_NUM_CUSTOM_ALGORITHMS RAM
@@ -49,7 +60,7 @@ static uint8_t fm_voice_resolve_program(const fm_voice_t *v, fm_program_t *p)
         fm_program_identity(p, a);
         return a;
     }
-    if (!fm_graph_compile(v->op_to, v->fb_op, p)) {
+    if (!fm_graph_compile(v->op_targets, v->fb_op, p)) {
         /* Setters never store an uncompilable graph; a corrupt voice falls
          * back to row 1 rather than pushing garbage routing. */
         fm_program_identity(p, 1);
@@ -64,6 +75,18 @@ static uint8_t fm_voice_resolve_program(const fm_voice_t *v, fm_program_t *p)
     return (uint8_t)(amy_num_algorithms + s_prog_slot);
 }
 
+/* Copy the table routing into the custom fields. A decoded mask of 0 (a bus
+ * write nothing reads; no DX7 row has one) becomes a carrier. */
+static void fm_voice_seed_custom(fm_voice_t *v)
+{
+    fm_graph_view_t g;
+    fm_voice_graph(v, &g);
+    for (uint8_t i = 0; i < FM_NUM_OPS; i++) {
+        v->op_targets[i] = g.out_mask[i] ? g.out_mask[i] : FM_OUT_BIT;
+    }
+    v->fb_op = g.fb_op;
+}
+
 void fm_voice_default(fm_voice_t *v)
 {
     if (!v) return;
@@ -71,15 +94,10 @@ void fm_voice_default(fm_voice_t *v)
     v->algorithm = 1;
     v->feedback  = 0.0f;
     for (uint8_t i = 0; i < FM_NUM_OPS; i++) {
-        v->op_ratio[i] = 1.0f;
-        v->op_level[i] = 0.0f;
-        v->op_env[i] = (seq_env_t) {
-            .attack_ms   = FM_OP_ATTACK_MS,
-            .decay_ms    = FM_OP_DECAY_MS,
-            .sustain_pct = FM_OP_SUSTAIN,
-            .release_ms  = FM_OP_RELEASE_MS,
-            .eg_type     = ENVELOPE_DX7,       /* the DX7 attack curve: what makes modulator envelopes sound right */
-        };
+        v->op_ratio[i]    = 1.0f;
+        v->op_fixed_hz[i] = FM_FIXED_HZ_DEFAULT;
+        v->op_level[i]    = 0.0f;
+        v->op_env[i]      = s_fm_op_env_default;
     }
     /* Algorithm 1's second chain: index 4 (OP2) modulates index 5 (OP1).
      * Enabling only this pair makes a fresh voice audible as a 2-op tone. */
@@ -87,10 +105,7 @@ void fm_voice_default(fm_voice_t *v)
     v->op_ratio[5] = 1.0f;  v->op_level[5] = 1.0f;
     /* Seed the custom fields from the same row so entering custom mode (or a
      * topology edit) starts from what is heard. */
-    fm_graph_view_t g;
-    fm_voice_graph(v, &g);
-    fm_graph_to_forest(&g, v->op_to);
-    v->fb_op = g.fb_op;
+    fm_voice_seed_custom(v);
 }
 
 /* osc 0 routing event: algorithm + algo_source order + feedback. */
@@ -116,19 +131,27 @@ static void fm_voice_send_routing(uint8_t synth_id, const fm_voice_t *voice)
     amy_helpers_event_send(e);
 }
 
-/* One operator osc: ratio, level, own EG0. Sent after the routing event so
- * the eg_type re-assert lands after AMY's ALGO_SOURCE naming (which forces
+/* One operator osc: frequency, level, own EG0. Sent after the routing event
+ * so the eg_type re-assert lands after AMY's ALGO_SOURCE naming (which forces
  * ENVELOPE_DX7 on the operator). */
 static void fm_voice_send_op(uint8_t synth_id, const fm_voice_t *voice, uint8_t op)
 {
-    const seq_env_t *env = &voice->op_env[op];
+    const fm_op_env_t *env = &voice->op_env[op];
+    uint8_t bit = (uint8_t)(1u << op);
     amy_event *e = amy_helpers_event_begin();
     e->synth                 = synth_id;
     e->osc                   = (uint16_t)(op + 1);
     e->wave                  = SINE;
-    e->ratio                 = voice->op_ratio[op];
-    e->freq_coefs[COEF_NOTE] = 1.0f;
-    e->amp_coefs[COEF_CONST] = voice->op_level[op];
+    if (voice->op_fixed & bit) {
+        /* No ratio: with one set, render_fm_sine derives the pitch from the
+         * ALGO osc and ignores these coefs. */
+        e->freq_coefs[COEF_CONST] = voice->op_fixed_hz[op];
+        e->freq_coefs[COEF_NOTE]  = 0.0f;
+    } else {
+        e->ratio                  = voice->op_ratio[op];
+        e->freq_coefs[COEF_NOTE]  = 1.0f;
+    }
+    e->amp_coefs[COEF_CONST] = (voice->op_mute & bit) ? 0.0f : voice->op_level[op];
     /* VEL must be 0 on operators: AMY never delivers velocity to
      * SYNTH_IS_ALGO_SOURCE oscs, so a nonzero VEL coef on their 0 input would
      * contribute -60 dB in the dB combine (voice_config.h) and floor the
@@ -139,14 +162,20 @@ static void fm_voice_send_op(uint8_t synth_id, const fm_voice_t *voice, uint8_t 
     e->amp_coefs[COEF_EG0]   = 1.0f;
     e->bp_is_set[0]          = 1;
     e->eg_type[0]            = env->eg_type;
-    e->eg0_times[0]  = SEQ_CLAMP_U32(env->attack_ms, VOICE_ENV_ATTACK_MIN_MS,
+    /* Five pairs: L4 at t=0, the three note-on segments (AMY sustains on the
+     * pair before the last), then the release back to L4. */
+    e->eg0_times[0]  = 0u;
+    e->eg0_values[0] = fm_voice_level_to_amp(env->level[3]);
+    e->eg0_times[1]  = SEQ_CLAMP_U32(env->time_ms[0], VOICE_ENV_ATTACK_MIN_MS,
                                      VOICE_ENV_TIME_MAX_MS);
-    e->eg0_values[0] = 1.0f;
-    e->eg0_times[1]  = SEQ_CLAMP_U32(env->decay_ms, 0u, VOICE_ENV_TIME_MAX_MS);
-    e->eg0_values[1] = (float)SEQ_CLAMP_U8(env->sustain_pct, 0u, 100u) / 100.0f;
-    e->eg0_times[2]  = SEQ_CLAMP_U32(env->release_ms, VOICE_ENV_RELEASE_MIN_MS,
+    e->eg0_values[1] = fm_voice_level_to_amp(env->level[0]);
+    e->eg0_times[2]  = SEQ_CLAMP_U32(env->time_ms[1], 0u, VOICE_ENV_TIME_MAX_MS);
+    e->eg0_values[2] = fm_voice_level_to_amp(env->level[1]);
+    e->eg0_times[3]  = SEQ_CLAMP_U32(env->time_ms[2], 0u, VOICE_ENV_TIME_MAX_MS);
+    e->eg0_values[3] = fm_voice_level_to_amp(env->level[2]);
+    e->eg0_times[4]  = SEQ_CLAMP_U32(env->time_ms[3], VOICE_ENV_RELEASE_MIN_MS,
                                      VOICE_ENV_TIME_MAX_MS);
-    e->eg0_values[2] = 0.0f;
+    e->eg0_values[4] = fm_voice_level_to_amp(env->level[3]);
     amy_helpers_event_send(e);
 }
 
@@ -192,6 +221,14 @@ void fm_voice_push(uint8_t synth_id, const fm_voice_t *voice, uint8_t what)
     if (!voice) return;
     if (what < FM_NUM_OPS)             fm_voice_send_op(synth_id, voice, what);
     else if (what == FM_PUSH_ROUTING)  fm_voice_send_routing(synth_id, voice);
+    else if (what >= FM_PUSH_OP_RESET(0) && what < FM_PUSH_OP_RESET(FM_NUM_OPS)) {
+        uint8_t op = (uint8_t)(what - FM_PUSH_OP_RESET(0));
+        amy_event *e = amy_helpers_event_begin();
+        e->synth     = synth_id;
+        e->reset_osc = (uint32_t)(op + 1);     /* voice-relative with synth set */
+        amy_helpers_event_send(e);
+        fm_voice_send_op(synth_id, voice, op);
+    }
     else                               fm_voice_push_live(synth_id, voice);
 }
 
@@ -200,7 +237,8 @@ void fm_voice_push(uint8_t synth_id, const fm_voice_t *voice, uint8_t what)
 void fm_voice_graph(const fm_voice_t *v, fm_graph_view_t *out)
 {
     if (v->algorithm == FM_ALGO_CUSTOM) {
-        fm_graph_from_forest(v->op_to, v->fb_op, out);
+        memcpy(out->out_mask, v->op_targets, sizeof(out->out_mask));
+        out->fb_op = v->fb_op;
         return;
     }
     const uint8_t *ops = amy_algorithm_ops(v->algorithm);
@@ -211,22 +249,37 @@ void fm_voice_graph(const fm_voice_t *v, fm_graph_view_t *out)
 void fm_voice_make_custom(fm_voice_t *v)
 {
     if (v->algorithm == FM_ALGO_CUSTOM) return;
-    fm_graph_view_t g;
-    fm_voice_graph(v, &g);
-    fm_graph_to_forest(&g, v->op_to);
-    v->fb_op     = g.fb_op;
+    fm_voice_seed_custom(v);
     v->algorithm = FM_ALGO_CUSTOM;
 }
 
-bool fm_voice_set_op_target(fm_voice_t *v, uint8_t op, uint8_t target)
+/* Shape rule of fm_graph.h: exactly FM_OUT_BIT, or a nonzero set of other
+ * operators. */
+static bool fm_voice_mask_valid(uint8_t op, uint8_t mask)
 {
-    if (op >= FM_NUM_OPS) return false;
+    if (mask == FM_OUT_BIT) return true;
+    uint8_t ops = (uint8_t)((1u << FM_NUM_OPS) - 1u);
+    return mask != 0u && (mask & (uint8_t)~ops) == 0u && (mask & (1u << op)) == 0u;
+}
+
+bool fm_voice_set_op_targets(fm_voice_t *v, uint8_t op, uint8_t mask, fm_route_err_t *err)
+{
+    fm_route_err_t e = FM_ROUTE_OK;
     fm_voice_t trial = *v;
-    fm_voice_make_custom(&trial);
-    if (!fm_graph_edge_allowed(trial.op_to, op, target)) return false;
-    trial.op_to[op] = target;
     fm_program_t p;
-    if (!fm_graph_compile(trial.op_to, trial.fb_op, &p)) return false;
+    if (op >= FM_NUM_OPS || !fm_voice_mask_valid(op, mask)) {
+        e = FM_ROUTE_INVALID;
+    } else {
+        fm_voice_make_custom(&trial);
+        trial.op_targets[op] = mask;
+        if (!fm_graph_is_acyclic(trial.op_targets)) {
+            e = FM_ROUTE_LOOP;
+        } else if (!fm_graph_compile(trial.op_targets, trial.fb_op, &p)) {
+            e = FM_ROUTE_NO_BUS;
+        }
+    }
+    if (err) *err = e;
+    if (e != FM_ROUTE_OK) return false;
     *v = trial;
     return true;
 }

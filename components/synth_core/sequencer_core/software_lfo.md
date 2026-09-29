@@ -34,8 +34,11 @@ every 50 ms, for each synth with an LFO enabled:
     amy.send(synth=s,
         filter_freq = base_cutoff * 2**(voice_lfo_filter_octaves(lfo) * value),
                                                          # Flt octave range, 0.25..4 oct
-        amp         = 1.0 - d * (0.5 - 0.5 * value),     # dips 1.0 -> 1.0-d, never boosts
         pan         = 0.5 + 0.5 * d * value)             # around center
+
+    amy.send(synth=s, osc=amp_osc,                       # amp: osc 0 on ALGO voices
+        amp         = 1.0 - d * (0.5 - 0.5 * value))     # dips 1.0 -> 1.0-d, never boosts
+                                                         # amp_osc: sequencer_core_patch_amp_osc()
 
     amy.send(synth=s, osc=0,                             # pitch: osc 0 only
         freq        = SEQ_LFO_PITCH_BASE_HZ * 2**(d * VOICE_LFO_DEPTH_PITCH * value))

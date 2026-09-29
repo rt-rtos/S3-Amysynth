@@ -139,7 +139,7 @@ static void live_apply_filter(const seq_filter_t *f)
     }
     amy_helpers_event_send(e);
 
-    sequencer_core_push_eg_depths(LIVE_SYNTH, -1, f, s_vp.filter_authored);
+    sequencer_core_push_eg_depths(LIVE_SYNTH, sequencer_core_patch_voice_osc(s_patch), f, s_vp.filter_authored);
 
     if (seq_filter_eg1_live(f)) {
         sequencer_core_push_envelope_eg1(LIVE_SYNTH, 0, &s_vp.env1);
@@ -178,7 +178,7 @@ static void live_apply_authored(void)
     /* Wave patches carry no envelope of their own, so force the default shape
      * even unauthored; patch strings keep theirs until the user commits. */
     if (s_vp.env_authored || wave)
-        sequencer_core_push_envelope(LIVE_SYNTH, &s_vp.env);
+        sequencer_core_push_envelope_osc(LIVE_SYNTH, sequencer_core_patch_voice_osc(s_patch), &s_vp.env);
     if (s_vp.env1_authored)   sequencer_core_push_envelope_eg1(LIVE_SYNTH, 0, &s_vp.env1);
     if (s_vp.filter_authored) live_apply_filter(&s_vp.filter);
     if (s_vp.dist_authored)   voice_apply_dist(LIVE_SYNTH, &s_vp.dist);
@@ -307,7 +307,9 @@ static uint8_t s_swlfo_targets = 0;   /* rails driven while active - the set
 /* seq_core_editors.c internals shared with this stepper. Mirrored prototypes:
  * seq_core_internal.h cannot be included here (it defines a TU-local TAG). */
 float lfo_next_rand(void);
-void  lfo_push_target_neutral(uint8_t synth_id, lfo_target_t target);
+void  lfo_push_amp(uint8_t synth_id, uint16_t patch, float amp);
+void  lfo_push_target_neutral(uint8_t synth_id, uint16_t patch,
+                              lfo_target_t target);
 
 static inline float live_swlfo_hz(lfo_rate_t rate, uint16_t bpm)
 {
@@ -355,7 +357,7 @@ void live_play_lfo_service(void)
                         voice_apply_dist(LIVE_SYNTH, &s_vp.dist);
                 }
                 else
-                    lfo_push_target_neutral(LIVE_SYNTH, (lfo_target_t)t);
+                    lfo_push_target_neutral(LIVE_SYNTH, s_patch, (lfo_target_t)t);
             }
         }
         return;
@@ -389,12 +391,12 @@ void live_play_lfo_service(void)
         e->filter_freq_coefs[COEF_CONST] =
             base * powf(2.0f, voice_lfo_filter_octaves(lfo) * val);
     }
-    if (LFO_HAS_TGT(lfo, LFO_TARGET_AMP))
-        e->amp_coefs[COEF_CONST] = 1.0f - d * (0.5f - 0.5f * val);
     if (LFO_HAS_TGT(lfo, LFO_TARGET_PAN))
         e->pan_coefs[COEF_CONST] = 0.5f + d * 0.5f * val;
     /* SCAN needs a wavetable voice - wave patches / native only. */
     amy_helpers_event_send(e);
+    if (LFO_HAS_TGT(lfo, LFO_TARGET_AMP))
+        lfo_push_amp(LIVE_SYNTH, s_patch, 1.0f - d * (0.5f - 0.5f * val));
     } /* !native */
 
     /* DIST on a PATCH-mode voice: step around the committed dist block
@@ -432,7 +434,7 @@ void live_play_set_envelope(const seq_env_t *env)
     vp->env.release_ms = SEQ_CLAMP_U32(vp->env.release_ms,
                                        VOICE_ENV_RELEASE_MIN_MS, VOICE_ENV_TIME_MAX_MS);
     vp->env_authored = true;
-    if (s_ready) sequencer_core_push_envelope(LIVE_SYNTH, &vp->env);
+    if (s_ready) sequencer_core_push_envelope_osc(LIVE_SYNTH, sequencer_core_patch_voice_osc(s_patch), &vp->env);
 }
 
 void live_play_get_envelope2(seq_env_t *out)
@@ -524,7 +526,7 @@ void live_play_set_amp_scale(float v)
 
 void live_play_preview_envelope(const seq_env_t *env)
 {
-    if (env && s_ready) sequencer_core_push_envelope(LIVE_SYNTH, env);
+    if (env && s_ready) sequencer_core_push_envelope_osc(LIVE_SYNTH, sequencer_core_patch_voice_osc(s_patch), env);
 }
 
 void live_play_preview_envelope2(const seq_env_t *env)

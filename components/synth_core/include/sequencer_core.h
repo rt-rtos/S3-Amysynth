@@ -693,8 +693,27 @@ void sequencer_core_service_tick(void);
  * Push an ADSR (EG0 breakpoint set) to an arbitrary AMY synth slot's voices, so
  * the arp and drone reuse the melodic layers' EG0 delta path. The synth's osc0
  * must have its amp EG0 coef enabled - patch-loaded synths do by default, the
- * drone enables it explicitly. No-op for an out-of-range eg_type. */
+ * drone enables it explicitly. No-op for an out-of-range eg_type.
+ * sequencer_core_push_envelope() sends it to every osc of each voice (an AMY
+ * event naming no osc fans out); the _osc variant addresses one voice-relative
+ * osc, or every osc when osc < 0. */
 void sequencer_core_push_envelope(uint8_t synth, const seq_env_t *env);
+void sequencer_core_push_envelope_osc(uint8_t synth, int osc, const seq_env_t *env);
+
+/* The osc that a slot's voice-wide settings (the row/arp/live envelope, the
+ * filter and its EG-routing depths) address for `patch`: 0 for the FM/ALGO
+ * voices (SEQ_PATCH_FM_BASE..SEQ_PATCH_FM_MAX), whose osc 0 is the ALGO control
+ * osc - a VCA over the carriers - while the operators keep their own
+ * envelopes and follow its pitch; -1 (every osc of the voice) otherwise. */
+int sequencer_core_patch_voice_osc(uint16_t patch);
+
+/* The osc a voice-level amp CONST write (the software LFO's AMP target and its
+ * neutral restore) addresses for `patch`: 0 on every ALGO voice - the FM range
+ * and the DX7 bank - where an operator's amp CONST is its output level and
+ * osc 0's scales the carriers; -1 (every osc) otherwise. Wider than
+ * sequencer_core_patch_voice_osc(): a DX7 bank osc 0 has no amp EG0, so its
+ * row envelope keeps the fan-out, but its amp CONST is still the VCA. */
+int sequencer_core_patch_amp_osc(uint16_t patch);
 
 /* Push env into the given synth/osc's EG1 breakpoint set (bp_is_set[1]).
  * `osc` lets a caller target a non-zero oscillator (a bass preset whose filter

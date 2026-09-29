@@ -257,11 +257,12 @@ static void dispatch_button_event(my_button_id_t button_id, button_event_t event
 {
     /* MY_BUTTON_SHOULDER, per view: SEQ toggles the step under the cursor
      * (two-handed tracker-style entry), GRAPH flips the routing depth's sign,
-     * LFO flips the target checklist tab, MENU leaves a sub-page for the main
-     * list (button 3 reopens the last page, so this is the way home). Step
-     * entry, the polarity flip and the menu jump take PRESS_DOWN for zero tap
-     * latency; the tab flip is a deliberate navigation gesture, so it waits
-     * for the click. All events consumed. */
+     * LFO flips the target checklist tab, FM flips the editor page, MENU
+     * leaves a sub-page for the main list (button 3 reopens the last page, so
+     * this is the way home). Step entry, the polarity flip and the menu jump
+     * take PRESS_DOWN for zero tap latency; the tab and page flips are
+     * deliberate navigation gestures, so they wait for the click. All events
+     * consumed. */
     if (button_id == MY_BUTTON_SHOULDER) {
         ui_view_id_t sv = synth_ui_active_view();
         if (event == BUTTON_PRESS_DOWN) {
@@ -272,13 +273,13 @@ static void dispatch_button_event(my_button_id_t button_id, button_event_t event
                 synth_ui_graph_flip_depth_polarity();
             } else if (sv == UI_VIEW_MENU) {
                 synth_ui_menu_go_main();
-#if CONFIG_SYNTH_CUSTOM_FM
-            } else if (sv == UI_VIEW_FM) {
-                synth_ui_fm_toggle_feedback();
-#endif
             }
         } else if (event == BUTTON_SINGLE_CLICK && sv == UI_VIEW_LFO) {
             synth_ui_lfo_toggle_target_tab();
+#if CONFIG_SYNTH_CUSTOM_FM
+        } else if (event == BUTTON_SINGLE_CLICK && sv == UI_VIEW_FM) {
+            synth_ui_fm_toggle_page();
+#endif
         }
         return;
     }
@@ -339,7 +340,7 @@ static void dispatch_button_event(my_button_id_t button_id, button_event_t event
         if (button_id == MY_BUTTON_1) {
             bool open_from_screen = (sv == UI_VIEW_SEQ || sv == UI_VIEW_ARP ||
                                      sv == UI_VIEW_DRONE || sv == UI_VIEW_DRONE_VIS ||
-                                     sv == UI_VIEW_DRONE_STD || sv == UI_VIEW_FM);
+                                     sv == UI_VIEW_DRONE_STD);
 #if CONFIG_SYNTH_WIRELESS
             /* Wireless overlay page: same chord, bound to the BLE live-play
              * voice (synth_ui_graph_open_envelope picks the target). */
@@ -433,6 +434,17 @@ static void dispatch_button_event(my_button_id_t button_id, button_event_t event
             }
             return;
         }
+#if CONFIG_SYNTH_CUSTOM_FM
+        /* FM screen: link mode (synth_ui.h), never the patch-select hold,
+         * which would only move the layer off the voice being edited. Clear
+         * the latch in case it was held when the screen switched. */
+        if (synth_ui_active_view() == UI_VIEW_FM) {
+            s_patch_held = false;
+            synth_ui_set_patch_select_mode(false);
+            if (event == BUTTON_PRESS_DOWN) synth_ui_fm_link_button();
+            return;
+        }
+#endif
         if (event == BUTTON_PRESS_DOWN) {
             s_patch_held = true;
             synth_ui_set_patch_select_mode(true);
@@ -509,7 +521,8 @@ static void dispatch_button_event(my_button_id_t button_id, button_event_t event
     ui_view_id_t v = synth_ui_active_view();
 
     // MY_BUTTON_2: pitch-edit hold normally; in the graph editor it toggles
-    // amp-edit mode (encoder adjusts amplitude trim instead of ADSR points).
+    // amp-edit mode (encoder adjusts amplitude trim instead of ADSR points);
+    // on the FM screen it mutes/unmutes the selected operator.
     if (button_id == MY_BUTTON_2) {
         switch (v) {
             case UI_VIEW_FILTER:
@@ -521,6 +534,14 @@ static void dispatch_button_event(my_button_id_t button_id, button_event_t event
             case UI_VIEW_STEPEDIT:
                 /* Popup owns the encoder; suppress drum-select hold. */
                 return;
+#if CONFIG_SYNTH_CUSTOM_FM
+            case UI_VIEW_FM:
+                /* Clear the latch in case it was held when the screen switched. */
+                s_drum_select_held = false;
+                synth_ui_set_drum_select_mode(false);
+                if (event == BUTTON_PRESS_DOWN) synth_ui_fm_toggle_mute();
+                return;
+#endif
             default:
                 break;
         }
@@ -535,9 +556,16 @@ static void dispatch_button_event(my_button_id_t button_id, button_event_t event
     }
 
     // MY_BUTTON_3: inside an editor, click cycles editor pages (EG0 -> EG1 ->
-    // filter -> LFO -> DIST); in STEPEDIT it closes; otherwise it is the menu
-    // toggle.
+    // filter -> LFO -> DIST); in STEPEDIT it closes; in FM link mode it ends
+    // linking; otherwise it is the menu toggle.
     if (button_id == MY_BUTTON_3) {
+#if CONFIG_SYNTH_CUSTOM_FM
+        if (v == UI_VIEW_FM && synth_ui_fm_link_active()) {
+            /* Every event consumed: the menu does not open while linking. */
+            if (event == BUTTON_SINGLE_CLICK) synth_ui_fm_link_end();
+            return;
+        }
+#endif
         if (v == UI_VIEW_GRAPH || v == UI_VIEW_FILTER || v == UI_VIEW_LFO ||
             v == UI_VIEW_DIST) {
             if (event == BUTTON_SINGLE_CLICK) {
@@ -707,7 +735,9 @@ static void encoder_process_steps(long steps)
 #endif
 #if CONFIG_SYNTH_CUSTOM_FM
     } else if (v == UI_VIEW_FM) {
-        synth_ui_fm_handle_encoder((int)steps);
+        // SHIFT+Turn steps the FM Custom voice's algorithm, as on the grid.
+        if (s_shift_held) synth_ui_fm_step_algorithm((int)steps);
+        else              synth_ui_fm_handle_encoder((int)steps);
 #endif
     } else if (s_shift_held) {
         // SHIFT+Turn on the sequencer screen: step the active melodic

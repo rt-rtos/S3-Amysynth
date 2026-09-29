@@ -202,7 +202,8 @@ static void arp_apply_filter(const seq_filter_t *f)
     }
     amy_helpers_event_send(e);
 
-    sequencer_core_push_eg_depths(sequencer_core_arp_synth(), -1, f,
+    sequencer_core_push_eg_depths(sequencer_core_arp_synth(),
+                                  sequencer_core_patch_voice_osc(s_arp.patch), f,
                                   s_arp.vp.filter_authored);
 
     if (seq_filter_eg1_live(f)) {
@@ -270,7 +271,8 @@ static void arp_rebuild(void)
      * their own envelope as part of their character: only override when
      * the user authored one. */
     if (sequencer_core_is_wave_patch(s_arp.patch) || s_arp.vp.env_authored) {
-        sequencer_core_push_envelope(sequencer_core_arp_synth(), &s_arp.vp.env);
+        sequencer_core_push_envelope_osc(sequencer_core_arp_synth(),
+                                     sequencer_core_patch_voice_osc(s_arp.patch), &s_arp.vp.env);
     }
     /* Native-layout patches take the native LFO here; the software stepper
      * skips them. */
@@ -566,7 +568,8 @@ void arp_set_envelope(const seq_env_t *env)
     s_arp.vp.env.release_ms = SEQ_CLAMP_U32(s_arp.vp.env.release_ms,
                                             VOICE_ENV_RELEASE_MIN_MS, VOICE_ENV_TIME_MAX_MS);
     s_arp.vp.env_authored = true;
-    sequencer_core_push_envelope(sequencer_core_arp_synth(), &s_arp.vp.env);
+    sequencer_core_push_envelope_osc(sequencer_core_arp_synth(),
+                                     sequencer_core_patch_voice_osc(s_arp.patch), &s_arp.vp.env);
     ESP_LOGI(TAG, "arp env -> A%u D%u S%u%% R%u",
              (unsigned)s_arp.vp.env.attack_ms, (unsigned)s_arp.vp.env.decay_ms,
              (unsigned)s_arp.vp.env.sustain_pct, (unsigned)s_arp.vp.env.release_ms);
@@ -602,7 +605,8 @@ void arp_get_filter(seq_filter_t *out)
 void arp_preview_envelope(const seq_env_t *env)
 {
     if (!env) return;
-    sequencer_core_push_envelope(sequencer_core_arp_synth(), env);
+    sequencer_core_push_envelope_osc(sequencer_core_arp_synth(),
+                                     sequencer_core_patch_voice_osc(s_arp.patch), env);
 }
 
 void arp_preview_envelope2(const seq_env_t *env)
@@ -719,7 +723,9 @@ static uint8_t s_swlfo_targets = 0;   /* targets driven while active - the set
 /* seq_core_editors.c internals shared with this stepper. Mirrored prototypes:
  * seq_core_internal.h cannot be included here (it defines a TU-local TAG). */
 float lfo_next_rand(void);
-void  lfo_push_target_neutral(uint8_t synth_id, lfo_target_t target);
+void  lfo_push_amp(uint8_t synth_id, uint16_t patch, float amp);
+void  lfo_push_target_neutral(uint8_t synth_id, uint16_t patch,
+                              lfo_target_t target);
 
 /* lfo_rate_to_hz capped to the stepper's usable band - mirrors seq_lfo_sw_hz
  * (seq_core_internal.h); needs >= 4 stepper samples per LFO cycle. */
@@ -769,7 +775,7 @@ static void arp_swlfo_service(void)
                         voice_apply_dist(syn, &s_arp.vp.dist);
                 }
                 else
-                    lfo_push_target_neutral(syn, (lfo_target_t)t);
+                    lfo_push_target_neutral(syn, s_arp.patch, (lfo_target_t)t);
             }
         }
         return;
@@ -803,12 +809,13 @@ static void arp_swlfo_service(void)
         e->filter_freq_coefs[COEF_CONST] =
             base * powf(2.0f, voice_lfo_filter_octaves(lfo) * val);
     }
-    if (LFO_HAS_TGT(lfo, LFO_TARGET_AMP))
-        e->amp_coefs[COEF_CONST] = 1.0f - d * (0.5f - 0.5f * val);
     if (LFO_HAS_TGT(lfo, LFO_TARGET_PAN))
         e->pan_coefs[COEF_CONST] = 0.5f + d * 0.5f * val;
     /* SCAN needs a wavetable voice - WAVE mode / native only. */
     amy_helpers_event_send(e);
+    if (LFO_HAS_TGT(lfo, LFO_TARGET_AMP))
+        lfo_push_amp(sequencer_core_arp_synth(), s_arp.patch,
+                     1.0f - d * (0.5f - 0.5f * val));
     } /* !native */
 
     /* DIST on a PATCH-mode arp: step around the committed dist block

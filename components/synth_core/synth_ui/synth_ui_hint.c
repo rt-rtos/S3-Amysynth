@@ -4,8 +4,8 @@
 #include <stdio.h>
 
 /* Labels come from ui_view_table[] for synth_ui_active_view(). A NULL static
- * label means the cell is dynamic (it depends on ui_mode, which the view id
- * does not carry) and is filled by the row's b*_fn. */
+ * label means the cell is dynamic (it depends on state the view id does not
+ * carry) and is filled by the row's b*_fn. */
 static const char *hint_cell(const char *label, const char *(*fn)(void))
 {
     return label ? label : fn();
@@ -19,7 +19,7 @@ const char *synth_ui_hint_text(void)
     snprintf(buf, sizeof(buf), "1:%s 2:%s 3:%s%s%s",
              hint_cell(d->b1, d->b1_fn),
              hint_cell(d->b2, d->b2_fn),
-             d->b3,  /* b3 is always a static label */
+             hint_cell(d->b3, d->b3_fn),
              bs ? " LB:" : "", bs ? bs : "");
     return buf;
 }
