@@ -6,6 +6,7 @@
 #include "esp_rom_sys.h"
 #include "sdkconfig.h"
 #include "priv_i2c_u8g2.h"
+#include "display_flush.h"
 
 static const char *TAG = "i2c_u8g2";
 
@@ -109,6 +110,8 @@ static uint8_t i2c_u8g2_byte_cb(u8x8_t *u8x8, uint8_t msg, uint8_t arg_int, void
                                   "suspending transfers, retrying every %u ms",
                              (unsigned)s_consec_fail, (unsigned)I2C_U8G2_RETRY_MS);
                 }
+                /* Panel RAM no longer matches the flush shadow. */
+                display_flush_invalidate();
                 return 0;
             }
             s_consec_fail = 0;
@@ -247,6 +250,7 @@ esp_err_t i2c_u8g2_init(i2c_u8g2_handle_t *handle, const i2c_u8g2_config_t *conf
     u8g2_DrawStr(&handle->u8g2, 0, 12, "Init OK");
     u8g2_SendBuffer(&handle->u8g2);
     ESP_LOGI(TAG, "Test draw completed");
+    display_flush_init();
 
     handle->initialized = true;
     return ESP_OK;

@@ -18,6 +18,7 @@
 #include "display_arp.h"
 #include "display_hint.h"
 #include "display_badge.h"
+#include "display_flush.h"
 #include "synth_ui_hint.h"
 #include "usb_audio_watchdog.h"
 #include "amy_helpers.h"
@@ -59,220 +60,242 @@ static volatile bool    s_layer_rows_pending   = false;
 static volatile uint8_t s_layer_rows_idx       = 0;
 static volatile uint8_t s_layer_rows_count     = 0;
 
+static uint32_t s_last_sig = 0;
+/* Which top-level view was rendered last frame; a change forces a redraw. */
+static ui_view_id_t s_last_view = UI_VIEW_SEQ;
+
+static void ui_services(void)
+{
+    /* Absent-panel recovery: no-op while the display is present, one
+     * sparse probe otherwise. A (re)attached panel comes back with blank
+     * RAM, so it forces a full redraw/flush. */
+    if (i2c_u8g2_service()) {
+        s_force_redraw = true;
+    }
+    /* Coalesced arp re-emit: setters mark the arp dirty, at most one full
+     * re-emit per frame lands here, collapsing fast encoder edits. */
+    arp_core_service();
+    /* Drone: advance the tempo-locked filter sweep and keep the LFO in
+     * sync. Cheap no-op while the drone is disabled. */
+    drone_core_service();
+    /* Normal drone: drain its coalesced rebuild (no tick machinery). */
+    drone_std_core_service();
+    sequencer_core_lfo_service();
+    {
+        /* A Prog Gen row request drained here grows layers in the core;
+         * mirror them back. */
+        uint8_t grown = sequencer_core_progression_service();
+        for (uint8_t li = 0; grown && li < seq_state.num_layers; li++) {
+            if (grown & (1u << li)) synth_ui_reexport_layer(li);
+        }
+    }
+    clip_bounce_service();
+    clip_player_service();
+    drum_cache_service();
+#if CONFIG_SEQ_OOM_RESYNC
+    /* Re-emit schedules once an AMY OOM burst settles (dropped wire
+     * events otherwise leave tracks mute); cheap counter poll otherwise. */
+    sequencer_core_oom_service();
+#endif
+#if CONFIG_SYNTH_WIRELESS
+    /* Live voice: 20 Hz software LFO for patch-string (non-native)
+     * patches; cheap no-op otherwise. */
+    live_play_lfo_service();
+#endif
+
+    /* Deferred layer-delete: must run here so the array compaction is
+     * serialized against the other seq_state readers on Core 0. Drained
+     * BEFORE add, so no add lands in a slot delete has not yet freed. */
+    if (s_layer_delete_pending) {
+        s_layer_delete_pending = false;
+        uint8_t del_idx = s_layer_delete_idx;
+        if (sequencer_core_delete_layer(del_idx)) {
+            /* Mirror compaction in the UI-side seq_state. */
+            uint8_t tail = (uint8_t)(seq_state.num_layers - del_idx - 1);
+            if (tail > 0) {
+                memmove(&seq_state.layers[del_idx],
+                        &seq_state.layers[del_idx + 1],
+                        tail * sizeof(seq_state.layers[0]));
+            }
+            seq_state.num_layers--;
+            /* Clamp indices that may now point past the end. */
+            if (seq_state.active_layer_idx >= seq_state.num_layers)
+                seq_state.active_layer_idx = (uint8_t)(seq_state.num_layers - 1);
+            if (s_graph_layer >= seq_state.num_layers)
+                s_graph_layer = (uint8_t)(seq_state.num_layers - 1);
+            /* Drop the Step Trig overlay: after compaction its cached
+             * (layer,track,step) may name a different layer's steps. */
+            synth_ui_stepedit_close();
+            ESP_LOGI(TAG_TASK, "UI delete layer L%u (%u layers remain)",
+                     del_idx + 1u, seq_state.num_layers);
+        }
+    }
+
+    /* Deferred layer-add (see synth_ui_request_add_layer()). */
+    if (s_layer_add_pending) {
+        s_layer_add_pending = false;
+        /* Re-check the cap; num_layers may have moved since the request. */
+        if (seq_state.num_layers < MAX_LAYERS) {
+            synth_ui_add_layer(SEQ_LAYER_MELODIC, SEQ_STEPS);
+        }
+    }
+
+    if (s_layer_rows_pending) {
+        s_layer_rows_pending = false;
+        uint8_t li = s_layer_rows_idx;
+        if (li < seq_state.num_layers &&
+            sequencer_core_set_layer_tracks(li, s_layer_rows_count)) {
+            synth_ui_reexport_layer(li);
+        }
+    }
+
+#if CONFIG_SYNTH_PROJECT_STORE
+    /* Project load/save queued by the Projects menu (radio_manager.h
+     * explains the queued-click pattern). Runs here as the s_layers applier
+     * (sequencer_core.h), after the drains above so pending structural
+     * edits resolve before a load replaces them. */
+    projects_menu_service();
+#endif
+
+    /* Bounce page redraw pump: the recorder and the clip slots advance on
+     * the render task, so the page polls them here. No-op while closed. */
+    bounce_menu_service();
+
+#if CONFIG_SYNTH_WIRELESS
+    /* Radio session start/stop queued by the Wireless page (see
+     * radio_manager.h for why clicks defer to this task). */
+    radio_manager_service();
+#endif
+
+    /* Output-level watchdog: peeks the USB ring on this core/task (see
+     * usb_audio_watchdog.h). Compiles out with its Kconfig gate, as do the
+     * badge draw and signature mix below. */
+    output_wd_poll();
+
+#if CONFIG_SYNTH_DEV_MENU
+    /* DEV status bars (heap, dropout): throttled sampling; their text
+     * joins the signature mix below so the bar refreshes on change. */
+    synth_ui_dev_heapbar_poll();
+    synth_ui_dev_dropbar_poll();
+#endif
+
+    /* Trailing flush for throttled editor live-previews (amp trim), so the
+     * last encoder value lands even after the user stops turning. */
+    synth_ui_editors_live_service();
+
+    /* Decay the FM-algorithm banner; the frame after it expires must
+     * repaint to clear it (the render-gate hash doesn't see it). */
+    if (seq_state.algo_banner_ticks > 0) {
+        if (--seq_state.algo_banner_ticks == 0) s_force_redraw = true;
+    }
+}
+
+static void ui_render(void)
+{
+    seq_state.current_step =
+        sequencer_core_get_current_step(seq_state.active_layer_idx);
+    if (s_u8g2) {
+        /* Precedence: synth_ui_active_view() (synth_ui.h). signature()
+         * builds the active view into vw and returns the FNV render-gate
+         * hash; the draw below reuses vw. Adding a view is one row in
+         * ui_view_table[]. */
+        ui_view_id_t view = synth_ui_active_view();
+        const ui_view_desc_t *desc = &ui_view_table[view];
+        ui_view_vw_t vw;
+        uint32_t sig = desc->signature(&vw);
+        /* The watchdog badge participates in the render gate so it
+         * appears/clears without needing any other screen change. */
+        sig ^= (uint32_t)output_wd_state() * 0x9E3779B9u;
+        /* REC badge: a bounce arming, recording or folding its tail. */
+        sig ^= (uint32_t)clip_bounce_get_state() * 0xC2B2AE35u;
+#if CONFIG_SYNTH_WIRELESS
+        /* BLE badge participates too: appears/changes on session or
+         * connection state without any other screen change. */
+        sig ^= ((uint32_t)radio_manager_state() * 2u +
+                (radio_manager_connected() ? 1u : 0u)) * 0x85EBCA6Bu;
+#endif
+#if CONFIG_SYNTH_DEV_MENU
+        /* DEV status bars participate too (0 while off). */
+        sig ^= synth_ui_dev_heapbar_sig();
+        sig ^= synth_ui_dev_dropbar_sig();
+#endif
+        bool force = s_force_redraw || (view != s_last_view);
+
+        if (force || sig != s_last_sig) {
+            desc->draw(s_u8g2, &vw);
+            /* Persistent button-hint strip, composited over whatever the
+             * view drew, so no per-screen renderer needs to know about it.
+             * INVARIANT: every screen's draw_frame only FILLS the buffer;
+             * the single flush below is the one physical transfer per
+             * redraw. Sending twice (without the hint, then with) makes the
+             * strip visibly flicker on every redraw. */
+#if CONFIG_SYNTH_DEV_MENU
+            /* A DEV status bar (ui_screen_dev.c) claims the strip on every
+             * screen while on. */
+            if (synth_ui_dev_heapbar_active()) {
+                display_hint_draw(s_u8g2, synth_ui_dev_heapbar_text());
+            } else if (synth_ui_dev_dropbar_active()) {
+                display_hint_draw(s_u8g2, synth_ui_dev_dropbar_text());
+            } else
+#endif
+            if (synth_ui_hint_visible()) {
+                display_hint_draw(s_u8g2, synth_ui_hint_text());
+            }
+            /* Output-level warning badge, top-right, composited last so it
+             * overlays every screen; part of the single physical send. */
+            output_wd_state_t owd = output_wd_state();
+            if (owd != OUTPUT_WD_OK) {
+                const char *owd_txt =
+                    (owd == OUTPUT_WD_CLIPPING) ? "CLIP" : "LOUD";
+                u8g2_SetFont(s_u8g2, u8g2_font_4x6_tr);
+                u8g2_SetDrawColor(s_u8g2, 1);
+                u8g2_DrawBox(s_u8g2, 108, 0, 20, 8);
+                u8g2_SetDrawColor(s_u8g2, 0);
+                u8g2_DrawStr(s_u8g2, 110, 7, owd_txt);
+                u8g2_SetDrawColor(s_u8g2, 1);
+            }
+#if CONFIG_SYNTH_WIRELESS
+            /* BLE badge, last: it reads the finished buffer back
+             * (display_badge.h). */
+            if (radio_manager_state() == RADIO_ACTIVE) {
+                display_badge_draw(s_u8g2, ui_view_table[view].badge_x,
+                                   radio_manager_connected());
+            }
+#endif
+            /* Loop-bounce REC badge while a bounce is armed, recording or
+             * folding its tail; same placement rules as the BLE badge. */
+            if (clip_bounce_get_state() != CLIP_BOUNCE_IDLE) {
+                display_badge_draw_text(s_u8g2, ui_view_table[view].badge_x, "REC");
+            }
+            if (force) display_flush_invalidate();
+            display_flush(s_u8g2);
+            s_last_sig = sig;
+            s_last_view = view;
+            s_force_redraw = false;
+        }
+    }
+}
+
+#define UI_STEP_POLL_MS       10
+#define UI_SLICES_PER_FRAME   5     /* services and the render gate keep their 50 ms frame */
+
 static void synth_ui_task(void *pvParameters)
 {
     (void)pvParameters;
     TickType_t last_wake_time = xTaskGetTickCount();
-    const TickType_t delay = pdMS_TO_TICKS(50); /* 20 Hz */
-    uint32_t last_sig = 0;
-    /* Which top-level view was rendered last frame; a change forces a redraw. */
-    ui_view_id_t last_view = UI_VIEW_SEQ;
+    const TickType_t slice = pdMS_TO_TICKS(UI_STEP_POLL_MS);
+    uint8_t phase = 0;
     for (;;) {
-        /* Absent-panel recovery: no-op while the display is present, one
-         * sparse probe otherwise. A (re)attached panel comes back with blank
-         * RAM, so it forces a full redraw/flush. */
-        if (i2c_u8g2_service()) {
-            s_force_redraw = true;
+        if (phase == 0) {
+            ui_services();
+            ui_render();
+        } else if (sequencer_core_get_current_step(seq_state.active_layer_idx)
+                   != seq_state.current_step) {
+            /* Playhead moved between frames: render now instead of at the next 50 ms slot. */
+            ui_render();
         }
-        /* Coalesced arp re-emit: setters mark the arp dirty, at most one full
-         * re-emit per frame lands here, collapsing fast encoder edits. */
-        arp_core_service();
-        /* Drone: advance the tempo-locked filter sweep and keep the LFO in
-         * sync. Cheap no-op while the drone is disabled. */
-        drone_core_service();
-        /* Normal drone: drain its coalesced rebuild (no tick machinery). */
-        drone_std_core_service();
-        sequencer_core_lfo_service();
-        {
-            /* A Prog Gen row request drained here grows layers in the core;
-             * mirror them back. */
-            uint8_t grown = sequencer_core_progression_service();
-            for (uint8_t li = 0; grown && li < seq_state.num_layers; li++) {
-                if (grown & (1u << li)) synth_ui_reexport_layer(li);
-            }
-        }
-        clip_bounce_service();
-        clip_player_service();
-        drum_cache_service();
-#if CONFIG_SEQ_OOM_RESYNC
-        /* Re-emit schedules once an AMY OOM burst settles (dropped wire
-         * events otherwise leave tracks mute); cheap counter poll otherwise. */
-        sequencer_core_oom_service();
-#endif
-#if CONFIG_SYNTH_WIRELESS
-        /* Live voice: 20 Hz software LFO for patch-string (non-native)
-         * patches; cheap no-op otherwise. */
-        live_play_lfo_service();
-#endif
-
-        /* Deferred layer-delete: must run here so the array compaction is
-         * serialized against the other seq_state readers on Core 0. Drained
-         * BEFORE add, so no add lands in a slot delete has not yet freed. */
-        if (s_layer_delete_pending) {
-            s_layer_delete_pending = false;
-            uint8_t del_idx = s_layer_delete_idx;
-            if (sequencer_core_delete_layer(del_idx)) {
-                /* Mirror compaction in the UI-side seq_state. */
-                uint8_t tail = (uint8_t)(seq_state.num_layers - del_idx - 1);
-                if (tail > 0) {
-                    memmove(&seq_state.layers[del_idx],
-                            &seq_state.layers[del_idx + 1],
-                            tail * sizeof(seq_state.layers[0]));
-                }
-                seq_state.num_layers--;
-                /* Clamp indices that may now point past the end. */
-                if (seq_state.active_layer_idx >= seq_state.num_layers)
-                    seq_state.active_layer_idx = (uint8_t)(seq_state.num_layers - 1);
-                if (s_graph_layer >= seq_state.num_layers)
-                    s_graph_layer = (uint8_t)(seq_state.num_layers - 1);
-                /* Drop the Step Trig overlay: after compaction its cached
-                 * (layer,track,step) may name a different layer's steps. */
-                synth_ui_stepedit_close();
-                ESP_LOGI(TAG_TASK, "UI delete layer L%u (%u layers remain)",
-                         del_idx + 1u, seq_state.num_layers);
-            }
-        }
-
-        /* Deferred layer-add (see synth_ui_request_add_layer()). */
-        if (s_layer_add_pending) {
-            s_layer_add_pending = false;
-            /* Re-check the cap; num_layers may have moved since the request. */
-            if (seq_state.num_layers < MAX_LAYERS) {
-                synth_ui_add_layer(SEQ_LAYER_MELODIC, SEQ_STEPS);
-            }
-        }
-
-        if (s_layer_rows_pending) {
-            s_layer_rows_pending = false;
-            uint8_t li = s_layer_rows_idx;
-            if (li < seq_state.num_layers &&
-                sequencer_core_set_layer_tracks(li, s_layer_rows_count)) {
-                synth_ui_reexport_layer(li);
-            }
-        }
-
-#if CONFIG_SYNTH_PROJECT_STORE
-        /* Project load/save queued by the Projects menu (radio_manager.h
-         * explains the queued-click pattern). Runs here as the s_layers applier
-         * (sequencer_core.h), after the drains above so pending structural
-         * edits resolve before a load replaces them. */
-        projects_menu_service();
-#endif
-
-        /* Bounce page redraw pump: the recorder and the clip slots advance on
-         * the render task, so the page polls them here. No-op while closed. */
-        bounce_menu_service();
-
-#if CONFIG_SYNTH_WIRELESS
-        /* Radio session start/stop queued by the Wireless page (see
-         * radio_manager.h for why clicks defer to this task). */
-        radio_manager_service();
-#endif
-
-        /* Output-level watchdog: peeks the USB ring on this core/task (see
-         * usb_audio_watchdog.h). Compiles out with its Kconfig gate, as do the
-         * badge draw and signature mix below. */
-        output_wd_poll();
-
-#if CONFIG_SYNTH_DEV_MENU
-        /* DEV status bars (heap, dropout): throttled sampling; their text
-         * joins the signature mix below so the bar refreshes on change. */
-        synth_ui_dev_heapbar_poll();
-        synth_ui_dev_dropbar_poll();
-#endif
-
-        /* Trailing flush for throttled editor live-previews (amp trim), so the
-         * last encoder value lands even after the user stops turning. */
-        synth_ui_editors_live_service();
-
-        /* Decay the FM-algorithm banner; the frame after it expires must
-         * repaint to clear it (the render-gate hash doesn't see it). */
-        if (seq_state.algo_banner_ticks > 0) {
-            if (--seq_state.algo_banner_ticks == 0) s_force_redraw = true;
-        }
-
-        seq_state.current_step =
-            sequencer_core_get_current_step(seq_state.active_layer_idx);
-        if (s_u8g2) {
-            /* Precedence: synth_ui_active_view() (synth_ui.h). signature()
-             * builds the active view into vw and returns the FNV render-gate
-             * hash; the draw below reuses vw. Adding a view is one row in
-             * ui_view_table[]. */
-            ui_view_id_t view = synth_ui_active_view();
-            const ui_view_desc_t *desc = &ui_view_table[view];
-            ui_view_vw_t vw;
-            uint32_t sig = desc->signature(&vw);
-            /* The watchdog badge participates in the render gate so it
-             * appears/clears without needing any other screen change. */
-            sig ^= (uint32_t)output_wd_state() * 0x9E3779B9u;
-            /* REC badge: a bounce arming, recording or folding its tail. */
-            sig ^= (uint32_t)clip_bounce_get_state() * 0xC2B2AE35u;
-#if CONFIG_SYNTH_WIRELESS
-            /* BLE badge participates too: appears/changes on session or
-             * connection state without any other screen change. */
-            sig ^= ((uint32_t)radio_manager_state() * 2u +
-                    (radio_manager_connected() ? 1u : 0u)) * 0x85EBCA6Bu;
-#endif
-#if CONFIG_SYNTH_DEV_MENU
-            /* DEV status bars participate too (0 while off). */
-            sig ^= synth_ui_dev_heapbar_sig();
-            sig ^= synth_ui_dev_dropbar_sig();
-#endif
-            bool force = s_force_redraw || (view != last_view);
-
-            if (force || sig != last_sig) {
-                desc->draw(s_u8g2, &vw);
-                /* Persistent button-hint strip, composited over whatever the
-                 * view drew, so no per-screen renderer needs to know about it.
-                 * INVARIANT: every screen's draw_frame only FILLS the buffer;
-                 * the single SendBuffer below is the one physical transfer per
-                 * redraw. Sending twice (without the hint, then with) makes the
-                 * strip visibly flicker on every redraw. */
-#if CONFIG_SYNTH_DEV_MENU
-                /* A DEV status bar (ui_screen_dev.c) claims the strip on every
-                 * screen while on. */
-                if (synth_ui_dev_heapbar_active()) {
-                    display_hint_draw(s_u8g2, synth_ui_dev_heapbar_text());
-                } else if (synth_ui_dev_dropbar_active()) {
-                    display_hint_draw(s_u8g2, synth_ui_dev_dropbar_text());
-                } else
-#endif
-                if (synth_ui_hint_visible()) {
-                    display_hint_draw(s_u8g2, synth_ui_hint_text());
-                }
-                /* Output-level warning badge, top-right, composited last so it
-                 * overlays every screen; part of the single physical send. */
-                output_wd_state_t owd = output_wd_state();
-                if (owd != OUTPUT_WD_OK) {
-                    const char *owd_txt =
-                        (owd == OUTPUT_WD_CLIPPING) ? "CLIP" : "LOUD";
-                    u8g2_SetFont(s_u8g2, u8g2_font_4x6_tr);
-                    u8g2_SetDrawColor(s_u8g2, 1);
-                    u8g2_DrawBox(s_u8g2, 108, 0, 20, 8);
-                    u8g2_SetDrawColor(s_u8g2, 0);
-                    u8g2_DrawStr(s_u8g2, 110, 7, owd_txt);
-                    u8g2_SetDrawColor(s_u8g2, 1);
-                }
-#if CONFIG_SYNTH_WIRELESS
-                /* BLE badge, last: it reads the finished buffer back
-                 * (display_badge.h). */
-                if (radio_manager_state() == RADIO_ACTIVE) {
-                    display_badge_draw(s_u8g2, ui_view_table[view].badge_x,
-                                       radio_manager_connected());
-                }
-#endif
-                /* Loop-bounce REC badge while a bounce is armed, recording or
-                 * folding its tail; same placement rules as the BLE badge. */
-                if (clip_bounce_get_state() != CLIP_BOUNCE_IDLE) {
-                    display_badge_draw_text(s_u8g2, ui_view_table[view].badge_x, "REC");
-                }
-                u8g2_SendBuffer(s_u8g2);
-                last_sig = sig;
-                last_view = view;
-                s_force_redraw = false;
-            }
-        }
-        vTaskDelayUntil(&last_wake_time, delay);
+        phase = (uint8_t)((phase + 1) % UI_SLICES_PER_FRAME);
+        vTaskDelayUntil(&last_wake_time, slice);
     }
 }
 
