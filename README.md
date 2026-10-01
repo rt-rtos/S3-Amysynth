@@ -24,11 +24,15 @@ Everything is synthesized on the chip: nothing is precomputed and nothing stream
 
 ## Prototype Video
 
-<video src="https://rt-rtos.github.io/assets/amybox.mp4" poster="assets/1.jpg" controls loop playsinline width="640"></video>
+<video src="https://rt-rtos.github.io/assets/Amysynth/genre-templates.mp4" poster="assets/1.jpg" controls loop playsinline width="640"></video>
 
-https://github.com/user-attachments/assets/620f663a-9390-42c4-92a9-24b24c08af9b
 
-> Video not playing? [Watch the prototype demo](https://rt-rtos.github.io/assets/amybox.mp4)
+
+https://github.com/user-attachments/assets/ee0d3287-f8ea-4eec-929a-b3e58825dc14
+
+
+
+> Video not playing? [Watch the prototype demo](https://rt-rtos.github.io/assets/Amysynth/genre-templates.mp4)
 
 ## What it does
 
