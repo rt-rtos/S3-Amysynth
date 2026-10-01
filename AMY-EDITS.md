@@ -2,51 +2,82 @@
 
 Edits applied on top of the upstream `shorepine/amy` submodule.
 Upstream commit: `0fb0a00` (v1.2.163, vendored 2026-09-05). The vendor base is
-upstream `main` as is - nothing is carried ahead of a merge here.
+upstream `main` as is. Some Active entries are this repo's own upstream PRs:
+three merged after this base and retire at the next sync, and the
+Karplus-Strong entries are an earlier shape of the still-open #1204. Each
+entry states its upstream status.
 Previous bases: v1.2.160 `a89df0c`, v1.2.145 `55e044d`, v1.2.121 `85a7025`,
 v1.2.104 `fd09bd2`, v1.2.31 `1e23c70`. The submodule tracks upstream `main`
 (`.gitmodules` `branch = main`; refresh with `git submodule update --remote amy`).
 
 Edits are marked `// LOCAL EDIT` in the source, except the Karplus-Strong rework
-(`oscillators.c`, `amy.h`, `amy.c`, `filters.c`), which is written as upstream-shaped
-code for its PR and documented by its own comments. ESP32-S3-specific edits are
+(`oscillators.c`, `amy.h`, `amy.c`, `filters.c`), which is documented by its
+own comments (only the `render_ks` index loop and the `ram_caps_ks` field carry
+a marker). ESP32-S3-specific edits are
 permanent (upstream has no concept of IRAM/DRAM placement or FreeRTOS task
 signatures); the fixes listed under "Dropped" were merged upstream and are no
 longer carried here.
 
 ```mermaid
-flowchart TD
-    Submodule["amy/ submodule<br/>pristine upstream, reference/diff baseline only<br/>NEVER edited, never built"]
-    Active["components/amy/<br/>ACTIVE vendored copy — built and shipped<br/>all LOCAL EDITs live here"]
-
-    Submodule -.diff baseline only.-> Active
-
-    Active --> SR["48 kHz sample rate on ESP<br/>src/amy.h"]
-    Active --> FP["Kconfig-gated fixed-point toggle, ldexpf shifts<br/>src/amy.h, src/amy_fixedpoint.h"]
-    Active --> LOCK["Render lock<br/>src/amy.c"]
-    Active --> PIE["PIE block clears in amy_render<br/>src/algorithms.c, src/amy.c, src/amy.h"]
-    Active --> POOL["Delta-pool PSRAM spill, no-abort cap<br/>src/amy.c"]
-    Active --> HOT["Residual IRAM attrs upstream lacks<br/>src/filters.c x2, src/oscillators.c x1"]
-    Active --> SAW["Saw LUT set in internal DRAM<br/>src/saw_lutset_fxpt.h"]
-    Active --> ARITH["Render-path arithmetic: linear saw/pulse kernel, sized cubic kernels, KS ring wrap, folded divides<br/>src/oscillators.c"]
-    Active --> TASK["IDF 6.0 task-signature fixes<br/>src/i2s.c, src/amy_midi.c"]
-    Active --> HZN["Periodic-entry horizon<br/>src/sequencer.c, src/sequencer.h"]
-    Active --> POS["pcm_osc_frame() accessor<br/>src/pcm.c, src/amy.h"]
-    Active --> SHR["pcm_shrink_preset() trim<br/>src/pcm.c, src/amy.h"]
-    Active --> MAP["gamma9001 map read accessors<br/>src/pcm.c, src/amy.h"]
-    Active --> SEQ["sequencer_init OOM guard<br/>src/sequencer.c"]
-    Active --> CAPS["ram_caps_sequencer knob + pool fallbacks<br/>src/amy.h, src/api.c, src/parse.c, src/sequencer.c"]
-    Active --> PROF["COARSE profiler mode<br/>src/amy.h, src/amy.c"]
-    Active --> KS["Per-osc Karplus-Strong ring binding and ring caps, loop allpass, pluck position from duty, excitation shaping, gain ramp, note-off release<br/>src/oscillators.c, src/amy.c, src/amy.h, src/api.c, src/filters.c"]
-    Active --> PCM["PCM retrig fade-restart (gated)<br/>src/pcm.c"]
-    Active --> DUAL["Skip the dead dual-core bus sum<br/>src/amy.c"]
-    Active --> CLAMP["instrument_get_num_voices voice-list clamp<br/>src/instrument.c"]
-    Active --> API["Read accessors: voice base osc, patch oscs per voice, gamma blob size, algorithm count<br/>src/patches.c, src/pcm.c, src/algorithms.c"]
-    Active --> CUST["Custom operator programs + algorithm_ops accessor<br/>src/algorithms.c, src/amy.h"]
-    Active --> BUILD["Kconfig + CMakeLists: fixed-point, profiler, wavetable, gamma808 flags; NDEBUG hot files; drums-flash<br/>Kconfig, CMakeLists.txt"]
-    Active --> UNI["Experimental per-osc unison cluster<br/>src/amy.h, src/amy.c, src/oscillators.c, src/patches.c, src/api.c"]
-    Active --> FTR["Filter state reset on filter_type change<br/>src/amy.c"]
-    Active --> RBUS["reset_osc keeps the instrument's bus<br/>src/patches.c"]
+%%{init: {"theme": "base", "themeCSS": ".mindmap-node polygon { fill: #afb8c1 !important; }", "themeVariables": {
+  "primaryColor": "#0969da", "primaryTextColor": "#ffffff", "lineColor": "#8c959f",
+  "cScale0": "#d0d7de", "cScaleLabel0": "#1f2328",
+  "cScale1": "#d0d7de", "cScaleLabel1": "#1f2328",
+  "cScale2": "#d0d7de", "cScaleLabel2": "#1f2328",
+  "cScale3": "#d0d7de", "cScaleLabel3": "#1f2328",
+  "cScale4": "#d0d7de", "cScaleLabel4": "#1f2328",
+  "cScale5": "#d0d7de", "cScaleLabel5": "#1f2328",
+  "cScale6": "#d0d7de", "cScaleLabel6": "#1f2328",
+  "cScale7": "#d0d7de", "cScaleLabel7": "#1f2328",
+  "cScale8": "#d0d7de", "cScaleLabel8": "#1f2328"
+}}}%%
+mindmap
+  root((components/amy<br/>local edits))
+    c1{{"`**ESP32-S3 platform**`"}}
+      48 kHz sample rate
+      Fixed-point toggle
+      ldexpf shifts
+      Render lock
+      PIE block clears
+      IRAM attributes
+      Saw LUT in DRAM
+      IDF 6.0 task signatures
+      Dual-core bus sum skipped
+    c2{{"`**Memory and OOM**`"}}
+      Delta-pool PSRAM spill
+      sequencer_init guard
+      ram_caps_sequencer
+      Voice-list clamp
+    c3{{"`**Render path**`"}}
+      Oscillator arithmetic
+      Unison cluster
+      PCM retrig fade-restart
+    c4{{"`**Karplus-Strong, PR 1204**`"}}
+      Ring index and length
+      Ring per osc
+      Loop allpass
+      Pluck position
+      Gain ramp
+      Excitation shaping, local
+      Note-off release, local
+    c5{{"`**Accessors and API**`"}}
+      PCM frame and shrink
+      gamma9001 map and size
+      Voice base osc
+      Patch oscs per voice
+      Algorithm count
+      Custom operator programs
+    c6{{"`**Behaviour fixes**`"}}
+      Periodic-entry horizon
+      reset_osc keeps the bus
+    c7{{"`**Merged upstream**`"}}
+      chorus_max_delay, 1159
+      Filter reset, 1163
+      Sized kernels, 1171
+    c8{{"`**Build and diagnostics**`"}}
+      Kconfig flags
+      CMake settings
+      COARSE profiler
 ```
 
 ## Dropped (merged upstream)
@@ -55,22 +86,22 @@ flowchart TD
 |----|-------------|
 | [#740](https://github.com/shorepine/amy/pull/740) + [#743](https://github.com/shorepine/amy/pull/743) | `chained_osc` NULL guard in `render_osc_wave` (amy.c) |
 | [#744](https://github.com/shorepine/amy/pull/744) | `init_stereo_reverb()` → `bool` return + OOM crash safety (delay.h, delay.c, amy.h, amy.c, api.c) |
-| [#787](https://github.com/shorepine/amy/pull/787) (merged as [#809](https://github.com/shorepine/amy/pull/809), v1.2.24) | Reverb `LPF()` state passed by pointer - feedback crossover lowpass now actually filters (delay.c) |
+| [#787](https://github.com/shorepine/amy/pull/787) (merged as [#809](https://github.com/shorepine/amy/pull/809), v1.2.25) | Reverb `LPF()` state passed by pointer - feedback crossover lowpass now actually filters (delay.c) |
 | [#790](https://github.com/shorepine/amy/pull/790) (merged as [#811](https://github.com/shorepine/amy/pull/811), v1.2.26) | Reverb delay-line state hoisted into loop locals (delay.c) |
-| upstream `8ade0b1` | `MUL5A_SS` / `MUL6A_SS` float-mode fallbacks (amy_fixedpoint.h) |
-| upstream [#791](https://github.com/shorepine/amy/pull/791) (v1.2.x, 2026-07-07) | `amy_grab_lock()` / `amy_release_lock()` prototypes in amy.h. The local edit also declared `amy_init_lock()` and an ESP `extern SemaphoreHandle_t amy_queue_lock`; neither has a caller outside amy.c (`amy_init_lock` is `amy_start`-internal), so the whole block retired 2026-09-05. |
+| [#764](https://github.com/shorepine/amy/pull/764) (`8ade0b1`, v1.2.13) | `MUL5A_SS` / `MUL6A_SS` float-mode fallbacks (amy_fixedpoint.h) |
+| upstream [#826](https://github.com/shorepine/amy/pull/826) (`ba22f12`, for issue #791; v1.2.33, 2026-07-07) | `amy_grab_lock()` / `amy_release_lock()` prototypes in amy.h. The local edit also declared `amy_init_lock()` and an ESP `extern SemaphoreHandle_t amy_queue_lock`; neither has a caller outside amy.c (`amy_init_lock` is `amy_start`-internal), so the whole block retired 2026-09-05. |
 | [#961](https://github.com/shorepine/amy/pull/961) (merged `ae469e1`, 2026-07-24) | OOM survival on the voice/event allocation paths: `amy_oom()` + `amy_get_oom_count()`, `bool ensure_osc_allocd()`, alloc-before-free breakpoint realloc (amy.c, amy.h, instrument.c, cv_trigger.c, interp_partials.c). Vendored tree realigned to the merged version 2026-07-25 - see that entry for what stays local. |
 | [#993](https://github.com/shorepine/amy/pull/993) (merged `56c8f1d`, 2026-07-27) | `amy_oom()` logs only the first failure, counts the rest - the vfprintf ran on the render thread and OOM retries re-fail per note-on, flooding stderr from the audio path (amy.c). Vendored shape identical to upstream; found via the BLE-MIDI + additive-piano slowdown. |
 | [#875](https://github.com/shorepine/amy/pull/875) + [#877](https://github.com/shorepine/amy/pull/877) | LUT trig (`sin2pi`/`cos2pi` over the quarter-sine table) in the biquad coefficient generators, `sin_lut`/`cos_lut` + `qsin_fxpt_lutable` (filters.c, log2_exp2.c, log2_exp2_fxpt_lutable.h). Was carried as a verbatim cherry-pick; retired on the v1.2.104 sync. |
-| upstream `470a6c0` (v1.2.55) | Float-suffixed literals in the biquad coefficient generators (filters.c). The local notch generator keeps its own suffixes (it postdates the fix and is still local). |
+| [#881](https://github.com/shorepine/amy/pull/881) (`470a6c0`, v1.2.55) | Float-suffixed literals in the biquad coefficient generators (filters.c). The local notch generator keeps its own suffixes (it postdates the fix and is still local). |
 | [#951](https://github.com/shorepine/amy/pull/951) (v1.2.83) + upstream follow-ups | `SMUL64R` full-precision biquad multiply (`FILT_MUL_SS`) + BFP-free LPF24 path. Upstream evolved the vendored `_nobfp_fixedzeros` shape into `_once/_twice_fixedzeros` kernels with its own `AMY_HAS_MUL64`/`USE_BLOCK_FLOATING_POINT` split; the vendored tree now carries upstream's version verbatim. |
-| [#949](https://github.com/shorepine/amy/pull/949) (v1.2.86) | `mod_osc_would_cause_loop()` cycle guard for chained modulators (amy.c) - our own PR, merged upstream. |
+| [#949](https://github.com/shorepine/amy/pull/949) (v1.2.87) | `mod_osc_would_cause_loop()` cycle guard for chained modulators (amy.c) - our own PR, merged upstream. |
 | [#827](https://github.com/shorepine/amy/pull/827) (v1.2.45) + [#982](https://github.com/shorepine/amy/pull/982) | Integer `amy_sysclock()` (our PR), then upstream's 64-bit `amy_sysclock64()` + wrap-relative `AMY_TIME_GEQ` + the 49.7-day rollover fix. #982 also adopted the µs-domain tick compare and the single-precision tempo math in sequencer.c, retiring the whole local api.c/sequencer.c clock family. |
-| [#905](https://github.com/shorepine/amy/pull/905) + [#907](https://github.com/shorepine/amy/pull/907) (v1.2.63/64) | `AMY_IRAM_ATTR`/`AMY_DRAM_ATTR` macros (credited to this repo, now with a Tulip opt-out), the hot-path IRAM annotations for envelope.c, log2_exp2.c, delay.c, most of filters.c/oscillators.c/amy.c, and the clipping-LUT `AMY_DRAM_ATTR` placement. Only three annotations upstream lacks remain local (see below). |
-| [#967](https://github.com/shorepine/amy/pull/967)/[#969](https://github.com/shorepine/amy/pull/969) (v1.2.90) | FM scratch allocated as one flat 16-byte-aligned block via `malloc_caps_block` (algorithms.c) - supersedes the vendored per-pointer alignment; our three remaining `malloc_caps_block` call sites in amy.c stay local. |
+| [#905](https://github.com/shorepine/amy/pull/905) + [#907](https://github.com/shorepine/amy/pull/907) (v1.2.64/65) | `AMY_IRAM_ATTR`/`AMY_DRAM_ATTR` macros (credited to this repo, now with a Tulip opt-out), the hot-path IRAM annotations for envelope.c, log2_exp2.c, delay.c, most of filters.c/oscillators.c/amy.c, and the clipping-LUT `AMY_DRAM_ATTR` placement. Only three annotations upstream lacks remain local (see below). |
+| [#893](https://github.com/shorepine/amy/pull/893) (`a96d574`, v1.2.62) | FM scratch allocated as one flat 16-byte-aligned block via `malloc_caps_block` (algorithms.c) - supersedes the vendored per-pointer alignment; our three remaining `malloc_caps_block` call sites in amy.c stay local. |
 | [#1000](https://github.com/shorepine/amy/pull/1000) (v1.2.106) | `FILTER_NOTCH` type - our own PR (half-angle center recovery, `dsps_biquad_gen_notch_f32`), merged upstream with dpwe test coverage in #1005 (amy.h, filters.c). |
 | [#1020](https://github.com/shorepine/amy/pull/1020) | `FILTER_PHASER` type - our own PR (6-stage allpass chain, `allpass1_chain` + `dsps_phaser_f32_ansi`), merged 2026-08-01 (amy.h, filters.c). |
-| upstream sequencer rework (#1017 lineage, 1.2.104->1.2.121) | `SEQ_LOCK` mutex + active-tag dense index (sequencer.c) - superseded wholesale. Upstream rewrote the sequencer: entries store raw wire strings, all link/string mutations run under `amy_queue_lock` (taken inside `sequencer_add_wire` and the tick fire path, released around `amy_play_message` because the parser can re-enter), and the tick walk is lock-free over index links threaded through a fixed array (single aligned-store splices, ascending order - a stale link can skip/revisit one tick, never walk freed memory). That closes the same use-after-free our SEQ_LOCK guarded and replaces the O(highest_tag) sweep with an active-only list, so both local edits retire. The int16 index-array shrink retires with them. |
+| upstream sequencer rework (#1017 lineage, 1.2.104->1.2.121) | `SEQ_LOCK` mutex + active-tag dense index (sequencer.c) - superseded wholesale. Upstream rewrote the sequencer: entries store raw wire strings, all link/string mutations run under `amy_queue_lock` (taken inside `sequencer_add_wire` and the tick fire path, released around `amy_play_message` because the parser can re-enter), and the tick walk is lock-free over index links threaded through a fixed array (single aligned-store splices, ascending order - a stale link can skip/revisit one tick, never walk freed memory). That closes the same use-after-free our SEQ_LOCK guarded and replaces the O(highest_tag) sweep with an active-only list, so both local edits retire. The int16 index-array shrink retires with them. Upstream has reshaped the table again since this base (#1156, see "Deferred / needs porting"). |
 | upstream (1.2.104->1.2.121 interval) | UART MIDI poll guard in `amy_update_tasks()` (i2s.c) - upstream adopted the same `AMY_MIDI_IS_UART` gate with its own comment. |
 | upstream (1.2.104->1.2.121 interval) | `AMY_RENDER_TASK_PRIORITY`/`AMY_FILL_BUFFER_TASK_PRIORITY` = `ESP_TASK_PRIO_MAX - 1` (amy.h) - upstream now carries the fix (Arduino gets `- 5`), retiring the 2026-03-22 edit. |
 | [#1049](https://github.com/shorepine/amy/pull/1049) (v1.2.122) | Ingest/tick split: `flush_due_deltas()` settles due deltas without running the rendering-context-only sequencer tick service (amy.c) - our own PR, merged upstream. |
@@ -82,7 +113,7 @@ flowchart TD
 
 ## Active local edits
 
-### `delay.c` + `amy.c` + `amy.h` — `chorus_max_delay` bounds the chorus sweep (upstream PR candidate)
+### `delay.c` + `amy.c` + `amy.h` — `chorus_max_delay` bounds the chorus sweep (merged upstream as #1159)
 
 `delay_line_in_out()` centers the modulated read tap on the line's
 `fixed_delay` and scales the sweep by it, so the delay runs
@@ -92,10 +123,11 @@ flowchart TD
 `chorus_max_delay` with no effect and every setting sounding like 512.
 `CHORUS_DEFAULT_MAX_DELAY` moves 320 -> 512 so the default output is
 sample-identical to before; the FX menu's `Cho Delay` row is the knob.
-Retire on the sync that carries the upstream PR (either default variant:
-the app pins its own default through `fx_state_t.chorus_delay`).
+Merged upstream as [#1159](https://github.com/shorepine/amy/pull/1159)
+(v1.2.171) with the same code and the 512 default; the local copy retires
+at the next sync.
 
-### `amy.c` — filter state reset on a `FILTER_TYPE` change (upstream PR candidate)
+### `amy.c` — filter state reset on a `FILTER_TYPE` change (merged upstream as #1163)
 
 `play_delta` calls `reset_filter()` when a `FILTER_TYPE` delta carries a
 different type than the osc holds. The filter kernels store different things
@@ -106,8 +138,9 @@ history reads about 1/b0 too large and rings both resonant stages to full
 scale for several blocks; out of the phaser into any biquad bursts the same
 way at a lower level. Same-type re-sends (patch strings, per-detent editor
 pushes) are unaffected by the compare. The filter editor's type cursor hits
-this on every sounding voice. Same shape as the upstream branch
-`fix/filter-type-switch-reset`; retire on the sync that carries it.
+this on every sounding voice. Merged upstream as
+[#1163](https://github.com/shorepine/amy/pull/1163) (v1.2.169), the same
+check in `play_delta`; the local copy retires at the next sync.
 
 ### `patches.c` - a synth-addressed `reset_osc` keeps the instrument's bus (upstream PR candidate)
 
@@ -122,7 +155,8 @@ upstream's re-patch bus inheritance in `patches_load_patch()`. In the app this
 hit the clip players on every transport stop (a bounce clip left the clip bus
 for bus 0) and a drum row on every PCM preset or mode change. A `BUS` delta
 allocates its osc at play time, so a reset aimed at a never-allocated osc of
-a bus > 0 synth now allocates it. Retire on the sync that carries the fix.
+a bus > 0 synth now allocates it. Not posted upstream; upstream
+`patches_event_has_voices()` (v1.2.188) still leaves the reset osc on bus 0.
 
 ### `amy.h` + `amy.c` + `oscillators.c` + `patches.c` + `api.c` — per-osc unison cluster (experimental, dev-only)
 
@@ -144,7 +178,8 @@ cluster's own span and the weights are power-normalized. Copies 1..n-1 keep
 their phase in `synthinfo.unison_phase[]` and respread from copy 0 at every
 note-on (`unison_note_on()`). Deltas `UNISON_COUNT/SPACING/OFFSET/BLEND` sit
 above `NOTE_SOURCE_CHANNEL` (the ids below are auto-numbered and never cross
-the wire). Count 1 (the default) is the previous single render, one step and
+the wire). `play_delta` clamps the count to 1..`AMY_UNISON_MAX` (8) and the
+blend to 0..1. Count 1 (the default) is the previous single render, one step and
 one amp pair per renderer. Waves without a LUT renderer (PCM, KS, ALGO,
 partials, noise) ignore the count.
 
@@ -165,8 +200,10 @@ core.
 Codegen-driven edits from the per-function probe, each marked in place:
 
 - `render_lpf_lut` renders the detuned unison copies (1..n-1, both pulse
-  edges) through the linear `render_lut`; copy 0 keeps `render_lut_cub`, so
-  a plain count-1 saw or pulse is bit-identical to upstream. The saw LUT set
+  edges) through the linear kernel (`render_lut_sized`, below, which falls
+  back to `render_lut`); copy 0 keeps the cubic kernel
+  (`render_lut_cub_sized`), so a plain count-1 saw or pulse is bit-identical
+  to upstream. Local only, with the unison cluster. The saw LUT set
   is chosen per period so the top harmonic stays under Nyquist, and a host
   A/B put the cubic-vs-linear difference signal at -49 dB and below
   (inaudible); `render_lut` is a 32-insn hardware loop, `render_lut_cub` a
@@ -184,21 +221,21 @@ Codegen-driven edits from the per-function probe, each marked in place:
   the block is split at the ring's wrap so the inner loop has no wrap test,
   and with pointer walks for the ring and the output it is a 29-insn
   hardware loop carrying the gain ramp (the index loop was 35). Its tuning
-  allpass is the one-multiply form of the upstream PR candidate; the index
-  loop's tuning stage uses the same form, so both read the allpass memory
-  alike. On the bench this shape costs about 1,400 cycles per voice per
-  block less than the index-free PR loop without a ramp, bit-identical to a
-  per-sample ramp.
+  allpass is the one-multiply form; the index loop's tuning stage uses the
+  same form, so both read the allpass memory alike. Open upstream PR #1204
+  renders KS with the same split-at-wrap loop and gain ramp, always tuned,
+  and keeps the allpass memory in `synth[osc]->ks_tune_state`; the index
+  loop is local.
 - Constant divides folded to reciprocal multiplies (`freq * (1.0f / X)`
   with X a compile-time constant): `freq / AMY_SAMPLE_RATE` in
   `render_fm_sine`, `render_partial`, `unison_prepare`; `freq / mod_sr` in
   all five `compute_mod_*`. The S3 FPU has no divide, so each was a
   `__divsf3` libcall per block per osc; the product differs from the
-  quotient by at most 1 ulp. Upstream PR candidate together with the next
-  item.
+  quotient by at most 1 ulp. Not posted upstream; upstream (v1.2.188)
+  still divides.
 - `render_wavetable`: `floor(interp)` -> `floorf(interp)`; the double
   promotion cost `__extendsfdf2` + `floor` + `__fixdfsi` per block per
-  wavetable osc.
+  wavetable osc. Not posted upstream.
 
 - `render_lut_cub_sized` dispatches copy 0 (and the pulse's second edge)
   to one of six size-specialised cubic kernels (`RENDER_LUT_CUB_SIZED`,
@@ -212,8 +249,12 @@ Codegen-driven edits from the per-function probe, each marked in place:
   which is where the last three instructions went. `render_lut_sized` does
   the same for the detuned copies' linear kernel (32 -> 28). Host-sim saw
   and pulse sweeps, single osc and 6-copy unison, are byte-identical to
-  the generic kernels. Upstream PR candidate (`render_lut_256` is the
-  precedent) once the bench prices it.
+  the generic kernels. The cubic kernels merged upstream in
+  [#1171](https://github.com/shorepine/amy/pull/1171) (v1.2.175), where the
+  kernels and the dispatcher are `AMY_NOINLINE` and compiled only under
+  `AMY_USE_FIXEDPOINT` (the local dispatcher is not `noinline`); they retire
+  at the next sync. `render_lut_sized` serves only the unison copies and is
+  local only.
 
 - `render_lut_fm` dispatches to `render_lut_fm_256`, the same body with
   `lut_bits = 8` baked in, for the 256-entry sine table the FM operators
@@ -221,11 +262,11 @@ Codegen-driven edits from the per-function probe, each marked in place:
   -> 32-insn hardware loop, no spills, bit-identical. This replaced an
   `optimize("sched-pressure")` attribute (37 insns) and, before that, a
   component-wide `-fsched-pressure` that cost five of the six sized cubic
-  kernels their hardware loop under LTO. Upstream PR candidate together
-  with the sized cubic kernels (`perf/sized-lut-kernels`).
+  kernels their hardware loop under LTO. Merged upstream in #1171 with the
+  sized cubic kernels; retires at the next sync.
 
 
-### `oscillators.c` — Karplus-Strong ring-index init + sample-rate-derived buffer length (upstream PR candidate)
+### `oscillators.c` — Karplus-Strong ring-index init + sample-rate-derived buffer length (open upstream PR #1204)
 
 Two universal bugs, found 2026-08-25 while surveying the delay/comb machinery
 and measured with a host sim of the vendored tree (fixed-point build).
@@ -250,9 +291,14 @@ Both are target-agnostic, so they belong upstream rather than here.
    872. At 44.1 kHz the value is still exactly 802, so no behaviour changes there.
 
 The larger shared-ring defect these two sat next to is fixed by the entry
-above.
+below.
 
-### `oscillators.c` + `amy.h` + `amy.c` — per-osc Karplus-Strong ring binding (upstream PR candidate)
+Both are the first two commits of open upstream PR
+[#1204](https://github.com/shorepine/amy/pull/1204). The PR's version also
+keeps `buflen >= 1` in `ks_note_on()` and skips notes at or above the sample
+rate in `render_ks()`; the vendored code has neither guard.
+
+### `oscillators.c` + `amy.h` + `amy.c` — per-osc Karplus-Strong ring binding (open upstream PR #1204, different shape)
 
 `ks_buffer` is a pool of rings, but which ring an osc played was decided by a
 single module-global cursor (`ks_polyphony_index`) that every KS osc
@@ -278,8 +324,10 @@ osc` and `synth[osc]->ks_index == r` - so `reset_osc_state()` setting
 its own string and disturbs nobody), then any idle ring, then steals the
 quietest - the least audible collision. `ks_init()` also gained the OOM
 handling AMY's other allocators have: all-or-nothing, `amy_oom()`, KS silent
-rather than half-allocated, and rings now come from `ram_caps_synth` instead of
-bare `malloc`.
+rather than half-allocated. The ring pointer table, `ks_row_owner` and
+`ks_ap_state` come from `ram_caps_synth` and the rings from `ram_caps_ks`
+(below) instead of bare `malloc`; `ks_deinit()` is NULL-safe and frees all
+of them.
 
 After: 3 notes measure 1.48-1.65x (target 1.73x), a silent note-on moves the
 ringing voices +9.5% instead of +134%, and `ks_oscs = 4` renders correctly.
@@ -291,18 +339,23 @@ rings are in PSRAM); see the comment there.
 `amy.h` + `api.c` + `oscillators.c`: `amy_config.ram_caps_ks` gives the rings
 their own caps, defaulting to `ram_caps_synth` (`// LOCAL EDIT` in amy.h and
 api.c). Only the rings move; the owner table and allpass state are a few bytes
-per ring and stay in `ram_caps_synth`. Upstream-PR candidate with the same
-shape as `ram_caps_oscs` (#1107).
+per ring and stay in `ram_caps_synth`.
 
-Universal AMY logic, no target assumptions - PR candidate, same track as
-`FILTER_NOTCH` #1000 and `FILTER_PHASER` #1020.
+Upstream status: open PR [#1204](https://github.com/shorepine/amy/pull/1204)
+fixes the same defect in a different shape. The ring is owned by the osc
+(`synth[osc]->ks_ring`), allocated at its first KS note-on from
+`ram_caps_oscs` and freed in `free_osc()`; there is no pool, owner table or
+stealing, no `ks_init()`/`ks_deinit()`, and `ks_oscs` is only an on/off
+switch. The vendored pool (`ks_index`, `ks_row_owner`, `ks_alloc_row()`,
+`KS_NO_ROW`, `ram_caps_ks`) is an earlier design and goes away when the PR
+is adopted, together with the `ks_oscs` sizing in `main/main.c`.
 
-### `oscillators.c` + `amy.h` + `filters.c` - Karplus-Strong loop allpass: fractional period (upstream PR candidate) and dispersion trial knobs (local)
+### `oscillators.c` + `amy.h` + `filters.c` - Karplus-Strong loop allpass: fractional period (open upstream PR #1204) and dispersion trial knobs (local)
 
 `render_ks` dropped the fraction of `AMY_SAMPLE_RATE / freq`: `buflen = floor(P)`
 and the two-tap average is centred half a sample ahead, so the loop closed at
 `buflen - 0.5` samples and every KS note played sharp. Host sim
-(`ks_pitch_sim.c`, KS minus a SINE control at the same MIDI note, 48 kHz):
+(KS minus a SINE control at the same MIDI note, 48 kHz):
 +3.4 c at A2, +9.4 c at A4, +33.5 c at A5, +49.8 c at A6. A first-order allpass
 after the average now completes the period, `a = (1 - D)/(1 + D)` with
 `D = P + 0.5 - buflen` in [0.5, 1.5); `buflen` is unchanged. After: within
@@ -311,7 +364,8 @@ first block (the average alone loses 2.7 % per pass there) and is unmeasured.
 One float divide per block per KS osc for `a`.
 
 Trial knobs, not for upstream: `ks_loop_set()` / `ks_loop_get()` (`amy.h`)
-bypass the tuning stage (off plus 0 stages is the old loop bit for bit) and
+bypass the tuning stage (off plus 0 stages is the old loop plus the gain
+ramp and `|value|` peak below, so bit for bit at constant gain) and
 add up to `KS_DISPERSION_MAX_STAGES` stages of `allpass1_chain` for a string
 stiffness B (0..`KS_STIFFNESS_MAX`, mode k at k f sqrt(1 + B k^2)). The
 stage coefficient follows the note: `ks_loop_set()` fits one per semitone
@@ -328,16 +382,25 @@ Per block per KS osc with stages on: one `log2f`, `sinf`, `cosf` and two
 `atan2f`.
 
 State: `ks_ap_state`, one row per ring sized for the maximum stage count,
-allocated with the rings from `ram_caps_synth` (all or nothing), cleared in
-`ks_note_on`. `allpass1_chain` and `FILT_MUL_SS` moved from `filters.c` to
-`amy.h`; the phaser is unchanged.
+allocated in `ks_init()` from `ram_caps_synth` (all or nothing with the
+rings, which come from `ram_caps_ks`), cleared in `ks_note_on`.
+`allpass1_chain` and `FILT_MUL_SS` moved from `filters.c` to `amy.h`; the
+phaser is unchanged.
 
-Codegen (`asmdiff`, -O2 per TU): the sample loop was a plain 28-instruction
-span on main and stays a plain loop, 35 instructions on the default path;
-it was never a hardware loop. The chain is unrolled so no nested loop sits
-inside it.
+Codegen (-O2 per TU): the index loop in `render_ks`, which runs with the
+tuning stage off or dispersion stages on, is a plain 35-instruction loop
+(upstream's was a plain 28-instruction span). The default path (tuning on,
+0 stages) is `ks_render_tuned`, a hardware loop (render-path arithmetic
+entry). The chain is unrolled so no nested loop sits inside it.
 
-### `oscillators.c` - Karplus-Strong pluck position from `duty` (upstream PR candidate)
+Upstream status: the tuning stage is commit 5 of open PR
+[#1204](https://github.com/shorepine/amy/pull/1204), same math and
+one-multiply form, always on and with its memory in
+`synth[osc]->ks_tune_state` (one `SAMPLE` per osc, cleared at note-on). The
+dispersion stages, `ks_loop_set()`/`ks_loop_get()`, `ks_ap_state` and the
+move of `allpass1_chain`/`FILT_MUL_SS` to `amy.h` are local only.
+
+### `oscillators.c` - Karplus-Strong pluck position from `duty` (open upstream PR #1204)
 
 KS ignored `duty`; every note started from the same kind of burst, flat on
 average and random per pluck (host sim, A2: harmonic 2 at +12 dB against
@@ -367,7 +430,11 @@ RMS per note: whole-file difference -29 to -43 dB, per-note level within
 purpose: the pluck is a patch setting, and `msynth->duty` would also be
 stale at note-on (it is refreshed only for sounding oscs, so a duty change
 made while the voice is silent would reach the note after next).
-Harness: `ks_string_wav_sim.c -u <duty>`.
+
+Upstream status: commit 7 of open PR
+[#1204](https://github.com/shorepine/amy/pull/1204) carries the same
+`ks_pluck()`, `KS_PICK_MIX` and `KS_PICK_RAMP`; the PR multiplies with
+`SMULR7` where the vendored copy uses `FILT_MUL_SS`.
 
 ### `oscillators.c` + `amy.h` - Karplus-Strong excitation shaping (local trial)
 
@@ -390,10 +457,11 @@ matches `sin(n pi b)/n` within 0.3 dB through harmonic 8.
 
 Cost: float, note-on only; about four passes over `buflen` (873 samples
 worst case) plus one `powf` and one `expf`. Nothing in `render_ks`.
-Written under the render lock, read by `ks_note_on`. Harness:
-`ks_string_wav_sim.c`.
+Written under the render lock, read by `ks_note_on`. Local only; not part
+of PR #1204, whose `duty` pluck covers the comb and pulse but not the
+velocity lowpass.
 
-### `oscillators.c` - Karplus-Strong gain ramp (upstream PR candidate)
+### `oscillators.c` - Karplus-Strong gain ramp (open upstream PR #1204)
 
 `render_ks` multiplied the whole block by `msynth->amp`, which
 `hold_and_modify()` has already advanced to the envelope's value at the end
@@ -403,7 +471,8 @@ blocks): a decay zippered and a note-on played its first block at the
 end-of-block level. The gain now ramps from `last_amp` to `amp` across the
 block with the `incremental_amp` idiom of `render_envelope()`, and
 `last_amp` advances at the end. A constant gain is bit-exact with before.
-Cost: one add per sample. Harness: `ks_gain_ramp_sim.c`.
+Cost: one add per sample. Commit 6 of open PR
+[#1204](https://github.com/shorepine/amy/pull/1204) carries the same ramp.
 
 ### `oscillators.c` + `amy.h` + `amy.c` - Karplus-Strong note-off release (local trial)
 
@@ -417,22 +486,32 @@ silent at note-off under the default `bp0`). `ks_note_off()` now returns
 whether to release, and the KS case then starts the release as the default
 case does. Trial knob `ks_release_set()` / `ks_release_get()` (`amy.h`),
 default on; off is the upstream behaviour bit for bit. Set from the app's
-DEV menu ("KS loop > Release"); written under the lock. An upstream version
-would release only when the osc has an explicit EG0. Harness:
-`ks_gain_ramp_sim.c -r off`.
+DEV menu ("KS loop > Release"); written under the lock.
+
+Upstream status: commit 3 of open PR
+[#1204](https://github.com/shorepine/amy/pull/1204) takes a different rule.
+It deletes `ks_note_off()` and sends KS through the default release unless
+EG0 is still the key gate `reset_osc_params()` installs
+(`eg0_is_default_gate()`), so a KS osc on the default envelope rings out at
+note-off there and releases here. `ks_release_set()`/`ks_release_get()` are
+local only.
 
 ### `algorithms.c` + `amy.h` — `amy_num_algorithms` count export (upstream PR candidate)
 
 `const uint16_t amy_num_algorithms`, derived from `sizeof(algorithms)/sizeof(algorithms[0])`
-at the end of `algorithms.c` (in the appended block after the custom-algorithm rows), with an
+near the end of `algorithms.c` (after `amy_block_zero_blocks()`), with an
 `extern` in `amy.h`. API users stepping or validating `amy_event.algorithm` need
-the real table size: `render_algo` indexes `algorithms[]` unchecked, so any
-out-of-range value is an OOB read, and hardcoding 33 breaks the moment the table
-grows (locally-authored algorithms are planned). App consumers: the sequencer's
-Shift+Turn algorithm stepper and the FM screen's ALGO row wrap.
+the real table size: upstream's `render_algo` indexes `algorithms[]` unchecked,
+so any out-of-range value is an OOB read there (the vendored `render_algo`
+clamps through `algorithm_for()`, next entry), and hardcoding 33 breaks the
+moment the table grows. App consumers: the sequencer's Shift+Turn algorithm
+stepper and the FM screen's ALGO row wrap. Not posted upstream. (The comments
+on the definition and on the `amy.h` extern still say `render_algo` is
+unchecked; that is upstream's behaviour, not the vendored one.)
 
 **Rollback:** drop the definition in `algorithms.c` and the `extern` in `amy.h`;
-consumers then need a local count define.
+consumers then need a local count define, and `amy_algorithm_ops()` (next
+entry) reads the count too.
 
 ### `algorithms.c` + `amy.h` — custom operator programs + `amy_algorithm_ops()` read accessor
 
@@ -447,7 +526,7 @@ returns any program's six routing bytes (NULL past both ranges) so the operator-
 editor can draw the table row a voice is playing. The `FmOperatorFlags` bit values are
 documented next to the prototypes in `amy.h` (the enum stays file-private upstream).
 App consumers: `custompatches/fm_voice.c` (publish/read), `custompatches/fm_graph.c`
-(compiler, mirrors the bit values).
+(compiler, mirrors the bit values). Local only.
 
 **Rollback:** drop the two functions + `custom_algorithms`/`algorithm_for` in
 `algorithms.c`, restore `algorithms[synth[osc]->algorithm]` in `render_algo`, drop the
@@ -482,7 +561,9 @@ from a stretched note.
 
 Gate: `AMY_PCM_RETRIG_ZERO_CROSS` (pcm.c) - define to 1 to restore the
 upstream defer verbatim (host-verified to reproduce the pre-edit behavior
-exactly). Upstream candidate: evidence prepared for the #1070 thread.
+exactly). Not posted upstream; upstream `pcm_note_on()` (v1.2.188) still
+defers to the zero crossing. The edit also rewords the comment at the top of
+the restart branch and drops a stray `;;` on the `loopstart` line.
 
 **Rollback:** build with `-DAMY_PCM_RETRIG_ZERO_CROSS=1`, or drop the three
 `LOCAL EDIT` blocks in `pcm.c` (gate defines, `pcm_note_on` retrig branch,
@@ -499,10 +580,10 @@ clears, which upstream does not accelerate:
 
 | Where | What | Why |
 |-------|------|-----|
-| `algorithms.c`, appended at EOF | `amy_block_zero_blocks(SAMPLE *p, int nblocks)` - loops upstream's `zero()` | reach the kernel from `amy.c` without a second copy of the asm; appended after the custom-algorithm block so upstream's own functions stay untouched |
+| `algorithms.c`, after `render_algo` | `amy_block_zero_blocks(SAMPLE *p, int nblocks)` - loops upstream's `zero()` | reach the kernel from `amy.c` without a second copy of the asm |
 | `amy.h`, after `malloc_caps_block` | its prototype | - |
 | `amy.c` `amy_render()` x3 (`fbl`, `per_osc_fb`, chorus `delay_mod`) | `bzero(...)` -> `amy_block_zero_blocks(p, 1)`; `fbl` passes `AMY_NCHANS` | `zero()` hardcodes one block = `AMY_BLOCK_SIZE * sizeof(SAMPLE)` = exactly `per_osc_fb` / `delay_mod`; `fbl` is `AMY_NCHANS` of them, so no length parameter is needed |
-| `amy.c` `oscs_init` x2, `alloc_chorus_delay_lines` x1 | `malloc_caps` -> `malloc_caps_block` | `zero()` falls back to libc on an unaligned base, so without this the acceleration silently does nothing. Allocator body/gate are upstream's; upstream itself now aligns the FM scratch (#967/#969), leaving these three call sites as the local delta |
+| `amy.c` `oscs_init` x2, `alloc_chorus_delay_lines` x1 | `malloc_caps` -> `malloc_caps_block` | `zero()` falls back to libc on an unaligned base, so without this the acceleration silently does nothing. Allocator body/gate are upstream's; upstream itself now aligns the FM scratch (#893), leaving these three call sites as the local delta |
 
 Not measured: the 10.4% dx7 6-op figure is the FM scratch alone. Verified in the
 ELF that the wrapper inlines away and `amy_render` carries three `loopnez` +
@@ -544,31 +625,31 @@ runs `multicore = 0`, so `amy_render()` is only ever called with `core = 0` and
 therefore summing 512 int32 zeros per bus, every block, for nothing. Now
 guarded on `amy_global.config.platform.multicore` — a runtime test, not
 compile-time, so the sum reappears correctly if multicore is ever enabled.
+Local only; upstream (v1.2.188) still sums unconditionally under
+`AMY_DUALCORE`.
 
 ### `src/amy.h` — 48 kHz sample rate on ESP
 
-`AMY_SAMPLE_RATE` forced to 48000 in the `ESP_PLATFORM` branch (upstream's
-generic fallback is 44100). Must match `CONFIG_UAC_SAMPLE_RATE`; a mismatch
-detunes/distorts USB audio. Any re-vendor silently reverts this - after every
-AMY update, verify `grep AMY_SAMPLE_RATE src/amy.h` shows the ESP branch at
-48000.
+`ESP_PLATFORM` joins the `__EMSCRIPTEN__` case of the sample-rate block
+(`#elif defined __EMSCRIPTEN__ || ESP_PLATFORM`), so ESP builds render at
+48000 (upstream's generic fallback is 44100). Must match
+`CONFIG_UAC_SAMPLE_RATE`; a mismatch detunes/distorts USB audio. Any
+re-vendor silently reverts this - after every AMY update, verify
+`grep -n '__EMSCRIPTEN__ || ESP_PLATFORM' src/amy.h` finds the line. Local
+only.
 
 ### `src/amy.h` — Kconfig-gated fixed-point toggle
 
 `#define AMY_USE_FIXEDPOINT` replaced with a `#ifdef CONFIG_AMY_USE_FIXEDPOINT`
 guard. Enabled via menuconfig: **AMY Synthesizer → Use fixed-point arithmetic**
-(Kconfig default `y`; **=y in the current sdkconfig** — an earlier revision of
-this entry said "default off", which was stale, corrected 2026-08-01).
-Requires `components/amy/Kconfig` (new file, not upstreamed).
-
- ~~The ESP32-S3 LX7 FPU makes float equal-or-faster; fixed-point was designed for RP2040.~~ 
-
- The option is preserved for comparison or future portability needs.
+(Kconfig default `y`; **=y in the current sdkconfig**).
+Requires `components/amy/Kconfig` (new file, not upstreamed). Local only;
+upstream still defines `AMY_USE_FIXEDPOINT` unconditionally.
 
 ### `src/amy_fixedpoint.h` — `ldexpf` SHIFTL/SHIFTR
 
 One edit to the `#ifndef AMY_USE_FIXEDPOINT` (float mode) section (the former
-`MUL5A_SS`/`MUL6A_SS` fallback edit was added upstream in `8ade0b1`):
+`MUL5A_SS`/`MUL6A_SS` fallback edit merged upstream in #764):
 
 **`SHIFTL` / `SHIFTR` use `ldexpf` instead of `exp2f`** — the original float
 macros were `(s) * exp2f(b)`. When `b` is a runtime variable (e.g.
@@ -579,8 +660,10 @@ this Xtensa LX7 toolchain GCC does *not* lower `ldexpf` (or `floorf`) to the
 hardware `FLOOR.S`/exponent ops — both remain `call8` libcalls. So this is a
 correctness/clarity win and a marginal speedup at most, NOT the fix for
 float-mode CPU cost. Float mode is dominated by per-sample `floorf` libcalls
-in `INT_OF_S` / `S_FRAC_OF_S` / `P_WRAPPED_SUM` (see note below); fixed-point
-remains the product mode on this target.
+in `INT_OF_S` / `S_FRAC_OF_S` / `P_WRAPPED_SUM`; fixed-point
+remains the product mode on this target. The same section also re-aligns the
+`SMULR6`/`SMULR7` defines (whitespace only). Local only; upstream's float
+macros still use `exp2f`.
 
 ### `src/amy.c` — Render lock
 
@@ -591,7 +674,15 @@ the entire function body (the `AMY_IRAM_ATTR` on it is upstream's own).
 `free_osc` / `alloc_osc` / `reset_osc` / patch loads on Core 0, while the
 render walks the same pointers on Core 1. Without the lock a patch toggle can
 free `synth[osc]` between the NULL check and the deref in `hold_and_modify`,
-producing a `LoadProhibited` fault (EXCVADDR=0x8).
+producing a `LoadProhibited` fault (EXCVADDR=0x8). App code that takes
+`amy_grab_lock()` to read or change AMY state against the render
+(`custompatches/drum_cache.c`, `wavetable_bank.c`, `clip_player.c`,
+`sample_rec.c`) relies on this hold.
+
+Local only. Upstream has since added its own render lock (#1205, v1.2.188),
+a separate recursive lock taken before the queue lock, and stopped allocating
+oscs on the ingest path (#1190, v1.2.181); upstream's `amy_render()` still
+takes no lock. See "Deferred / needs porting".
 
 ### `src/amy.c` — delta-pool PSRAM spill, no-abort cap
 
@@ -628,7 +719,7 @@ two); from flash the tables are served through the PSRAM data
 cache, and the 2026-09-18 feature-cost bench put a saw copy at 3.4x a sine copy.
 Costs ~16 KB of internal DRAM (the four sizes melodic notes reach, 2048 to 256
 entries, are ~7 KB of that). Rollback: drop the prefix; the header is otherwise
-identical to upstream.
+identical to upstream. Local only.
 ### `src/i2s.c` — IDF 6.0 task signature
 
 `esp_fill_audio_buffer_task()` → `esp_fill_audio_buffer_task(void *pvParameters)`.
@@ -640,7 +731,8 @@ upstream in the 1.2.104->1.2.121 interval - see the Dropped table.)
 ### `src/amy_midi.c` — IDF 6.0 task signature
 
 `run_midi_task()` → `run_midi_task(void *pvParameters)`. Same FreeRTOS
-`TaskFunction_t` fix as `i2s.c` above.
+`TaskFunction_t` fix as `i2s.c` above. Local only, like the `i2s.c` one:
+upstream's task functions (v1.2.188) still take no parameter.
 
 ### `src/sequencer.c` — `sequencer_init()` OOM guard
 
@@ -650,7 +742,8 @@ the guard now reports via `amy_oom()`, sets `max_sequences = 0` /
 `first_active = -1`, and returns - `sequencer_add_wire()` and
 `sequencer_check_and_fill()` already treat `sequences == NULL` as "not
 initialized", so the sequencer disables wholesale instead of crashing at boot.
-Same OOM-policy family as the #961 guards; PR-candidate-sized.
+Same OOM-policy family as the #961 guards. Not posted upstream; upstream
+`sequencer_init()` (v1.2.188) still writes through the unchecked result.
 
 (The former SEQ_LOCK mutex and active-tag dense index were superseded
 wholesale by upstream's sequencer rework - see the Dropped table for the
@@ -660,19 +753,15 @@ thread-safety argument of the new design.)
 
 `sequencer_set_periodic_horizon(tick)` / `sequencer_clear_periodic_horizon()`:
 while set, repeating entries do not fire at or after the tick; one-shots are
-unaffected. The tick walk tests it after the period match, one compare per
-hit. The loop bounce sets it at its end tick so every looping note-on (the
+unaffected. The tick walk tests it after the period match: one flag read
+per periodic hit, plus a signed tick compare while it is set. The loop bounce sets it at its end tick so every looping note-on (the
 sequencer tracks' periodic tags and the arp's) stops on the bar line exactly,
 wherever the UI task is; the commit clears it after the mute flags are set.
 Generic enough for any host that freezes a loop on a beat.
 
-Upstream standing (2026-09-08): viable. A looper primitive with one byte
-test per periodic hit when set and nothing when clear. It is a C-only setter
-with no wire form, unusual for AMY but not unprecedented; a wire code would
-widen the PR and is left out. Expected review question: "why not clear the
-entries?" - because clearing from a host task cannot be tick-exact against
-the tick walk, and the horizon is. Bundle with `pcm_osc_frame()` as one
-"keep a looping sample on the grid" PR.
+C-only setters, no wire form. Not posted upstream. Upstream's #1156
+(v1.2.166) has since reshaped the table this hooks into; see "Deferred /
+needs porting".
 
 ### `pcm.c` + `amy.h` — `pcm_osc_frame()` read accessor (upstream PR candidate)
 
@@ -683,8 +772,7 @@ loop bounce's drift guard compares it with the frame the tick grid implies on
 every bar line. Read only, guarded for out-of-range and unallocated oscs;
 same shape as the `amy_voice_base_osc()` accessor.
 
-Upstream standing (2026-09-08): viable but too small to stand alone; ships in
-the periodic-horizon PR as its read side.
+Not posted upstream.
 
 ### `pcm.c` + `amy.h` — `pcm_shrink_preset()` (upstream PR candidate)
 
@@ -694,14 +782,9 @@ stop press. One `realloc` of the `[list node | preset | samples]` block; a
 shrink is an in-place trim in the ESP heap (TLSF) and in libc, so no copy and
 no move, but the list link and internal pointers are re-pointed if an
 allocator ever did move it. Under the AMY lock like `pcm_load()`; loopend
-capped to the new length.
-
-Upstream standing (2026-09-08): viable and in line with the sampler work
-upstream is doing (fit, tempo lock, sample offsets). The vendored form
-branches on `ESP_PLATFORM` for `heap_caps_realloc`; the PR form adds a
-`realloc_caps()` beside `malloc_caps()` in `amy.c` with a malloc-copy-free
-fallback for platforms without a realloc (Daisy's `qspi_malloc`). Second PR,
-after the horizon one.
+capped to the new length, and a loopstart at or past it reset to 0. The
+function branches on `ESP_PLATFORM` for `heap_caps_realloc` (with
+`ram_caps_sample`), plain `realloc` elsewhere. Not posted upstream.
 
 ### `src/amy.h` + `src/amy.c` — COARSE profiler mode
 
@@ -738,13 +821,18 @@ remaining `+=`-vs-`=0` race can at most carry one window's totals into the next
 (both `us_total` and `calls` scale together, so **`us per call` stays correct**;
 only that window's `% wall` may read high). Benefits coarse and full modes.
 
+Kconfig also carries `AMY_PROFILE_INTERVAL_MS` (dump interval, default
+5000), read by the app (`components/diagnostics/diag_report.c`), not by AMY.
+Local only; upstream's `AMY_PROFILE_INIT` (v1.2.188) still zeroes `.start`,
+and that fix is not posted.
+
 ### `Kconfig` + `CMakeLists.txt` — wavetable oscillator build flag
 
 Upstream's `wave=WAVETABLE` oscillator (`oscillators.c`, `pcm_tiny.h`,
 `pcm_samples_tiny.h`) was already fully implemented in the vendored source but
 gated behind a bare, unwired `#ifdef AMY_WAVETABLE` — no build path ever
-defined it, so the feature was silently dead code. No source inside
-`components/amy/src/` was edited; this only wires the existing gate to a
+defined it, so the feature was silently dead code. This edit touches no source
+inside `components/amy/src/`; it only wires the existing gate to a
 Kconfig option (`AMY_WAVETABLE`, default **y**), mirroring the
 `AMY_USE_FIXEDPOINT` pattern above:
 
@@ -757,8 +845,9 @@ endif()
 Measured cost (2026-07, this target): **+163,952 bytes flash `.rodata`** (5
 built-in 64-cycle tables × 16384 samples × 2 bytes), **zero DIRAM/IRAM/PSRAM**
 — `pcm_get_sample_ram_for_preset()` returns a pointer straight into the flash
-`pcm[]` array (`pcm.c:77`), never RAM-copied. Verified via `idf.py size`
-before/after on an otherwise-identical build.
+`pcm[]` array, never RAM-copied. Verified via `idf.py size`
+before/after on an otherwise-identical build. Local only (upstream has no
+ESP-IDF `Kconfig`/`CMakeLists.txt`).
 
 ### `Kconfig` + `CMakeLists.txt` — Gamma TR-808 PCM bank flag
 
@@ -780,6 +869,12 @@ PCM preset numbering differs between banks; the sequencer drum defaults in
 `pcm_wavetable_base`). Cost ≈ +268 KB flash `.rodata` (XIP-cached, never
 RAM-copied); zero DRAM/PSRAM/IRAM.
 
+The same CMake block adds a `drums-flash` target
+(`esptool_py_flash_target` + `esptool_py_flash_to_partition`) that writes
+`components/amy/drums.bin`, the gamma9001 blob, to the `drums` data
+partition when the file exists. It is not part of the default flash
+target. Local only.
+
 ### `pcm.c` + `amy.h` — gamma9001 map read accessors (upstream PR candidate)
 
 `amy_gamma9001_preset_span(preset, &span)` returns a map entry (blob offset,
@@ -792,12 +887,7 @@ afford the 3.6 MB blob in RAM or mapped (PSRAM XIP leaves the S3 MMU no
 `get_preset_for_preset_number()` - upstream's own mechanism, no lookup
 change. Consumer: `components/synth_core/custompatches/drum_cache.c`
 (windows the drum layers' presets into PSRAM on demand, unloads deferred
-past the osc reset). A first cut carried a per-preset window table in the
-lookup; withdrawn the same day once the shadowing was noticed.
-
-Upstream standing (2026-09-08): viable, same family as the blob-size
-accessor below; platform-neutral read side only. Third PR, or folded into
-the blob-size one.
+past the osc reset). Not posted upstream.
 
 ### `pcm.c` + `amy.h` — `amy_gamma9001_pcm_bytes()` accessor (LOCAL EDIT)
 
@@ -807,13 +897,80 @@ included a second time; the ESP32-S3 mount code (`main.c
 gamma9001_pcm_mount()`) checks the blob against the partition size with it.
 (It used to size a flash mmap or a PSRAM fallback copy; since 2026-09-08 the
 blob stays in flash and `drum_cache.c` loads presets singly, see the map
-accessors above.) Upstream PR candidate (tiny, platform-neutral).
+accessors above.) Not posted upstream (platform-neutral). The first of
+the two `LOCAL EDIT` comments above it in `pcm.c` still describes the old
+mmap / PSRAM-copy use.
+
+### `amy.h` + `api.c` + `parse.c` + `sequencer.c` - `ram_caps_sequencer` for sequencer wire strings
+
+`amy_config_t.ram_caps_sequencer` (default `ram_caps_events`, set in
+`amy_default_config()`) gives the sequencer's wire strings their own caps at
+the three sites that allocate them: the serialize buffer in `amy_add_event()`'s
+ticks path (api.c), the stripped payload in `handle_ticks_message()`
+(parse.c) and the per-fire copy in `sequencer_process_tick()` (sequencer.c).
+Each site falls back to `ram_caps_events` before it reports through
+`amy_oom()`. `main/main.c` points the field at PSRAM and keeps
+`ram_caps_events` internal: the strings are control-path data parsed once
+per fire, and with them out of the internal pool, an exhausted internal heap
+no longer drops scheduled events and tag cancels. Not posted upstream;
+upstream (v1.2.188) still allocates all three from `ram_caps_events`.
+
+### `patches.c` + `amy.h` - `amy_voice_base_osc()` read accessor
+
+`bool amy_voice_base_osc(uint16_t voice, uint16_t *base_osc)` returns a
+voice's base oscillator from `voice_to_base_osc`, a global with no header
+declaration, or false when the table is not initialised, the voice is out of
+range or its entry is unset. Read only. Consumers: the filter editor's scope
+(`synth_ui/ui_editors.c`), which maps an edit target's synth to the
+oscillators carrying its filter with `instrument_get_num_voices()` for the
+voice list, and `custompatches/clip_player.c`. Not posted upstream.
+
+### `patches.c` + `amy.h` - `amy_patch_oscs_per_voice()` read accessor
+
+Returns a patch's oscs per voice (`patch_oscs[]` for built-in patches,
+`memory_patch_oscs[]` for user patches, 0 for undefined or reserved numbers),
+so an embedder can budget `num_voices` before a load instead of finding the
+osc pool exhausted partway through allocation. Consumer:
+`seq_clamp_patch_voices()` (`components/synth_core/sequencer_core/seq_core_synth.c`).
+Not posted upstream.
+
+### `instrument.c` - `instrument_get_num_voices()` clamps the voice-list copy
+
+The copy into the caller's array is capped at `MAX_VOICES_PER_INSTRUMENT`
+(and the clamped count returned). Every caller passes an array of that size
+and a configured instrument never exceeds it, but the filter scope calls this
+from the UI task without the queue lock while the render task can release
+the instrument; a torn `num_voices` read from freed memory would otherwise
+write past the caller's stack array. Not posted upstream; upstream's copy
+(v1.2.188) is unbounded.
+
+### `CMakeLists.txt` - component build settings
+
+The component's `CMakeLists.txt` is local (upstream ships no ESP-IDF
+component files). Besides the Kconfig flags in the entries above it:
+- globs `src/*.c` and excludes `amy-example.c`, `libminiaudio-audio.c` and
+  `usb.c` (this project has its own USB stack);
+- `-DNDEBUG` on the five DSP files with no structural state (`filters.c`,
+  `oscillators.c`, `envelope.c`, `delay.c`, `log2_exp2.c`,
+  `AMY_DSP_HOT_FILES`), so the globally enabled asserts drop out of their
+  per-sample loops; `amy.c` keeps its asserts;
+- `-Wno-strict-aliasing` on `amy.c`;
+- option `AMYSYNTH_AMY_O3` (default off) compiles the component at `-O3`.
 
 ## Deferred / needs porting
 
 | Edit | Status |
 |------|--------|
 | Block-processed ESP32 stereo reverb (`delay.c`, `#ifdef ESP_PLATFORM`) | **Not applied.** Upstream changed `stereo_reverb()` to take `reverb_params_t *rev` (all delay state inside struct); the block-processed optimization needs adapting to the new API before it can be reapplied. The locals-caching optimization (now upstream via #811) recovers part of the same win on the new API; re-evaluate whether full block processing is still worth it after hardware measurement. |
+
+### Upstream changes after v1.2.163 that meet local edits at the next sync
+
+Upstream `main` at v1.2.188:
+- #1159, #1163, #1171 (v1.2.171, v1.2.169, v1.2.175): carry the chorus sweep, the filter-type reset and the sized cubic / FM-256 kernels; those local copies retire.
+- Tail-first chain rendering (`7396b3c`, PR #1200, v1.2.186): `render_osc_wave()` renders the chained osc first, and an osc's distortion and filter now process everything chained below it, not only its own wave; the SILENT-head special case is gone. No local hunk touches `render_osc_wave()`.
+- Sequencer accumulate-on-tag (#1156, `0c05eba`, v1.2.166): events sent on a tag are added instead of replacing the tag's event, `ticks="0,0,<tag>"` (`sequencer_clear_tag()`) clears a tag, and `sequences[]` becomes a slot pool with a `tag` field. The periodic-entry horizon hunk and the `ram_caps_sequencer` per-fire hunk in `sequencer.c` index `sequences[tag]` and do not apply as written.
+- Render lock (#1205, `8e285d7`, v1.2.188): `amy_grab_render_lock()` / `amy_release_render_lock()`, recursive per thread and taken before the queue lock, held per block by `amy_simple_fill_buffer()` and the `i2s.c` render paths and around the flush in `amy_execute_deltas()` and before a patch load. Upstream's `amy_render()` takes no lock; the local render lock holds `amy_queue_lock` inside it.
+- No osc allocation on ingest (#1190, `b2f9928`, v1.2.181): `amy_event_to_deltas_queue()` no longer allocates oscs; `play_delta()` allocates them on the render thread under the queue lock. This removes the ingest-side `alloc_osc()` / `reset_osc()` race named in the render-lock entry.
 
 ---
 
@@ -869,8 +1026,7 @@ Track local, project-specific changes made against the upstream AMY component he
   - **Verification:** `build_project` green; `AMY_SAMPLE_RATE` ESP branch
     confirmed 48000. Residual over upstream, re-measured 2026-09-05 after the
     lock-prototype retire: 14 src files, +410/-58, plus `Kconfig` and
-    `CMakeLists.txt` with no upstream counterpart. HW verify pending (see
-    `HW-VERIFY.md`).
+    `CMakeLists.txt` with no upstream counterpart. HW verify pending.
 
 ## 2026-08-07 — `amy_patch_oscs_per_voice()` read accessor
 
@@ -1272,7 +1428,7 @@ Track local, project-specific changes made against the upstream AMY component he
   - **Risk:** Low. 48 kHz on S3 is well within hardware capability. PCM samples are internally stored at 22050 Hz and resampled — no change needed there. No time-sensitive path is altered; block size (256) stays the same.
   - **Rollback:** Remove the `#elif defined ESP_PLATFORM` / `48000` clause.
 
-- **Config fix (not an AMY patch):** `platform.multithread` and `platform.multicore` must be set to `0` in `main.c` when using `AMY_AUDIO_IS_NONE`. With the defaults (`1`/`1`), `amy_platform_init()` spawns FABT and captures `app_main`'s task handle as `amy_update_handle`, causing a permanent deadlock between FABT and our `amy_usb_render_task` — `render_blocks` and `seq_tick` stay at 0. No change to AMY source required; fixed in `main/main.c`. See `amy-issue-fabt-deadlock.md` for full analysis.
+- **Config fix (not an AMY patch):** `platform.multithread` and `platform.multicore` must be set to `0` in `main.c` when using `AMY_AUDIO_IS_NONE`. With the defaults (`1`/`1`), `amy_platform_init()` spawns FABT and captures `app_main`'s task handle as `amy_update_handle`, causing a permanent deadlock between FABT and our `amy_usb_render_task` — `render_blocks` and `seq_tick` stay at 0. No change to AMY source required; fixed in `main/main.c`.
 
 ## 2026-04-02
 
@@ -1300,5 +1456,5 @@ Track local, project-specific changes made against the upstream AMY component he
 
 - **Bug fix:** `AMY_RENDER_TASK_PRIORITY` and `AMY_FILL_BUFFER_TASK_PRIORITY` in `components/amy/src/amy.h` changed from `ESP_TASK_PRIO_MAX` to `ESP_TASK_PRIO_MAX - 1`.
   - `ESP_TASK_PRIO_MAX` equals `configMAX_PRIORITIES` (25). FreeRTOS asserts `uxPriority < configMAX_PRIORITIES`, so passing 25 is unconditionally invalid and causes an immediate boot crash.
-  - Filed upstream: see `amy-issue-task-priority.md`.
+  - Filed upstream as [#625](https://github.com/shorepine/amy/issues/625).
   - **Rollback:** revert the `- 1` subtraction in both defines.
