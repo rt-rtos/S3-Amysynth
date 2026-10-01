@@ -2,10 +2,10 @@
 
 Edits applied on top of the upstream `shorepine/amy` submodule.
 Upstream commit: `0fb0a00` (v1.2.163, vendored 2026-09-05). The vendor base is
-upstream `main` as is. Some Active entries are this repo's own upstream PRs:
-three merged after this base and retire at the next sync, and the
-Karplus-Strong entries are an earlier shape of the still-open #1204. Each
-entry states its upstream status.
+upstream `main` as is. Three of this repo's own upstream PRs merged after
+this base; their code is still carried and is listed under "Merged upstream,
+still carried until the next sync". The Karplus-Strong entries are an earlier
+shape of the still-open #1204. Each active entry states its upstream status.
 Previous bases: v1.2.160 `a89df0c`, v1.2.145 `55e044d`, v1.2.121 `85a7025`,
 v1.2.104 `fd09bd2`, v1.2.31 `1e23c70`. The submodule tracks upstream `main`
 (`.gitmodules` `branch = main`; refresh with `git submodule update --remote amy`).
@@ -70,11 +70,7 @@ mindmap
     c6{{"`**Behaviour fixes**`"}}
       Periodic-entry horizon
       reset_osc keeps the bus
-    c7{{"`**Merged upstream**`"}}
-      chorus_max_delay, 1159
-      Filter reset, 1163
-      Sized kernels, 1171
-    c8{{"`**Build and diagnostics**`"}}
+    c7{{"`**Build and diagnostics**`"}}
       Kconfig flags
       CMake settings
       COARSE profiler
@@ -111,36 +107,19 @@ mindmap
 | [#1135](https://github.com/shorepine/amy/pull/1135) (v1.2.158) | `amy_update_handle` registered in `amy_platform_init()` gated on the audio config, fixing the multithread + non-I2S first-block deadlock. Contract: `amy_start()` must run on the task that calls `amy_update()`. Our config (`audio = AMY_AUDIO_IS_NONE`, `multithread = 0`) registers the init task's handle but nothing notifies it - benign. |
 | [#1137](https://github.com/shorepine/amy/pull/1137) (v1.2.158) | Second-core render-done semaphore in `i2s.c`'s fill task; dormant here (`multicore = 0`). |
 
+### Merged upstream, still carried until the next sync
+
+The vendor base (v1.2.163) predates these merges, so the code is still a
+local hunk in `components/amy/`. Upstream's version is the same code; the
+hunk is dropped at the next sync.
+
+| PR | Upstream | Local hunk |
+|----|----------|------------|
+| [#1159](https://github.com/shorepine/amy/pull/1159) | v1.2.171 | `chorus_max_delay` bounds the chorus sweep: `delay_line_in_out()`, `config_chorus()`, `CHORUS_DEFAULT_MAX_DELAY` 320 -> 512 (`delay.c`, `amy.c`, `amy.h`) |
+| [#1163](https://github.com/shorepine/amy/pull/1163) | v1.2.169 | `play_delta` calls `reset_filter()` when a `FILTER_TYPE` delta changes the type (`amy.c`) |
+| [#1171](https://github.com/shorepine/amy/pull/1171) | v1.2.175 | `render_lut_cub_sized` with six size-specialised cubic kernels, and `render_lut_fm_256` for the FM sine table (`oscillators.c`); upstream marks the kernels and the dispatcher `AMY_NOINLINE` and builds them only under `AMY_USE_FIXEDPOINT` |
+
 ## Active local edits
-
-### `delay.c` + `amy.c` + `amy.h` — `chorus_max_delay` bounds the chorus sweep (merged upstream as #1159)
-
-`delay_line_in_out()` centers the modulated read tap on the line's
-`fixed_delay` and scales the sweep by it, so the delay runs
-`fixed_delay * (1 + mod)` = 0..`max_delay` samples; `config_chorus()` clamps
-`max_delay` to `DELAY_LINE_LEN`. Upstream's fixed-point port of delay.c
-(103337c, 2023-12) had pinned the center to half the line, which left
-`chorus_max_delay` with no effect and every setting sounding like 512.
-`CHORUS_DEFAULT_MAX_DELAY` moves 320 -> 512 so the default output is
-sample-identical to before; the FX menu's `Cho Delay` row is the knob.
-Merged upstream as [#1159](https://github.com/shorepine/amy/pull/1159)
-(v1.2.171) with the same code and the 512 default; the local copy retires
-at the next sync.
-
-### `amy.c` — filter state reset on a `FILTER_TYPE` change (merged upstream as #1163)
-
-`play_delta` calls `reset_filter()` when a `FILTER_TYPE` delta carries a
-different type than the osc holds. The filter kernels store different things
-in `filter_delay` (the 12 dB biquad raw input history, LPF24 b0-scaled
-history in six words, the phaser an allpass chain), so a type change on a
-sounding osc handed the new kernel a foreign state: into LPF24 the raw
-history reads about 1/b0 too large and rings both resonant stages to full
-scale for several blocks; out of the phaser into any biquad bursts the same
-way at a lower level. Same-type re-sends (patch strings, per-detent editor
-pushes) are unaffected by the compare. The filter editor's type cursor hits
-this on every sounding voice. Merged upstream as
-[#1163](https://github.com/shorepine/amy/pull/1163) (v1.2.169), the same
-check in `play_delta`; the local copy retires at the next sync.
 
 ### `patches.c` - a synth-addressed `reset_osc` keeps the instrument's bus (upstream PR candidate)
 
@@ -237,33 +216,12 @@ Codegen-driven edits from the per-function probe, each marked in place:
   promotion cost `__extendsfdf2` + `floor` + `__fixdfsi` per block per
   wavetable osc. Not posted upstream.
 
-- `render_lut_cub_sized` dispatches copy 0 (and the pulse's second edge)
-  to one of six size-specialised cubic kernels (`RENDER_LUT_CUB_SIZED`,
-  2048..64-entry tables, `noinline` so each keeps its own loop) and falls
-  back to `render_lut_cub` for smaller tables. Same arithmetic; with the
-  table size a compile-time constant the shift amounts and the mask are
-  immediates, three registers free up and the loop compiles as a 60-insn
-  Xtensa hardware loop instead of the generic kernel's 74-insn plain loop
-  with five stack reloads. The table values stay at their 16-bit scale
-  inside the kernel (`MUL0_SS(L2S(x), f) == (x * (f >> 7)) >> 8` exactly),
-  which is where the last three instructions went. `render_lut_sized` does
-  the same for the detuned copies' linear kernel (32 -> 28). Host-sim saw
-  and pulse sweeps, single osc and 6-copy unison, are byte-identical to
-  the generic kernels. The cubic kernels merged upstream in
-  [#1171](https://github.com/shorepine/amy/pull/1171) (v1.2.175), where the
-  kernels and the dispatcher are `AMY_NOINLINE` and compiled only under
-  `AMY_USE_FIXEDPOINT` (the local dispatcher is not `noinline`); they retire
-  at the next sync. `render_lut_sized` serves only the unison copies and is
-  local only.
-
-- `render_lut_fm` dispatches to `render_lut_fm_256`, the same body with
-  `lut_bits = 8` baked in, for the 256-entry sine table the FM operators
-  always read (generic body kept for any other table): 65-insn plain loop
-  -> 32-insn hardware loop, no spills, bit-identical. This replaced an
-  `optimize("sched-pressure")` attribute (37 insns) and, before that, a
-  component-wide `-fsched-pressure` that cost five of the six sized cubic
-  kernels their hardware loop under LTO. Merged upstream in #1171 with the
-  sized cubic kernels; retires at the next sync.
+- `render_lut_sized`: size-specialised linear kernels for the detuned unison
+  copies (2048..64-entry tables, `noinline` so each keeps its own loop;
+  32 -> 28 instructions), byte-identical to the generic linear kernel in
+  host-sim saw and pulse sweeps. Local only: it serves the unison cluster.
+  Its cubic counterpart and the FM-256 kernel are upstream (#1171, see
+  "Merged upstream, still carried until the next sync").
 
 
 ### `oscillators.c` — Karplus-Strong ring-index init + sample-rate-derived buffer length (open upstream PR #1204)
@@ -569,14 +527,15 @@ the restart branch and drops a stray `;;` on the `loopstart` line.
 `LOCAL EDIT` blocks in `pcm.c` (gate defines, `pcm_note_on` retrig branch,
 `render_pcm` gain ramp).
 
-### `algorithms.c` / `amy.c` — ESP32-S3 PIE (SIMD), upstream inline version
+### `algorithms.c` / `amy.c` — PIE block clears in `amy_render()` (local extension of upstream's kernel)
 
-**Merged upstream as [#893](https://github.com/shorepine/amy/pull/893)** (inline
-`zero()`/`copy()` in `algorithms.c`, aligned FM scratch via `malloc_caps_block`).
-The old local shape - `components/pie_dsp` + `src/amy_simd.h` +
-`AMY_BLOCK_BZERO`/`BCOPY` - was deleted 2026-07-25 (`7c498f6`, in git history if
-needed). What remains local is extending upstream's kernel to `amy_render()`'s
-clears, which upstream does not accelerate:
+Local: `amy_render()`'s block clears go through upstream's PIE `zero()`
+kernel, which upstream itself uses only for the FM scratch. The kernel is
+upstream's own ([#893](https://github.com/shorepine/amy/pull/893): inline
+`zero()`/`copy()` in `algorithms.c`, aligned FM scratch via
+`malloc_caps_block`) and is not a local edit. The old local shape -
+`components/pie_dsp` + `src/amy_simd.h` + `AMY_BLOCK_BZERO`/`BCOPY` - was
+deleted 2026-07-25 (`7c498f6`, in git history if needed).
 
 | Where | What | Why |
 |-------|------|-----|
