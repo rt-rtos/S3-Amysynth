@@ -405,48 +405,50 @@ void sequencer_emit_clear_tag(uint32_t tag)
     amy_helpers_event_send(e);
 }
 
+uint32_t seq_step_hold_ticks(const seq_layer_t *layer, uint8_t track, uint8_t step)
+{
+    uint32_t period = seq_track_period(layer, track);
+    uint32_t on     = seq_step_tick_on(layer, track, step, period);
+    uint32_t dist   = period;
+    for (uint8_t s = 0; s < layer->num_steps; s++) {
+        if (s == step || !layer->grid[track][s]) continue;
+        uint32_t d = (seq_step_tick_on(layer, track, s, period) + period - on) % period;
+        if (d == 0) d = period;
+        if (d < dist) dist = d;
+    }
+    uint32_t hold = seq_step_gate(layer, step);
+    if (hold > dist - 1) hold = dist - 1;
+    if (hold < 1) hold = 1;
+    return hold;
+}
+
 /* Schedule (or cancel) one grid step as a pair of repeating AMY events: note-on
- * at the step's position in the bar, note-off `gate` ticks later, both
- * repeating every `bar_ticks`. AMY keys events by tag, so re-emitting with the
+ * at the step's position in the bar, note-off seq_step_hold_ticks later, both
+ * repeating every `period`. AMY keys events by tag, so re-emitting with the
  * same tag updates in place. */
 void sequencer_emit_step(uint8_t layer_idx, uint8_t track, uint8_t step)
 {
     seq_layer_t *layer  = &s_layers[layer_idx];
-    /* Total ticks in one loop of this layer's pattern. */
-    uint32_t bar_ticks  = (uint32_t)layer->num_steps * SEQ_TICKS_PER_STEP;
-    /* Repeat rate: fire every N bars, so period scales bar_ticks. The note-off
-     * must wrap against the same period to land in the correct half of the
-     * extended window. */
-    uint32_t rr         = (layer->repeat_rate[track] >= SEQ_REPEAT_2)
-                          ? (uint32_t)layer->repeat_rate[track] : 1u;
-    uint32_t period     = bar_ticks * rr;
-    /* Plain-trig note-hold incl. the off-beat groove shortening; shared with
-     * the ratchet n==1 path (seq_core_trig.c) via seq_step_gate. */
-    uint8_t  gate       = (uint8_t)seq_step_gate(layer, step);
+    /* The note-off must wrap against the row's full period (repeat rate
+     * included) to land in the correct half of the extended window. */
+    uint32_t period     = seq_track_period(layer, track);
+    uint32_t hold       = seq_step_hold_ticks(layer, track, step);
     uint32_t tag_on     = seq_tag_on(layer_idx, track, step);
     uint32_t tag_off    = seq_tag_off(layer_idx, track, step);
-    /* +1 so tick 0 stays reserved (AMY treats tick 0 as "clear"). Two per-step
-     * offsets fold into the note-on tick: swing (odd steps later) and the
-     * signed micro-timing nudge. Both apply to tick_on only - tick_off derives
-     * from it below, preserving gate length. A negative nudge on an early step
-     * can land before the bar origin, so the result is wrapped into the tail of
-     * the loop window (a late "drag"). */
-    int32_t  tick_on_s  = (int32_t)(1 + step * SEQ_TICKS_PER_STEP)
-                        + (int32_t)sequencer_step_swing_offset(layer, step)
-                        + (int32_t)layer->step_nudge[track][step];
-    while (tick_on_s < 1) tick_on_s += (int32_t)period;
-    uint32_t tick_on    = (uint32_t)tick_on_s % period;
-    if (tick_on == 0) tick_on = 1;
+    /* Swing and nudge apply to tick_on only - tick_off derives from it below. */
+    uint32_t tick_on    = seq_step_tick_on(layer, track, step, period);
     /* Wrap within the full period, not bar_ticks, so a repeat_rate=2 note whose
      * gate spills past bar_ticks still fires correctly. */
-    uint32_t tick_off   = (tick_on + gate) % period;
+    uint32_t tick_off   = (tick_on + hold) % period;
     float note_velocity = sequencer_step_velocity(layer, track, step);
     /* Per-track amplitude trim (default 1.0, set by graph editor amp mode). */
     note_velocity *= layer->vp[track].amp_trim;
     /* Per-step velocity offset in signed percentage points. */
     note_velocity += (float)layer->step_velocity_adj[track][step] * 0.01f;
     note_velocity = SEQ_CLAMP_F32(note_velocity, 0.0f, 1.0f);
-    if (tick_off == 0) tick_off = 1; /* avoid the reserved tick 0 */
+    /* Avoid the reserved tick 0; stepping back keeps the off before a next
+     * step that fires at tick 1. */
+    if (tick_off == 0) tick_off = (hold > 1) ? period - 1 : 1;
 
     /* Stopped, step off, track inaudible, or decorated (seq_core_trig.c):
      * cancel the plain periodic tag pair instead of emitting. */
@@ -485,6 +487,14 @@ void sequencer_emit_step(uint8_t layer_idx, uint8_t track, uint8_t step)
     } else {
         amy_helpers_note_send(synth, note, 0.0f,
                             tag_off, tick_off, period);
+    }
+}
+
+void sequencer_emit_track(uint8_t layer_idx, uint8_t track)
+{
+    seq_layer_t *layer = &s_layers[layer_idx];
+    for (uint8_t s = 0; s < layer->num_steps; s++) {
+        sequencer_emit_step(layer_idx, track, s);
     }
 }
 
@@ -593,7 +603,9 @@ static void seq_apply_track_note(uint8_t layer_idx, uint8_t track,
                         * layer->vp[track].amp_trim;
     if (preview_vel > 1.0f) preview_vel = 1.0f;
     uint32_t fire_tick = sequencer_ticks() + SEQ_PREVIEW_DELAY_TICKS;
-    uint32_t off_tick  = fire_tick + seq_step_gate(layer, 0);
+    uint32_t gate      = seq_step_gate(layer, 0);
+    if (gate > SEQ_TICKS_PER_STEP) gate = SEQ_TICKS_PER_STEP;   /* one-step audition */
+    uint32_t off_tick  = fire_tick + gate;
     /* PCM drums get no note-off, same rule as sequencer_emit_step(): a preview
      * while tuning a drum's pitch should sound like the real hit. */
     bool send_offs = !(layer->type == SEQ_LAYER_DRUM &&
@@ -663,7 +675,11 @@ void sequencer_core_set_step(uint8_t layer_idx, uint8_t track,
     if (track >= layer->num_tracks || step >= layer->num_steps) return;
     if (layer->grid[track][step] == state) return;
     layer->grid[track][step] = state;
-    sequencer_emit_step(layer_idx, track, step);
+    sequencer_emit_track(layer_idx, track);
+    /* Above one step the removed step's note may still be sounding, and its
+     * off tag is gone. */
+    if (!state && layer->gate_pct > 100u)
+        sequencer_kill_synth_voices(layer->synth_id[track]);
 }
 
 bool sequencer_core_set_layer_steps(uint8_t layer_idx, uint8_t num_steps)
@@ -930,7 +946,9 @@ void sequencer_core_audition_chord(uint8_t layer_idx, uint8_t track,
                         * layer->vp[track].amp_trim;
     if (preview_vel > 1.0f) preview_vel = 1.0f;
     uint32_t fire_tick = sequencer_ticks() + SEQ_PREVIEW_DELAY_TICKS;
-    uint32_t off_tick  = fire_tick + seq_step_gate(layer, 0);
+    uint32_t gate      = seq_step_gate(layer, 0);
+    if (gate > SEQ_TICKS_PER_STEP) gate = SEQ_TICKS_PER_STEP;   /* one-step audition */
+    uint32_t off_tick  = fire_tick + gate;
     amy_helpers_note_send(layer->synth_id[track], tones[0], preview_vel,
                         seq_preview_tag(layer_idx, track), fire_tick, 0);
     amy_helpers_note_send(layer->synth_id[track], tones[0], 0.0f,
@@ -1030,21 +1048,31 @@ uint8_t sequencer_core_get_layer_swing(uint8_t layer_idx)
 
 /* ── Per-layer note FX: gate length + glide (portamento) ───────────────────
  * Per-layer scalars from the Layer menu page. Gate applies at emit time
- * (seq_step_gate), so a change must re-emit the layer's steps for the new
+ * (seq_step_hold_ticks), so a change must re-emit the layer's steps for the new
  * note-off ticks to take effect, exactly like swing; it applies to drum and
  * melodic layers alike. Glide is an AMY per-osc setting pushed straight to the
  * row synths, melodic only (drums don't glide). */
-void sequencer_core_set_layer_gate_pct(uint8_t layer_idx, uint8_t gate_pct)
+void sequencer_core_set_layer_gate_pct(uint8_t layer_idx, uint16_t gate_pct)
 {
     if (layer_idx >= s_num_layers) return;
     seq_layer_t *layer = &s_layers[layer_idx];
-    uint8_t clamped = (uint8_t)SEQ_CLAMP_U8((int)gate_pct, 10, 100);
+    uint16_t clamped = (gate_pct == SEQ_GATE_HOLD)
+                       ? (uint16_t)SEQ_GATE_HOLD
+                       : SEQ_CLAMP_U16((int)gate_pct, SEQ_GATE_PCT_MIN,
+                                       SEQ_GATE_PCT_MAX);
     if (layer->gate_pct == clamped) return;
+    uint16_t prev = layer->gate_pct;
     layer->gate_pct = clamped;
     sequencer_resync_layer(layer_idx);   /* re-emit: gate changes note-off ticks */
+    /* Shortening from above one step (sequencer_core.h gate contract). */
+    if (prev > 100u && clamped < prev) {
+        for (uint8_t t = 0; t < layer->num_tracks; t++) {
+            sequencer_kill_synth_voices(layer->synth_id[t]);
+        }
+    }
 }
 
-uint8_t sequencer_core_get_layer_gate_pct(uint8_t layer_idx)
+uint16_t sequencer_core_get_layer_gate_pct(uint8_t layer_idx)
 {
     if (layer_idx >= s_num_layers) return 0;
     return s_layers[layer_idx].gate_pct;

@@ -424,10 +424,10 @@ typedef struct {
                                             delayed by this % of one step at
                                             emit time. 0 = straight (memset
                                             default).                          */
-    uint8_t   gate_pct;                  /* note-hold as % of the step
-                                            (10..100), the Layer page's Gate
-                                            row, drum and melodic. MUST be
-                                            initialised to the type's
+    uint16_t  gate_pct;                  /* note-hold, the Layer page's Gate
+                                            row, drum and melodic; ranges in
+                                            the sequencer_core.h gate comment.
+                                            MUST be initialised to the type's
                                             SEQ_*_GATE_DEFAULT_PCT in add_layer
                                             - memset 0 silences every note.    */
     uint16_t  portamento_ms;             /* glide between step pitches (0..100

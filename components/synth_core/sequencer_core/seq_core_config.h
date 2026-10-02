@@ -73,10 +73,14 @@
  * the pickers, so the selectable range stays uniform across surfaces. */
 #define SEQ_LFO_NATIVE_MAX_HZ 20.0f
 #define SEQ_LFO_SW_MAX_HZ     5.0f
-/* Default per-layer gate (the Layer page's Gate row) as a % of the step,
- * 10..100 (100% = legato). A drum hit is held half a step before its note-off,
- * the choke point; the voice's release tail still plays out afterwards.
- * Melodic notes default near-legato so they connect instead of stabbing. */
+/* Per-layer gate (the Layer page's Gate row) range and defaults, as a % of the
+ * step; the ranges and the next-trig cut are in the sequencer_core.h gate
+ * comment. A drum hit is held half a step before its note-off, the choke
+ * point; the voice's release tail still plays out afterwards. Melodic notes
+ * default near-legato so they connect instead of stabbing. */
+#define SEQ_GATE_PCT_MIN   10u
+#define SEQ_GATE_PCT_MAX   800u
+#define SEQ_GATE_HOLD      0xFFFFu
 #define SEQ_DRUM_GATE_DEFAULT_PCT         50u
 #if CONFIG_SEQ_MELODIC_EXPRESSIVE_DEFAULTS
 #define SEQ_MELODIC_GATE_DEFAULT_PCT      92u   /* 11/12 of a step */

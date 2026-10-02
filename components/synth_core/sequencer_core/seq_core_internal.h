@@ -58,24 +58,59 @@ static inline uint32_t sequencer_step_swing_offset(const seq_layer_t *layer,
     return SEQ_SWING_TICKS(layer->swing_pct);
 }
 
-/* Note-hold in ticks for the plain (non-subdivided) trig of `step`. Off-beat
+/* The layer gate in ticks for the plain (non-subdivided) trig of `step`, before
+ * the cut at the row's next trig (seq_step_hold_ticks applies that cut).
+ * SEQ_GATE_HOLD has no own length and returns UINT32_MAX. Up to 100%, off-beat
  * 8ths are shortened a touch so accented downbeats feel legato while
- * in-between notes detach. Only ever shortens, so the note-off always lands
- * before the next step's note-on. Shared by sequencer_emit_step() and the
- * ratchet n==1 path so the two cannot drift. */
-static inline uint16_t seq_step_gate(const seq_layer_t *layer, uint8_t step)
+ * in-between notes detach. */
+static inline uint32_t seq_step_gate(const seq_layer_t *layer, uint8_t step)
 {
+    if (layer->gate_pct == SEQ_GATE_HOLD) return UINT32_MAX;
     /* Note-hold is a per-layer % of the step (the Layer page's Gate row),
-     * rounded pct->ticks; 100% is a full-step legato hold. The off-beat
-     * shortening is melodic phrasing, so drum hits keep the plain gate. */
-    uint16_t gate = (uint16_t)(((uint32_t)SEQ_TICKS_PER_STEP * layer->gate_pct
-                                + 50u) / 100u);
-    if (layer->type != SEQ_LAYER_DRUM && (step % 2) == 1 && gate > 2) {
+     * rounded pct->ticks. The off-beat shortening is melodic phrasing, so drum
+     * hits keep the plain gate. */
+    uint32_t gate = ((uint32_t)SEQ_TICKS_PER_STEP * layer->gate_pct + 50u) / 100u;
+    if (layer->gate_pct <= 100u && layer->type != SEQ_LAYER_DRUM &&
+        (step % 2) == 1 && gate > 2) {
         gate -= 2;
     }
     if (gate < 1) gate = 1;   /* never zero — the note must sound */
     return gate;
 }
+
+/* Ticks in one loop of `track`: the layer's bar, times the row's repeat rate
+ * (a repeat_rate=N row fires every N bars). */
+static inline uint32_t seq_track_period(const seq_layer_t *layer, uint8_t track)
+{
+    uint32_t rr = (layer->repeat_rate[track] >= SEQ_REPEAT_2)
+                  ? (uint32_t)layer->repeat_rate[track] : 1u;
+    return (uint32_t)layer->num_steps * SEQ_TICKS_PER_STEP * rr;
+}
+
+/* Note-on tick of the plain trig of `step` within `period`. +1 so tick 0 stays
+ * reserved (AMY treats tick 0 as "clear"). Two per-step offsets fold in: swing
+ * (odd steps later) and the signed micro-timing nudge. A negative nudge on an
+ * early step can land before the bar origin, so the result is wrapped into the
+ * tail of the loop window (a late "drag"). */
+static inline uint32_t seq_step_tick_on(const seq_layer_t *layer, uint8_t track,
+                                        uint8_t step, uint32_t period)
+{
+    int32_t  tick_on_s  = (int32_t)(1 + step * SEQ_TICKS_PER_STEP)
+                        + (int32_t)sequencer_step_swing_offset(layer, step)
+                        + (int32_t)layer->step_nudge[track][step];
+    while (tick_on_s < 1) tick_on_s += (int32_t)period;
+    uint32_t tick_on    = (uint32_t)tick_on_s % period;
+    if (tick_on == 0) tick_on = 1;
+    return tick_on;
+}
+
+/* Note-hold in ticks for the n==1 trig of `step` on `track`: seq_step_gate cut
+ * to end at least one tick before the row's next active step fires (contract:
+ * the sequencer_core.h gate comment), never below 1. Shared by
+ * sequencer_emit_step() and the ratchet n==1 path so the two cannot drift.
+ * Defined in seq_core_engine.c; called from the UI task and the trig pump task,
+ * reading the layer fields live like the rest of the trig path. */
+uint32_t seq_step_hold_ticks(const seq_layer_t *layer, uint8_t track, uint8_t step);
 
 /* Row whose entry a per-row default table (sized SEQ_TRACKS_DEFAULT) supplies
  * for `track`: its own, or the last one for the rows above the default
@@ -177,6 +212,9 @@ extern bool     s_track_last_played[][SEQ_TRACKS];  /* MAX_LAYERS x SEQ_TRACKS *
 
 /* From seq_core_engine.c */
 void     sequencer_emit_step(uint8_t layer_idx, uint8_t track, uint8_t step);
+/* sequencer_emit_step for every step of one row: an edit that adds, removes or
+ * moves a trig changes its neighbours' note-offs (seq_step_hold_ticks). */
+void     sequencer_emit_track(uint8_t layer_idx, uint8_t track);
 void     sequencer_emit_clear_tag(uint32_t tag);
 void     sequencer_resync_layer(uint8_t layer_idx);
 void     sequencer_clear_layer_tags(uint8_t layer_idx);

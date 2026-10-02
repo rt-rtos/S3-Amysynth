@@ -162,9 +162,11 @@ void synth_ui_dev_riff_play_b(void)
     riff_stop_transport();
     uint16_t bpm = seq_get_bpm();
     if (bpm == 0) bpm = 120;
-    /* One 16th step at the current tempo, held for the layer's gate %. */
-    uint32_t gate = 15000u * sequencer_core_get_layer_gate_pct((uint8_t)li)
-                    / 100u / bpm;
+    /* One 16th step at the current tempo, held for the layer's gate %, capped
+     * at one step (the riff is a one-step audition). */
+    uint32_t pct = sequencer_core_get_layer_gate_pct((uint8_t)li);
+    if (pct > 100u) pct = 100u;
+    uint32_t gate = 15000u * pct / 100u / bpm;
     if (gate < 1u) gate = 1u;
 
     uint32_t t0 = amy_sysclock() + RIFF_LEAD_MS;

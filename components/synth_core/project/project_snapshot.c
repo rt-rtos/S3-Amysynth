@@ -49,7 +49,7 @@ static const char *TAG = "project_snapshot";
 
 /* LAYR section version: the writer's tag and the loader's only accepted
  * value. */
-#define LAYR_VERSION 19
+#define LAYR_VERSION 20
 
 _Static_assert(SEQ_TRACKS == 5 && SEQ_MAX_STEPS == 32,
                "LAYR format assumes 5x32; bump LAYR_VERSION");
@@ -444,7 +444,7 @@ static void ser_layer(tlv_writer_t *w, const seq_layer_t *L)
     tlv_put_bytes(w, L->step_velocity_adj,  sizeof L->step_velocity_adj);
     tlv_put_bytes(w, L->step_ratchet_taper, sizeof L->step_ratchet_taper);
     /* Note FX: gate length (drum and melodic), glide, GROOVE accent amount. */
-    tlv_put_u8(w, L->gate_pct);
+    tlv_put_u16(w, L->gate_pct);
     tlv_put_u16(w, L->portamento_ms);
     tlv_put_u8(w, L->groove_pct);
     /* Live FM algorithm override (Shift+Turn). */
@@ -553,9 +553,10 @@ static bool parse_layer(tlv_reader_t *b, seq_layer_t *L)
     }
 
     /* Note FX, clamped to the live control ranges. */
-    if (!tlv_get_u8(b, &L->gate_pct))       return false;
+    if (!tlv_get_u16(b, &L->gate_pct))      return false;
     if (!tlv_get_u16(b, &L->portamento_ms)) return false;
-    L->gate_pct = SEQ_CLAMP_U8(L->gate_pct, 10, 100);
+    if (L->gate_pct != SEQ_GATE_HOLD)
+        L->gate_pct = SEQ_CLAMP_U16(L->gate_pct, SEQ_GATE_PCT_MIN, SEQ_GATE_PCT_MAX);
     if (L->portamento_ms > SEQ_MELODIC_PORTAMENTO_MAX_MS)
         L->portamento_ms = SEQ_MELODIC_PORTAMENTO_MAX_MS;
 

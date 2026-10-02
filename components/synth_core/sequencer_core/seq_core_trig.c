@@ -213,9 +213,9 @@ static bool trig_roll_probability(uint8_t prob_pct)
 }
 
 /* One-shot schedule step_ratchet sub-hits, evenly spaced across the step's
- * slot. n==1 reuses sequencer_emit_step()'s exact gate math (incl. the off-beat
- * shortening) so a merely probabilistic or conditional step feels identical to
- * a plain one when it fires; n>1 subdivides the slot.
+ * slot. n==1 shares sequencer_emit_step()'s note-hold (seq_step_hold_ticks) so
+ * a merely probabilistic or conditional step feels identical to a plain one
+ * when it fires; n>1 subdivides the slot.
  *
  * Not static: pump task only (seq_trig_pump.c); never call it from the render
  * task. */
@@ -226,10 +226,10 @@ void trig_schedule_ratchets(uint8_t layer_idx, const seq_layer_t *layer,
     n = SEQ_CLAMP_U8(n, 1, SEQ_MAX_RATCHET);
 
     uint16_t sub_ticks;
-    uint16_t gate;
+    uint32_t gate;
     if (n == 1) {
         sub_ticks = SEQ_TICKS_PER_STEP;
-        gate = seq_step_gate(layer, step);
+        gate = seq_step_hold_ticks(layer, track, step);
     } else {
         sub_ticks = SEQ_TICKS_PER_STEP / n;
         if (sub_ticks < 2) sub_ticks = 2;
@@ -508,7 +508,7 @@ void sequencer_core_set_step_nudge(uint8_t layer_idx, uint8_t track, uint8_t ste
     ticks = (int8_t)SEQ_CLAMP_INT(ticks, -SEQ_STEP_NUDGE_MAX, SEQ_STEP_NUDGE_MAX);
     if (layer->step_nudge[track][step] == ticks) return;
     layer->step_nudge[track][step] = ticks;
-    sequencer_emit_step(layer_idx, track, step);
+    sequencer_emit_track(layer_idx, track);
 }
 
 int8_t sequencer_core_get_step_nudge(uint8_t layer_idx, uint8_t track, uint8_t step)

@@ -802,14 +802,24 @@ void    sequencer_core_set_layer_swing(uint8_t layer_idx, uint8_t swing_pct);
 uint8_t sequencer_core_get_layer_swing(uint8_t layer_idx);
 
 /* ── Per-layer note FX (gate length + glide + groove) ─────────────────────────
- * GATE: note-hold as a % of the step (10..100, 100 = legato), applied at emit
- * time, on drum and melodic layers. GLIDE: AMY-native portamento between step
+ * GATE: note-hold per layer, drum and melodic, applied at emit time.
+ * 10..100 = % of one step. 101..SEQ_GATE_PCT_MAX = % of one step, for holds
+ * across steps. SEQ_GATE_HOLD = held until the row's next trig. Any value: the
+ * note-off lands at least one tick before the row's next active step fires (by
+ * fire tick, swing and nudge included, wrapping the loop), whether or not that
+ * step's conditions let it sound. GLIDE: AMY-native portamento between step
  * pitches (0..SEQ_MELODIC_PORTAMENTO_MAX_MS, 0 = off). GROOVE: how much of the
  * accent/humanize velocity curve applies (0..100, 0 = flat 1.0), scaled at emit
  * time in sequencer_step_velocity(). All per-layer; glide and groove are no-ops
- * on drum layers. Edited from the Layer menu page (ui_screen_layermenu.c). */
-void     sequencer_core_set_layer_gate_pct(uint8_t layer_idx, uint8_t gate_pct);
-uint8_t  sequencer_core_get_layer_gate_pct(uint8_t layer_idx);
+ * on drum layers. Edited from the Layer menu page (ui_screen_layermenu.c).
+ *
+ * Gate setter: SEQ_GATE_HOLD is stored as is; any other value is clamped to
+ * SEQ_GATE_PCT_MIN..SEQ_GATE_PCT_MAX. Re-emits the layer. When the previous
+ * value was above 100 and the new one is lower, the layer's row voices are
+ * killed, since a sounding note's rescheduled note-off may already be in the
+ * past. UI task only. Gate getter: 0 for an invalid layer. */
+void     sequencer_core_set_layer_gate_pct(uint8_t layer_idx, uint16_t gate_pct);
+uint16_t sequencer_core_get_layer_gate_pct(uint8_t layer_idx);
 void     sequencer_core_set_melodic_portamento_ms(uint8_t layer_idx, uint16_t ms);
 uint16_t sequencer_core_get_melodic_portamento_ms(uint8_t layer_idx);
 void     sequencer_core_set_melodic_groove_pct(uint8_t layer_idx, uint8_t groove_pct);

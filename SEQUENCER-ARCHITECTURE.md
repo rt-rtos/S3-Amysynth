@@ -250,18 +250,34 @@ path.
 
 ### Gate widths
 
-Both layer types gate from the runtime per-layer `gate_pct` (10..100 % of a
-step, the Layer page's Gate row, saved with the project). Only the default
-differs, and melodic steps get an off-beat shortening drums don't:
+Both layer types gate from the runtime per-layer `gate_pct` (the Layer page's
+Gate row, saved with the project):
+
+| `gate_pct` | Note-hold |
+|---|---|
+| 10..100 | % of one step |
+| 101..`SEQ_GATE_PCT_MAX` (800) | % of one step, held across steps; the Layer page offers 2, 3, 4, 6 and 8 steps |
+| `SEQ_GATE_HOLD` | until the row's next trig |
+
+At any value the note-off lands at least one tick before the next active step
+on the same row fires (`seq_step_hold_ticks()`). The distance is measured
+between fire ticks, so swing and nudge count, and it wraps around the row's
+loop. It is taken from the grid: a step whose probability or condition keeps
+it silent in a given loop still ends the note before it. A row plays one
+pitch and note-offs match by note number, so a note-off landing after the
+next note-on would release that next note.
+
+Only the default differs between layer types, and up to 100 % melodic steps
+get an off-beat shortening drums don't:
 
 | Layer type | Default | Off-beat steps |
 |---|---|---|
 | Drum | `SEQ_DRUM_GATE_DEFAULT_PCT` 50 % = 6 ticks | plain gate |
 | Melodic | `SEQ_MELODIC_GATE_DEFAULT_PCT` 92 % (67 % with `SEQ_MELODIC_EXPRESSIVE_DEFAULTS` off) | 2 ticks shorter |
 
-Drums honor note-offs (real patches, not one-shots), so the drum gate controls
-choke vs. ring; the near-legato melodic default lets notes connect instead of
-stabbing, and 100 % is full legato.
+SYNTH-mode drums honor note-offs, so the drum gate controls choke vs. ring;
+PCM drum rows schedule no note-off and ring to the end of the sample. The
+near-legato melodic default lets notes connect instead of stabbing.
 
 ---
 

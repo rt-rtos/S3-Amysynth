@@ -170,11 +170,15 @@ const menu_item_view_t *layermenu_menu_build_items(void)
                           sequencer_core_get_patch_scope(mel) == SEQ_PATCH_SCOPE_TRACK
                               ? "TRACK" : "LAYER");
             break;
-        case LM_GATE:
+        case LM_GATE: {
+            uint16_t gate = sequencer_core_get_layer_gate_pct(li);
             snprintf(it->label, MENU_LABEL_LEN, "Gate");
-            snprintf(it->value, MENU_VALUE_LEN, "%u%%",
-                     (unsigned)sequencer_core_get_layer_gate_pct(li));
+            if (gate == SEQ_GATE_HOLD) snprintf(it->value, MENU_VALUE_LEN, "Hold");
+            else if (gate > 100u)      snprintf(it->value, MENU_VALUE_LEN, "%u st",
+                                                (unsigned)(gate / 100u));
+            else snprintf(it->value, MENU_VALUE_LEN, "%u%%", (unsigned)gate);
             break;
+        }
         case LM_GLIDE:
             snprintf(it->label, MENU_LABEL_LEN, "Glide");
             if (mel == 0xFF) snprintf(it->value, MENU_VALUE_LEN, "--");
@@ -296,6 +300,27 @@ static uint8_t lm_next_repeat_rate(uint8_t rr, int delta)
     return rates[idx];
 }
 
+/* Gate detents: 5% steps up to one step (mirroring the arp GATE control), then
+ * whole steps, then Hold. Ascending, so SEQ_GATE_HOLD sorts last. */
+static const uint16_t lm_gate_ladder[] = {
+    10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100,
+    200, 300, 400, 600, 800, SEQ_GATE_HOLD
+};
+
+/* Next gate on the ladder in the turn direction, clamped at both ends. A value
+ * between detents moves to the nearest detent on the turn's side. */
+static uint16_t lm_gate_step(uint16_t pct, int dir)
+{
+    int n = (int)(sizeof(lm_gate_ladder) / sizeof(lm_gate_ladder[0]));
+    if (dir == 0) return pct;
+    if (dir > 0) {
+        for (int i = 0; i < n; i++) if (lm_gate_ladder[i] > pct) return lm_gate_ladder[i];
+        return lm_gate_ladder[n - 1];
+    }
+    for (int i = n - 1; i >= 0; i--) if (lm_gate_ladder[i] < pct) return lm_gate_ladder[i];
+    return lm_gate_ladder[0];
+}
+
 void layermenu_menu_edit_value(uint8_t idx, int delta)
 {
     int dir = (delta > 0) ? 1 : (delta < 0 ? -1 : 0);
@@ -322,13 +347,10 @@ void layermenu_menu_edit_value(uint8_t idx, int delta)
             mel, sequencer_core_get_patch_scope(mel) == SEQ_PATCH_SCOPE_TRACK
                      ? (uint8_t)SEQ_PATCH_SCOPE_LAYER : (uint8_t)SEQ_PATCH_SCOPE_TRACK);
         break;
-    case LM_GATE: {
-        /* 5%/detent, mirroring the arp GATE control. */
-        int v = SEQ_CLAMP_INT(
-            (int)sequencer_core_get_layer_gate_pct(li) + dir * 5, 10, 100);
-        sequencer_core_set_layer_gate_pct(li, (uint8_t)v);
+    case LM_GATE:
+        sequencer_core_set_layer_gate_pct(
+            li, lm_gate_step(sequencer_core_get_layer_gate_pct(li), dir));
         break;
-    }
     case LM_GLIDE: {
         /* 1ms/detent, matching the arp glide resolution. */
         int v = SEQ_CLAMP_INT(

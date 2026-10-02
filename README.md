@@ -591,7 +591,7 @@ whether the arp follows the global scale (GLOB) or plays its slots unsnapped
 | Item | Range |
 |---|---|
 | DEV | Developer screen (with `CONFIG_SYNTH_DEV_MENU`) |
-| Layer | opens the active layer's page: steps, swing, patch scope, gate/glide/groove, chord, per-track repeat/mute/solo. **Gate** is 10-100 % of the step (100 = legato; drum layers start at 50 %, melodic at 92 %); **Glide** (ms, AMY-native portamento) and **Groove** (0-100 % accent / humanize) are melodic only |
+| Layer | opens the active layer's page: steps, swing, patch scope, gate/glide/groove, chord, per-track repeat/mute/solo. **Gate** from 10 to 100 % is a share of one step (drum layers start at 50 %, melodic at 92 %). Above that it is whole steps, `2 st` to `8 st`. `Hold` keeps the note until the row's next trig. At any setting a note ends at least one tick before the next active step on its row fires, even when that step's conditions keep it silent this loop. **Glide** (ms, AMY-native portamento) and **Groove** (0-100 % accent / humanize) are melodic only |
 | Screen: Seq / Arp / Drone / Prog / FM | Switch mode screen |
 | BPM | 40-300 |
 | Quant | ON / OFF |
