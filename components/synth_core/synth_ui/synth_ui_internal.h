@@ -207,6 +207,7 @@ bool     layermenu_menu_handle_click(uint8_t idx);
 void     layermenu_menu_edit_value(uint8_t idx, int delta);
 void     layermenu_menu_reset(void);
 void     layermenu_menu_clamp_cursor(void);
+uint8_t  layermenu_menu_gate_row(void);   /* visible-list index of the Gate row */
 const char *layermenu_menu_title(void);
 
 /* ─── Projects storage page (item model in ui_screen_projects.c; page state

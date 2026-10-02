@@ -517,9 +517,8 @@ bool menu_shoulder_goes_main(void)
     return seq_state.menu_open && menu_on_subpage();
 }
 
-bool synth_ui_menu_go_main(void)
+static void menu_clear_subpages(void)
 {
-    if (!menu_shoulder_goes_main()) return false;
     s_fx_page = false;
     s_fxbus_page = false;
     s_layer_page = false;
@@ -532,10 +531,34 @@ bool synth_ui_menu_go_main(void)
 #if CONFIG_SYNTH_WIRELESS
     s_wireless_page = false;
 #endif
+}
+
+bool synth_ui_menu_go_main(void)
+{
+    if (!menu_shoulder_goes_main()) return false;
+    menu_clear_subpages();
     seq_state.menu_cursor  = s_main_cursor;
     seq_state.menu_editing = false;
     s_force_redraw = true;
     return true;
+}
+
+void synth_ui_menu_toggle_layer_page(void)
+{
+    if (seq_state.menu_open) {
+        if (s_layer_page) synth_ui_menu_toggle();
+        return;
+    }
+    if (synth_ui_graph_is_active()) return;
+    if (!s_layer_page) {
+        /* Not closed on the Layer page: dive as the main list's Layer row
+         * does, but land on Gate. */
+        menu_clear_subpages();
+        s_main_cursor = MI_LAYER_MENU;
+        s_layer_page = true;
+        seq_state.menu_cursor = layermenu_menu_gate_row();
+    }
+    synth_ui_menu_toggle();
 }
 
 bool synth_ui_menu_handle_encoder(long delta)

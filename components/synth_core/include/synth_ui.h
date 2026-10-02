@@ -63,6 +63,12 @@ bool synth_ui_menu_handle_button(void);        /* true if consumed */
  * from; ends value editing. No-op (false) while the menu is closed or already
  * on the main list. UI input task only. */
 bool synth_ui_menu_go_main(void);
+/* Layer-page shortcut. Menu closed: open it on the Layer page - on the row it
+ * was left on if the menu was closed on that page, else on the Gate row, with
+ * the main list's cursor on the Layer row. Menu open on the Layer page: close
+ * it. Menu open on any other page, or the graph editor showing: no-op. UI
+ * input task only. */
+void synth_ui_menu_toggle_layer_page(void);
 
 /* Projects-page rename editor hooks (buttons: CONTROLS.md). They live on the
  * menu overlay, which composes the projects module's rename state with its own

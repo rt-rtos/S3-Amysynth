@@ -121,6 +121,16 @@ void layermenu_menu_clamp_cursor(void)
     if (seq_state.menu_cursor >= n) seq_state.menu_cursor = (uint8_t)(n - 1u);
 }
 
+uint8_t layermenu_menu_gate_row(void)
+{
+    uint8_t rows[LM_COUNT];
+    uint8_t n = lm_row_list(rows);
+    for (uint8_t i = 0; i < n; i++) {
+        if (rows[i] == LM_GATE) return i;
+    }
+    return 0;
+}
+
 uint8_t layermenu_menu_item_count(void)
 {
     uint8_t rows[LM_COUNT];

@@ -317,7 +317,8 @@ static void dispatch_button_event(my_button_id_t button_id, button_event_t event
      *   SHIFT+2 -> toggle the step probability/trig editor; inside an
      *              effects editor: release the open tab to the patch
      *   SHIFT+3 -> inside an effects editor: flip the row between its own
-     *              voice block and the layer's shared one
+     *              voice block and the layer's shared one; on the sequencer
+     *              screen: open the menu's Layer page, or close it
      * The chord latches the button until its next PRESS_DOWN, swallowing the
      * rest of the press so the button's normal gesture never runs. */
     if (s_shift_chord_latched[button_id]) {
@@ -379,6 +380,8 @@ static void dispatch_button_event(my_button_id_t button_id, button_event_t event
             if (sv == UI_VIEW_GRAPH || sv == UI_VIEW_LFO || sv == UI_VIEW_DIST ||
                 sv == UI_VIEW_FILTER) {
                 synth_ui_toggle_editor_source();
+            } else if (sv == UI_VIEW_SEQ || sv == UI_VIEW_MENU) {
+                synth_ui_menu_toggle_layer_page();
             }
         }
         return;
