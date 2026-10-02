@@ -238,12 +238,12 @@ config SEQ_MELODIC_ENV_ATTACK_MS
 config SEQ_MELODIC_ENV_DECAY_MS
 	int "Melodic envelope decay (ms)"
 	range 0 10000
-	default 250
+	default 100
 
 config SEQ_MELODIC_ENV_SUSTAIN_PCT
 	int "Melodic envelope sustain level (%)"
 	range 0 100
-	default 30
+	default 60
 
 config SEQ_MELODIC_ENV_RELEASE_MS
 	int "Melodic envelope release (ms)"

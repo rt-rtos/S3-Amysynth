@@ -137,8 +137,8 @@ flowchart TD
 | `SEQ_MELODIC_ENVELOPE_ENABLED` | `y` | Master gate for pushing any EG0 envelope to AMY. **If `n`, graph edits update the stored struct but never reach AMY** (the push is compiled out), so the editor appears broken. Keep `y` whenever the editor is used. |
 | `SEQ_MELODIC_ENV_EG0_TYPE` | `0` | `0`=Normal (musical), `1`=Linear, `2`=DX7, `3`=True exp. Type `2` is for DX7 level tables and sounds wrong on a plain A/D/S/R breakpoint set. |
 | `SEQ_MELODIC_ENV_ATTACK_MS` | `4` | Seed attack. Overwritten by editor commits. |
-| `SEQ_MELODIC_ENV_DECAY_MS` | `250` | Seed decay. In the editor, decay time is **auto-derived** from attack + sustain (see *Locked sustain X*), so committed decay reflects the rule, not a dragged value. |
-| `SEQ_MELODIC_ENV_SUSTAIN_PCT` | `30` | Seed sustain level (%). |
+| `SEQ_MELODIC_ENV_DECAY_MS` | `100` | Seed decay, about one default gate at the default tempo so the decay finishes before note-off. With `SEQ_ADSR_EXPLICIT_DECAY=n` the editor **auto-derives** decay from attack + sustain (see *Locked sustain X*) and a commit overwrites the seed. |
+| `SEQ_MELODIC_ENV_SUSTAIN_PCT` | `60` | Seed sustain level (%). |
 | `SEQ_MELODIC_ENV_RELEASE_MS` | `200` | Seed release. |
 | `SEQ_ENV_DEBUG_DUMP` | `n` | Logs the exact breakpoint event sent to the row's synth on commit. Off for normal builds. |
 
