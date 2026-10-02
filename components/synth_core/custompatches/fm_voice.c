@@ -302,7 +302,7 @@ uint8_t fm_voice_step_algorithm(fm_voice_t *v, int dir)
     }
     int a = (int)v->algorithm + step;
     if (a <= 0 || a >= n) {
-        fm_voice_make_custom(v);           /* wrap through the custom slot */
+        v->algorithm = FM_ALGO_CUSTOM;     /* wrap through the custom slot */
         return v->algorithm;
     }
     v->algorithm = (uint8_t)a;

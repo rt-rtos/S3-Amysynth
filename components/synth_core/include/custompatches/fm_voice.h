@@ -20,7 +20,8 @@ extern "C" {
  *
  * Routing comes from one of two sources:
  *   algorithm < FM_ALGO_CUSTOM : AMY algorithms[] row (DX7 numbering, row 0
- *                                aliases row 1); op_targets/fb_op are ignored.
+ *                                aliases row 1); op_targets/fb_op are ignored
+ *                                but kept.
  *   algorithm == FM_ALGO_CUSTOM: the authored op_targets[] + fb_op,
  *                                compiled onto AMY's two buses at push time.
  * op_targets[i] is operator i's target set in the fm_graph_view_t.out_mask
@@ -134,8 +135,9 @@ bool fm_voice_set_op_targets(fm_voice_t *v, uint8_t op, uint8_t mask, fm_route_e
 bool fm_voice_set_fb_op(fm_voice_t *v, uint8_t fb_op);
 
 /* Step the algorithm through table rows 1..N-1 then FM_ALGO_CUSTOM (wrapping).
- * Entering custom seeds op_targets/fb_op from the row being left. Returns the
- * new `algorithm` value. */
+ * op_targets/fb_op are not touched: stepping onto custom plays the topology
+ * last authored (or last seeded by a setter above), however many table rows
+ * were visited in between. Returns the new `algorithm` value. */
 uint8_t fm_voice_step_algorithm(fm_voice_t *v, int dir);
 
 #ifdef __cplusplus
