@@ -264,9 +264,13 @@ SAMPLE render_algo(SAMPLE* buf, uint16_t osc, uint8_t core) {
         // As with mod_source, an algo_source osc can have been freed since it
         // was named, leaving synth[] NULL; render_algo is reached past
         // amy_render's null skip.
+        // LOCAL EDIT (S3-Amysynth): an operator with a zero CONST amp coef is
+        // off, as in render_osc_wave. amp_combine_controls skips zero coefs,
+        // so without this test it would render at unity gain.
         if(AMY_IS_SET(synth[osc]->algo_source[op])
            && synth[synth[osc]->algo_source[op]] != NULL
-           && synth[synth[osc]->algo_source[op]]->role == SYNTH_IS_ALGO_SOURCE) {
+           && synth[synth[osc]->algo_source[op]]->role == SYNTH_IS_ALGO_SOURCE
+           && synth[synth[osc]->algo_source[op]]->amp_coefs[COEF_CONST] != 0) {
             value = render_mod(in_buf, out_buf, synth[osc]->algo_source[op], feedback_level, osc, mod_amp);
         } // If osc is not set, output has already been cleared.
         if (out_buf == buf && value > max_value)  max_value = value;

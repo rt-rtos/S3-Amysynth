@@ -70,6 +70,7 @@ mindmap
     c6{{"`**Behaviour fixes**`"}}
       Periodic-entry horizon
       reset_osc keeps the bus
+      Zero-level FM operator is off
     c7{{"`**Build and diagnostics**`"}}
       Kconfig flags
       CMake settings
@@ -489,6 +490,28 @@ App consumers: `custompatches/fm_voice.c` (publish/read), `custompatches/fm_grap
 **Rollback:** drop the two functions + `custom_algorithms`/`algorithm_for` in
 `algorithms.c`, restore `algorithms[synth[osc]->algorithm]` in `render_algo`, drop the
 prototypes/define in `amy.h`; the FM custom-topology mode then has nowhere to render.
+
+### `algorithms.c` - an FM operator with a zero CONST amp coef is off (upstream PR candidate)
+
+`render_algo` skips an `algo_source` osc whose `amp_coefs[COEF_CONST]` is 0, the
+test `render_osc_wave` applies to every other osc. `amp_combine_controls` skips
+zero coefs, and for CONST the coef is the value, so `a0` on an operator leaves
+only its EG term and the operator renders at unity gain: `render_mod` calls
+`hold_and_modify` without going through `render_osc_wave`. Host render of the
+app's FM voice on algorithm 1, peak block RMS of one note: all six operators at
+CONST 0 gave 699.2, the same as all six at 1.0; with the test it gives 0.0. The
+default voice (four operators at 0) went from 471.3 to 417.5, the value it has
+with those four at 1e-9. Upstream's DX7 patches never send an exact 0
+(`dx7level_to_linear(0)` is 2^(-99/8)), so they are unaffected. A skipped
+operator's envelope still runs from its note-on clock, so clearing the zero
+mid-note resumes at the right envelope position. App consumer:
+`custompatches/fm_voice.c` (operator level 0 and the audition mute). The same
+unity result applies to a mod-source osc with CONST 0 (`compute_mod_scale` also
+calls `hold_and_modify` directly); not changed here. Not posted upstream.
+
+**Rollback:** drop the `amp_coefs[COEF_CONST] != 0` term from the `algo_source`
+test in `render_algo`; `fm_voice.c` then has to send a nonzero level below
+`MAP_60DB_MIN_LIN` for a silent operator.
 
 ### `pcm.c` — retrig fade-restart (gated; replaces the zero-cross defer by default)
 
