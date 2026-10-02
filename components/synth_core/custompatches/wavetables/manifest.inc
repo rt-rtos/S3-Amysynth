@@ -3,7 +3,7 @@
  * pull in the tables, then again with WT_ENTRY(symbol, label, frames)
  * defined to enumerate them. */
 #ifdef WT_MANIFEST_INCLUDES
-#include "quadsaw.h"
+#include "quadsawcomb.h"
 #else
-WT_ENTRY(quadsaw, "quadsaw", 64)
+WT_ENTRY(quadsawcomb, "QuadSawComb", 64)
 #endif
