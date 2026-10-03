@@ -141,7 +141,7 @@ on click.
 
 | Page | Rows |
 |---|---|
-| Layer | Steps, Swing, Patch scope, Gate, Glide, Groove, Chord, Root, Type, Track, Repeat, Mute, Solo, ClrSolo (action, present only while something is soloed). Drum layers show `--` for melodic-only rows |
+| Layer | Steps, Swing, Patch scope, Gate, Glide, Groove, Chord, Root, Type, Track, Follow, Repeat, Mute, Solo, ClrSolo (action, present only while something is soloed). Drum layers show `--` for melodic-only rows |
 | Chords | Slot list CH1..CH8; a slot opens Root, Type, Clear. Every edit commits at once and auditions |
 | Bounce | Shape rows (slot, bars, format, tail, after), Rec, Cancel, Undo, four rows per clip slot (play/mute, level, tempo, clear), Sample and its cancel |
 | Prog Gen | Root, Scale, Arp Q, Style, Length, Bars, Ext, Var, Seed, Generate, Undo |
@@ -265,6 +265,11 @@ Both are a scrollable parameter list.
 | Button 2 (press) | Append an entry |
 | Button 0 (hold) | Play / stop. A tap does nothing |
 | Button 3 (tap) | Menu |
+
+While the progression is on, each melodic row follows it by its Layer page
+Follow setting: CHORD voices the row onto the live chord (the default), ROOT
+keeps the row's scale line and moves it by the nearest interval to each
+chord's root, OFF ignores the progression.
 
 ## FM screen
 

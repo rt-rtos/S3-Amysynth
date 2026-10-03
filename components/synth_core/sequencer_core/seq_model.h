@@ -40,6 +40,15 @@ typedef enum {
     SEQ_REPEAT_8  = 8,
 } seq_repeat_rate_t;
 
+/* ── Per-row chord progression follow (seq_layer_t.follow), melodic only ──
+ * Semantics: sequencer_core_set_track_follow (sequencer_core.h). */
+typedef enum {
+    SEQ_FOLLOW_CHORD = 0,
+    SEQ_FOLLOW_ROOT,
+    SEQ_FOLLOW_OFF,
+    SEQ_FOLLOW_COUNT,
+} seq_follow_t;
+
 /* ── Per-step ratchet (sub-trigger count within one step's slot) ──
  * 1 = plain single trigger (default). >1 subdivides the step into that many
  * evenly-spaced hits, each with its own short gate. */
@@ -420,7 +429,9 @@ typedef struct {
                                              a flag here silences the other
                                              layers too. Overrides mute on the
                                              soloed track(s) themselves.        */
-    bool      chord_mode;                /* false = scale quantizer (default) */
+    uint8_t   follow[SEQ_TRACKS];        /* seq_follow_t per row; memset 0 =
+                                            CHORD (voiced onto the chord)      */
+    bool      chord_mode;               /* false = scale quantizer (default) */
     uint8_t   chord_root;                /* chromatic 0-11 (C=0)              */
     chord_type_t chord_type;
     uint8_t   swing_pct;                 /* 0..SEQ_SWING_MAX: odd 16th steps are

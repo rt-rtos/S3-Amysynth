@@ -334,6 +334,7 @@ static void seq_grow_melodic_row(uint8_t idx, seq_layer_t *layer, uint8_t t,
     layer->repeat_rate[t] = 0;
     layer->mute[t]        = false;
     layer->solo[t]        = false;
+    layer->follow[t]      = SEQ_FOLLOW_CHORD;
     for (uint8_t s = 0; s < SEQ_MAX_STEPS; s++) {
         layer->grid[t][s]               = layer->grid[src][s];
         layer->step_pitch_ofs[t][s]     = layer->step_pitch_ofs[src][s];
@@ -364,6 +365,7 @@ static void seq_grow_drum_row(uint8_t idx, seq_layer_t *layer, uint8_t t,
     layer->repeat_rate[t] = 0;
     layer->mute[t]        = false;
     layer->solo[t]        = false;
+    layer->follow[t]      = SEQ_FOLLOW_CHORD;
     uint8_t n = layer->track_base_note[src];
     s_track_source_note[idx][t] = s_track_source_note[idx][src];
     s_track_prev_plain[idx][t]  = s_track_prev_plain[idx][src];

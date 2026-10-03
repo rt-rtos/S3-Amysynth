@@ -222,21 +222,47 @@ int sequencer_chord_transpose_root(const seq_layer_t *layer, uint8_t root)
     return (int)root - (int)s_prog.entries[0].root;
 }
 
-uint8_t seq_track_fire_notes_root(const seq_layer_t *layer, uint8_t stored_note,
-                                  uint8_t root, uint8_t out[SEQ_CHORD_MAX_NOTES])
+/* Per-row transpose under the row's follow mode. CHORD keeps the raw delta
+ * above (plain CHORD rows are voiced by seq_resolve_layer_rows instead and never
+ * take it); ROOT folds it to the nearest interval, -6..+5, so a line moves by
+ * the smallest step to the live root; OFF ignores the progression. */
+int sequencer_row_transpose(const seq_layer_t *layer, uint8_t track, uint8_t root)
+{
+    switch ((seq_follow_t)layer->follow[track]) {
+        case SEQ_FOLLOW_ROOT: {
+            int d = sequencer_chord_transpose_root(layer, root);
+            return ((d % 12) + 12 + 6) % 12 - 6;
+        }
+        case SEQ_FOLLOW_OFF:
+            return 0;
+        case SEQ_FOLLOW_CHORD:
+        default:
+            return sequencer_chord_transpose_root(layer, root);
+    }
+}
+
+uint8_t seq_track_fire_notes_root(const seq_layer_t *layer, uint8_t track,
+                                  uint8_t stored_note, uint8_t root,
+                                  uint8_t out[SEQ_CHORD_MAX_NOTES])
 {
     if (!SEQ_NOTE_IS_CHORD(stored_note)) {
-        out[0] = stored_note;
+        if (layer->follow[track] == SEQ_FOLLOW_ROOT) {
+            int n = (int)stored_note + sequencer_row_transpose(layer, track, root);
+            out[0] = sequencer_clamp_layer_note(layer,
+                                                (uint8_t)SEQ_CLAMP_INT(n, 0, 127));
+        } else {
+            out[0] = stored_note;
+        }
         return 1;
     }
     return seq_chords_resolve(SEQ_CHORD_INDEX(stored_note),
-                              sequencer_chord_transpose_root(layer, root), out);
+                              sequencer_row_transpose(layer, track, root), out);
 }
 
-uint8_t seq_track_fire_notes(const seq_layer_t *layer, uint8_t stored_note,
-                             uint8_t out[SEQ_CHORD_MAX_NOTES])
+uint8_t seq_track_fire_notes(const seq_layer_t *layer, uint8_t track,
+                             uint8_t stored_note, uint8_t out[SEQ_CHORD_MAX_NOTES])
 {
-    return seq_track_fire_notes_root(layer, stored_note, layer->chord_root, out);
+    return seq_track_fire_notes_root(layer, track, stored_note, layer->chord_root, out);
 }
 
 float sequencer_step_velocity(const seq_layer_t *layer,
@@ -346,12 +372,17 @@ uint8_t sequencer_resolve_track_note_chord(const seq_layer_t *layer,
         return sequencer_clamp_layer_note(layer, snapped);
     }
 
+    return seq_resolve_scale_note(layer, source_note);
+}
+
+uint8_t seq_resolve_scale_note(const seq_layer_t *layer, uint8_t note)
+{
     if (!s_quantizer.enabled) {
-        return sequencer_clamp_layer_note(layer, source_note);
+        return sequencer_clamp_layer_note(layer, note);
     }
 
     const musical_scale_t *scale = quantizer_get_scale(s_quantizer.scale_index);
-    uint8_t snapped = quantizer_snap_midi_note(source_note, s_quantizer.root_note, scale);
+    uint8_t snapped = quantizer_snap_midi_note(note, s_quantizer.root_note, scale);
     return sequencer_clamp_layer_note(layer, snapped);
 }
 
@@ -373,9 +404,10 @@ void seq_resolve_layer_rows(uint8_t layer_idx, uint8_t root,
         return;
     }
 
-    /* Chord mode: the plain rows are voiced together, so they share the
-     * chord's tones instead of each snapping to its own nearest one. Chord
-     * preset rows pass through and take no part. */
+    /* Chord mode: the plain CHORD-follow rows are voiced together, so they
+     * share the chord's tones instead of each snapping to its own nearest one.
+     * Chord preset rows pass through and take no part; ROOT and OFF rows keep
+     * the scale resolution (ROOT transposes it at fire time). */
     uint8_t refs[SEQ_TRACKS] = {0};
     uint8_t voiced[SEQ_TRACKS];
     uint8_t rows[SEQ_TRACKS];
@@ -383,6 +415,8 @@ void seq_resolve_layer_rows(uint8_t layer_idx, uint8_t root,
     for (uint8_t t = 0; t < n; t++) {
         if (SEQ_NOTE_IS_CHORD(src[t])) {
             out[t] = src[t];
+        } else if (layer->follow[t] != SEQ_FOLLOW_CHORD) {
+            out[t] = seq_resolve_scale_note(layer, src[t]);
         } else {
             rows[nplain] = t;
             refs[nplain++] = src[t];
@@ -596,7 +630,7 @@ static void seq_apply_track_note(uint8_t layer_idx, uint8_t track,
      * extra tones on the chord pairs, pairs past the tone count cleared so a
      * shrink cannot leave a stale higher tone pending. */
     uint8_t tones[SEQ_CHORD_MAX_NOTES];
-    uint8_t ntones = seq_track_fire_notes(layer, resolved_note, tones);
+    uint8_t ntones = seq_track_fire_notes(layer, track, resolved_note, tones);
     if (ntones == 0) return;   /* undefined chord slot: nothing to audition */
 
     float preview_vel = sequencer_step_velocity(layer, track, 0)
@@ -1131,6 +1165,28 @@ bool sequencer_core_get_track_mute(uint8_t layer_idx, uint8_t track)
 {
     if (layer_idx >= s_num_layers || track >= SEQ_TRACKS) return false;
     return s_layers[layer_idx].mute[track];
+}
+
+void sequencer_core_set_track_follow(uint8_t layer_idx, uint8_t track,
+                                     seq_follow_t mode)
+{
+    if (layer_idx >= s_num_layers || track >= SEQ_TRACKS) return;
+    if ((unsigned)mode >= SEQ_FOLLOW_COUNT) return;
+    seq_layer_t *layer = &s_layers[layer_idx];
+    if (layer->type != SEQ_LAYER_MELODIC) return;
+    if (layer->follow[track] == (uint8_t)mode) return;
+    layer->follow[track] = (uint8_t)mode;
+    /* Voicing membership changed, so the whole layer re-resolves; the row
+     * re-emits even when its resolved note did not move, because ROOT flips
+     * the decorated/plain split. */
+    sequencer_refresh_track_note(layer_idx, track, false);
+    if (track < layer->num_tracks) sequencer_emit_track(layer_idx, track);
+}
+
+seq_follow_t sequencer_core_get_track_follow(uint8_t layer_idx, uint8_t track)
+{
+    if (layer_idx >= s_num_layers || track >= SEQ_TRACKS) return SEQ_FOLLOW_CHORD;
+    return (seq_follow_t)s_layers[layer_idx].follow[track];
 }
 
 /* Re-emit every layer and hard-kill whatever just went inaudible: a note

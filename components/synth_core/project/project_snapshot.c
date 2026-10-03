@@ -49,7 +49,7 @@ static const char *TAG = "project_snapshot";
 
 /* LAYR section version: the writer's tag and the loader's only accepted
  * value. */
-#define LAYR_VERSION 21
+#define LAYR_VERSION 22
 
 _Static_assert(SEQ_TRACKS == 5 && SEQ_MAX_STEPS == 32,
                "LAYR format assumes 5x32; bump LAYR_VERSION");
@@ -429,6 +429,7 @@ static void ser_layer(tlv_writer_t *w, const seq_layer_t *L)
         tlv_put_u8(w, L->repeat_rate[t]);
         tlv_put_u8(w, L->mute[t] ? 1 : 0);
         tlv_put_u8(w, L->solo[t] ? 1 : 0);
+        tlv_put_u8(w, L->follow[t]);
         ser_vp(w, &L->vp[t]);
     }
     tlv_put_bytes(w, L->grid,               sizeof L->grid);
@@ -506,6 +507,8 @@ static bool parse_layer(tlv_reader_t *b, seq_layer_t *L)
         { uint8_t v; if (!tlv_get_u8(b, &v)) return false; L->repeat_rate[t] = v; }
         { uint8_t v; if (!tlv_get_u8(b, &v)) return false; L->mute[t] = v != 0; }
         { uint8_t v; if (!tlv_get_u8(b, &v)) return false; L->solo[t] = v != 0; }
+        { uint8_t v; if (!tlv_get_u8(b, &v)) return false;
+          L->follow[t] = (v >= SEQ_FOLLOW_COUNT) ? (uint8_t)SEQ_FOLLOW_CHORD : v; }
         if (!de_vp(b, &L->vp[t])) return false;
     }
 

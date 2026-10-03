@@ -796,6 +796,27 @@ void              sequencer_core_set_track_repeat_rate(uint8_t layer_idx,
 seq_repeat_rate_t sequencer_core_get_track_repeat_rate(uint8_t layer_idx,
                                                        uint8_t track);
 
+/* ── Per-track chord progression follow (melodic rows) ────────────────────
+ * How a row reacts while its layer is in chord mode (the progression forces
+ * chord mode on every melodic layer). The transpose below is entry 0's root
+ * to the live chord root, and 0 whenever the progression is off or empty or
+ * the layer is not in chord mode.
+ *   CHORD  plain rows are voiced together onto the live chord; chord-slot
+ *          rows transpose rigidly by the raw root delta. The default.
+ *   ROOT   plain rows resolve against the global scale quantizer and keep
+ *          that line, moved per fire by the root delta folded to the nearest
+ *          interval (-6..+5); chord-slot rows take the same folded delta.
+ *   OFF    plain rows resolve against the global scale quantizer as on a
+ *          non-chord layer; chord-slot rows are not transposed.
+ * Setter: same execution context as sequencer_core_set_track_mute (the UI /
+ * input tasks). No-op for an invalid layer or track, a drum layer, a mode >=
+ * SEQ_FOLLOW_COUNT, or an unchanged value. On a change the layer's rows are
+ * re-resolved and the row's steps re-emitted (ROOT rows take the decorated
+ * path). Getter: SEQ_FOLLOW_CHORD for invalid indexes. */
+void         sequencer_core_set_track_follow(uint8_t layer_idx, uint8_t track,
+                                             seq_follow_t mode);
+seq_follow_t sequencer_core_get_track_follow(uint8_t layer_idx, uint8_t track);
+
 /* ── Per-layer swing / shuffle ────────────────────────────────────────────
  * Delays odd 16th-steps by swing_pct% of one step (0..SEQ_SWING_MAX), whole
  * layer, 0 = straight. Re-emits the layer so AMY reschedules every step at its

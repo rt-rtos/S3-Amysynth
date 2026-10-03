@@ -1,7 +1,7 @@
 """Reader/writer for S3-Amysynth project files (Pnn.amp).
 
 Mirrors components/synth_core/project/project_snapshot.c field for field:
-GLOB v5, LAYR v21, ARP v13, DRON v1, PROG v1, CHRD v1, CLIP v2, PGEN v1,
+GLOB v5, LAYR v22, ARP v13, DRON v1, PROG v1, CHRD v1, CLIP v2, PGEN v1,
 inside project_store.c's 32-byte header (magic "AMYP", fmt 1, name, len, CRC32).
 Field order IS the format; when the firmware bumps a section version, update
 the matching read_/write_ pair and VER here (gen_templates.py fails the build
@@ -18,7 +18,7 @@ FMT_VERSION = 1
 NAME_LEN = 16
 
 TAG = {k: struct.unpack('<I', k.encode())[0] for k in ('GLOB', 'LAYR', 'ARP ', 'DRON', 'PROG', 'CHRD', 'CLIP', 'PGEN')}
-VER = {'GLOB': 5, 'LAYR': 21, 'ARP ': 13, 'DRON': 1, 'PROG': 1, 'CHRD': 1, 'CLIP': 2, 'PGEN': 1}
+VER = {'GLOB': 5, 'LAYR': 22, 'ARP ': 13, 'DRON': 1, 'PROG': 1, 'CHRD': 1, 'CLIP': 2, 'PGEN': 1}
 
 SEQ_TRACKS = 5
 SEQ_MAX_STEPS = 32
@@ -110,7 +110,8 @@ def default_layer(kind):
     return dict(type=kind, num_steps=16, patch=0, synth_flags=0, num_voices=1, chord_mode=False,
                 chord_root=0, chord_type=0, swing_pct=0,
                 tracks=[dict(base_note=60, patch=0, pcm_preset=0, pcm_mode=0, repeat_rate=1,
-                             mute=False, solo=False, vp=default_vp()) for _ in range(SEQ_TRACKS)],
+                             mute=False, solo=False, follow=0, vp=default_vp())
+                        for _ in range(SEQ_TRACKS)],
                 grid=grid(0), step_note=grid(60), step_pitch_ofs=grid(0), step_prob=grid(100),
                 step_ratchet=grid(1), step_every=grid(1), step_prev=grid(0), step_transform=grid(0),
                 step_quant_bypass=grid(0), step_nudge=grid(0), step_velocity_adj=grid(0),
@@ -249,6 +250,7 @@ def w_layr(L):
         T = L['tracks'][t]
         w.u8(T['base_note']); w.u16(T['patch']); w.u16(T['pcm_preset']); w.u8(T['pcm_mode'])
         w.u8(T['repeat_rate']); w.u8(1 if T['mute'] else 0); w.u8(1 if T['solo'] else 0)
+        w.u8(T['follow'])
         w_vp(w, T['vp'])
     for k, fmt in STEP_ARRAYS:
         for t in range(SEQ_TRACKS):
@@ -268,7 +270,8 @@ def r_layr(r):
              tracks=[])
     for t in range(SEQ_TRACKS):
         L['tracks'].append(dict(base_note=r.u8(), patch=r.u16(), pcm_preset=r.u16(), pcm_mode=r.u8(),
-                                repeat_rate=r.u8(), mute=r.u8() != 0, solo=r.u8() != 0, vp=r_vp(r)))
+                                repeat_rate=r.u8(), mute=r.u8() != 0, solo=r.u8() != 0,
+                                follow=r.u8(), vp=r_vp(r)))
     for k, fmt in STEP_ARRAYS:
         L[k] = [list(struct.unpack('<%d%s' % (SEQ_MAX_STEPS, fmt), r.raw(SEQ_MAX_STEPS)))
                 for _ in range(SEQ_TRACKS)]

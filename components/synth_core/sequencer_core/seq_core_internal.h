@@ -228,18 +228,23 @@ uint32_t sequencer_bars_elapsed_ahead(uint32_t ahead_ticks);
 
 /* From seq_core_engine.c - chord expansion shared with seq_core_trig.c.
  * seq_track_fire_notes resolves what a stored (possibly sentinel) note fires:
- * 1 plain note, or n transposed and clamped chord tones. Returns the tone
- * count; 0 = undefined chord slot, fire nothing. sequencer_chord_transpose_root
+ * 1 plain note (moved by the row transpose on a ROOT-follow row), or n
+ * transposed and clamped chord tones. Returns the tone count; 0 = undefined
+ * chord slot, fire nothing. track < SEQ_TRACKS. sequencer_chord_transpose_root
  * is the progression offset: `root` relative to entry 0's root while the
  * progression is enabled and the layer is in chord mode, else 0.
+ * sequencer_row_transpose is that offset under the row's follow mode
+ * (seq_follow_t: CHORD raw, ROOT folded to -6..+5, OFF 0).
  * seq_track_fire_notes_root takes the chord root explicitly instead of the
  * layer's live one (a decorated step resolved ahead of a chord change); same
  * obligations and guarantees otherwise. */
-uint8_t seq_track_fire_notes(const seq_layer_t *layer, uint8_t stored_note,
-                             uint8_t out[SEQ_CHORD_MAX_NOTES]);
-uint8_t seq_track_fire_notes_root(const seq_layer_t *layer, uint8_t stored_note,
-                                  uint8_t root, uint8_t out[SEQ_CHORD_MAX_NOTES]);
+uint8_t seq_track_fire_notes(const seq_layer_t *layer, uint8_t track,
+                             uint8_t stored_note, uint8_t out[SEQ_CHORD_MAX_NOTES]);
+uint8_t seq_track_fire_notes_root(const seq_layer_t *layer, uint8_t track,
+                                  uint8_t stored_note, uint8_t root,
+                                  uint8_t out[SEQ_CHORD_MAX_NOTES]);
 int     sequencer_chord_transpose_root(const seq_layer_t *layer, uint8_t root);
+int     sequencer_row_transpose(const seq_layer_t *layer, uint8_t track, uint8_t root);
 
 /* From seq_core_synth.c */
 void      sequencer_configure_synth(uint8_t layer_idx);
@@ -347,9 +352,13 @@ uint8_t sequencer_resolve_track_note(const seq_layer_t *layer, uint8_t source_no
 uint8_t sequencer_resolve_track_note_chord(const seq_layer_t *layer,
                                            uint8_t source_note, uint8_t root,
                                            chord_type_t chord_type);
+/* The non-chord resolve: global scale quantizer snap while it is enabled, else
+ * clamp only. What a chord-mode layer's ROOT and OFF follow rows resolve to. */
+uint8_t seq_resolve_scale_note(const seq_layer_t *layer, uint8_t note);
 /* Resolve every row of a layer from its source notes (s_track_source_note).
- * For a melodic layer in chord mode, the plain-note rows are voiced together
- * through quantizer_voice_chord with (root, type) and clamped; chord preset
+ * For a melodic layer in chord mode, the plain CHORD-follow rows are voiced
+ * together through quantizer_voice_chord with (root, type) and clamped; ROOT
+ * and OFF rows take seq_resolve_scale_note; chord preset
  * rows pass through untouched and take no part. Other layers resolve each row
  * as sequencer_resolve_track_note does, ignoring root/type. Obligations:
  * layer_idx < s_num_layers. Guarantees: out[t] written for t < num_tracks,

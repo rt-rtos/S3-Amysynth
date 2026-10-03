@@ -199,6 +199,9 @@ def constant_checks(fw):
     for sym in ('LAYER', 'TRACK'):
         checks.append(('SCOPE_' + sym, getattr(S, 'SCOPE_' + sym), SEQ_MODEL_H, e,
                        'SEQ_PATCH_SCOPE_' + sym))
+    for sym in ('CHORD', 'ROOT', 'OFF'):
+        checks.append(('FOLLOW_' + sym, getattr(S, 'FOLLOW_' + sym), SEQ_MODEL_H, e,
+                       'SEQ_FOLLOW_' + sym))
     for sym in ('1_1', '1_4', '1_8', '1_16', '1_32'):
         checks.append(('ARP_RATE_' + sym, getattr(S, 'ARP_RATE_' + sym), ARP_H, e, 'ARP_RATE_' + sym))
     for sym in ('UP', 'DOWN', 'SLOT'):

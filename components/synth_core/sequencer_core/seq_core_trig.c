@@ -130,13 +130,17 @@ bool sequencer_core_step_is_decorated(const seq_layer_t *layer, uint8_t track, u
      * periodic tag pair at a fixed pitch, while a chord fires up to
      * SEQ_CHORD_MAX_NOTES tones whose pitches (progression transpose) and count
      * (live table edits) resolve per fire. One-shots self-consume, so chords
-     * add no resident periodic events and cannot leave a tag ringing. */
+     * add no resident periodic events and cannot leave a tag ringing. A
+     * ROOT-follow melodic row is decorated for the same reason: its progression
+     * transpose resolves per fire. */
     return layer->step_prob[track][step]      != 100
         || layer->step_ratchet[track][step]   != 1
         || layer->step_every[track][step]     > 1
         || layer->step_prev[track][step]      != 0
         || layer->step_transform[track][step] != (uint8_t)SEQ_STEP_TRANSFORM_NONE
-        || SEQ_NOTE_IS_CHORD(layer->step_note[track][step]);
+        || SEQ_NOTE_IS_CHORD(layer->step_note[track][step])
+        || (layer->type == SEQ_LAYER_MELODIC &&
+            layer->follow[track] == SEQ_FOLLOW_ROOT);
 }
 
 void sequencer_core_trig_reset(uint8_t layer_idx)
@@ -272,7 +276,7 @@ void trig_schedule_ratchets(uint8_t layer_idx, const seq_layer_t *layer,
         stored = rows[track];
     }
     uint8_t tones[SEQ_CHORD_MAX_NOTES];
-    uint8_t ntones = seq_track_fire_notes_root(layer, stored, chord_root, tones);
+    uint8_t ntones = seq_track_fire_notes_root(layer, track, stored, chord_root, tones);
     if (ntones == 0) return;   /* undefined chord slot: fire nothing */
 
     int toff;
@@ -282,11 +286,19 @@ void trig_schedule_ratchets(uint8_t layer_idx, const seq_layer_t *layer,
                 tones[i] = sequencer_core_clamp_melodic_note((int32_t)tones[i] + toff);
             }
         } else {
+            /* Re-snap by follow mode: ROOT already sits on its transposed scale
+             * line, so it clamps only; OFF snaps to the scale, not the chord. */
             int tn = SEQ_CLAMP_INT((int)tones[0] + toff, 0, 127);
-            tones[0] = layer->step_quant_bypass[track][step]
-                     ? sequencer_clamp_layer_note(layer, (uint8_t)tn)
-                     : sequencer_resolve_track_note_chord(layer, (uint8_t)tn,
-                                                          chord_root, chord_type);
+            uint8_t follow = layer->type == SEQ_LAYER_MELODIC
+                           ? layer->follow[track] : (uint8_t)SEQ_FOLLOW_CHORD;
+            if (layer->step_quant_bypass[track][step] || follow == SEQ_FOLLOW_ROOT) {
+                tones[0] = sequencer_clamp_layer_note(layer, (uint8_t)tn);
+            } else if (follow == SEQ_FOLLOW_OFF) {
+                tones[0] = seq_resolve_scale_note(layer, (uint8_t)tn);
+            } else {
+                tones[0] = sequencer_resolve_track_note_chord(layer, (uint8_t)tn,
+                                                              chord_root, chord_type);
+            }
         }
     }
     /* Per-step pitch offset, applied last so the transform's re-snap above
