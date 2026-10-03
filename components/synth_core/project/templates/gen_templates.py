@@ -30,7 +30,7 @@ import amp_codec as C  # noqa: E402
 import spec_lib as S  # noqa: E402
 
 GENRES = ('house', 'techno', 'dub_techno', 'electro', 'boom_bap', 'trap', 'drum_n_bass',
-          'synthwave', 'ambient')
+          'synthwave', 'ambient', 'crystal', 'witch_house', 'dreamwave')
 
 # Firmware sources, relative to the components directory.
 SNAPSHOT_C = 'synth_core/project/project_snapshot.c'
