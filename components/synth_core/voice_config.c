@@ -196,6 +196,33 @@ static float unison_group_gain(uint8_t n, uint8_t group, float blend)
     return unison_amp_norm(n, blend) * sqrtf(sum);
 }
 
+/* Engine cluster pan: 0.5 -/+ a. A cluster cannot place its copies one by one,
+ * so the pair matches the fan's stereo WIDTH instead: under AMY's equal-power
+ * pan (gains sqrt(1-p), sqrt(p)) uncorrelated copies at pans p_i give an L/R
+ * correlation of sum w_i^2 sqrt(1 - (spread*s_i)^2) / sum w_i^2, and two
+ * clusters at 0.5 -/+ a give sqrt(1 - 4a^2); a solves the two equal. Count 2
+ * lands on the outermost positions, wider counts further in. Host sim against
+ * the fan at counts 2-6, spread 50/100, blend 60/100: correlation within 0.04
+ * (outermost positions: up to 0.8 off). The image itself still differs - the
+ * fan maps pitch to position, the clusters interleave. */
+static float unison_engine_pan(const voice_unison_t *u, uint8_t group, uint8_t n)
+{
+    float spread = (float)u->spread_pct / 100.0f;
+    float blend  = (float)u->blend_pct / 100.0f;
+    float num = 0.0f, den = 0.0f, num_eq = 0.0f;
+    for (uint8_t i = 0; i < n; i++) {
+        float p  = spread * unison_pos(i, n);
+        float c  = sqrtf(1.0f - p * p);
+        float w2 = unison_weight(i, n, blend);
+        w2 *= w2;
+        num += w2 * c; den += w2; num_eq += c;
+    }
+    /* Same zero-weight fallback as unison_amp_norm: equal weights. */
+    float corr = (den < 1e-6f) ? num_eq / (float)n : num / den;
+    float a = 0.5f * sqrtf(fmaxf(0.0f, 1.0f - corr * corr));
+    return group ? (0.5f + a) : (0.5f - a);
+}
+
 static void unison_engine_coefs(amy_event *e, uint8_t group, uint8_t n,
                                 const voice_unison_t *u, float base_amp)
 {
@@ -206,7 +233,7 @@ static void unison_engine_coefs(amy_event *e, uint8_t group, uint8_t n,
     e->unison_spacing = 4.0f * d * grid;
     e->unison_offset  = -d + 2.0f * (float)group * d * grid;
     e->unison_blend   = blend;
-    e->pan_coefs[COEF_CONST] = unison_head_pan(u, group);
+    e->pan_coefs[COEF_CONST] = unison_engine_pan(u, group, n);
     e->amp_coefs[COEF_CONST] = base_amp * unison_group_gain(n, group, blend);
     /* Start phase i/n per grid copy, as unison_copy_coefs: the engine
      * respreads copy k of a group from its copy 0 by k/(n/2), so copy 0 at
