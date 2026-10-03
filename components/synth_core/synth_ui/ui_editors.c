@@ -9,6 +9,7 @@
 #endif
 #include "synth_ui/eg_shape.h"
 #include "graph_popup.h"
+#include "display_env.h"
 #include "filter_graph.h"
 #include "display_lfo.h"
 #include "display_dist.h"
@@ -269,9 +270,6 @@ static float graph_xstep(uint8_t idx, float x, long delta)
     return graph_ms_to_x((uint32_t)(cum + 0.5f));
 }
 
-/* Dual-colour panel: rows 0..15 are yellow (context bar), plot fills 16..63. */
-#define GRAPH_TOPBAR_H 16
-
 /* ── Auto-decay rule (derived-decay mode only) ───────────────────────────────
  * With CONFIG_SEQ_ADSR_EXPLICIT_DECAY OFF the decay TIME is derived: the
  * sustain point is Y-only in the widget and its X is recomputed here from
@@ -299,8 +297,8 @@ static void graph_popup_ensure_init(void)
 {
     if (s_graph_popup_inited) return;
     /* Full-screen plot under the yellow context bar (rows 16..63). */
-    graph_popup_init(&s_graph_popup, 0, GRAPH_TOPBAR_H, 128,
-                     (uint8_t)(64 - GRAPH_TOPBAR_H));
+    graph_popup_init(&s_graph_popup, 0, ENV_TOPBAR_H, 128,
+                     (uint8_t)(64 - ENV_TOPBAR_H));
     graph_popup_set_style(&s_graph_popup, GPOPUP_STYLE_ADSR);
     graph_sync_min_gap();
     /* Shape reads s_graph_eg_type_disp at draw time, so type cycles retint
@@ -2694,37 +2692,34 @@ uint32_t graph_view_signature(void)
 
 /* ── Draw wrappers (encapsulate private editor state from synth_ui_task) ── */
 
-/* Draw the yellow context top bar (rows 0..15) for the envelope editor. */
-static void graph_draw_topbar(u8g2_t *u8g2)
+/* Fill the envelope editor view (display_env.h) from the editor state. */
+static void graph_build_view(env_view_t *v)
 {
-    char buf[24];
+    memset(v, 0, sizeof(*v));
 
     /* Left: target label plus which breakpoint generator (EG0/EG1) is shown. */
-    u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
     const char *eg_tag = (s_graph_eg_index == 1) ? "EG1" : "EG0";
     if (s_graph_target == GRAPH_TGT_ARP) {
-        snprintf(buf, sizeof(buf), "ARP %s", eg_tag);
+        snprintf(v->label, sizeof(v->label), "ARP %s", eg_tag);
     } else if (s_graph_target == GRAPH_TGT_DRONE) {
-        snprintf(buf, sizeof(buf), "STUTR %s", eg_tag);
+        snprintf(v->label, sizeof(v->label), "STUTR %s", eg_tag);
     } else if (s_graph_target == GRAPH_TGT_DRONE_STD) {
-        snprintf(buf, sizeof(buf), "DRONE %s", eg_tag);
+        snprintf(v->label, sizeof(v->label), "DRONE %s", eg_tag);
 #if CONFIG_SYNTH_WIRELESS
     } else if (s_graph_target == GRAPH_TGT_LIVE) {
-        snprintf(buf, sizeof(buf), "LIVE %s", eg_tag);
+        snprintf(v->label, sizeof(v->label), "LIVE %s", eg_tag);
 #endif
     } else {
         char badge[4];
         editor_src_badge(s_graph_layer, s_graph_track,
                          (s_graph_eg_index == 1) ? SEQ_VP_GROUP_ENV1 : SEQ_VP_GROUP_ENV,
                          badge);
-        snprintf(buf, sizeof(buf), "L%u T%u %s%s",
+        snprintf(v->label, sizeof(v->label), "L%u T%u %s%s",
                  s_graph_layer + 1, s_graph_track + 1, eg_tag, badge);
     }
-    u8g2_DrawStr(u8g2, 2, 8, buf);
 
-    /* The middle point readout and the right-side trim readout share the
-     * 60..126 px band, so only one may draw per frame or they overlap into
-     * doubled text. Point selection is resolved first. */
+    /* The middle point readout and the right-side readout share one band, so
+     * only one is filled per frame. Point selection is resolved first. */
     gpopup_point_t pts[GPOPUP_MAX_POINTS];
     uint8_t n = graph_popup_get_points(&s_graph_popup, pts, GPOPUP_MAX_POINTS);
     uint8_t c = s_graph_popup.cursor;
@@ -2735,62 +2730,31 @@ static void graph_draw_topbar(u8g2_t *u8g2)
 
     /* Right: the type name while it flashes, else the target stop's depth,
      * layer swing in swing mode, or the amp indicator in amp mode. */
-    uint8_t rw = 0;
     if (type_flash) {
-        /* Inverted pad so it reads as an event, not a label. */
-        const char *tname = graph_eg_type_name(s_graph_eg_type_disp);
-        u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
-        rw = (uint8_t)u8g2_GetStrWidth(u8g2, tname);
-        u8g2_DrawBox(u8g2, (uint8_t)(128 - rw - 4), 0, (uint8_t)(rw + 4), 11);
-        u8g2_SetDrawColor(u8g2, 0);
-        u8g2_DrawStr(u8g2, (uint8_t)(128 - rw - 2), 8, tname);
-        u8g2_SetDrawColor(u8g2, 1);
+        snprintf(v->right, sizeof(v->right), "%s", graph_eg_type_name(s_graph_eg_type_disp));
+        v->right_flash = true;
     } else if (s_graph_eg_tgt >= 0) {
-        char tgt_buf[12];
-        snprintf(tgt_buf, sizeof(tgt_buf), "%s%+.2f", s_eg_tgt_name[s_graph_eg_tgt],
+        snprintf(v->right, sizeof(v->right), "%s%+.2f", s_eg_tgt_name[s_graph_eg_tgt],
                  (double)s_graph_eg_edit[s_graph_eg_index][s_graph_eg_tgt]);
-        u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
-        rw = (uint8_t)u8g2_GetStrWidth(u8g2, tgt_buf);
-        u8g2_DrawStr(u8g2, (uint8_t)(128 - rw - 2), 8, tgt_buf);
     } else if (s_graph_swing_mode) {
         char swg_val[6];
-        char swg_buf[10];
         ui_swing_format(swg_val, sizeof(swg_val), s_graph_swing_edit);
-        snprintf(swg_buf, sizeof(swg_buf), "SWG%s", swg_val);
-        u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
-        rw = (uint8_t)u8g2_GetStrWidth(u8g2, swg_buf);
-        u8g2_DrawStr(u8g2, (uint8_t)(128 - rw - 2), 8, swg_buf);
+        snprintf(v->right, sizeof(v->right), "SWG%s", swg_val);
     } else if (s_graph_amp_mode) {
-        char amp_buf[10];
-        snprintf(amp_buf, sizeof(amp_buf), "AMP%d%%",
+        snprintf(v->right, sizeof(v->right), "AMP%d%%",
                  (int)(s_graph_amp_edit * 100.0f + 0.5f));
-        u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
-        rw = (uint8_t)u8g2_GetStrWidth(u8g2, amp_buf);
-        u8g2_DrawStr(u8g2, (uint8_t)(128 - rw - 2), 8, amp_buf);
-    }
-    /* While a target stop is up, mark which targets the SHOWN envelope drives:
-     * one letter per nonzero depth, just right of the header. Skipped whole
-     * when it would run into the right readout. */
-    if (s_graph_eg_tgt >= 0) {
-        static const char act_ch[SEQ_EGT_COUNT] = { 'P', 'C', 'D', 'M', 'S' };
-        char act[SEQ_EGT_COUNT + 1];
-        uint8_t na = 0;
-        for (uint8_t t = 0; t < SEQ_EGT_COUNT; t++)
-            if (s_graph_eg_edit[s_graph_eg_index][t] != 0.0f) act[na++] = act_ch[t];
-        act[na] = '\0';
-        if (na) {
-            int x = (int)u8g2_GetStrWidth(u8g2, buf) + 2 + 2;   /* header at x=2 */
-            u8g2_SetFont(u8g2, u8g2_font_5x7_tf);
-            int aw = (int)u8g2_GetStrWidth(u8g2, act);
-            if (x + aw < (int)(128 - rw - 4))
-                u8g2_DrawStr(u8g2, (uint8_t)x, 8, act);
-            u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
-        }
     }
 
-    /* No idle-slot fallback: the point readout owns this band whenever the
-     * cursor sits on a point (i.e. always), so the persistent curve-type code
-     * lives in the plot corner instead - see synth_ui_graph_view_draw. */
+    /* While a target stop is up, mark which targets the SHOWN envelope drives:
+     * one letter per nonzero depth. */
+    if (s_graph_eg_tgt >= 0) {
+        static const char act_ch[SEQ_EGT_COUNT] = { 'P', 'C', 'D', 'M', 'S' };
+        _Static_assert(SEQ_EGT_COUNT < sizeof(v->active), "env_view_t.active too small");
+        uint8_t na = 0;
+        for (uint8_t t = 0; t < SEQ_EGT_COUNT; t++)
+            if (s_graph_eg_edit[s_graph_eg_index][t] != 0.0f) v->active[na++] = act_ch[t];
+        v->active[na] = '\0';
+    }
 
     /* Middle: live readout of the selected point's real value (ms / %). */
     if (mid_shown) {
@@ -2798,47 +2762,26 @@ static void graph_draw_topbar(u8g2_t *u8g2)
         uint32_t cum_d = graph_x_to_ms(pts[2].x);
         uint32_t cum_r = graph_x_to_ms(pts[3].x);
         if (c == 1) {
-            snprintf(buf, sizeof(buf), "A %lums", (unsigned long)cum_a);
+            snprintf(v->mid, sizeof(v->mid), "A %lums", (unsigned long)cum_a);
         } else if (c == 2) {
             uint32_t d = (cum_d > cum_a) ? (cum_d - cum_a) : 0;
-            snprintf(buf, sizeof(buf), "D %lums S %u%%",
+            snprintf(v->mid, sizeof(v->mid), "D %lums S %u%%",
                      (unsigned long)d, (unsigned)(pts[2].y * 100.0f + 0.5f));
         } else {
             uint32_t r = (cum_r > cum_d) ? (cum_r - cum_d) : 0;
-            snprintf(buf, sizeof(buf), "R %lums", (unsigned long)r);
+            snprintf(v->mid, sizeof(v->mid), "R %lums", (unsigned long)r);
         }
-        u8g2_SetFont(u8g2, u8g2_font_5x7_tr);
-        uint8_t tw = (uint8_t)u8g2_GetStrWidth(u8g2, buf);
-        /* Between the left label (~x=56) and the right indicator. */
-        int mx = 60 + (int)((128 - 60 - (int)rw - 4 - (int)tw) / 2);
-        if (mx < 60) mx = 60;
-        u8g2_DrawStr(u8g2, (uint8_t)mx, 8, buf);
     }
 
-    /* Divider at the yellow/blue boundary. */
-    u8g2_DrawHLine(u8g2, 0, GRAPH_TOPBAR_H - 1, 128);
+    v->type_code = graph_eg_type_code(s_graph_eg_type_disp);
 }
 
 void synth_ui_graph_view_draw(u8g2_t *u8g2)
 {
+    env_view_t v;
+    graph_build_view(&v);
     u8g2_ClearBuffer(u8g2);
-    u8g2_SetDrawColor(u8g2, 1);
-    graph_draw_topbar(u8g2);
-    graph_popup_draw(u8g2, &s_graph_popup);
-
-    /* Persistent curve-type code, top-right of the plot: the top bar's right
-     * slot is owned by the point readout, so this is the one spot where the
-     * type stays visible while editing. The cleared pad keeps it legible when
-     * the curve passes underneath. */
-    const char *tcode = graph_eg_type_code(s_graph_eg_type_disp);
-    u8g2_SetFont(u8g2, u8g2_font_4x6_tr);
-    uint8_t tw = (uint8_t)u8g2_GetStrWidth(u8g2, tcode);
-    uint8_t tx = (uint8_t)(128 - tw - 2);
-    uint8_t ty = (uint8_t)(GRAPH_TOPBAR_H + 8);
-    u8g2_SetDrawColor(u8g2, 0);
-    u8g2_DrawBox(u8g2, (uint8_t)(tx - 1), (uint8_t)(ty - 6), (uint8_t)(tw + 3), 8);
-    u8g2_SetDrawColor(u8g2, 1);
-    u8g2_DrawStr(u8g2, tx, ty, tcode);
+    env_view_draw(u8g2, &v, &s_graph_popup);
 }
 
 void synth_ui_filter_view_draw(u8g2_t *u8g2)

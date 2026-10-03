@@ -295,5 +295,3 @@ void     synth_ui_graph_view_draw(u8g2_t *u8g2);
 void     synth_ui_filter_view_draw(u8g2_t *u8g2);
 void     synth_ui_lfo_view_draw(u8g2_t *u8g2);
 void     synth_ui_dist_view_draw(u8g2_t *u8g2);
-/* NOTE: graph_draw_topbar is static in ui_editors.c, called only by
- *       synth_ui_graph_view_draw. Do NOT forward-declare it here. */
