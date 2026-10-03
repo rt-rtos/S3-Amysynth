@@ -85,7 +85,8 @@ static void melodic_filter_apply(uint8_t layer_idx, uint8_t track,
  * rails ride the filter and go out only while it is enabled. The DRIVE/MIX
  * rails go out only on an osc-addressed event: AMY reads dist fields on an
  * event that names no osc at bus scope (CONST only) and drops them before the
- * voice fan-out, so those rows get dist_push_eg_depths() instead. */
+ * voice fan-out, so those rows get dist_push_eg_depths() instead. The SCAN
+ * rails never ride this event and go out through scan_push_eg_depths(). */
 static void filter_push_eg_depths(amy_event *e, bool own, const seq_filter_t *f)
 {
     bool dist_ok = AMY_IS_SET(e->osc);
@@ -94,6 +95,7 @@ static void filter_push_eg_depths(amy_event *e, bool own, const seq_filter_t *f)
         for (uint8_t t = 0; t < SEQ_EGT_COUNT; t++) {
             if (t == SEQ_EGT_CUTOFF && !f->enabled) continue;
             if ((t == SEQ_EGT_DRIVE || t == SEQ_EGT_MIX) && !dist_ok) continue;
+            if (t == SEQ_EGT_SCAN) continue;
             float d = f->eg_depth[eg][t];
             if (!own && d == 0.0f) continue;
             switch (t) {
@@ -127,6 +129,32 @@ static void dist_push_eg_depths(uint8_t synth, bool own, const seq_filter_t *f)
         if (own || dm != 0.0f) e->dist_mix_coefs[slot]   = dm;
     }
     amy_helpers_event_send(e);
+}
+
+/* The SCAN rails alone, one event per osc in `mask` (the oscs that render the
+ * wave). Ownership as filter_push_eg_depths(). */
+static void scan_push_eg_depths(uint8_t synth, uint8_t mask, bool own,
+                                const seq_filter_t *f)
+{
+    float d0 = f->eg_depth[0][SEQ_EGT_SCAN];
+    float d1 = f->eg_depth[1][SEQ_EGT_SCAN];
+    if (!mask || (!own && d0 == 0.0f && d1 == 0.0f)) return;
+    for (uint8_t o = 0; (uint8_t)(mask >> o) != 0u; o++) {
+        if (!(mask & (uint8_t)(1u << o))) continue;
+        amy_event *e = amy_helpers_event_begin();
+        e->synth = synth;
+        e->osc   = o;
+        if (own || d0 != 0.0f) e->duty_coefs[COEF_EG0] = d0;
+        if (own || d1 != 0.0f) e->duty_coefs[COEF_EG1] = d1;
+        amy_helpers_event_send(e);
+    }
+}
+
+void sequencer_core_push_eg_scan(uint8_t synth, uint8_t mask,
+                                 const seq_filter_t *f, bool own)
+{
+    if (!f) return;
+    scan_push_eg_depths(synth, mask, own, f);
 }
 
 void sequencer_core_push_eg_depths(uint8_t synth, int osc,
@@ -422,6 +450,15 @@ static void melodic_filter_apply(uint8_t layer_idx, uint8_t track,
      * (authored shape or the seeded default). */
     if (seq_filter_eg1_live(f)) {
         melodic_eg1_push(layer_idx, track, seq_layer_env1(layer_idx, track));
+    }
+
+    if (sequencer_core_is_wavetable_patch(s_layers[layer_idx].track_patch[track])) {
+        seq_voice_layout_t vl;
+        uint8_t mask = seq_track_voice_layout(layer_idx, track, &vl) ? vl.pitch_mask
+                                                                     : 0x01u;
+        bool own = (s_layers[layer_idx].type == SEQ_LAYER_DRUM) ||
+                   seq_track_vp(layer_idx, track)->filter_authored;
+        scan_push_eg_depths(s_layers[layer_idx].synth_id[track], mask, own, f);
     }
 }
 

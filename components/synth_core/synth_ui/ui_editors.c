@@ -143,8 +143,8 @@ static int8_t s_graph_eg_tgt = -1;               /* -1: no target stop up  */
 
 /* Target labels: topbar readout and log take the upper-case form, the hint
  * strip the capitalised one its other labels use. */
-static const char *const s_eg_tgt_name[SEQ_EGT_COUNT] = { "PIT", "CUT", "DRV", "MIX" };
-static const char *const s_eg_tgt_hint[SEQ_EGT_COUNT] = { "Pit", "Cut", "Drv", "Mix" };
+static const char *const s_eg_tgt_name[SEQ_EGT_COUNT] = { "PIT", "CUT", "DRV", "MIX", "SCN" };
+static const char *const s_eg_tgt_hint[SEQ_EGT_COUNT] = { "Pit", "Cut", "Drv", "Mix", "Scn" };
 
 /* Voice-block source (own vs layer block; sequencer_core.h). The editors only
  * query it for the badge, run previews and cancel-restores over the rows
@@ -779,6 +779,40 @@ static bool graph_eg_targets_available(void)
     return s_graph_target == GRAPH_TGT_MELODIC || s_graph_target == GRAPH_TGT_ARP;
 }
 
+/* The SCAN stop exists only where the bound target plays a wavetable patch;
+ * elsewhere the push paths never send it. */
+static bool graph_eg_scan_available(void)
+{
+    uint16_t patch;
+#if CONFIG_SYNTH_WIRELESS
+    if (s_graph_target == GRAPH_TGT_LIVE) patch = live_play_get_patch();
+    else
+#endif
+    if (s_graph_target == GRAPH_TGT_ARP) patch = arp_get_patch();
+    else if (s_graph_target == GRAPH_TGT_MELODIC)
+        patch = sequencer_core_get_melodic_track_patch(s_graph_layer, s_graph_track);
+    else return false;
+    return sequencer_core_is_wavetable_patch(patch);
+}
+
+/* The target stop after `t`, or -1 past the last offered one. */
+static int8_t graph_eg_next_tgt(int8_t t)
+{
+    int next = t + 1;
+    if (next == SEQ_EGT_SCAN && !graph_eg_scan_available()) next = SEQ_EGT_COUNT;
+    return (next < (int)SEQ_EGT_COUNT) ? (int8_t)next : (int8_t)-1;
+}
+
+/* A SCAN stop left up on a patch that no longer offers it falls back to PITCH.
+ * Returns true when it did. */
+static bool graph_eg_tgt_fallback(void)
+{
+    if (s_graph_eg_tgt != SEQ_EGT_SCAN || graph_eg_scan_available()) return false;
+    s_graph_eg_tgt = SEQ_EGT_PITCH;
+    s_force_redraw = true;
+    return true;
+}
+
 /* Same leading-edge/trailing-flush shape as the amp trim, and for the same
  * reason: sequencer_core_set_layer_swing() re-emits every step of the layer, so
  * an un-throttled encoder spin would flood the ingest pump with re-emits. */
@@ -1008,7 +1042,7 @@ static void graph_auto_range_check(void)
 /* Cycle MY_BUTTON_2's topbar sub-modes: OFF -> AMP -> SWG -> OFF, with the SWG
  * stop skipped where graph_swing_available() says swing is not this editor's to
  * touch. A row carrying the depth matrix appends one stop per routing target
- * (PIT/CUT/DRV/MIX), editing the shown envelope's row of the matrix; its EG1
+ * (PIT/CUT/DRV/MIX, plus SCN on a wavetable patch), editing the shown envelope's row of the matrix; its EG1
  * page starts straight on them, having no amp trim of its own to edit there.
  * In a sub-mode the encoder edits that value instead of moving ADSR points.
  * Reset on editor open/close. */
@@ -1021,8 +1055,7 @@ void synth_ui_graph_toggle_amp_mode(void)
         s_graph_swing_mode = graph_swing_available();
         if (!s_graph_swing_mode && targets) s_graph_eg_tgt = SEQ_EGT_PITCH;
     } else if (s_graph_eg_tgt >= 0) {
-        s_graph_eg_tgt = (s_graph_eg_tgt + 1 < (int)SEQ_EGT_COUNT)
-                             ? (int8_t)(s_graph_eg_tgt + 1) : (int8_t)-1;
+        s_graph_eg_tgt = graph_eg_next_tgt(s_graph_eg_tgt);
     } else if (s_graph_swing_mode) {
         graph_swing_live_flush(true);
         s_graph_swing_mode = false;
@@ -1173,9 +1206,10 @@ const char *synth_ui_graph_hint_b2(void)
     if (graph_eg_targets_available()) {
         if (s_graph_amp_mode)
             return graph_swing_available() ? "Swg" : s_eg_tgt_hint[SEQ_EGT_PITCH];
-        if (s_graph_eg_tgt >= 0)
-            return (s_graph_eg_tgt + 1 < (int)SEQ_EGT_COUNT)
-                       ? s_eg_tgt_hint[s_graph_eg_tgt + 1] : "Off";
+        if (s_graph_eg_tgt >= 0) {
+            int8_t next = graph_eg_next_tgt(s_graph_eg_tgt);
+            return (next >= 0) ? s_eg_tgt_hint[next] : "Off";
+        }
         if (s_graph_swing_mode) return s_eg_tgt_hint[SEQ_EGT_PITCH];
         return (s_graph_eg_index == 1) ? s_eg_tgt_hint[SEQ_EGT_PITCH] : "Amp";
     }
@@ -1190,6 +1224,7 @@ void synth_ui_graph_flip_depth_polarity(void)
 {
     if (!graph_popup_is_active(&s_graph_popup)) return;
     if (s_graph_eg_tgt < 0) return;
+    if (graph_eg_tgt_fallback()) return;
     float *d = &s_graph_eg_edit[s_graph_eg_index][s_graph_eg_tgt];
     if (*d == 0.0f) return;
     *d = -*d;
@@ -1215,11 +1250,12 @@ bool synth_ui_graph_handle_encoder(long delta)
     }
 
     if (s_graph_eg_tgt >= 0) {
+        if (graph_eg_tgt_fallback()) return true;
         /* Routing depth of the shown envelope: 0.05/detent on the linear mix
-         * rail, 0.25 oct on the others, bipolar to the target's own maximum.
-         * Positive pitch = the hit starts high and drops to the note. */
+         * and scan rails, 0.25 oct on the others, bipolar to the target's own
+         * maximum. Positive pitch = the hit starts high and drops to the note. */
         seq_eg_target_t tgt = (seq_eg_target_t)s_graph_eg_tgt;
-        float step = (tgt == SEQ_EGT_MIX) ? 0.05f : 0.25f;
+        float step = (tgt == SEQ_EGT_MIX || tgt == SEQ_EGT_SCAN) ? 0.05f : 0.25f;
         float lim  = seq_eg_depth_max(tgt);
         float v = s_graph_eg_edit[s_graph_eg_index][tgt] + (float)delta * step;
         s_graph_eg_edit[s_graph_eg_index][tgt] = SEQ_CLAMP_F32(v, -lim, lim);
@@ -2736,7 +2772,7 @@ static void graph_draw_topbar(u8g2_t *u8g2)
      * one letter per nonzero depth, just right of the header. Skipped whole
      * when it would run into the right readout. */
     if (s_graph_eg_tgt >= 0) {
-        static const char act_ch[SEQ_EGT_COUNT] = { 'P', 'C', 'D', 'M' };
+        static const char act_ch[SEQ_EGT_COUNT] = { 'P', 'C', 'D', 'M', 'S' };
         char act[SEQ_EGT_COUNT + 1];
         uint8_t na = 0;
         for (uint8_t t = 0; t < SEQ_EGT_COUNT; t++)

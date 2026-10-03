@@ -54,7 +54,7 @@ static unsigned dump_vp(const char *tag, const voice_params_t *vp)
     }
     if (vp->filter_authored) {
         DP("  %s flt type=%u en=%u cut=%.0f res=%.2f fb=%.2f dto=%.2f "
-           "eg0=%.2f/%.2f/%.2f/%.2f eg1=%.2f/%.2f/%.2f/%.2f",
+           "eg0=%.2f/%.2f/%.2f/%.2f/%.2f eg1=%.2f/%.2f/%.2f/%.2f/%.2f",
            tag, vp->filter.filter_type,
            (unsigned)vp->filter.enabled, (double)vp->filter.cutoff_hz,
            (double)vp->filter.resonance,
@@ -64,10 +64,12 @@ static unsigned dump_vp(const char *tag, const voice_params_t *vp)
            (double)vp->filter.eg_depth[0][SEQ_EGT_CUTOFF],
            (double)vp->filter.eg_depth[0][SEQ_EGT_DRIVE],
            (double)vp->filter.eg_depth[0][SEQ_EGT_MIX],
+           (double)vp->filter.eg_depth[0][SEQ_EGT_SCAN],
            (double)vp->filter.eg_depth[1][SEQ_EGT_PITCH],
            (double)vp->filter.eg_depth[1][SEQ_EGT_CUTOFF],
            (double)vp->filter.eg_depth[1][SEQ_EGT_DRIVE],
-           (double)vp->filter.eg_depth[1][SEQ_EGT_MIX]);
+           (double)vp->filter.eg_depth[1][SEQ_EGT_MIX],
+           (double)vp->filter.eg_depth[1][SEQ_EGT_SCAN]);
     }
     if (vp->dist_authored || vp->lfo_authored) {
         DP("  %s dist auth=%u type=%u drive=%u bits=%u rate=%u mix=%u lfo auth=%u",

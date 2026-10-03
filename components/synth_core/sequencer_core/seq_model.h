@@ -96,12 +96,14 @@ typedef enum {
     SEQ_EGT_CUTOFF = 1,   /* filter_freq_coefs[]  octaves, -8..+8 */
     SEQ_EGT_DRIVE  = 2,   /* dist_drive_coefs[]   octaves, -4..+4 */
     SEQ_EGT_MIX    = 3,   /* dist_mix_coefs[]     linear,  -1..+1 */
+    SEQ_EGT_SCAN   = 4,   /* duty_coefs[]         linear,  -1..+1 (wavetable patches only) */
     SEQ_EGT_COUNT
 } seq_eg_target_t;
 
 static inline float seq_eg_depth_max(seq_eg_target_t t)
 {
-    return (t == SEQ_EGT_CUTOFF) ? 8.0f : (t == SEQ_EGT_MIX) ? 1.0f : 4.0f;
+    return (t == SEQ_EGT_CUTOFF) ? 8.0f
+         : (t == SEQ_EGT_MIX || t == SEQ_EGT_SCAN) ? 1.0f : 4.0f;
 }
 
 /* ── Per-voice filter state (stored alongside the ADSR envelope) ──

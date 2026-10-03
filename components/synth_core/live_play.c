@@ -140,6 +140,12 @@ static void live_apply_filter(const seq_filter_t *f)
     amy_helpers_event_send(e);
 
     sequencer_core_push_eg_depths(LIVE_SYNTH, sequencer_core_patch_voice_osc(s_patch), f, s_vp.filter_authored);
+    if (sequencer_core_is_wavetable_patch(s_patch)) {
+        uint8_t carrier, coupled;
+        uint8_t mask = sequencer_core_lfo_native_layout(s_patch, &carrier, &coupled)
+                     ? coupled : 0x01u;
+        sequencer_core_push_eg_scan(LIVE_SYNTH, mask, f, s_vp.filter_authored);
+    }
 
     if (seq_filter_eg1_live(f)) {
         sequencer_core_push_envelope_eg1(LIVE_SYNTH, 0, &s_vp.env1);

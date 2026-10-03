@@ -49,7 +49,7 @@ static const char *TAG = "project_snapshot";
 
 /* LAYR section version: the writer's tag and the loader's only accepted
  * value. */
-#define LAYR_VERSION 20
+#define LAYR_VERSION 21
 
 _Static_assert(SEQ_TRACKS == 5 && SEQ_MAX_STEPS == 32,
                "LAYR format assumes 5x32; bump LAYR_VERSION");
@@ -623,7 +623,7 @@ typedef struct {
 static void ser_arp(tlv_writer_t *w)
 {
     /* One fixed shape per version, as for LAYR. Field history: git log. */
-    size_t h = tlv_begin_section(w, TAG_ARP, 12);
+    size_t h = tlv_begin_section(w, TAG_ARP, 13);
     tlv_put_u8(w, arp_get_enabled() ? 1 : 0);
     tlv_put_u16(w, arp_get_patch());
     tlv_put_u8(w, (uint8_t)arp_get_direction());
@@ -1124,7 +1124,7 @@ bool project_snapshot_load(uint8_t slot)
             break;
         case TAG_ARP:
             /* Exactly ser_arp()'s version (see TAG_LAYR). */
-            if (got_arp || ver != 12) { ok = false; break; }
+            if (got_arp || ver != 13) { ok = false; break; }
             ok = parse_arp(&body, &staged_arp);
             got_arp = ok;
             break;

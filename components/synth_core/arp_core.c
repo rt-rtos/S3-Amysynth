@@ -205,6 +205,13 @@ static void arp_apply_filter(const seq_filter_t *f)
     sequencer_core_push_eg_depths(sequencer_core_arp_synth(),
                                   sequencer_core_patch_voice_osc(s_arp.patch), f,
                                   s_arp.vp.filter_authored);
+    if (sequencer_core_is_wavetable_patch(s_arp.patch)) {
+        uint8_t carrier, coupled;
+        uint8_t mask = sequencer_core_lfo_native_layout(s_arp.patch, &carrier, &coupled)
+                     ? coupled : 0x01u;
+        sequencer_core_push_eg_scan(sequencer_core_arp_synth(), mask, f,
+                                    s_arp.vp.filter_authored);
+    }
 
     if (seq_filter_eg1_live(f)) {
         sequencer_core_push_envelope_eg1(sequencer_core_arp_synth(), 0,

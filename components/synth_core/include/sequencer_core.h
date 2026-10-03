@@ -737,6 +737,9 @@ void sequencer_core_push_envelope_eg1(uint8_t synth, uint8_t osc, const seq_env_
  * Same execution context as sequencer_core_push_envelope_eg1(). */
 void sequencer_core_push_eg_depths(uint8_t synth, int osc, const seq_filter_t *f, bool own);
 
+/* Push f's SCAN rails (duty EG0/EG1) to each osc in `mask`, the oscs that render the wave; UI-task context, via amy_helpers, ownership as above. */
+void sequencer_core_push_eg_scan(uint8_t synth, uint8_t mask, const seq_filter_t *f, bool own);
+
 /* ── Arpeggiator support ──────────────────────────────────────────────────
  * The arp lives in arp_core but routes all AMY traffic through these helpers,
  * so it shares the one event buffer + mutex and never races the sequencer. */
