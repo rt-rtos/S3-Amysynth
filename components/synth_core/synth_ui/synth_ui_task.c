@@ -10,6 +10,9 @@
 #include "custompatches/clip_bounce.h"
 #include "custompatches/clip_player.h"
 #include "custompatches/drum_cache.h"
+#if CONFIG_SYNTH_CUSTOM_WT
+#include "custompatches/wt_builder.h"
+#endif
 #include "priv_i2c_u8g2.h"   /* i2c_u8g2_service - absent-panel recovery */
 #include "display_seq.h"
 #include "display_drone.h"
@@ -286,6 +289,11 @@ static void synth_ui_task(void *pvParameters)
     const TickType_t slice = pdMS_TO_TICKS(UI_STEP_POLL_MS);
     uint8_t phase = 0;
     for (;;) {
+#if CONFIG_SYNTH_CUSTOM_WT
+        /* Custom wavetable rebuild: at most one slice per wake, on every
+         * phase, so a full table spreads over five wakes. */
+        wt_builder_service();
+#endif
         if (phase == 0) {
             ui_services();
             ui_render();

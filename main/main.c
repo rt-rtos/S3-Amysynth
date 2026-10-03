@@ -23,6 +23,9 @@
 #include "custompatches/clip_bounce.h"
 #include "custompatches/drum_cache.h"
 #include "custompatches/wavetable_bank.h"
+#if CONFIG_SYNTH_CUSTOM_WT
+#include "custompatches/wt_builder.h"
+#endif
 #include "filter_scope.h"
 #include "usb_audio.h"
 #include "esp_timer.h"
@@ -411,6 +414,25 @@ static void dispatch_button_event(my_button_id_t button_id, button_event_t event
         return;
     }
 
+#if CONFIG_SYNTH_CUSTOM_WT
+    /* WT screen: Button 1 copies the focused keyframe to the other one,
+     * Button 2 resets it; neither is a hold (the patch-select and pitch holds
+     * would edit the layer behind the screen). Clear both latches in case
+     * one was held when the screen switched. */
+    if ((button_id == MY_BUTTON_1 || button_id == MY_BUTTON_2) &&
+        synth_ui_active_view() == UI_VIEW_WT) {
+        s_patch_held = false;
+        synth_ui_set_patch_select_mode(false);
+        s_drum_select_held = false;
+        synth_ui_set_drum_select_mode(false);
+        if (event == BUTTON_PRESS_DOWN) {
+            if (button_id == MY_BUTTON_1) synth_ui_wt_copy_keyframe();
+            else                          synth_ui_wt_reset_keyframe();
+        }
+        return;
+    }
+#endif
+
     // MY_BUTTON_1, per editor: filter = enabled toggle, envelope = cycle EG
     // curve type, LFO = unused (source flip is SHIFT+3). Otherwise it is the
     // patch-select hold.
@@ -634,6 +656,11 @@ static void dispatch_button_event(my_button_id_t button_id, button_event_t event
                 if (event == BUTTON_PRESS_DOWN) synth_ui_fm_handle_button();
                 return;
 #endif
+#if CONFIG_SYNTH_CUSTOM_WT
+            case UI_VIEW_WT:
+                if (event == BUTTON_PRESS_DOWN) synth_ui_wt_handle_button();
+                return;
+#endif
             default:  /* UI_VIEW_SEQ */
                 break;
         }
@@ -741,6 +768,11 @@ static void encoder_process_steps(long steps)
         // SHIFT+Turn steps the FM Custom voice's algorithm, as on the grid.
         if (s_shift_held) synth_ui_fm_step_algorithm((int)steps);
         else              synth_ui_fm_handle_encoder((int)steps);
+#endif
+#if CONFIG_SYNTH_CUSTOM_WT
+    } else if (v == UI_VIEW_WT) {
+        // SHIFT has no layer here: the turn edits either way.
+        synth_ui_wt_handle_encoder((int)steps);
 #endif
     } else if (s_shift_held) {
         // SHIFT+Turn on the sequencer screen: step the active melodic
@@ -1001,6 +1033,11 @@ void app_main(void)
      * empties that list, so this must follow it. */
     wavetable_bank_init();
     DIAG_HEAP_CHECK("after wavetable_bank_init");
+#if CONFIG_SYNTH_CUSTOM_WT
+    /* The custom table's preset follows the bank's (wavetable_bank.h). */
+    wt_builder_init();
+    DIAG_HEAP_CHECK("after wt_builder_init");
+#endif
 
     // Characterize profiler timestamp cost before the dumps below; compiles
     // out unless AMY profiling is on.

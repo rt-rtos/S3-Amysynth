@@ -507,8 +507,10 @@ void sequencer_emit_step(uint8_t layer_idx, uint8_t track, uint8_t step)
     if (pofs != 0)
         note = (uint8_t)SEQ_CLAMP_INT((int)note + (int)pofs, 0, 127);
 
-    amy_helpers_note_send(synth, note, note_velocity,
-                        tag_on, tick_on, period);
+    /* The wavetable frame rides the note-on only (seq_track_frame_duty). */
+    amy_helpers_note_send_duty(synth, note, note_velocity,
+                               tag_on, tick_on, period,
+                               seq_track_frame_duty(layer, track, step));
     /* PCM drums get no scheduled note-off: pcm_note_off() is a hard phase-jump
      * to the sample end, so the gate would truncate even the natural tail. The
      * hit rings to the sample's own end under EG0 (sustain 0 - the decay the
@@ -645,15 +647,17 @@ static void seq_apply_track_note(uint8_t layer_idx, uint8_t track,
      * while tuning a drum's pitch should sound like the real hit. */
     bool send_offs = !(layer->type == SEQ_LAYER_DRUM &&
                        s_drum_engine == SEQ_DRUM_PCM);
-    amy_helpers_note_send(layer->synth_id[track], tones[0], preview_vel,
-                        seq_preview_tag(layer_idx, track), fire_tick, 0);
+    /* Previews take step 0's frame, as they take its velocity. */
+    float duty = seq_track_frame_duty(layer, track, 0);
+    amy_helpers_note_send_duty(layer->synth_id[track], tones[0], preview_vel,
+                               seq_preview_tag(layer_idx, track), fire_tick, 0, duty);
     if (send_offs)
         amy_helpers_note_send(layer->synth_id[track], tones[0], 0.0f,
                             seq_preview_off_tag(layer_idx, track), off_tick, 0);
     for (uint8_t i = 1; i < ntones; i++) {
-        amy_helpers_note_send(layer->synth_id[track], tones[i], preview_vel,
-                            seq_chord_preview_on_tag(layer_idx, track, i),
-                            fire_tick, 0);
+        amy_helpers_note_send_duty(layer->synth_id[track], tones[i], preview_vel,
+                                   seq_chord_preview_on_tag(layer_idx, track, i),
+                                   fire_tick, 0, duty);
         if (send_offs)
             amy_helpers_note_send(layer->synth_id[track], tones[i], 0.0f,
                                 seq_chord_preview_off_tag(layer_idx, track, i),
@@ -765,6 +769,7 @@ void sequencer_core_clear_track_pattern(uint8_t layer_idx, uint8_t track)
         layer->step_nudge[track][s]         = 0;
         layer->step_velocity_adj[track][s]  = 0;
         layer->step_ratchet_taper[track][s] = 0;
+        layer->step_frame[track][s]         = 0;
     }
     for (uint8_t s = 0; s < layer->num_steps; s++) {
         sequencer_emit_step(layer_idx, track, s);
@@ -989,14 +994,16 @@ void sequencer_core_audition_chord(uint8_t layer_idx, uint8_t track,
     uint32_t gate      = seq_step_gate(layer, 0);
     if (gate > SEQ_TICKS_PER_STEP) gate = SEQ_TICKS_PER_STEP;   /* one-step audition */
     uint32_t off_tick  = fire_tick + gate;
-    amy_helpers_note_send(layer->synth_id[track], tones[0], preview_vel,
-                        seq_preview_tag(layer_idx, track), fire_tick, 0);
+    /* Step 0's frame, as for the note preview. */
+    float duty = seq_track_frame_duty(layer, track, 0);
+    amy_helpers_note_send_duty(layer->synth_id[track], tones[0], preview_vel,
+                               seq_preview_tag(layer_idx, track), fire_tick, 0, duty);
     amy_helpers_note_send(layer->synth_id[track], tones[0], 0.0f,
                         seq_preview_off_tag(layer_idx, track), off_tick, 0);
     for (uint8_t i = 1; i < ntones; i++) {
-        amy_helpers_note_send(layer->synth_id[track], tones[i], preview_vel,
-                            seq_chord_preview_on_tag(layer_idx, track, i),
-                            fire_tick, 0);
+        amy_helpers_note_send_duty(layer->synth_id[track], tones[i], preview_vel,
+                                   seq_chord_preview_on_tag(layer_idx, track, i),
+                                   fire_tick, 0, duty);
         amy_helpers_note_send(layer->synth_id[track], tones[i], 0.0f,
                             seq_chord_preview_off_tag(layer_idx, track, i),
                             off_tick, 0);

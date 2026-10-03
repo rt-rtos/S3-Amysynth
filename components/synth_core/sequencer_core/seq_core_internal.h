@@ -298,6 +298,22 @@ uint8_t seq_track_unison_copies(uint8_t layer_idx, uint8_t track);
 void sequencer_configure_melodic_envelope_track(uint8_t layer_idx, uint8_t track);
 void sequencer_configure_melodic_envelope1_track(uint8_t layer_idx, uint8_t track);
 void sequencer_configure_melodic_filter_track(uint8_t layer_idx, uint8_t track);
+
+/* Resting wavetable scan position for a filter block's EG -> SCN routing:
+ * 0.0 when any routed depth is positive, 1.0 when every one is negative,
+ * 0.5 unrouted. The single home of that rule: scan_push_eg_depths() sends it
+ * as the synth-wide baseline and seq_track_frame_duty() uses it for Auto.
+ * Pure; any task. */
+float seq_scan_rest(const seq_filter_t *f);
+
+/* The duty constant (frame position, 0..1) a note-on of (track, step) carries,
+ * for amy_helpers_note_send_duty(): AMY_UNSET_FLOAT when the track's patch is
+ * not a wavetable patch (sequencer_core_is_wavetable_patch); else the step's
+ * frame lock, else the track's wt_frame, else (Auto) seq_scan_rest() of the
+ * row's resolved voice block. Lock and track values v = 1..64 map to
+ * (v - 1) / 63. A step >= SEQ_MAX_STEPS skips the lock. Pure read of `layer`;
+ * any Core-0 task that may read s_layers (emit, trig pump). */
+float seq_track_frame_duty(const seq_layer_t *layer, uint8_t track, uint8_t step);
 void sequencer_configure_melodic_dist_track(uint8_t layer_idx, uint8_t track);
 void sequencer_configure_melodic_lfo(uint8_t layer_idx, uint8_t rows);
 void melodic_lfo_refresh_native_freq(void);

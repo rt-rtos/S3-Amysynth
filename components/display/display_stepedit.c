@@ -4,7 +4,7 @@
 /* Yellow header (rows 0..15) carries the STEP title; the visible field window
  * fills the blue region starting at y=24 so no row crosses the 16px seam. 9 px
  * row pitch fits SE_VISIBLE_ROWS baselines (24..60) with descent room inside
- * 64 - which is what caps the window at five of the eight fields. */
+ * 64 - which is what caps the window at five of the eight (or nine) fields. */
 #define SE_TITLE_Y   8
 #define SE_ROW_H     9
 #define SE_FIRST_ROW 24
@@ -73,10 +73,15 @@ static void se_field_text(const stepedit_view_t *view, uint8_t field,
             if (view->nudge != 0) snprintf(value_out, value_sz, "%+d", (int)view->nudge);
             else                  snprintf(value_out, value_sz, "0");
             break;
-        default:
+        case SE_FIELD_TAPER:
             *label_out = "Taper";
             if (view->taper != 0) snprintf(value_out, value_sz, "%+d%%", (int)view->taper);
             else                  snprintf(value_out, value_sz, "0");
+            break;
+        default:
+            *label_out = "FRM";
+            if (view->frame != 0u) snprintf(value_out, value_sz, "%u", (unsigned)(view->frame - 1u));
+            else                   snprintf(value_out, value_sz, "--");
             break;
     }
 }
@@ -96,8 +101,9 @@ void display_stepedit_draw_frame(u8g2_t *u8g2, const stepedit_view_t *view)
     u8g2_DrawStr(u8g2, 2, SE_TITLE_Y, title);
     u8g2_DrawHLine(u8g2, 0, 15, 128);
 
+    uint8_t count = view->has_frame ? (uint8_t)SE_FIELD_COUNT : (uint8_t)SE_FIELD_FRAME;
     uint8_t first = view->first_row;
-    if (first > SE_FIELD_COUNT - SE_VISIBLE_ROWS) first = SE_FIELD_COUNT - SE_VISIBLE_ROWS;
+    if (first > count - SE_VISIBLE_ROWS) first = (uint8_t)(count - SE_VISIBLE_ROWS);
 
     uint8_t y = SE_FIRST_ROW;
     char val[8];
@@ -118,7 +124,7 @@ void display_stepedit_draw_frame(u8g2_t *u8g2, const stepedit_view_t *view)
                                 SE_CUE_X + 3, (int16_t)(SE_FIRST_ROW - 2),
                                 SE_CUE_X + 1, (int16_t)(SE_FIRST_ROW - 7));
     }
-    if (first + SE_VISIBLE_ROWS < SE_FIELD_COUNT) {
+    if (first + SE_VISIBLE_ROWS < count) {
         int16_t ly = (int16_t)(SE_FIRST_ROW + (SE_VISIBLE_ROWS - 1) * SE_ROW_H);
         u8g2_DrawTriangle(u8g2, SE_CUE_X,     (int16_t)(ly - 7),
                                 SE_CUE_X + 3, (int16_t)(ly - 7),

@@ -496,6 +496,11 @@ typedef struct {
                                         never set (the getter's defaults,
                                         memset default). Read through
                                         sequencer_core_get_track_unison().  */
+    uint8_t  wt_frame[SEQ_TRACKS];   /* wavetable rows: frame position, 0 =
+                                        Auto (the SCAN rest rule, seq_scan_rest),
+                                        1..64 = frame 0..63. Rides each note-on
+                                        (seq_track_frame_duty); memset default
+                                        = Auto.                                 */
     uint32_t synth_flags;            /* shared flags across the layer's rows  */
     uint8_t  num_voices;             /* per-synth voice count                 */
 
@@ -522,6 +527,7 @@ typedef struct {
     int8_t   step_nudge[SEQ_TRACKS][SEQ_MAX_STEPS];        /* signed ticks, +-SEQ_STEP_NUDGE_MAX, both emit paths */
     int8_t   step_velocity_adj[SEQ_TRACKS][SEQ_MAX_STEPS]; /* signed percentage points added to velocity (0=none) */
     int8_t   step_ratchet_taper[SEQ_TRACKS][SEQ_MAX_STEPS];/* %-per-sub-hit velocity decay across a ratchet (0=flat) */
+    uint8_t  step_frame[SEQ_TRACKS][SEQ_MAX_STEPS];        /* wavetable frame lock: 0 = none, 1..64 = frame 0..63 */
 } seq_layer_t;
 
 /* Copy one track's first 16 steps over its second 16 (every per-step array),
@@ -543,6 +549,7 @@ static inline void seq_layer_copy_first_half(seq_layer_t *layer, uint8_t track)
         layer->step_nudge[track][d]         = layer->step_nudge[track][s];
         layer->step_velocity_adj[track][d]  = layer->step_velocity_adj[track][s];
         layer->step_ratchet_taper[track][d] = layer->step_ratchet_taper[track][s];
+        layer->step_frame[track][d]         = layer->step_frame[track][s];
     }
 }
 

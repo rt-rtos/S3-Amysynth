@@ -23,7 +23,11 @@
  *
  * Two dive rows sit above Back: `Unison >` on a melodic layer and `PCM >` on
  * the drum layer while the drum engine is PCM (sub-pages in
- * ui_screen_layer_sub.c).
+ * ui_screen_layer_sub.c). Frame, above them, is the wavetable frame position
+ * of the Track row's track ("Auto" or 0..63, sequencer_core.h "Melodic
+ * per-track wavetable frame"), shown only while that track plays a wavetable
+ * patch; like Unison it follows the patch scope: LAYER scope writes every
+ * track, TRACK scope the one track.
  *
  * Drum layer: the melodic-only rows render "--" and their edits no-op, so the
  * page is always safe to open. ClrSolo exists only while something is soloed;
@@ -85,9 +89,12 @@ static uint8_t lm_row_list(uint8_t *rows)
     bool    pcm = li < seq_state.num_layers &&
                   seq_state.layers[li].type == SEQ_LAYER_DRUM &&
                   sequencer_core_get_drum_engine() == SEQ_DRUM_PCM;
+    bool    wt  = mel && sequencer_core_is_wavetable_patch(
+                         sequencer_core_get_melodic_track_patch(li, s_lm_track));
     uint8_t n = 0;
     for (uint8_t id = 0; id < LM_COUNT; id++) {
         if (id == LM_CLRSOLO && !sequencer_core_any_solo()) continue;
+        if (id == LM_FRAME && !wt) continue;
         if (id == LM_UNISON && !mel) continue;
         if (id == LM_PCM && !pcm) continue;
         rows[n++] = id;
@@ -253,6 +260,13 @@ const menu_item_view_t *layermenu_menu_build_items(void)
         case LM_CLRSOLO:
             snprintf(it->label, MENU_LABEL_LEN, "ClrSolo");
             break;
+        case LM_FRAME: {
+            uint8_t v = sequencer_core_get_track_wt_frame(mel, tr);
+            snprintf(it->label, MENU_LABEL_LEN, "Frame");
+            if (v == 0u) snprintf(it->value, MENU_VALUE_LEN, "Auto");
+            else         snprintf(it->value, MENU_VALUE_LEN, "%u", (unsigned)(v - 1u));
+            break;
+        }
         case LM_UNISON:
         case LM_PCM:
             snprintf(it->label, MENU_LABEL_LEN, "%s",
@@ -284,6 +298,7 @@ static bool lm_row_is_editable(uint8_t row)
     case LM_GLIDE:
     case LM_GROOVE:
     case LM_FOLLOW:
+    case LM_FRAME:
         return mel;
     case LM_CHORD:
     case LM_ROOT:
@@ -447,6 +462,16 @@ void layermenu_menu_edit_value(uint8_t idx, int delta)
     case LM_SOLO:
         sequencer_core_set_track_solo(li, tr, !sequencer_core_get_track_solo(li, tr));
         break;
+    case LM_FRAME: {
+        /* One frame per detent; Auto (0) sits below frame 0 (stored 1). */
+        uint8_t v = (uint8_t)SEQ_CLAMP_INT(
+            (int)sequencer_core_get_track_wt_frame(mel, tr) + dir, 0, 64);
+        if (sequencer_core_get_patch_scope(mel) == SEQ_PATCH_SCOPE_TRACK)
+            sequencer_core_set_track_wt_frame(mel, tr, v);
+        else
+            sequencer_core_set_layer_wt_frame(mel, v);
+        break;
+    }
     default:
         break;
     }

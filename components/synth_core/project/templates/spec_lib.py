@@ -124,7 +124,8 @@ def vp(amp_env=None, eg1=None, flt=None, mod=None, dst=None, trim=1.0, melodic=T
 # ── step patterns ──────────────────────────────────────────────────────────
 
 def put_steps(L, track, steps, base_note):
-    """steps: {step: dict(ofs, vel, prob, every, ratchet, taper, nudge, prev)}"""
+    """steps: {step: dict(ofs, vel, prob, every, ratchet, taper, nudge, prev, frame)}
+    frame: wavetable frame lock as stored, 0 = none, 1..64 = frame 0..63."""
     for s in range(C.SEQ_MAX_STEPS):
         L['step_note'][track][s] = base_note
     for s, st in steps.items():
@@ -137,6 +138,7 @@ def put_steps(L, track, steps, base_note):
         L['step_ratchet_taper'][track][s] = st.get('taper', 0)
         L['step_nudge'][track][s] = st.get('nudge', 0)
         L['step_prev'][track][s] = 1 if st.get('prev') else 0
+        L['step_frame'][track][s] = st.get('frame', 0)
 
 
 def hits(pattern, **common):

@@ -59,6 +59,18 @@ void amy_helpers_pump_wake(void);
 void amy_helpers_note_send(uint8_t synth, float midi_note, float velocity,
                            uint32_t tag, uint32_t tick, uint32_t period);
 
+/* amy_helpers_note_send() plus the voice's duty constant (a wavetable voice's
+ * frame position, 0..1 over the table). `duty_const` is AMY's float unset
+ * sentinel (AMY_UNSET_FLOAT, tested with AMY_IS_SET) for "leave the duty
+ * alone", which is exactly amy_helpers_note_send(). A set value rides in the
+ * note-on itself: AMY applies a note-on's set fields to the voice the note-on
+ * allocates and to no other (patches_voices_for_event, patches.c), so it is a
+ * per-voice frame with no extra event. Note-ons only; a note-off sends it
+ * unset. Same task rules as amy_helpers_note_send(). */
+void amy_helpers_note_send_duty(uint8_t synth, float midi_note, float velocity,
+                                uint32_t tag, uint32_t tick, uint32_t period,
+                                float duty_const);
+
 /* Send a begin()-obtained event on the CONFIG route, debug-asserting it
  * carries no sequence[] tuple (which would silently reroute it to the tick
  * scheduler). Use for apply-now synth/FX configuration events. */

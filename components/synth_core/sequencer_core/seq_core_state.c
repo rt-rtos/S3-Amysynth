@@ -332,6 +332,7 @@ static void seq_grow_melodic_row(uint8_t idx, seq_layer_t *layer, uint8_t t,
     /* After the seed, whose default envelopes it replaces. */
     layer->vp[t]          = layer->vp[src];
     layer->track_unison[t] = layer->track_unison[src];
+    layer->wt_frame[t]    = layer->wt_frame[src];
     layer->vp_src[t]      = layer->vp_src[src];
     layer->repeat_rate[t] = 0;
     layer->mute[t]        = false;
@@ -349,6 +350,7 @@ static void seq_grow_melodic_row(uint8_t idx, seq_layer_t *layer, uint8_t t,
         layer->step_nudge[t][s]         = layer->step_nudge[src][s];
         layer->step_velocity_adj[t][s]  = layer->step_velocity_adj[src][s];
         layer->step_ratchet_taper[t][s] = layer->step_ratchet_taper[src][s];
+        layer->step_frame[t][s]         = layer->step_frame[src][s];
     }
     s_lfo_phase[idx][t] = s_lfo_phase[idx][src];
     s_lfo_hz[idx][t]    = s_lfo_hz[idx][src];
@@ -363,6 +365,7 @@ static void seq_grow_drum_row(uint8_t idx, seq_layer_t *layer, uint8_t t,
     layer->track_patch[t] = layer->track_patch[src];
     seq_drum_copy_row_sound(idx, t, src);
     layer->vp[t]          = layer->vp[src];
+    layer->wt_frame[t]    = layer->wt_frame[src];
     layer->vp_src[t]      = layer->vp_src[src];
     layer->repeat_rate[t] = 0;
     layer->mute[t]        = false;
@@ -385,6 +388,7 @@ static void seq_grow_drum_row(uint8_t idx, seq_layer_t *layer, uint8_t t,
         layer->step_nudge[t][s]         = 0;
         layer->step_velocity_adj[t][s]  = 0;
         layer->step_ratchet_taper[t][s] = 0;
+        layer->step_frame[t][s]         = 0;
     }
     s_lfo_phase[idx][t] = s_lfo_phase[idx][src];
     s_lfo_hz[idx][t]    = s_lfo_hz[idx][src];

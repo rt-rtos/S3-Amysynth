@@ -55,6 +55,7 @@ static const uint16_t s_patch_catalog[] = {
     /* App wavetable bank slots (280-287): the ones past wavetable_bank_count()
      * are skipped by sequencer_core_patch_compiled_out() like a gated range. */
     280, 281, 282, 283, 284, 285, 286, 287,
+    288, /* Wavetable: Custom - edited via Menu > Screen: WT */
 };
 #define SEQ_RUNTIME_PATCH_COUNT ((int)(sizeof(s_patch_catalog) / sizeof(s_patch_catalog[0])))
 #endif

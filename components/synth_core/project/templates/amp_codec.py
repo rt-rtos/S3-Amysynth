@@ -1,7 +1,7 @@
 """Reader/writer for S3-Amysynth project files (Pnn.amp).
 
 Mirrors components/synth_core/project/project_snapshot.c field for field:
-GLOB v5, LAYR v23, ARP v13, DRON v3, DSTD v1, PROG v1, CHRD v1, CLIP v2, PGEN v1,
+GLOB v5, LAYR v24, ARP v13, DRON v3, DSTD v1, PROG v1, CHRD v1, CLIP v2, PGEN v1, WTCU v1,
 inside project_store.c's 32-byte header (magic "AMYP", fmt 1, name, len, CRC32).
 Field order IS the format; when the firmware bumps a section version, update
 the matching read_/write_ pair and VER here (gen_templates.py fails the build
@@ -18,9 +18,9 @@ FMT_VERSION = 1
 NAME_LEN = 16
 
 TAG = {k: struct.unpack('<I', k.encode())[0] for k in ('GLOB', 'LAYR', 'ARP ', 'DRON', 'DSTD', 'PROG', 'CHRD', 'CLIP',
-                                                       'PGEN')}
-VER = {'GLOB': 5, 'LAYR': 23, 'ARP ': 13, 'DRON': 3, 'DSTD': 1, 'PROG': 1, 'CHRD': 1, 'CLIP': 2,
-       'PGEN': 1}
+                                                       'PGEN', 'WTCU')}
+VER = {'GLOB': 5, 'LAYR': 24, 'ARP ': 13, 'DRON': 3, 'DSTD': 1, 'PROG': 1, 'CHRD': 1, 'CLIP': 2,
+       'PGEN': 1, 'WTCU': 1}
 
 SEQ_TRACKS = 5
 SEQ_MAX_STEPS = 32
@@ -113,11 +113,11 @@ def default_layer(kind):
                 chord_root=0, chord_type=0, swing_pct=0,
                 tracks=[dict(base_note=60, patch=0, pcm_preset=0, pcm_mode=0,
                              uni_count=1, uni_detune=12, uni_spread=50, uni_blend=100,
-                             repeat_rate=1, mute=False, solo=False, follow=0, vp=default_vp())
+                             repeat_rate=1, mute=False, solo=False, follow=0, wt_frame=0, vp=default_vp())
                         for _ in range(SEQ_TRACKS)],
                 grid=grid(0), step_note=grid(60), step_pitch_ofs=grid(0), step_prob=grid(100),
                 step_ratchet=grid(1), step_every=grid(1), step_prev=grid(0), step_transform=grid(0),
-                step_quant_bypass=grid(0), step_nudge=grid(0), step_velocity_adj=grid(0),
+                step_quant_bypass=grid(0), step_nudge=grid(0), step_frame=grid(0), step_velocity_adj=grid(0),
                 step_ratchet_taper=grid(0),
                 gate_pct=92, portamento_ms=0, groove_pct=100, fm_algo_override=0xFF,
                 vp_src=[0] * SEQ_TRACKS, vp_layer=default_vp(), patch_scope=0, num_tracks=4)
@@ -241,7 +241,7 @@ def r_glob(r):
 STEP_ARRAYS = [('grid', 'B'), ('step_note', 'B'), ('step_pitch_ofs', 'b'), ('step_prob', 'B'),
                ('step_ratchet', 'B'), ('step_every', 'B'), ('step_prev', 'B'),
                ('step_transform', 'B'), ('step_quant_bypass', 'B'), ('step_nudge', 'b'),
-               ('step_velocity_adj', 'b'), ('step_ratchet_taper', 'b')]
+               ('step_frame', 'B'), ('step_velocity_adj', 'b'), ('step_ratchet_taper', 'b')]
 
 
 def w_layr(L):
@@ -255,6 +255,7 @@ def w_layr(L):
         w.u8(T['uni_count']); w.u8(T['uni_detune']); w.u8(T['uni_spread']); w.u8(T['uni_blend'])
         w.u8(T['repeat_rate']); w.u8(1 if T['mute'] else 0); w.u8(1 if T['solo'] else 0)
         w.u8(T['follow'])
+        w.u8(T.get('wt_frame', 0))
         w_vp(w, T['vp'])
     for k, fmt in STEP_ARRAYS:
         for t in range(SEQ_TRACKS):
@@ -276,7 +277,7 @@ def r_layr(r):
         L['tracks'].append(dict(base_note=r.u8(), patch=r.u16(), pcm_preset=r.u16(), pcm_mode=r.u8(),
                                 uni_count=r.u8(), uni_detune=r.u8(), uni_spread=r.u8(),
                                 uni_blend=r.u8(), repeat_rate=r.u8(), mute=r.u8() != 0, solo=r.u8() != 0,
-                                follow=r.u8(), vp=r_vp(r)))
+                                follow=r.u8(), wt_frame=r.u8(), vp=r_vp(r)))
     for k, fmt in STEP_ARRAYS:
         L[k] = [list(struct.unpack('<%d%s' % (SEQ_MAX_STEPS, fmt), r.raw(SEQ_MAX_STEPS)))
                 for _ in range(SEQ_TRACKS)]
@@ -418,6 +419,24 @@ def r_pgen(r):
     return g
 
 
+WTCU_KEYS = ('shape', 'bright', 'sync', 'peak')
+
+
+def w_wtcu(c):
+    """Custom wavetable parameters: per key a two-item list [A, B], then range."""
+    w = W()
+    for k in WTCU_KEYS:
+        w.u8(c[k][0]); w.u8(c[k][1])
+    w.u8(c['range'])
+    return bytes(w.b)
+
+
+def r_wtcu(r):
+    c = {k: [r.u8(), r.u8()] for k in WTCU_KEYS}
+    c['range'] = r.u8()
+    return c
+
+
 # ── whole project ───────────────────────────────────────────────────────────
 
 def encode_payload(p):
@@ -432,6 +451,8 @@ def encode_payload(p):
     w.section('CHRD', w_chrd(p['chords']))
     w.section('CLIP', w_clip(p['clip']))
     w.section('PGEN', w_pgen(p['pgen']))
+    if 'wtcu' in p:   # optional: a file without it loads the builder defaults
+        w.section('WTCU', w_wtcu(p['wtcu']))
     return bytes(w.b)
 
 
@@ -456,7 +477,7 @@ def decode_file(data):
     readers = {'GLOB': ('glob', r_glob), 'ARP ': ('arp', r_arp), 'DRON': ('drone', r_dron),
                'DSTD': ('drone_std', r_dstd),
                'PROG': ('prog', r_prog), 'CHRD': ('chords', r_chrd), 'CLIP': ('clip', r_clip),
-               'PGEN': ('pgen', r_pgen)}
+               'PGEN': ('pgen', r_pgen), 'WTCU': ('wtcu', r_wtcu)}
     while not r.done():
         tag = r.u32(); ver = r.u8(); blen = r.u32(); body = R(r.raw(blen))
         name4 = struct.pack('<I', tag).decode(errors='replace')

@@ -33,7 +33,7 @@ button input; the rest are mode screens. Resolved in one place,
 4. Step Trig popup
 5. ADSR (graph) editor
 6. Menu
-7. Mode screen: Arp, Drone visualiser, Stutter drone, Normal drone, Prog, FM, DEV, Seq (default at boot)
+7. Mode screen: Arp, Drone visualiser, Stutter drone, Normal drone, Prog, FM, DEV, WT, Seq (default at boot)
 
 Screens are changed only through the Menu.
 
@@ -66,6 +66,7 @@ while on.
 | Seq | Patch | Pitch | Menu |
 | Arp, Stutter, Normal drone | Patch | - | Menu |
 | FM | Link (page 1), - (page 2) | Mute | Menu (Done while linking) |
+| WT | Copy (- on RNG) | Reset | Menu |
 | Menu | - (Save while naming) | - (Disc while naming) | Menu |
 | Prog | Del | +Add | Menu |
 | DEV | - | - | Menu |
@@ -91,7 +92,8 @@ while on.
 ## Step Trig popup
 
 Addressed by the grid cursor (layer, track, step). Eight fields in a
-five-row window that scrolls with the cursor.
+five-row window that scrolls with the cursor; a ninth, FRM, is listed while
+the track plays a wavetable patch.
 
 | Input | Action |
 |---|---|
@@ -110,6 +112,7 @@ five-row window that scrolls with the cursor.
 | Vel | 5 points | +/- `SEQ_STEP_VEL_ADJ_MAX` |
 | Nudge | 1 tick | +/- `SEQ_STEP_NUDGE_MAX` |
 | Taper | 5 % | +/- `SEQ_STEP_TAPER_MAX`, per ratchet sub-hit |
+| FRM | 1 frame | `--` (no lock), then 0..63: the wavetable frame this step plays, overriding the Layer page's Frame; ratchet sub-hits share it |
 
 Every and Prev are independent conditions; both must hold for the step to
 fire.
@@ -131,7 +134,7 @@ Main list rows:
 
 | Kind | Rows |
 |---|---|
-| Screen (runs and closes the menu) | Screen: Seq, Arp, Drone (the normal drone), Prog, FM (`CONFIG_SYNTH_CUSTOM_FM`), DEV (`CONFIG_SYNTH_DEV_MENU`) |
+| Screen (runs and closes the menu) | Screen: Seq, Arp, Drone (the normal drone), Prog, FM (`CONFIG_SYNTH_CUSTOM_FM`), WT (`CONFIG_SYNTH_CUSTOM_WT`), DEV (`CONFIG_SYNTH_DEV_MENU`) |
 | Action (runs and closes the menu) | Add Layer, Del Layer |
 | Value (click to edit) | BPM, Quant, Scale, Root, Arp, Drone, Stutter, Drum Bank, Volume (5 % steps) |
 | Dive (open a sub-page) | Layer, Chords, Bounce, Prog Gen, FX, Projects (`CONFIG_SYNTH_PROJECT_STORE`), Wireless (`CONFIG_SYNTH_WIRELESS`) |
@@ -139,9 +142,17 @@ Main list rows:
 Sub-pages use the same click model: value rows edit on click, action rows run
 on click.
 
+Layer page Frame row: present only while the Track row's track plays a
+wavetable patch. The wavetable frame each note starts on: `Auto` (the resting
+position the EG -> SCN routing implies: the first frame, the last, or the
+middle when unrouted), then 0..63, one frame per detent with Auto below 0.
+EG -> SCN and LFO SCAN modulate around it, and a step's FRM lock overrides
+it. Like Unison it follows the patch scope: LAYER scope sets every track,
+TRACK scope the Track row's track.
+
 | Page | Rows |
 |---|---|
-| Layer | Steps, Swing, Patch scope, Gate, Glide, Groove, Chord, Root, Type, Track, Follow, Repeat, Mute, Solo, ClrSolo (action, present only while something is soloed). Drum layers show `--` for melodic-only rows |
+| Layer | Steps, Swing, Patch scope, Gate, Glide, Groove, Chord, Root, Type, Track, Follow, Repeat, Mute, Solo, ClrSolo (action, present only while something is soloed), Frame (wavetable tracks, see above), Unison (dive, melodic), PCM (dive, drum layer on the PCM engine). Drum layers show `--` for melodic-only rows |
 | Chords | Slot list CH1..CH8; a slot opens Root, Type, Clear. Every edit commits at once and auditions |
 | Bounce | Shape rows (slot, bars, format, tail, after), Rec, Cancel, Undo, four rows per clip slot (play/mute, level, tempo, clear), Sample and its cancel |
 | Prog Gen | Root, Scale, Arp Q, Style, Length, Bars, Ext, Var, Seed, Generate, Undo |
@@ -341,6 +352,39 @@ modulation bus, is refused and changes nothing; the title shows
 click would be refused have a dotted outline. A source that is the only
 carrier refuses every link with LOOP, since a graph with no carrier is a
 loop. An accepted click switches ALG to CUST and sounds at once.
+
+## WT screen
+
+Requires `CONFIG_SYNTH_CUSTOM_WT`. Edits the one custom wavetable, patch 288
+(`Wavetable: Custom`), shared by every row, the arp and the drones on that
+patch and saved with the project. The table morphs from keyframe A (frame 0)
+to keyframe B (frame 63); each keyframe has four rows, plus one global row:
+
+| Row | Range | Meaning |
+|---|---|---|
+| SHP | 0..100 | Shape: the synced waveform, saw at 0 to square at 100 |
+| BRT | 0..10 | Bright: slope above the sync harmonic; 10 leaves the waveform as is, 0 rolls off steeply |
+| SYN | 1.0..8.0 | Hard-sync ratio; whole numbers are that many waveform periods per cycle. Range G#7 limits Sync to 7.0 |
+| PK | off, 2..63 | +12 dB formant bump on that harmonic |
+| RNG | the clean note | Harmonic cap 63 / 31 / 15 / 7, shown as the highest note that plays without aliasing (F#4 / F#5 / G6 / G#7) |
+
+The title shows `clean <note>` for the current RNG. The right panel draws
+frame 0 while the cursor is in column A, frame 63 in column B, and both on
+RNG; it updates when the rebuild after an edit finishes. Cursor stops, in
+order: A.SHP, A.BRT, A.SYN, A.PK, B.SHP, B.BRT, B.SYN, B.PK, RNG.
+
+| Input | Action |
+|---|---|
+| Encoder turn, browsing | Move the cursor (clamped) |
+| Encoder click | Enter / leave adjusting |
+| Encoder turn, adjusting | Change the value by one step (SYN 0.1); PK steps off <-> 2 |
+| Button 1 (press) | Copy the focused keyframe to the other one. RNG: nothing |
+| Button 2 (press) | Reset the focused keyframe to the saw (SHP 0, BRT 10, SYN 1.0, PK off). RNG: range back to F#5 |
+| SHIFT + turn | Same as a plain turn |
+| Button 0 (tap / hold) | Cycle the active layer / play-stop |
+| Button 3 (tap) | Menu |
+
+SHOULDER does nothing here.
 
 ## DEV screen
 

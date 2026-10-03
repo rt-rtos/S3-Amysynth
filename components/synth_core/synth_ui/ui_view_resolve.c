@@ -29,6 +29,9 @@ ui_view_id_t synth_ui_active_view(void)
 #if CONFIG_SYNTH_DEV_MENU
         case UI_MODE_DEV:       return UI_VIEW_DEV;
 #endif
+#if CONFIG_SYNTH_CUSTOM_WT
+        case UI_MODE_WT:        return UI_VIEW_WT;
+#endif
         default:                return UI_VIEW_SEQ;
     }
 }
@@ -97,6 +100,11 @@ static uint32_t sig_fm(ui_view_vw_t *vw)  { return fm_view_signature(&vw->fm); }
 static void     draw_fm(u8g2_t *g, ui_view_vw_t *vw) { display_fm_draw_frame(g, &vw->fm); }
 #endif
 
+#if CONFIG_SYNTH_CUSTOM_WT
+static uint32_t sig_wt(ui_view_vw_t *vw)  { return wt_view_signature(&vw->wt); }
+static void     draw_wt(u8g2_t *g, ui_view_vw_t *vw) { display_wt_draw_frame(g, &vw->wt); }
+#endif
+
 #if CONFIG_SYNTH_DEV_MENU
 static uint32_t sig_dev(ui_view_vw_t *vw)  { return dev_view_signature(&vw->dev); }
 static void     draw_dev(u8g2_t *g, ui_view_vw_t *vw) { display_dev_draw_frame(g, &vw->dev); }
@@ -138,6 +146,13 @@ static const char *hint_fm_b3(void)
     return synth_ui_fm_link_active() ? "Done" : "Menu";
 }
 #endif
+#if CONFIG_SYNTH_CUSTOM_WT
+/* WT button 1: copy the focused keyframe, nothing on RNG. */
+static const char *hint_wt_b1(void)
+{
+    return synth_ui_wt_on_range() ? "-" : "Copy";
+}
+#endif
 
 /* ─── The table: one row per view, indexed by ui_view_id_t ─────────────── */
 /* Preferred x of the BLE badge per view; 0 lets display_badge_draw() choose.
@@ -163,6 +178,11 @@ const ui_view_desc_t ui_view_table[UI_VIEW_COUNT] = {
     [UI_VIEW_DEV]       = { "DEV",    sig_dev,       draw_dev,       "-",      "-",     "Menu",  NULL,               NULL,                   30 },
 #else
     [UI_VIEW_DEV]       = { "DEV",    NULL,          NULL,           "-",      "-",     "Menu",  NULL,               NULL,                   30 },
+#endif
+#if CONFIG_SYNTH_CUSTOM_WT
+    [UI_VIEW_WT]        = { "WT",     sig_wt,        draw_wt,        NULL,     "Reset", "Menu",  hint_wt_b1,         NULL,                    0 },
+#else
+    [UI_VIEW_WT]        = { "WT",     NULL,          NULL,           "-",      "-",     "Menu",  NULL,               NULL,                    0 },
 #endif
     [UI_VIEW_SEQ]       = { "SEQ",    sig_seq,       draw_seq,       "Patch",  "Pitch", "Menu",  NULL,               NULL,                   44 },
 };

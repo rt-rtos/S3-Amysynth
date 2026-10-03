@@ -10,7 +10,9 @@
  * ════════════════════════════════════════════════════════════════════════
  * Addressed by the sequencer grid's cursor (active_layer_idx / selected_track /
  * selected_step), not a parallel one. Opened from main.c's dispatch; controls
- * are in CONTROLS.md. */
+ * are in CONTROLS.md. The last field, Frame (the step's wavetable frame lock,
+ * sequencer_core_set_step_frame), is listed only while the track plays a
+ * wavetable patch. */
 
 static bool    s_se_active  = false;
 static uint8_t s_se_field   = SE_FIELD_PITCH;
@@ -20,6 +22,17 @@ static bool    s_se_editing = false;
 /* Top of the visible window: the field list outgrew the panel, so navigation
  * drags the window along instead of the list being drawn whole. */
 static uint8_t s_se_first   = 0;
+
+/* Fields listed for the cursor's track: Frame only on a wavetable patch. */
+static uint8_t se_field_count(void)
+{
+    uint8_t li = seq_state.active_layer_idx;
+    if (li < seq_state.num_layers && seq_state.layers[li].type == SEQ_LAYER_MELODIC &&
+        sequencer_core_is_wavetable_patch(
+            sequencer_core_get_melodic_track_patch(li, seq_state.selected_track)))
+        return SE_FIELD_COUNT;
+    return SE_FIELD_FRAME;
+}
 
 /* Keep the cursor inside the window after a navigation step; a wrap-around
  * jumps the window to the other end. */
@@ -86,10 +99,15 @@ bool synth_ui_stepedit_handle_button(void)
 bool synth_ui_stepedit_handle_encoder(long delta)
 {
     if (!s_se_active) return false;
+    uint8_t n = se_field_count();
+    if (s_se_field >= n) {   /* Frame vanished with a patch change */
+        s_se_field   = (uint8_t)(n - 1u);
+        s_se_editing = false;
+    }
     if (!s_se_editing) {
         /* Navigate: one field per event, direction only. */
-        if (delta > 0)      s_se_field = (uint8_t)((s_se_field + 1) % SE_FIELD_COUNT);
-        else if (delta < 0) s_se_field = (uint8_t)((s_se_field + SE_FIELD_COUNT - 1) % SE_FIELD_COUNT);
+        if (delta > 0)      s_se_field = (uint8_t)((s_se_field + 1) % n);
+        else if (delta < 0) s_se_field = (uint8_t)((s_se_field + n - 1) % n);
         se_window_follow();
         s_force_redraw = true;
         return true;
@@ -139,6 +157,12 @@ bool synth_ui_stepedit_handle_encoder(long delta)
             sequencer_core_set_step_ratchet_taper(li, t, s, (int8_t)v);
             break;
         }
+        case SE_FIELD_FRAME: {
+            /* One frame per detent; no lock ("--", 0) sits below frame 0. */
+            int v = (int)sequencer_core_get_step_frame(li, t, s) + d;
+            sequencer_core_set_step_frame(li, t, s, (uint8_t)SEQ_CLAMP_INT(v, 0, 64));
+            break;
+        }
         default:
             /* SE_FIELD_PREV never enters adjust mode (click-toggle). */
             break;
@@ -167,6 +191,8 @@ void stepedit_build_view(stepedit_view_t *out)
     out->nudge        = sequencer_core_get_step_nudge(li, t, s);
     out->taper        = sequencer_core_get_step_ratchet_taper(li, t, s);
     out->first_row    = s_se_first;
+    out->has_frame    = (se_field_count() == SE_FIELD_COUNT) ? 1u : 0u;
+    out->frame        = sequencer_core_get_step_frame(li, t, s);
 }
 
 uint32_t stepedit_view_signature(stepedit_view_t *out)

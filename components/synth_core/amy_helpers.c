@@ -223,8 +223,9 @@ void amy_helpers_event_send(amy_event *event)
 /* ── Typed ingress entry points ─────────────────────────────────────────
  * NOTE vs CONFIG route: see amy_helpers.h. */
 
-void amy_helpers_note_send(uint8_t synth, float midi_note, float velocity,
-                           uint32_t tag, uint32_t tick, uint32_t period)
+void amy_helpers_note_send_duty(uint8_t synth, float midi_note, float velocity,
+                                uint32_t tag, uint32_t tick, uint32_t period,
+                                float duty_const)
 {
     amy_event *e = amy_helpers_event_begin();
     e->synth                     = synth;
@@ -233,7 +234,15 @@ void amy_helpers_note_send(uint8_t synth, float midi_note, float velocity,
     e->ticks[TICKS_TAG]    = tag;
     e->ticks[TICKS_TICK]   = tick;
     e->ticks[TICKS_PERIOD] = period;
+    if (AMY_IS_SET(duty_const)) e->duty_coefs[COEF_CONST] = duty_const;
     amy_helpers_event_send(e);
+}
+
+void amy_helpers_note_send(uint8_t synth, float midi_note, float velocity,
+                           uint32_t tag, uint32_t tick, uint32_t period)
+{
+    amy_helpers_note_send_duty(synth, midi_note, velocity, tag, tick, period,
+                               AMY_UNSET_FLOAT);
 }
 
 void amy_helpers_config_send(amy_event *event)

@@ -10,6 +10,7 @@
 #include "display_arp.h"       /* arp_view_t */
 #include "display_stepedit.h"  /* stepedit_view_t */
 #include "display_fm.h"        /* fm_view_t (CONFIG_SYNTH_CUSTOM_FM) */
+#include "display_wt.h"        /* wt_view_t (CONFIG_SYNTH_CUSTOM_WT) */
 #include "u8g2.h"              /* u8g2_t */
 
 /* ─── Cross-file shared state (owners noted; only these need extern) ──── */
@@ -89,6 +90,7 @@ uint32_t drone_std_view_signature(drone_view_t *out);
 uint32_t prog_view_signature(prog_view_t *out);
 uint32_t stepedit_view_signature(stepedit_view_t *out);
 uint32_t fm_view_signature(fm_view_t *out);
+uint32_t wt_view_signature(wt_view_t *out);         /* CONFIG_SYNTH_CUSTOM_WT */
 uint32_t dev_view_signature(dev_view_t *out);       /* CONFIG_SYNTH_DEV_MENU */
 bool     synth_ui_dev_is_active(void);
 
@@ -127,6 +129,7 @@ void  synth_ui_dev_riff_toggle_duty(void);
 typedef union {
     menu_view_t      menu;
     fm_view_t        fm;
+    wt_view_t        wt;
     arp_view_t       arp;
     drone_view_t     drone;      /* DRONE and DRONE_VIS */
     prog_view_t      prog;
@@ -168,6 +171,7 @@ void     menu_build_view(menu_view_t *out);
 void     arp_build_view(arp_view_t *out);
 void     stepedit_build_view(stepedit_view_t *out);
 void     fm_build_view(fm_view_t *out);
+void     wt_build_view(wt_view_t *out);
 
 /* ─── FX hub: one dive row per AMY bus plus the settings that are not per-bus
  *     (item model in ui_screen_fxmenu.c; the page state and input routing
@@ -198,8 +202,9 @@ bool     menu_shoulder_goes_main(void);
  *     repeat/mute/solo block (item model in ui_screen_layermenu.c; page state
  *     and input routing live in ui_screen_menu.c). Reached from the `Layer >`
  *     dive row on the main list. The visible row list is dynamic (ClrSolo
- *     comes and goes with the global solo state, the Unison/PCM dive rows with
- *     the layer type and drum engine), so the count is a call, not a
+ *     comes and goes with the global solo state, Frame with the target
+ *     track's patch, the Unison/PCM dive rows with the layer type and drum
+ *     engine), so the count is a call, not a
  *     constant, and the handlers clamp the shared menu cursor. ─────────── */
 typedef enum {
     LM_STEPS = 0,
@@ -217,6 +222,7 @@ typedef enum {
     LM_MUTE,
     LM_SOLO,
     LM_CLRSOLO,
+    LM_FRAME,       /* wavetable frame position, shown on a wavetable track */
     LM_UNISON,      /* dive row: Unison sub-page, melodic layers */
     LM_PCM,         /* dive row: PCM sub-page, drum layer on the PCM engine */
     LM_BACK,

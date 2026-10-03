@@ -321,20 +321,22 @@ void trig_schedule_ratchets(uint8_t layer_idx, const seq_layer_t *layer,
      * positive decays toward the tail, negative ramps up; k==0 is always
      * full velocity. */
     int8_t taper = layer->step_ratchet_taper[track][step];
+    /* One wavetable frame for every sub-hit and chord tone of the step. */
+    float duty = seq_track_frame_duty(layer, track, step);
     for (uint8_t k = 0; k < n; k++) {
         float scale = 1.0f - (float)taper * 0.01f * (float)k;
         scale = SEQ_CLAMP_F32(scale, 0.0f, 1.0f);
         float v = velocity * scale;
         uint32_t tick_on  = (uint32_t)base + (uint32_t)k * sub_ticks;
         uint32_t tick_off = tick_on + gate;
-        amy_helpers_note_send(synth, (float)tones[0], v,
-                            ratchet_on_tag(layer_idx, track, k), tick_on, 0);
+        amy_helpers_note_send_duty(synth, (float)tones[0], v,
+                                   ratchet_on_tag(layer_idx, track, k), tick_on, 0, duty);
         if (send_offs)
             amy_helpers_note_send(synth, (float)tones[0], 0.0f,
                                 ratchet_off_tag(layer_idx, track, k), tick_off, 0);
         for (uint8_t i = 1; i < ntones; i++) {
-            amy_helpers_note_send(synth, (float)tones[i], v,
-                                chord_on_tag(layer_idx, track, k, i), tick_on, 0);
+            amy_helpers_note_send_duty(synth, (float)tones[i], v,
+                                       chord_on_tag(layer_idx, track, k, i), tick_on, 0, duty);
             if (send_offs)
                 amy_helpers_note_send(synth, (float)tones[i], 0.0f,
                                     chord_off_tag(layer_idx, track, k, i), tick_off, 0);
@@ -529,6 +531,26 @@ int8_t sequencer_core_get_step_nudge(uint8_t layer_idx, uint8_t track, uint8_t s
     const seq_layer_t *layer = &s_layers[layer_idx];
     if (track >= layer->num_tracks || step >= layer->num_steps) return 0;
     return layer->step_nudge[track][step];
+}
+
+void sequencer_core_set_step_frame(uint8_t layer_idx, uint8_t track, uint8_t step,
+                                   uint8_t frame)
+{
+    if (layer_idx >= s_num_layers) return;
+    seq_layer_t *layer = &s_layers[layer_idx];
+    if (track >= layer->num_tracks || step >= layer->num_steps) return;
+    frame = SEQ_CLAMP_U8(frame, 0, 64);
+    if (layer->step_frame[track][step] == frame) return;
+    layer->step_frame[track][step] = frame;
+    sequencer_emit_track(layer_idx, track);
+}
+
+uint8_t sequencer_core_get_step_frame(uint8_t layer_idx, uint8_t track, uint8_t step)
+{
+    if (layer_idx >= s_num_layers) return 0;
+    const seq_layer_t *layer = &s_layers[layer_idx];
+    if (track >= layer->num_tracks || step >= layer->num_steps) return 0;
+    return layer->step_frame[track][step];
 }
 
 void sequencer_core_set_step_ratchet_taper(uint8_t layer_idx, uint8_t track, uint8_t step,

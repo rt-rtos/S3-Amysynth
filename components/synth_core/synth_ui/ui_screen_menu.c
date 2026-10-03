@@ -46,6 +46,9 @@ typedef enum {
 #if CONFIG_SYNTH_CUSTOM_FM
     MI_SCREEN_FM,
 #endif
+#if CONFIG_SYNTH_CUSTOM_WT
+    MI_SCREEN_WT,
+#endif
     MI_BPM,
     MI_QUANT_ENABLED,
     MI_QUANT_SCALE,
@@ -236,6 +239,9 @@ void menu_build_view(menu_view_t *out)
     snprintf(s_menu_items[MI_SCREEN_PROG].label, MENU_LABEL_LEN, "Screen: Prog");
 #if CONFIG_SYNTH_CUSTOM_FM
     snprintf(s_menu_items[MI_SCREEN_FM].label, MENU_LABEL_LEN, "Screen: FM");
+#endif
+#if CONFIG_SYNTH_CUSTOM_WT
+    snprintf(s_menu_items[MI_SCREEN_WT].label, MENU_LABEL_LEN, "Screen: WT");
 #endif
 
     snprintf(s_menu_items[MI_BPM].label, MENU_LABEL_LEN, "BPM");
@@ -831,6 +837,12 @@ bool synth_ui_menu_handle_button(void)
 #if CONFIG_SYNTH_CUSTOM_FM
             case MI_SCREEN_FM:
                 seq_state.ui_mode = UI_MODE_FM;
+                seq_state.menu_open = false;
+                break;
+#endif
+#if CONFIG_SYNTH_CUSTOM_WT
+            case MI_SCREEN_WT:
+                seq_state.ui_mode = UI_MODE_WT;
                 seq_state.menu_open = false;
                 break;
 #endif

@@ -137,16 +137,23 @@ static inline bool sequencer_core_lfo_native_layout(uint16_t patch,
 #define SEQ_PATCH_WAVETABLE_APP_BASE  280
 #define SEQ_PATCH_WAVETABLE_APP_SLOTS 8
 #define SEQ_PATCH_WAVETABLE_APP_MAX   (SEQ_PATCH_WAVETABLE_APP_BASE + SEQ_PATCH_WAVETABLE_APP_SLOTS - 1)
-#define SEQ_PATCH_ROUTABLE_MAX SEQ_PATCH_WAVETABLE_APP_MAX
+
+/* ── Custom wavetable (custompatches/wt_builder.h; CONFIG_SYNTH_CUSTOM_WT) ──
+ * One global table built on the device from nine parameters and edited on
+ * the WT screen; every row, the arp and the drones on this patch share it.
+ * Numbered past the app bank, whose slots stay manifest-only. */
+#define SEQ_PATCH_WAVETABLE_CUSTOM    288
+#define SEQ_PATCH_ROUTABLE_MAX SEQ_PATCH_WAVETABLE_CUSTOM
 uint8_t wavetable_bank_count(void);   /* custompatches/wavetable_bank.c */
 
-/* True for a wavetable virtual patch in either range (vendored or app bank),
- * regardless of whether the feature is compiled in - pair with
+/* True for a wavetable virtual patch (vendored range, app bank or the custom
+ * table), regardless of whether the feature is compiled in - pair with
  * sequencer_core_patch_compiled_out() for routability. */
 static inline bool sequencer_core_is_wavetable_patch(uint16_t patch)
 {
     return (patch >= SEQ_PATCH_WAVETABLE_BASE && patch <= SEQ_PATCH_WAVETABLE_MAX)
-        || (patch >= SEQ_PATCH_WAVETABLE_APP_BASE && patch <= SEQ_PATCH_WAVETABLE_APP_MAX);
+        || (patch >= SEQ_PATCH_WAVETABLE_APP_BASE && patch <= SEQ_PATCH_WAVETABLE_APP_MAX)
+        || patch == SEQ_PATCH_WAVETABLE_CUSTOM;
 }
 
 /* True when `patch` falls in a virtual range whose feature is NOT compiled in.
@@ -168,6 +175,9 @@ static inline bool sequencer_core_patch_compiled_out(uint16_t patch)
 #endif
 #if !CONFIG_SYNTH_ADDITIVE
     if (patch >= SEQ_PATCH_ADDITIVE_BASE && patch <= SEQ_PATCH_ADDITIVE_MAX) return true;
+#endif
+#if !CONFIG_SYNTH_CUSTOM_WT
+    if (patch == SEQ_PATCH_WAVETABLE_CUSTOM) return true;
 #endif
     (void)patch;
     return false;
@@ -367,6 +377,18 @@ uint8_t sequencer_core_get_drum_pcm_mode(uint8_t layer_idx, uint8_t track);
  * unison.
  * UI task only; no-op for drum / out-of-range layers. */
 voice_unison_t sequencer_core_get_track_unison(uint8_t layer_idx, uint8_t track);
+
+/* ── Melodic per-track wavetable frame ──
+ * seq_layer_t.wt_frame[]: 0 = Auto (the SCAN rest rule), 1..64 = frame
+ * 0..63 (clamped to 64). Applies to wavetable rows only, carried by each
+ * note-on (step locks win, sequencer_core_set_step_frame). The Layer menu's
+ * Frame row follows patch scope like Unison: LAYER scope set_layer_wt_frame
+ * (every track), TRACK scope set_track_wt_frame. A change stores and re-emits
+ * the track(s); unchanged values are no-ops. UI task only; no-op for drum /
+ * out-of-range layers. Persisted. */
+void    sequencer_core_set_track_wt_frame(uint8_t layer_idx, uint8_t track, uint8_t frame);
+void    sequencer_core_set_layer_wt_frame(uint8_t layer_idx, uint8_t frame);
+uint8_t sequencer_core_get_track_wt_frame(uint8_t layer_idx, uint8_t track);
 void           sequencer_core_set_track_unison(uint8_t layer_idx, uint8_t track,
                                                const voice_unison_t *u);
 void           sequencer_core_set_layer_unison(uint8_t layer_idx,
@@ -664,6 +686,15 @@ int8_t  sequencer_core_get_step_velocity_adj(uint8_t layer_idx, uint8_t track,
 void    sequencer_core_set_step_nudge(uint8_t layer_idx, uint8_t track,
                                       uint8_t step, int8_t ticks);
 int8_t  sequencer_core_get_step_nudge(uint8_t layer_idx, uint8_t track,
+                                      uint8_t step);
+/* Per-step wavetable frame lock: 0 = none, 1..64 = frame 0..63 (clamped to
+ * 64). Read only on a wavetable row, where it overrides the track's frame on
+ * that step's note-on (both emit paths; ratchet sub-hits share it). No-op on
+ * an unchanged value; otherwise stores and re-emits the track, since the plain
+ * path bakes the frame into the stored entry. */
+void    sequencer_core_set_step_frame(uint8_t layer_idx, uint8_t track,
+                                      uint8_t step, uint8_t frame);
+uint8_t sequencer_core_get_step_frame(uint8_t layer_idx, uint8_t track,
                                       uint8_t step);
 /* Ratchet velocity taper in signed percent per sub-hit, clamped to
  * +-SEQ_STEP_TAPER_MAX; 0 is flat, positive decays toward the tail, negative

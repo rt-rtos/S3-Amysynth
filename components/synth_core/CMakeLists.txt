@@ -10,6 +10,17 @@ if(CONFIG_SYNTH_CUSTOM_FM)
         "synth_ui/ui_screen_fm.c")
 endif()
 
+# Custom wavetable builder (CONFIG_SYNTH_CUSTOM_WT): the table math, its
+# owner module and the WT screen; all reference sites are guarded by
+# #if CONFIG_SYNTH_CUSTOM_WT.
+set(wt_srcs)
+if(CONFIG_SYNTH_CUSTOM_WT)
+    list(APPEND wt_srcs
+        "custompatches/wt_synth.c"
+        "custompatches/wt_builder.c"
+        "synth_ui/ui_screen_wt.c")
+endif()
+
 # Additive/partials voices are likewise WIP, gated off by default
 # (CONFIG_SYNTH_ADDITIVE); all reference sites are guarded by
 # #if CONFIG_SYNTH_ADDITIVE. No editor screen yet (fixed presets ship first).
@@ -73,6 +84,7 @@ idf_component_register(SRCS "live_play.c" "amy_helpers.c" "amy_fx.c" "fx_bus.c" 
                             "custompatches/wavetable_bank.c"
                             "project/project_snapshot.c"
                             ${fm_srcs}
+                            ${wt_srcs}
                             ${additive_srcs}
                             ${dev_srcs}
                        INCLUDE_DIRS "include" "sequencer_core" "project"
@@ -131,6 +143,7 @@ set_source_files_properties(
     "${CMAKE_CURRENT_LIST_DIR}/synth_ui/ui_screen_layermenu.c"
     "${CMAKE_CURRENT_LIST_DIR}/synth_ui/ui_screen_stepedit.c"
     "${CMAKE_CURRENT_LIST_DIR}/synth_ui/ui_screen_fm.c"
+    "${CMAKE_CURRENT_LIST_DIR}/synth_ui/ui_screen_wt.c"
     PROPERTIES COMPILE_OPTIONS "-Os"
 )
 set_source_files_properties(

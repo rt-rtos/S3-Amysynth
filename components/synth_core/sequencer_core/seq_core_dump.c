@@ -161,7 +161,8 @@ void sequencer_core_dump_state(void)
                            L->step_quant_bypass[t][s] ||
                            L->step_nudge[t][s] ||
                            L->step_velocity_adj[t][s] ||
-                           L->step_ratchet_taper[t][s];
+                           L->step_ratchet_taper[t][s] ||
+                           L->step_frame[t][s];
                 if (!dec) continue;
 
                 char line[128];
@@ -180,6 +181,7 @@ void sequencer_core_dump_state(void)
                 if (L->step_quant_bypass[t][s])  AP(" qbyp");
                 if (L->step_nudge[t][s])         AP(" nudge=%d", L->step_nudge[t][s]);
                 if (L->step_velocity_adj[t][s])  AP(" vel=%d", L->step_velocity_adj[t][s]);
+                if (L->step_frame[t][s])         AP(" frm=%u", L->step_frame[t][s] - 1u);
                 #undef AP
                 DP("%s", line);
             }

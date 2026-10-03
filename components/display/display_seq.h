@@ -20,6 +20,7 @@ typedef enum {
     UI_MODE_FM        = 5,
     UI_MODE_DRONE_STD = 6,   /* normal (free-running) drone screen */
     UI_MODE_DEV       = 7,   /* DEV menu (CONFIG_SYNTH_DEV_MENU) */
+    UI_MODE_WT        = 8,   /* custom wavetable editor (CONFIG_SYNTH_CUSTOM_WT) */
 } ui_mode_t;
 
 /* algo_banner_value sentinel: Shift+Turn landed on a patch with no FM

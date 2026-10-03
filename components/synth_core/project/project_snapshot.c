@@ -28,6 +28,10 @@
 #include "voice_config.h"
 #include "seq_defaults.h"       /* melodic env defaults for the v14 layer block */
 #include "synth_ui/synth_ui_internal.h"   /* synth_ui_reload_mirror_from_core() */
+#include "sdkconfig.h"
+#if CONFIG_SYNTH_CUSTOM_WT
+#include "custompatches/wt_builder.h"
+#endif
 
 #include "esp_heap_caps.h"
 #include "esp_log.h"
@@ -46,12 +50,13 @@ static const char *TAG = "project_snapshot";
 #define TAG_CHRD 0x44524843u
 #define TAG_CLIP 0x50494C43u
 #define TAG_PGEN 0x4E454750u
+#define TAG_WTCU 0x55435457u
 
 #define PROJECT_SER_BUF_CAP (64 * 1024)
 
 /* LAYR section version: the writer's tag and the loader's only accepted
  * value. */
-#define LAYR_VERSION 23
+#define LAYR_VERSION 24
 
 _Static_assert(SEQ_TRACKS == 5 && SEQ_MAX_STEPS == 32,
                "LAYR format assumes 5x32; bump LAYR_VERSION");
@@ -436,6 +441,7 @@ static void ser_layer(tlv_writer_t *w, const seq_layer_t *L)
         tlv_put_u8(w, L->mute[t] ? 1 : 0);
         tlv_put_u8(w, L->solo[t] ? 1 : 0);
         tlv_put_u8(w, L->follow[t]);
+        tlv_put_u8(w, L->wt_frame[t]);
         ser_vp(w, &L->vp[t]);
     }
     tlv_put_bytes(w, L->grid,               sizeof L->grid);
@@ -448,6 +454,7 @@ static void ser_layer(tlv_writer_t *w, const seq_layer_t *L)
     tlv_put_bytes(w, L->step_transform,     sizeof L->step_transform);
     tlv_put_bytes(w, L->step_quant_bypass,  sizeof L->step_quant_bypass);
     tlv_put_bytes(w, L->step_nudge,         sizeof L->step_nudge);
+    tlv_put_bytes(w, L->step_frame,         sizeof L->step_frame);
     tlv_put_bytes(w, L->step_velocity_adj,  sizeof L->step_velocity_adj);
     tlv_put_bytes(w, L->step_ratchet_taper, sizeof L->step_ratchet_taper);
     /* Note FX: gate length (drum and melodic), glide, GROOVE accent amount. */
@@ -525,6 +532,8 @@ static bool parse_layer(tlv_reader_t *b, seq_layer_t *L)
         { uint8_t v; if (!tlv_get_u8(b, &v)) return false; L->solo[t] = v != 0; }
         { uint8_t v; if (!tlv_get_u8(b, &v)) return false;
           L->follow[t] = (v >= SEQ_FOLLOW_COUNT) ? (uint8_t)SEQ_FOLLOW_CHORD : v; }
+        { uint8_t v; if (!tlv_get_u8(b, &v)) return false;
+          L->wt_frame[t] = (v > 64u) ? 0u : v; }
         if (!de_vp(b, &L->vp[t])) return false;
     }
 
@@ -538,6 +547,7 @@ static bool parse_layer(tlv_reader_t *b, seq_layer_t *L)
     if (!tlv_get_bytes(b, L->step_transform,     sizeof L->step_transform))     return false;
     if (!tlv_get_bytes(b, L->step_quant_bypass,  sizeof L->step_quant_bypass))  return false;
     if (!tlv_get_bytes(b, L->step_nudge,         sizeof L->step_nudge))         return false;
+    if (!tlv_get_bytes(b, L->step_frame,         sizeof L->step_frame))         return false;
     if (!tlv_get_bytes(b, L->step_velocity_adj,  sizeof L->step_velocity_adj))  return false;
     if (!tlv_get_bytes(b, L->step_ratchet_taper, sizeof L->step_ratchet_taper)) return false;
 
@@ -550,6 +560,7 @@ static bool parse_layer(tlv_reader_t *b, seq_layer_t *L)
             L->step_every[t][s] = SEQ_CLAMP_U8(L->step_every[t][s], 1, SEQ_STEP_EVERY_MAX);
             L->step_prev[t][s]  = L->step_prev[t][s] ? 1 : 0;
             if (L->step_transform[t][s] >= SEQ_STEP_TRANSFORM_COUNT) L->step_transform[t][s] = SEQ_STEP_TRANSFORM_NONE;
+            if (L->step_frame[t][s] > 64u) L->step_frame[t][s] = 0u;
         }
     }
 
@@ -1083,6 +1094,37 @@ static void apply_pgen(const staged_pgen_t *g)
     sequencer_core_progression_gen_params_set(&g->params);
 }
 
+/* ── WTCU section (custom wavetable, CONFIG_SYNTH_CUSTOM_WT) ───────────────
+ * The builder's nine parameter bytes in wt_params_t order; the table itself
+ * is never stored, the load rebuilds it. Written only when the builder is
+ * compiled in; a build without it skips the section as unknown. */
+#if CONFIG_SYNTH_CUSTOM_WT
+static void ser_wtcu(tlv_writer_t *w)
+{
+    size_t h = tlv_begin_section(w, TAG_WTCU, 1);
+    wt_params_t p;
+    wt_builder_get_params(&p);
+    for (uint8_t k = 0; k < 2; k++) tlv_put_u8(w, p.shape[k]);
+    for (uint8_t k = 0; k < 2; k++) tlv_put_u8(w, p.bright[k]);
+    for (uint8_t k = 0; k < 2; k++) tlv_put_u8(w, p.sync[k]);
+    for (uint8_t k = 0; k < 2; k++) tlv_put_u8(w, p.peak[k]);
+    tlv_put_u8(w, p.range);
+    tlv_end_section(w, h);
+}
+
+/* Clamped here (crash-safety for foreign data); the builder clamps again. */
+static bool parse_wtcu(tlv_reader_t *b, wt_params_t *p)
+{
+    for (uint8_t k = 0; k < 2; k++) if (!tlv_get_u8(b, &p->shape[k]))  return false;
+    for (uint8_t k = 0; k < 2; k++) if (!tlv_get_u8(b, &p->bright[k])) return false;
+    for (uint8_t k = 0; k < 2; k++) if (!tlv_get_u8(b, &p->sync[k]))   return false;
+    for (uint8_t k = 0; k < 2; k++) if (!tlv_get_u8(b, &p->peak[k]))   return false;
+    if (!tlv_get_u8(b, &p->range)) return false;
+    wt_params_clamp(p);
+    return true;
+}
+#endif
+
 /* ── CHRD section (chord presets, seq_chords.h) ──────────────────────────
  * v1: u8 slot count, then per slot u8 tone count + SEQ_CHORD_MAX_NOTES note
  * bytes (fixed width; a wider voicing bumps the version). Old firmware skips
@@ -1155,6 +1197,9 @@ bool project_snapshot_save(uint8_t slot, const char *name)
     ser_chrd(&w);
     ser_clip(&w);
     ser_pgen(&w);
+#if CONFIG_SYNTH_CUSTOM_WT
+    ser_wtcu(&w);
+#endif
 
     bool ok = !w.err && project_store_write(slot, name, buf, w.len);
 
@@ -1196,6 +1241,10 @@ bool project_snapshot_load_buffer(const uint8_t *payload, size_t len, const char
     uint8_t staged_layer_count = 0;
     bool got_glob = false, got_arp = false, got_drone = false, got_prog = false;
     bool got_chrd = false, got_clip = false, got_pgen = false, got_dstd = false;
+#if CONFIG_SYNTH_CUSTOM_WT
+    wt_params_t staged_wtcu;
+    bool got_wtcu = false;
+#endif
 
     tlv_reader_t r;
     tlv_reader_init(&r, payload, len);
@@ -1252,6 +1301,13 @@ bool project_snapshot_load_buffer(const uint8_t *payload, size_t len, const char
             ok = parse_pgen(&body, &staged_pgen);
             got_pgen = ok;
             break;
+#if CONFIG_SYNTH_CUSTOM_WT
+        case TAG_WTCU:
+            if (got_wtcu || ver != 1) { ok = false; break; }
+            ok = parse_wtcu(&body, &staged_wtcu);
+            got_wtcu = ok;
+            break;
+#endif
         default:
             break;   /* unknown section: ignore (forward-compat) */
         }
@@ -1316,6 +1372,12 @@ bool project_snapshot_load_buffer(const uint8_t *payload, size_t len, const char
     if (got_prog)  apply_prog(&staged_prog);
     if (got_pgen)  apply_pgen(&staged_pgen);
     if (got_clip)  apply_clip(&staged_clip);
+#if CONFIG_SYNTH_CUSTOM_WT
+    /* A file without the section leaves the builder at its defaults, as for
+     * the drones above. */
+    if (!got_wtcu) wt_params_default(&staged_wtcu);
+    wt_builder_set_params(&staged_wtcu);
+#endif
 
     /* The layer import writes solo[] wholesale rather than through the setter,
      * so nothing has applied the loaded solo state yet. Do it after the arp and

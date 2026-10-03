@@ -187,15 +187,16 @@ config SEQ_PATCH_BROWSE_PRESELECTED
 	help
 		Cycle a curated shortlist: a few favourite Juno and DX7 patches, the
 		built-in piano, the raw waves (257..263), the app's bass, wavetable,
-		FM and additive voices, and the app wavetable bank (280..287). Fast
-		to reach favourites; does not require the name table.
+		FM and additive voices, the app wavetable bank (280..287) and the
+		custom wavetable (288). Fast to reach favourites; does not require
+		the name table.
 
 config SEQ_PATCH_BROWSE_FULL_RANGE
-	bool "Full range (0..287)"
+	bool "Full range (0..288)"
 	help
 		Cycle every patch number: Juno 0..127, DX7 128..255, the built-in
-		piano (256), then the app's own voices up to the wavetable bank
-		(287). Ranges whose feature is compiled out are skipped. Enable
+		piano (256), then the app's own voices up to the custom wavetable
+		(288). Ranges whose feature is compiled out are skipped. Enable
 		SEQ_PATCH_SHOW_NAMES to see what each is.
 
 endchoice
@@ -308,6 +309,30 @@ config SYNTH_CUSTOM_FM
 		voice code, presets, or editor screen is built; the FM patch numbers
 		(272-276) are dropped from the runtime patch browser; and the FM menu
 		entry is hidden.
+
+config SYNTH_CUSTOM_WT
+	bool "Custom wavetable builder"
+	depends on AMY_WAVETABLE
+	default y
+	help
+		Compiles in the Custom wavetable patch (288): a 64-frame table built
+		on the device from nine parameters (Shape, Bright, Sync and Peak for
+		each of two keyframes, plus a harmonic Range cap), edited on the
+		"Screen: WT" page and saved with the project. The table is rebuilt
+		in slices on the UI task and costs 32 KB of PSRAM for the live table
+		plus 64 KB for the build scratch.
+
+		When disabled, the builder code and screen are not built, patch 288
+		is dropped from the runtime patch browser, and the WT menu entry is
+		hidden.
+
+config SYNTH_CUSTOM_WT_TIMING
+	bool "Log wavetable builder slice times"
+	depends on SYNTH_CUSTOM_WT
+	default n
+	help
+		Logs the time each rebuild slice takes (16 frames) and the finish
+		step. Diagnostic only; leave off in normal builds.
 
 config SYNTH_ADDITIVE
 	bool "Additive/partials voices (WIP)"

@@ -5,18 +5,18 @@
 #include "esp_log.h"
 #include "amy.h"
 #include "sequencer_core.h"
+#include "sdkconfig.h"
+#include "custompatches/wt_synth.h"     /* WT_CYCLE */
+#if CONFIG_SYNTH_CUSTOM_WT
+#include "custompatches/wt_builder.h"
+#endif
 
 static const char *TAG = "wt_bank";
 
 #if CONFIG_AMY_WAVETABLE
 
-/* Memory-preset numbers for the bank: above AMY's ROM map (24 entries incl.
- * the vendored wavetables) and below the gamma9001 drum base (256), a band
- * nothing else loads into. */
-#define WT_BANK_PRESET_BASE 32u
 #define WT_BANK_SAMPLE_RATE 44100u
 #define WT_BANK_MIDINOTE    69.0f
-#define WT_CYCLE            256u   /* WAVETABLE_SAMPLES_PER_CYCLE, oscillators.c */
 
 /* First pass: the table definitions. */
 #define WT_MANIFEST_INCLUDES
@@ -89,11 +89,18 @@ uint16_t wavetable_bank_preset_for_patch(uint16_t patch)
             return (uint16_t)(WT_BANK_PRESET_BASE + i);
         }
     }
+#if CONFIG_SYNTH_CUSTOM_WT
+    if (patch == SEQ_PATCH_WAVETABLE_CUSTOM) {
+        uint16_t p = wt_builder_preset();
+        if (p != WT_BUILDER_PRESET_NONE) return p;
+    }
+#endif
     return pcm_wavetable_base;
 }
 
 const char *wavetable_bank_patch_name(uint16_t patch)
 {
+    if (patch == SEQ_PATCH_WAVETABLE_CUSTOM) return "Wavetable: Custom";
     if (patch < SEQ_PATCH_WAVETABLE_APP_BASE || patch > SEQ_PATCH_WAVETABLE_APP_MAX) return NULL;
     uint16_t i = (uint16_t)(patch - SEQ_PATCH_WAVETABLE_APP_BASE);
     if (i >= wavetable_bank_count()) return NULL;

@@ -445,6 +445,31 @@ bool seq_track_voice_layout(uint8_t layer_idx, uint8_t track,
     return true;
 }
 
+/* ── Melodic per-track wavetable frame (contract in sequencer_core.h) ── */
+
+void sequencer_core_set_track_wt_frame(uint8_t layer_idx, uint8_t track, uint8_t frame)
+{
+    if (layer_idx >= s_num_layers || track >= SEQ_TRACKS) return;
+    seq_layer_t *layer = &s_layers[layer_idx];
+    if (layer->type != SEQ_LAYER_MELODIC) return;
+    frame = SEQ_CLAMP_U8(frame, 0, 64);
+    if (layer->wt_frame[track] == frame) return;
+    layer->wt_frame[track] = frame;
+    if (track < layer->num_tracks) sequencer_emit_track(layer_idx, track);
+}
+
+void sequencer_core_set_layer_wt_frame(uint8_t layer_idx, uint8_t frame)
+{
+    for (uint8_t t = 0; t < SEQ_TRACKS; t++)
+        sequencer_core_set_track_wt_frame(layer_idx, t, frame);
+}
+
+uint8_t sequencer_core_get_track_wt_frame(uint8_t layer_idx, uint8_t track)
+{
+    if (layer_idx >= s_num_layers || track >= SEQ_TRACKS) return 0;
+    return s_layers[layer_idx].wt_frame[track];
+}
+
 voice_unison_t sequencer_core_get_track_unison(uint8_t layer_idx, uint8_t track)
 {
     /* First-turn defaults; count 1 keeps them inert until authored. */

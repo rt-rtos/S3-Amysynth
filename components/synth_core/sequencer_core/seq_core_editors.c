@@ -131,22 +131,48 @@ static void dist_push_eg_depths(uint8_t synth, bool own, const seq_filter_t *f)
     amy_helpers_event_send(e);
 }
 
+/* The resting scan position. An envelope starts each note at 0, so a routed
+ * SCAN rests on the frame its sweep leaves from: the first frame, or the last
+ * when every routed depth is negative. Unrouted, it rests on the middle frame
+ * (0.5), which the LFO's SCAN swings around. */
+float seq_scan_rest(const seq_filter_t *f)
+{
+    float d0 = f->eg_depth[0][SEQ_EGT_SCAN];
+    float d1 = f->eg_depth[1][SEQ_EGT_SCAN];
+    if (d0 > 0.0f || d1 > 0.0f) return 0.0f;
+    if (d0 < 0.0f || d1 < 0.0f) return 1.0f;
+    return 0.5f;
+}
+
+/* Contract in seq_core_internal.h. The voice block resolves as seq_track_vp()
+ * does, from the layer pointer. */
+float seq_track_frame_duty(const seq_layer_t *layer, uint8_t track, uint8_t step)
+{
+    if (track >= SEQ_TRACKS || !sequencer_core_is_wavetable_patch(layer->track_patch[track]))
+        return AMY_UNSET_FLOAT;
+    if (step < SEQ_MAX_STEPS) {
+        uint8_t lock = layer->step_frame[track][step];
+        if (lock >= 1u && lock <= 64u) return (float)(lock - 1u) / 63.0f;
+    }
+    uint8_t v = layer->wt_frame[track];
+    if (v >= 1u && v <= 64u) return (float)(v - 1u) / 63.0f;
+    const voice_params_t *vp = (layer->vp_src[track] == SEQ_VP_SRC_LAYER)
+                             ? &layer->vp_layer : &layer->vp[track];
+    return seq_scan_rest(&vp->filter);
+}
+
 /* The SCAN rails alone, one event per osc in `mask` (the oscs that render the
- * wave), with the resting scan position. An envelope starts each note at 0,
- * so a routed SCAN rests on the frame its sweep leaves from: the first frame,
- * or the last when every routed depth is negative. Unrouted, it rests on the
- * middle frame (0.5), which the LFO's SCAN swings around. Sent on every call,
- * so removing the routing restores the middle. EG slots: ownership as
- * filter_push_eg_depths(). */
+ * wave), with the resting scan position (seq_scan_rest) as the synth-wide
+ * baseline; each note-on then sets its own voice's frame
+ * (seq_track_frame_duty). Sent on every call, so removing the routing
+ * restores the middle. EG slots: ownership as filter_push_eg_depths(). */
 static void scan_push_eg_depths(uint8_t synth, uint8_t mask, bool own,
                                 const seq_filter_t *f)
 {
     float d0 = f->eg_depth[0][SEQ_EGT_SCAN];
     float d1 = f->eg_depth[1][SEQ_EGT_SCAN];
     if (!mask) return;
-    float rest = 0.5f;
-    if (d0 > 0.0f || d1 > 0.0f)      rest = 0.0f;
-    else if (d0 < 0.0f || d1 < 0.0f) rest = 1.0f;
+    float rest = seq_scan_rest(f);
     for (uint8_t o = 0; (uint8_t)(mask >> o) != 0u; o++) {
         if (!(mask & (uint8_t)(1u << o))) continue;
         amy_event *e = amy_helpers_event_begin();
@@ -476,6 +502,16 @@ void sequencer_configure_melodic_filter_track(uint8_t layer_idx, uint8_t track)
     melodic_filter_apply(layer_idx, track, &seq_track_vp(layer_idx, track)->filter);
 }
 
+/* A committed filter edit on a stored row. On a wavetable row the Auto frame
+ * (seq_scan_rest of this filter) is baked into the row's stored AMY sequencer
+ * entries at emit time, so the row re-emits as well. */
+static void melodic_filter_commit_track(uint8_t layer_idx, uint8_t track)
+{
+    sequencer_configure_melodic_filter_track(layer_idx, track);
+    if (sequencer_core_is_wavetable_patch(s_layers[layer_idx].track_patch[track]))
+        sequencer_emit_track(layer_idx, track);
+}
+
 bool sequencer_core_get_melodic_filter(uint8_t layer_idx, uint8_t track,
                                        seq_filter_t *out)
 {
@@ -504,7 +540,7 @@ void sequencer_core_set_melodic_filter(uint8_t layer_idx, uint8_t track,
                                                  seq_eg_depth_max(t));
 
     vp->filter_authored = true;
-    melodic_push_peers(layer_idx, track, sequencer_configure_melodic_filter_track);
+    melodic_push_peers(layer_idx, track, melodic_filter_commit_track);
     ESP_LOGI(TAG, "filter L%u T%u [%s] -> type%u %.0fHz Q%.2f (authored)",
              layer_idx + 1u, track + 1u, melodic_vp_where(layer_idx, track),
              dst->filter_type, (double)dst->cutoff_hz, (double)dst->resonance);
@@ -1060,7 +1096,7 @@ static void melodic_repush_track(uint8_t layer_idx, uint8_t track)
     }
     sequencer_configure_melodic_envelope_track(layer_idx, track);
     sequencer_configure_melodic_envelope1_track(layer_idx, track);
-    sequencer_configure_melodic_filter_track(layer_idx, track);
+    melodic_filter_commit_track(layer_idx, track);
     sequencer_configure_melodic_dist_track(layer_idx, track);
 }
 

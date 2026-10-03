@@ -9,8 +9,9 @@ extern "C" {
 #endif
 
 /* Step Trig popup for the step under the sequencer grid cursor: eight fields
- * in a five-row window that scrolls with the cursor, a triangle marking the
- * hidden direction. Controls: CONTROLS.md. */
+ * (nine with Frame, present only on a wavetable track) in a five-row window
+ * that scrolls with the cursor, a triangle marking the hidden direction.
+ * Controls: CONTROLS.md. */
 
 typedef enum {
     SE_FIELD_PITCH   = 0,
@@ -21,6 +22,7 @@ typedef enum {
     SE_FIELD_VEL     = 5,   /* velocity_adj, signed percentage points */
     SE_FIELD_NUDGE   = 6,   /* signed ticks */
     SE_FIELD_TAPER   = 7,   /* ratchet taper, signed percent per sub-hit */
+    SE_FIELD_FRAME   = 8,   /* wavetable frame lock; only while has_frame */
     SE_FIELD_COUNT,
 } stepedit_field_t;
 
@@ -42,6 +44,8 @@ typedef struct {
     int8_t  nudge;        /* -SEQ_STEP_NUDGE_MAX..+, ticks, 0 on-grid */
     int8_t  taper;        /* -SEQ_STEP_TAPER_MAX..+, percent per sub-hit, 0 flat */
     uint8_t first_row;    /* stepedit_field_t drawn on the top visible row */
+    uint8_t has_frame;    /* 1 = the track plays a wavetable: Frame is listed */
+    uint8_t frame;        /* frame lock: 0 = none ("--"), 1..64 = frame 0..63 */
 } stepedit_view_t;
 
 void display_stepedit_draw_frame(u8g2_t *u8g2, const stepedit_view_t *view);
