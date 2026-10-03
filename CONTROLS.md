@@ -146,7 +146,7 @@ on click.
 | Bounce | Shape rows (slot, bars, format, tail, after), Rec, Cancel, Undo, four rows per clip slot (play/mute, level, tempo, clear), Sample and its cancel |
 | Prog Gen | Root, Scale, Arp Q, Style, Length, Bars, Ext, Var, Seed, Generate, Undo |
 | FX | Hub: one dive row per AMY bus, plus the Preset FX guard. A bus row opens that bus's page: EQ, echo, chorus, reverb, distortion, Split, trim |
-| Projects | Storage line, then one row per slot (see below) |
+| Projects | Storage line, Templates.., then one row per slot (see below) |
 | Wireless | BLE MIDI on/off (click), Status (read-only), Source (click toggles WAVE / PATCH), Patch (click to edit, turn cycles), Glide (click to edit, 1 ms per detent) |
 
 ### Projects page
@@ -158,9 +158,11 @@ on click.
 | Run it | Click. Save on a used slot arms on the first click and saves on the second |
 | Rename | Turn cycles the alphabet (A-Z, 0-9, space, `-`, `#`), click advances to the next character, `#` commits early |
 | While naming | Button 1 saves, Button 2 discards |
+| Open the templates | Click Templates..: `< Back` (returns to the Templates.. row), then one row per built-in template |
+| Load a template | Click the template row (the action reads Load), click again. It replaces the current project; save it into a slot to keep edits. Templates have no Save, Ren or Del |
 
-Results show inline in the slot row's value until the cursor leaves it. A
-reopened Projects page comes back disarmed.
+Results show inline in the slot or template row's value until the cursor
+leaves it. A reopened Projects page comes back disarmed, on the project list.
 
 ## ADSR (graph) editor
 

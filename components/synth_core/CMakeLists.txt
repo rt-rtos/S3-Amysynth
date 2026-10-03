@@ -78,6 +78,37 @@ idf_component_register(SRCS "live_play.c" "amy_helpers.c" "amy_fx.c" "fx_bus.c" 
                        PRIV_INCLUDE_DIRS "."
                        REQUIRES u8g2 display amy
                        PRIV_REQUIRES seq_clamp project_store usb_audio wireless diagnostics esp_app_format esp_partition)
+
+# Built-in project templates: gen_templates.py checks its codec against the
+# firmware sources it reads (fails the build on drift), then writes every
+# template spec as an embedded .amp image (project_templates.h).
+if(CONFIG_SYNTH_PROJECT_STORE)
+    idf_build_get_property(python PYTHON)
+    set(tpl_dir "${CMAKE_CURRENT_LIST_DIR}/project/templates")
+    set(tpl_out "${CMAKE_CURRENT_BINARY_DIR}/project_templates_data.c")
+    file(GLOB tpl_py CONFIGURE_DEPENDS "${tpl_dir}/*.py")
+    set(comp_dir "${CMAKE_CURRENT_LIST_DIR}/..")
+    add_custom_command(
+        OUTPUT "${tpl_out}"
+        COMMAND ${python} gen_templates.py --check-src "${comp_dir}" --out "${tpl_out}"
+        DEPENDS ${tpl_py}
+                "${CMAKE_CURRENT_LIST_DIR}/project/project_snapshot.c"
+                "${comp_dir}/project_store/include/project_store.h"
+                "${CMAKE_CURRENT_LIST_DIR}/sequencer_core/seq_model.h"
+                "${CMAKE_CURRENT_LIST_DIR}/sequencer_core/seq_core_config.h"
+                "${CMAKE_CURRENT_LIST_DIR}/include/sequencer_core.h"
+                "${CMAKE_CURRENT_LIST_DIR}/include/fx_bus.h"
+                "${CMAKE_CURRENT_LIST_DIR}/include/amy_fx.h"
+                "${CMAKE_CURRENT_LIST_DIR}/include/arp_core.h"
+                "${CMAKE_CURRENT_LIST_DIR}/include/seq_chords.h"
+                "${CMAKE_CURRENT_LIST_DIR}/include/synth_slots.h"
+                "${CMAKE_CURRENT_LIST_DIR}/include/custompatches/drone_core.h"
+                "${comp_dir}/display/chord_types.h"
+                "${comp_dir}/amy/src/amy.h"
+        WORKING_DIRECTORY "${tpl_dir}"
+        VERBATIM)
+    target_sources(${COMPONENT_LIB} PRIVATE "${tpl_out}" "${CMAKE_CURRENT_LIST_DIR}/project/project_templates.c")
+endif()
 # -Wstack-usage is GCC-only; clang rejects the unknown warning option under -Werror.
 if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
     target_compile_options(${COMPONENT_LIB} PRIVATE "-Wstack-usage=1024")
