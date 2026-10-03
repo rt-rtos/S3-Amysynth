@@ -91,8 +91,7 @@ uint8_t voice_unison_head_osc(uint8_t group, uint8_t n, uint8_t layout)
 
 /* Mirror pair p = min(i, n-1-i); pair p sits in group L when p is even, and
  * copy i is on its pair's side when i == p, the other side otherwise. For
- * even n that is "even i -> L, odd i -> R" (the engine layout's grid law
- * relies on this reading). */
+ * even n that is "even i -> L, odd i -> R". */
 static uint8_t unison_group_of(uint8_t i, uint8_t n)
 {
     uint8_t p = (i < (uint8_t)(n - 1u - i)) ? i : (uint8_t)(n - 1u - i);
@@ -101,8 +100,8 @@ static uint8_t unison_group_of(uint8_t i, uint8_t n)
 
 uint8_t voice_unison_copy_osc(uint8_t i, uint8_t n, uint8_t layout)
 {
-    if (unison_is_engine(n, layout))
-        return voice_unison_head_osc(unison_group_of(i, n), n, layout);
+    if (unison_is_engine(n, layout))   /* the grid interleave, odd n too */
+        return voice_unison_head_osc((uint8_t)(i & 1u), n, layout);
     if (!unison_is_headed(n, layout)) return i;
     uint8_t group = unison_group_of(i, n);
     uint8_t rank  = 0;                       /* copies fill their group in i order */
@@ -180,31 +179,39 @@ static float unison_head_pan(const voice_unison_t *u, uint8_t group)
 
 /* Engine layout: one AMY unison-cluster osc per group. The engine renders
  * copy k at logfreq + offset + k * spacing (octaves) and power-normalizes the
- * weights over its own n/2 copies. Group g takes the even (L) or odd (R)
+ * weights over its own copies. Group g takes the even (L) or odd (R)
  * positions of the n-copy grid, so spacing = 4D/(n-1) and offset_g =
  * -D + 2gD/(n-1) with D the outermost detune in octaves - the same pitch set
- * as the headed layout. The amp CONST carries the ratio between the app's
- * all-n normalization and the engine's per-group one (1/sqrt(2) at blend 1),
- * so the group lands at the level its copies have under the other layouts. */
-static float unison_group_gain(uint8_t n, uint8_t group, float blend)
+ * as the other layouts. An odd n puts (n+1)/2 copies in L (both outermost
+ * ones among them) and (n-1)/2 in R. The amp CONST carries the ratio between
+ * the app's all-n normalization and the engine's per-group one (1/sqrt(2) at
+ * blend 1, even n), so the group lands at the level its copies have under the
+ * other layouts. */
+static float unison_group_power(uint8_t n, uint8_t group, float blend)
 {
     float sum = 0.0f;
     for (uint8_t i = group; i < n; i = (uint8_t)(i + 2u)) {
         float w = unison_weight(i, n, blend);
         sum += w * w;
     }
-    return unison_amp_norm(n, blend) * sqrtf(sum);
+    return sum;
 }
 
-/* Engine cluster pan: 0.5 -/+ a. A cluster cannot place its copies one by one,
- * so the pair matches the fan's stereo WIDTH instead: under AMY's equal-power
- * pan (gains sqrt(1-p), sqrt(p)) uncorrelated copies at pans p_i give an L/R
- * correlation of sum w_i^2 sqrt(1 - (spread*s_i)^2) / sum w_i^2, and two
- * clusters at 0.5 -/+ a give sqrt(1 - 4a^2); a solves the two equal. Count 2
- * lands on the outermost positions, wider counts further in. Host sim against
- * the fan at counts 2-6, spread 50/100, blend 60/100: correlation within 0.04
- * (outermost positions: up to 0.8 off). The image itself still differs - the
- * fan maps pitch to position, the clusters interleave. */
+/* Engine cluster pans. A cluster cannot place its copies one by one, so the
+ * pair matches the fan's stereo WIDTH and keeps the image centred. Under AMY's
+ * equal-power pan (gains sqrt(1-p), sqrt(p)) uncorrelated copies at pans p_i
+ * give an L/R correlation of sum w_i^2 sqrt(1 - (spread*s_i)^2) / sum w_i^2.
+ * Two clusters of power P_g at 0.5 -/+ u_g/2 are centred when P_L u_L =
+ * P_R u_R and correlate at (P_L sqrt(1 - u_L^2) + P_R sqrt(1 - u_R^2)) /
+ * (P_L + P_R); u is bisected to make that the fan's. Even n (equal powers)
+ * gives u = sqrt(1 - corr^2); count 2 lands on the outermost positions. An
+ * odd n puts the louder cluster nearer the centre; where even the quieter
+ * one at full width cannot reach the fan's width (count 3 at blend 100
+ * above spread ~90), it stays there, narrower than the fan. Host sim against
+ * the fan, counts 2-7, spread 0/50/100, blend 60/100: correlation within
+ * 0.04 (0.22 in that count-3 case), L/R level within 0.25 dB. The image
+ * itself still differs - the fan maps pitch to position, the clusters
+ * interleave. */
 static float unison_engine_pan(const voice_unison_t *u, uint8_t group, uint8_t n)
 {
     float spread = (float)u->spread_pct / 100.0f;
@@ -219,8 +226,21 @@ static float unison_engine_pan(const voice_unison_t *u, uint8_t group, uint8_t n
     }
     /* Same zero-weight fallback as unison_amp_norm: equal weights. */
     float corr = (den < 1e-6f) ? num_eq / (float)n : num / den;
-    float a = 0.5f * sqrtf(fmaxf(0.0f, 1.0f - corr * corr));
-    return group ? (0.5f + a) : (0.5f - a);
+    float pl = unison_group_power(n, 0u, blend);
+    float pr = unison_group_power(n, 1u, blend);
+    if (pl < 1e-6f || pr < 1e-6f) pl = pr = 1.0f;
+    /* t = u of the quieter cluster; the louder one sits at t * quiet/loud. */
+    float r_l = (pl > pr) ? pr / pl : 1.0f;
+    float r_r = (pr > pl) ? pl / pr : 1.0f;
+    float lo = 0.0f, hi = 1.0f;
+    for (uint8_t it = 0; it < 24u; it++) {
+        float t  = 0.5f * (lo + hi);
+        float ul = t * r_l, ur = t * r_r;
+        float c  = (pl * sqrtf(1.0f - ul * ul) + pr * sqrtf(1.0f - ur * ur)) / (pl + pr);
+        if (c > corr) lo = t; else hi = t;
+    }
+    float t = 0.5f * (lo + hi);
+    return group ? (0.5f + 0.5f * t * r_r) : (0.5f - 0.5f * t * r_l);
 }
 
 static void unison_engine_coefs(amy_event *e, uint8_t group, uint8_t n,
@@ -229,17 +249,24 @@ static void unison_engine_coefs(amy_event *e, uint8_t group, uint8_t n,
     float blend = (float)u->blend_pct / 100.0f;
     float d     = (float)u->detune_cents / 1200.0f;
     float grid  = (n > 1u) ? 1.0f / (float)(n - 1u) : 0.0f;
-    e->unison_count   = (uint8_t)(n / 2u);
+    float power = unison_group_power(n, group, blend);
+    /* The engine tapers by position within the cluster's own span; an odd n
+     * leaves R one grid step short of D, so its blend is rescaled to taper
+     * against D as the app's weights do. */
+    uint8_t last = (uint8_t)(n - 1u - ((n - 1u - group) & 1u));
+    float span   = fmaxf(fabsf(unison_pos(group, n)), fabsf(unison_pos(last, n)));
+    e->unison_count   = (uint8_t)((n + 1u - group) / 2u);
     e->unison_spacing = 4.0f * d * grid;
     e->unison_offset  = -d + 2.0f * (float)group * d * grid;
-    e->unison_blend   = blend;
+    e->unison_blend   = 1.0f - (1.0f - blend) * span;
     e->pan_coefs[COEF_CONST] = unison_engine_pan(u, group, n);
-    e->amp_coefs[COEF_CONST] = base_amp * unison_group_gain(n, group, blend);
-    /* Start phase i/n per grid copy, as unison_copy_coefs: the engine
-     * respreads copy k of a group from its copy 0 by k/(n/2), so copy 0 at
-     * g/n puts grid copy 2k+g at (2k+g)/n. A set trigger_phase also restarts
-     * every copy on each note-on. */
+    e->amp_coefs[COEF_CONST] = base_amp * unison_amp_norm(n, blend) * sqrtf(power);
+    /* Start phase i/n per grid copy, as unison_copy_coefs: copy 0 of group g
+     * is grid copy g, and the engine respreads its copy k by 2k/n, which puts
+     * grid copy 2k+g at (2k+g)/n. A set trigger_phase also restarts every
+     * copy on each note-on. */
     e->trigger_phase = (float)group / (float)n;
+    e->unison_phase_step = 2.0f / (float)n;
 }
 
 void voice_build_wave(const voice_wave_cfg_t *cfg)
@@ -267,7 +294,7 @@ void voice_build_wave(const voice_wave_cfg_t *cfg)
                                              : (uint8_t)VOICE_UNISON_LAYOUT_FAN;
     bool headed = unison_is_headed(n, layout);
     bool engine = unison_is_engine(n, layout);
-    if (headed || engine) n = (uint8_t)(n & ~1u);   /* two equal groups */
+    if (headed) n = (uint8_t)(n & ~1u);   /* two equal groups */
 
     /* A fan-N pool and a headed-(N-2) pool have the same shape (so do a fan-2
      * and an engine pool). Wipe every audible osc explicitly so the build
@@ -307,7 +334,7 @@ void voice_build_wave(const voice_wave_cfg_t *cfg)
 
     /* Engine: the group IS the osc - one full voice osc per side (envelope,
      * velocity, level, filter, dist and pan as osc 0 carries them today) that
-     * renders its n/2 copies internally. */
+     * renders its half of the copies internally. */
     uint8_t audible_oscs = engine ? 2u : n;
     for (uint8_t i = 0; i < audible_oscs; i++) {
         uint8_t osc = engine ? i : voice_unison_copy_osc(i, n, layout);
@@ -374,7 +401,7 @@ void voice_push_unison_live(uint8_t synth, const voice_unison_t *u,
     uint8_t layout = u->layout;
     bool    headed = unison_is_headed(n, layout);
     bool    engine = unison_is_engine(n, layout);
-    if (headed || engine) n = (uint8_t)(n & ~1u);
+    if (headed) n = (uint8_t)(n & ~1u);
     if (engine) {
         /* Everything live lives on the two cluster oscs. */
         for (uint8_t g = 0; g < 2u; g++) {

@@ -156,7 +156,10 @@ per-block `logfreq`, so NOTE, BEND, portamento and the pitch rails move the
 whole cluster; `unison_blend` tapers the outer copies by position within the
 cluster's own span and the weights are power-normalized. Copies 1..n-1 keep
 their phase in `synthinfo.unison_phase[]` and respread from copy 0 at every
-note-on (`unison_note_on()`). Deltas `UNISON_COUNT/SPACING/OFFSET/BLEND` sit
+note-on (`unison_note_on()`): copy `i` at `i * unison_phase_step` cycles, or
+at `i / unison_count` when the step is 0 (the default). The step lets two
+clusters with different counts interleave on one phase grid (the app's odd
+unison counts). Deltas `UNISON_COUNT/SPACING/OFFSET/BLEND/PHASE_STEP` sit
 above `NOTE_SOURCE_CHANNEL` (the ids below are auto-numbered and never cross
 the wire). `play_delta` clamps the count to 1..`AMY_UNISON_MAX` (8) and the
 blend to 0..1. Count 1 with offset 0 (the default) is the previous single

@@ -326,12 +326,16 @@ static inline PHASOR *unison_phase(uint16_t osc, uint8_t i) {
     return i ? &synth[osc]->unison_phase[i - 1] : &synth[osc]->phase;
 }
 
-// Respread copies 1..n-1 evenly from copy 0's phase: deterministic and
-// decorrelated, whatever phase copy 0 restarts with.
+// Respread copies 1..n-1 from copy 0's phase, copy i at i * unison_phase_step
+// cycles (0: 1/n, evenly over one cycle): deterministic and decorrelated,
+// whatever phase copy 0 restarts with.
 void unison_note_on(uint16_t osc) {
     uint8_t n = synth[osc]->unison_count;
-    for (uint8_t i = 1; i < n; ++i)
-        synth[osc]->unison_phase[i - 1] = P_WRAPPED_SUM(synth[osc]->phase, F2P((float)i / (float)n));
+    float step = synth[osc]->unison_phase_step;
+    for (uint8_t i = 1; i < n; ++i) {
+        float p = (step == 0) ? (float)i / (float)n : (float)i * step;
+        synth[osc]->unison_phase[i - 1] = P_WRAPPED_SUM(synth[osc]->phase, F2P(p - floorf(p)));
+    }
 }
 
 // Terms that depend only on the cluster parameters: the copy ratios

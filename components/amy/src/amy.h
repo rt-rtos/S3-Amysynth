@@ -484,6 +484,7 @@ enum params{
     // ids, because none of these cross the wire (no letter yet).
     UNISON_COUNT, UNISON_SPACING,        // 210, 211
     UNISON_OFFSET, UNISON_BLEND,         // 212, 213
+    UNISON_PHASE_STEP,                   // 214
     ECHO_LEVEL,
     ECHO_DELAY_MS,
     ECHO_MAX_DELAY_MS,
@@ -678,10 +679,13 @@ typedef struct amy_event {
     // LOCAL EDIT (S3-Amysynth, experimental): unison cluster.  Copy i of
     // unison_count renders at logfreq + unison_offset + i * unison_spacing
     // (both in octaves); unison_blend tapers the outer copies (1 = equal).
+    // unison_phase_step: note-on phase of copy i over copy 0, in cycles per
+    // copy (0 = 1/unison_count, the copies evenly over one cycle).
     uint8_t unison_count;
     float unison_spacing;
     float unison_offset;
     float unison_blend;
+    float unison_phase_step;
     uint16_t sample_offset;  // PCM: start this note-on at a sample offset within its block (0..AMY_BLOCK_SIZE-1)
     float fit_ticks;  // PCM: >0 = time-stretch to this many sequencer ticks; 0 = pitch-shift at original length; <0 = off
     uint16_t fit_search;  // PCM fit engine: grain alignment search half-width in frames (0 = off, unset = PCM_STRETCH_SEARCH)
@@ -822,6 +826,7 @@ struct synthinfo {
     float unison_spacing;
     float unison_offset;
     float unison_blend;
+    float unison_phase_step;
     uint16_t sample_offset;  // PCM note-on start offset in samples within its block
     float fit_ticks;  // PCM fit target in sequencer ticks (0 = pitch-shift at original length)
     uint16_t fit_search;  // PCM fit grain alignment search half-width in frames (0 = off)

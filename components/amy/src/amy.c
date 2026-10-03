@@ -910,6 +910,7 @@ void amy_event_to_deltas_queue(amy_event *e, uint16_t base_osc, uint16_t oscs_pe
     EVENT_TO_DELTA_F(unison_spacing, UNISON_SPACING)
     EVENT_TO_DELTA_F(unison_offset, UNISON_OFFSET)
     EVENT_TO_DELTA_F(unison_blend, UNISON_BLEND)
+    EVENT_TO_DELTA_F(unison_phase_step, UNISON_PHASE_STEP)
     EVENT_TO_DELTA_I(sample_offset, SAMPLE_OFFSET)
     EVENT_TO_DELTA_F(fit_ticks, FIT)
     EVENT_TO_DELTA_I(fit_search, FIT_SEARCH)
@@ -1079,6 +1080,7 @@ void reset_osc_params(struct synthinfo *psynth) {
     psynth->unison_spacing = 0;
     psynth->unison_offset = 0;
     psynth->unison_blend = 1.0f;
+    psynth->unison_phase_step = 0;
     AMY_UNSET(psynth->sample_offset);
     AMY_UNSET(psynth->fit_ticks);
     AMY_UNSET(psynth->fit_search);
@@ -1725,6 +1727,7 @@ void play_delta(struct delta *d) {
     DELTA_TO_SYNTH_F(UNISON_SPACING, unison_spacing)
     DELTA_TO_SYNTH_F(UNISON_OFFSET, unison_offset)
     DELTA_TO_SYNTH_F_CLAMPED(UNISON_BLEND, unison_blend, 0.0f, 1.0f)
+    DELTA_TO_SYNTH_F(UNISON_PHASE_STEP, unison_phase_step)
     DELTA_TO_SYNTH_I(SAMPLE_OFFSET, sample_offset)
     if (d->param == FIT) {
         // Negative fit turns the feature back off; 0 means "pitch-shift at

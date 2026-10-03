@@ -371,9 +371,8 @@ static uint8_t unison_copies_for(uint16_t patch, uint8_t count, uint8_t voices,
     if (voices == 0u) voices = 1u;
     uint16_t per_voice = SEQ_TRACK_OSC_BUDGET / voices;
     if (layout == VOICE_UNISON_LAYOUT_ENGINE) {
-        /* Even counts, two equal clusters; the pool cost is the 4-osc voice
-         * whatever the count. */
-        count = (uint8_t)(count & ~1u);
+        /* Any count: an odd one gives the L cluster the extra copy; the pool
+         * cost is the 4-osc voice whatever the count. */
         if (per_voice < 4u) return 1u;
         if (count > 2u * AMY_UNISON_MAX) count = (uint8_t)(2u * AMY_UNISON_MAX);
         return (count < 2u) ? 1u : count;

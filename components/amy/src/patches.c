@@ -388,6 +388,7 @@ int sprint_event(amy_event *e, char *s, size_t len, bool wirecode) {
         _EPRINT_F(unison_spacing, "unison_spacing", "");
         _EPRINT_F(unison_offset, "unison_offset", "");
         _EPRINT_F(unison_blend, "unison_blend", "");
+        _EPRINT_F(unison_phase_step, "unison_phase_step", "");
     }
     _EPRINT_F(trigger_phase, "phase", "P");
     _EPRINT_I(sample_offset, "sample_offset", "po");
@@ -550,6 +551,7 @@ bool event_addresses_oscs(amy_event *e) {
     _RET_TRUE_IF_SET(unison_spacing);
     _RET_TRUE_IF_SET(unison_offset);
     _RET_TRUE_IF_SET(unison_blend);
+    _RET_TRUE_IF_SET(unison_phase_step);
     _RET_TRUE_IF_SET(sample_offset);
     _RET_TRUE_IF_SET(fit_ticks);
     _RET_TRUE_IF_SET(fit_search);
@@ -650,6 +652,7 @@ struct delta *deltas_to_event(struct delta *queue, struct amy_event *event) {
       _CASE_F(unison_spacing, UNISON_SPACING)
       _CASE_F(unison_offset, UNISON_OFFSET)
       _CASE_F(unison_blend, UNISON_BLEND)
+      _CASE_F(unison_phase_step, UNISON_PHASE_STEP)
       _CASE_I(sample_offset, SAMPLE_OFFSET)
       _CASE_F(fit_ticks, FIT)
       _CASE_I(fit_search, FIT_SEARCH)
@@ -858,6 +861,7 @@ void set_event_for_osc(int base_osc, int rel_osc, struct amy_event *event) {
         event->unison_spacing = synth[osc]->unison_spacing;
         event->unison_offset = synth[osc]->unison_offset;
         event->unison_blend = synth[osc]->unison_blend;
+        event->unison_phase_step = synth[osc]->unison_phase_step;
     }
     EVENT_FROM_OSC(sample_offset);
     EVENT_FROM_OSC(fit_ticks);

@@ -340,8 +340,9 @@ typedef enum {
  * carries those stages once for the whole group; the engine layout renders
  * each group inside ONE AMY osc (the experimental unison cluster, a LOCAL
  * EDIT in components/amy), so a voice is two audible oscs whatever the
- * count. Headed and engine run even counts only - an odd count floors
- * (3 -> 2, 5 -> 4) - and count 1 is off in every layout. */
+ * count. Headed runs even counts only - an odd count floors (3 -> 2,
+ * 5 -> 4); the engine plays odd counts with one more copy in the L
+ * cluster; count 1 is off in every layout. */
 typedef enum {
     VOICE_UNISON_LAYOUT_FAN    = 0,
     VOICE_UNISON_LAYOUT_HEADED = 1,

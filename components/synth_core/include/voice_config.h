@@ -174,13 +174,14 @@ typedef struct {
 /* ── Unison index map ────────────────────────────────────────────────────
  * Shared by the build, the live push and the sequencer's layout query, so the
  * pool shape and the osc masks cannot disagree. n = EFFECTIVE copy count
- * (>= 2 and even when headed or engine; n <= 1 is the single-osc build and
+ * (>= 2, and even when headed; n <= 1 is the single-osc build and
  * reads as the fan). Copies are numbered i = 0..n-1 by pitch position (i = 0
  * most flat); mirror pair p = min(i, n-1-i), p = 0 outermost. Headed: pair p
  * sits in group L when p is even, else R; copy i goes to the group of pair p
  * if i == p, the other group otherwise, and within a group the copies occupy
- * ascending osc indices in ascending i order. Engine: the same interleaving
- * (even i in L, odd in R) but a group is one AMY unison-cluster osc - L is
+ * ascending osc indices in ascending i order. Engine: even i in L, odd i in
+ * R (for even n the headed reading; an odd n puts the extra copy in L), and
+ * a group is one AMY unison-cluster osc - L is
  * osc 0, R is osc 1 - so copy_osc returns the group osc and the "heads" are
  * the two cluster oscs. Fan: copy i is osc i. `layout` is a
  * voice_unison_layout_t (seq_model.h). */
