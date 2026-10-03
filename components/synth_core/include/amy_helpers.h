@@ -65,7 +65,9 @@ void amy_helpers_note_send(uint8_t synth, float midi_note, float velocity,
  * alone", which is exactly amy_helpers_note_send(). A set value rides in the
  * note-on itself: AMY applies a note-on's set fields to the voice the note-on
  * allocates and to no other (patches_voices_for_event, patches.c), so it is a
- * per-voice frame with no extra event. Note-ons only; a note-off sends it
+ * per-voice frame with no extra event. It reaches every osc of that voice,
+ * including a PULSE LFO carrier, whose pulse width it then sets (except at
+ * 0 and 1, which AMY resets to 0.5). Note-ons only; a note-off sends it
  * unset. Same task rules as amy_helpers_note_send(). */
 void amy_helpers_note_send_duty(uint8_t synth, float midi_note, float velocity,
                                 uint32_t tag, uint32_t tick, uint32_t period,

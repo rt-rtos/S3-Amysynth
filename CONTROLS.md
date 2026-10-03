@@ -148,7 +148,9 @@ position the EG -> SCN routing implies: the first frame, the last, or the
 middle when unrouted), then 0..63, one frame per detent with Auto below 0.
 EG -> SCN and LFO SCAN modulate around it, and a step's FRM lock overrides
 it. Like Unison it follows the patch scope: LAYER scope sets every track,
-TRACK scope the Track row's track.
+TRACK scope the Track row's track. With a Square LFO on the row, a Frame or
+FRM between 1 and 62 also narrows the LFO square into a pulse of that width
+(`amy_helpers_note_send_duty` in `amy_helpers.h`).
 
 | Page | Rows |
 |---|---|
@@ -363,7 +365,7 @@ to keyframe B (frame 63); each keyframe has four rows, plus one global row:
 | Row | Range | Meaning |
 |---|---|---|
 | SHP | 0..100 | Shape: the synced waveform, saw at 0 to square at 100 |
-| BRT | 0..10 | Bright: slope above the sync harmonic; 10 leaves the waveform as is, 0 rolls off steeply |
+| BRT | 0..10 | Bright: slope above the sync harmonic; 10 leaves the waveform as is, 0 rolls off steeply. No effect once Sync reaches the Range cap (Sync 7-8 at G#7) |
 | SYN | 1.0..8.0 | Hard-sync ratio; whole numbers are that many waveform periods per cycle. Range G#7 limits Sync to 7.0 |
 | PK | off, 2..63 | +12 dB formant bump on that harmonic |
 | RNG | the clean note | Harmonic cap 63 / 31 / 15 / 7, shown as the highest note that plays without aliasing (F#4 / F#5 / G6 / G#7) |
