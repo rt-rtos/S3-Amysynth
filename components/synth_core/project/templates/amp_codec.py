@@ -1,7 +1,7 @@
 """Reader/writer for S3-Amysynth project files (Pnn.amp).
 
 Mirrors components/synth_core/project/project_snapshot.c field for field:
-GLOB v5, LAYR v22, ARP v13, DRON v1, PROG v1, CHRD v1, CLIP v2, PGEN v1,
+GLOB v5, LAYR v22, ARP v13, DRON v2, PROG v1, CHRD v1, CLIP v2, PGEN v1,
 inside project_store.c's 32-byte header (magic "AMYP", fmt 1, name, len, CRC32).
 Field order IS the format; when the firmware bumps a section version, update
 the matching read_/write_ pair and VER here (gen_templates.py fails the build
@@ -18,7 +18,7 @@ FMT_VERSION = 1
 NAME_LEN = 16
 
 TAG = {k: struct.unpack('<I', k.encode())[0] for k in ('GLOB', 'LAYR', 'ARP ', 'DRON', 'PROG', 'CHRD', 'CLIP', 'PGEN')}
-VER = {'GLOB': 5, 'LAYR': 22, 'ARP ': 13, 'DRON': 1, 'PROG': 1, 'CHRD': 1, 'CLIP': 2, 'PGEN': 1}
+VER = {'GLOB': 5, 'LAYR': 22, 'ARP ': 13, 'DRON': 2, 'PROG': 1, 'CHRD': 1, 'CLIP': 2, 'PGEN': 1}
 
 SEQ_TRACKS = 5
 SEQ_MAX_STEPS = 32
@@ -308,7 +308,7 @@ DRON_FIELDS = [('enabled', 'b1'), ('source', 'u8'), ('wave', 'u16'), ('chord', '
                ('patch', 'u16'), ('resonance', 'f32'), ('amp_peak', 'f32'), ('amp_duck', 'f32'),
                ('amp_trim', 'f32'), ('rate', 'u8'), ('sub_enabled', 'b1'), ('sub_interval', 'i8'),
                ('sweep_lo', 'f32'), ('sweep_hi', 'f32'), ('sweep_bars', 'u8'), ('gate_len', 'f32'),
-               ('swing', 'u8'), ('blip', 'f32'), ('pattern', 'u8')]
+               ('swing', 'u8'), ('blip', 'f32'), ('pattern', 'u8'), ('follow', 'u8')]
 
 
 def w_dron(d):

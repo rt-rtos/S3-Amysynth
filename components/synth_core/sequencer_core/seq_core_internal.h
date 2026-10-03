@@ -322,7 +322,9 @@ void     lfo_push_target_neutral(uint8_t synth_id, uint16_t patch,
                                  lfo_target_t target);
 
 /* From seq_core_progression.c */
-void chord_progression_apply_current(void);
+/* land_tick: the absolute bar-line tick the applied chord sounds from (what
+ * sequencer_core_progression_applied_chord() reports), 0 = now. */
+void chord_progression_apply_current(uint32_t land_tick);
 /* True when a published chord change is due at or before fire_tick; then
  * *root and *type are the chord that will be sounding at fire_tick. The record
  * is published by sequencer_core_progression_service() on synth_ui_task each

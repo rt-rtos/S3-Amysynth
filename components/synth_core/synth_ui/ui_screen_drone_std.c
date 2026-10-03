@@ -24,6 +24,7 @@ typedef enum {
     DSROW_WAVE,         /* WAVE only  */
     DSROW_ROOT,
     DSROW_CHORD,
+    DSROW_FOLLOW,       /* chord progression follow (both modes) */
     DSROW_LEVEL,
     DSROW_SUB,
     DSROW_SUB_INTVL,
@@ -76,9 +77,19 @@ static void drone_std_row_label_value(drone_std_row_t r,
             break;
         }
         case DSROW_CHORD:
+            /* As on the stutter screen: "(prog)" while CHORD follow supplies
+             * the chord type. */
             snprintf(label, DRONE_LABEL_LEN, "CHORD");
+            if (drone_std_get_follow() == DRONE_FOLLOW_CHORD)
+                snprintf(value, DRONE_VALUE_LEN, "(prog)");
+            else
+                snprintf(value, DRONE_VALUE_LEN, "%s",
+                         drone_chord_name(drone_std_get_chord()));
+            break;
+        case DSROW_FOLLOW:
+            snprintf(label, DRONE_LABEL_LEN, "FOLLOW");
             snprintf(value, DRONE_VALUE_LEN, "%s",
-                     drone_chord_name(drone_std_get_chord()));
+                     drone_follow_name(drone_std_get_follow()));
             break;
         case DSROW_LEVEL:
             snprintf(label, DRONE_LABEL_LEN, "LEVEL");
@@ -158,6 +169,11 @@ static void drone_std_edit_row(drone_std_row_t r, int delta)
              * first chord instead of stranding it at the end. */
             int c = ((int)drone_std_get_chord() + dir + CHORD_TYPE_COUNT) % CHORD_TYPE_COUNT;
             drone_std_set_chord((chord_type_t)c);
+            break;
+        }
+        case DSROW_FOLLOW: {
+            int f = ((int)drone_std_get_follow() + dir + DRONE_FOLLOW_COUNT) % DRONE_FOLLOW_COUNT;
+            drone_std_set_follow((drone_follow_t)f);
             break;
         }
         case DSROW_LEVEL:

@@ -38,6 +38,7 @@ ARP_EMPTY = -1
 DRONE_SRC_WAVE, DRONE_SRC_PATCH = 0, 1
 DRONE_RATE_1_4, DRONE_RATE_1_8, DRONE_RATE_1_16, DRONE_RATE_1_32, DRONE_RATE_1_1 = range(5)
 DRONE_PAT_FULL, DRONE_PAT_FOUR, DRONE_PAT_OFFBEAT, DRONE_PAT_GALLOP, DRONE_PAT_DUB = range(5)
+DRONE_FOLLOW_OFF, DRONE_FOLLOW_ROOT, DRONE_FOLLOW_CHORD = 0, 1, 2
 WAVE_SINE, WAVE_PULSE, WAVE_SAW_DOWN, WAVE_SAW_UP, WAVE_TRIANGLE = range(5)   # AMY wave, drone WAVE source
 
 # fx_group_t bits in GLOB split_flags: that group renders on its own bus
@@ -254,12 +255,12 @@ def drone_off():
 
 def drone(enabled, chord, root, wave=WAVE_SAW_DOWN, peak=0.6, duck=0.0, rate=DRONE_RATE_1_4,
           sweep=(400.0, 1600.0), sweep_bars=8, res=1.2, pattern=DRONE_PAT_FULL,
-          amp_env=None, sub=False):
+          amp_env=None, sub=False, follow=DRONE_FOLLOW_OFF):
     return dict(enabled=enabled, source=DRONE_SRC_WAVE, wave=wave, chord=chord, root=root,
                 patch=25, resonance=res, amp_peak=peak, amp_duck=duck, amp_trim=1.0,
                 rate=rate, sub_enabled=sub, sub_interval=-12, sweep_lo=float(sweep[0]),
                 sweep_hi=float(sweep[1]), sweep_bars=sweep_bars, gate_len=0.5, swing=0,
-                blip=0.0, pattern=pattern, env=amp_env or env(200, 300, 100, 600),
+                blip=0.0, pattern=pattern, follow=follow, env=amp_env or env(200, 300, 100, 600),
                 env2=env(15, 400, 25, 400))
 
 

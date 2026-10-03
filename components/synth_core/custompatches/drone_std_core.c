@@ -44,7 +44,13 @@ typedef struct {
     uint16_t       wave;         /* AMY wave constant for the carrier      */
     chord_type_t   chord;
     uint8_t        root_note;    /* DRONE_ROOT range shared with stutter   */
-    float          level;        /* 0..1 linear output level (amp CONST)   */
+    drone_follow_t follow;       /* chord progression follow mode          */
+    /* Sounding-set bookkeeping, as in drone_core.c. */
+    uint8_t        sounding[DRONE_CHORD_MAX_NOTES];
+    uint8_t        sounding_n;
+    int16_t        sounding_sub;  /* -1 = none */
+    uint32_t       last_sched_ms; /* latest amy_event.time sent for a note */
+    float          level;       /* 0..1 linear output level (amp CONST)   */
     uint16_t       patch;
     bool           sub_enabled;
     int8_t         sub_interval; /* semitones below the root               */
@@ -56,11 +62,15 @@ typedef struct {
 
 static drone_std_state_t s_ds;
 
-/* Coalesced rebuild (drone_core.c s_d_dirty): drone_std_core_service() drains
- * once per frame. Enable/chord/root stay synchronous - they must note-off the
- * old voicing before state changes or voices stick. */
+/* Coalesced rebuild/re-voice flags, drained once per frame by
+ * drone_std_core_service() (drone_core.c s_d_dirty/s_d_rebuild). */
 static volatile bool s_ds_dirty = false;
+static volatile bool s_ds_rebuild = false;
 static inline void drone_std_mark_dirty(void) { s_ds_dirty = true; }
+static inline void drone_std_mark_rebuild(void) { s_ds_rebuild = true; }
+
+#define DRONE_STD_ROOT_MIN 24
+#define DRONE_STD_ROOT_MAX 72
 
 static inline float drone_std_level_lin(void)
 {
@@ -136,12 +146,12 @@ static void drone_std_configure_patch_synth(uint8_t synth, uint8_t voices)
     drone_std_push_filter(synth, &s_ds.vp.filter);
 }
 
-/* (Re)build both synths for the current source/params. Main is sized to the
- * chord's note count; the sub is always a single voice. */
+/* (Re)build both synths for the current source/params. Main always holds
+ * DRONE_CHORD_MAX_NOTES voices, so a chord change re-voices without a
+ * rebuild; the sub is always a single voice. */
 static void drone_std_rebuild(void)
 {
-    uint8_t chord_n = drone_std_chord_note_count(s_ds.chord);
-    if (chord_n < 1) chord_n = 1;
+    const uint8_t chord_n = DRONE_CHORD_MAX_NOTES;
 
     if (s_ds.source == DRONE_SRC_WAVE) {
         drone_std_configure_wave_synth(DRONE_STD_SYNTH_MAIN, chord_n, s_ds.wave, -1);
@@ -198,14 +208,19 @@ static void drone_std_rebuild(void)
     s_ds.last_lfo_bpm = (float)seq_get_bpm();
 }
 
-/* Fire one note-on/off on a synth (the instrument allocator picks a voice). */
-static void drone_std_note(uint8_t synth, bool on, float midi_note)
+/* Fire one note-on/off on a synth (the instrument allocator picks a voice) at
+ * land_ms, or at the latest time already sent if later (drone_core.c
+ * drone_note). */
+static void drone_std_note(uint8_t synth, bool on, float midi_note, uint32_t land_ms)
 {
+    uint32_t t = AMY_TIME_GEQ(land_ms, s_ds.last_sched_ms) ? land_ms : s_ds.last_sched_ms;
     amy_event *e = amy_helpers_event_begin();
     e->synth     = synth;
     e->midi_note = midi_note;
     e->velocity  = on ? DRONE_STD_GATE_VEL : 0.0f;
+    e->time      = t;
     amy_helpers_event_send(e);
+    s_ds.last_sched_ms = t;
 }
 
 /* Whether the drone should be making sound right now: the user's switch AND not
@@ -215,27 +230,102 @@ static inline bool drone_std_sounding(void)
     return s_ds.enabled && !s_ds.solo_muted;
 }
 
-/* Start/stop the sustained voices: one note-on per chord note on the main,
- * a single root+interval note on the sub. Disable releases the same notes. */
-static void drone_std_apply_enabled(void)
+/* Root and chord the drone voices now (drone_follow_t). */
+static void drone_std_effective(uint8_t *root, chord_type_t *chord)
 {
-    const bool on = drone_std_sounding();
-    const int8_t *formula = quantizer_chord_intervals(s_ds.chord);
-    uint8_t chord_n = drone_std_chord_note_count(s_ds.chord);
-    if (chord_n < 1) {
-        drone_std_note(DRONE_STD_SYNTH_MAIN, on, (float)s_ds.root_note);
-    } else {
-        for (uint8_t i = 0; i < chord_n; i++) {
-            if (!formula || formula[i] < 0) break;
-            int midi = SEQ_CLAMP_INT((int)s_ds.root_note + (int)formula[i], 0, 127);
-            drone_std_note(DRONE_STD_SYNTH_MAIN, on, (float)midi);
+    *root  = s_ds.root_note;
+    *chord = s_ds.chord;
+    if (s_ds.follow == DRONE_FOLLOW_OFF) return;
+    uint8_t pc;
+    chord_type_t type;
+    if (!sequencer_core_progression_applied_chord(&pc, &type, NULL)) return;
+    int d   = (((int)pc - (int)(s_ds.root_note % 12)) % 12 + 12 + 6) % 12 - 6;
+    int eff = (int)s_ds.root_note + d;
+    if (eff < DRONE_STD_ROOT_MIN) eff += 12;
+    if (eff > DRONE_STD_ROOT_MAX) eff -= 12;
+    *root = (uint8_t)eff;
+    if (s_ds.follow == DRONE_FOLLOW_CHORD) *chord = type;
+}
+
+static bool drone_std_note_in(const uint8_t *set, uint8_t n, uint8_t note)
+{
+    for (uint8_t i = 0; i < n; i++) {
+        if (set[i] == note) return true;
+    }
+    return false;
+}
+
+/* The single note emitter (drone_core.c drone_reconcile): one note per chord
+ * note on the main (the root alone for an empty chord), a single
+ * root+interval note on the sub; shared notes are held. */
+static void drone_std_reconcile(uint32_t land_ms)
+{
+    uint8_t tgt[DRONE_CHORD_MAX_NOTES];
+    uint8_t tn = 0;
+    int16_t tsub = -1;
+    if (drone_std_sounding()) {
+        uint8_t root;
+        chord_type_t chord;
+        drone_std_effective(&root, &chord);
+        const int8_t *formula = quantizer_chord_intervals(chord);
+        uint8_t chord_n = drone_std_chord_note_count(chord);
+        if (chord_n < 1) {
+            tgt[tn++] = root;
+        } else {
+            for (uint8_t i = 0; i < chord_n; i++) {
+                if (!formula || formula[i] < 0) break;
+                tgt[tn++] = (uint8_t)SEQ_CLAMP_INT((int)root + (int)formula[i], 0, 127);
+            }
+        }
+        if (s_ds.sub_enabled) {
+            tsub = (int16_t)SEQ_CLAMP_INT((int)root + (int)s_ds.sub_interval, 12, 108);
         }
     }
 
-    if (s_ds.sub_enabled) {
-        int sub = SEQ_CLAMP_INT((int)s_ds.root_note + (int)s_ds.sub_interval, 12, 108);
-        drone_std_note(DRONE_STD_SYNTH_SUB, on, (float)sub);
+    for (uint8_t i = 0; i < s_ds.sounding_n; i++) {
+        if (!drone_std_note_in(tgt, tn, s_ds.sounding[i])) {
+            drone_std_note(DRONE_STD_SYNTH_MAIN, false, (float)s_ds.sounding[i], land_ms);
+        }
     }
+    if (s_ds.sounding_sub >= 0 && s_ds.sounding_sub != tsub) {
+        drone_std_note(DRONE_STD_SYNTH_SUB, false, (float)s_ds.sounding_sub, land_ms);
+    }
+    for (uint8_t i = 0; i < tn; i++) {
+        if (!drone_std_note_in(s_ds.sounding, s_ds.sounding_n, tgt[i])) {
+            drone_std_note(DRONE_STD_SYNTH_MAIN, true, (float)tgt[i], land_ms);
+        }
+    }
+    if (tsub >= 0 && s_ds.sounding_sub != tsub) {
+        drone_std_note(DRONE_STD_SYNTH_SUB, true, (float)tsub, land_ms);
+    }
+
+    memcpy(s_ds.sounding, tgt, tn);
+    s_ds.sounding_n   = tn;
+    s_ds.sounding_sub = tsub;
+}
+
+/* Note-off the whole sounding set and forget it (ahead of a rebuild). */
+static void drone_std_release_all(uint32_t land_ms)
+{
+    for (uint8_t i = 0; i < s_ds.sounding_n; i++) {
+        drone_std_note(DRONE_STD_SYNTH_MAIN, false, (float)s_ds.sounding[i], land_ms);
+    }
+    if (s_ds.sounding_sub >= 0) {
+        drone_std_note(DRONE_STD_SYNTH_SUB, false, (float)s_ds.sounding_sub, land_ms);
+    }
+    s_ds.sounding_n   = 0;
+    s_ds.sounding_sub = -1;
+}
+
+/* amy_sysclock() ms at which a progression change due on land_tick sounds;
+ * now when the tick is 0 or already reached. */
+static uint32_t drone_std_land_ms(uint32_t land_tick)
+{
+    uint32_t now = amy_sysclock();
+    if (land_tick == 0) return now;
+    int32_t ahead = (int32_t)(land_tick - sequencer_ticks());
+    if (ahead <= 0) return now;
+    return now + (uint32_t)((uint64_t)ahead * amy_global.us_per_tick / 1000u);
 }
 
 /* ── Public API ── */
@@ -251,6 +341,8 @@ void drone_std_core_init(void)
     s_ds.wave         = SAW_DOWN;
     s_ds.chord        = CHORD_OFF;   /* root note only until a chord is chosen */
     s_ds.root_note    = 45;          /* A2, same default as the stutter drone */
+    s_ds.follow       = DRONE_FOLLOW_OFF;
+    s_ds.sounding_sub = -1;
     s_ds.level        = 0.5f;
     s_ds.patch        = 25;
     s_ds.sub_enabled  = true;
@@ -286,13 +378,28 @@ void drone_std_core_init(void)
 
 void drone_std_core_service(void)
 {
-    /* Drain the coalesced rebuild BEFORE the enabled gate so a param changed
-     * while off is live on the next enable. */
-    if (s_ds_dirty) {
+    /* A param changed while off still rebuilds, so it is live on the next
+     * enable. */
+    if (s_ds_rebuild) {
+        s_ds_rebuild = false;
         s_ds_dirty = false;
+        uint32_t now = amy_sysclock();
+        drone_std_release_all(now);
         drone_std_rebuild();
-        if (s_ds.enabled) drone_std_apply_enabled();
+        drone_std_reconcile(now);
+    } else if (s_ds_dirty) {
+        s_ds_dirty = false;
+        drone_std_reconcile(amy_sysclock());
     }
+}
+
+void drone_std_core_follow_changed(void)
+{
+    if (s_ds.follow == DRONE_FOLLOW_OFF) return;
+    uint32_t land_tick = 0;
+    (void)sequencer_core_progression_applied_chord(NULL, NULL, &land_tick);
+    /* Synchronous: drone_std_core_service() already ran this frame. */
+    drone_std_reconcile(drone_std_land_ms(land_tick));
 }
 
 void drone_std_core_refresh_lfo_freq(void)
@@ -311,8 +418,8 @@ void drone_std_set_enabled(bool on)
 {
     if (s_ds.enabled == on) return;
     s_ds.enabled = on;
-    if (on) drone_std_rebuild();   /* fresh enable reflects current params */
-    drone_std_apply_enabled();
+    if (on) drone_std_mark_rebuild();   /* fresh enable reflects current params */
+    else    drone_std_mark_dirty();
     ESP_LOGI(TAG, "drone_std %s", on ? "ON" : "OFF");
 }
 
@@ -321,8 +428,8 @@ void drone_std_set_solo_muted(bool muted)
     if (s_ds.solo_muted == muted) return;
     s_ds.solo_muted = muted;
     if (!s_ds.enabled) return;      /* nothing sounding either way */
-    if (!muted) drone_std_rebuild();  /* mirror the fresh-enable path */
-    drone_std_apply_enabled();
+    if (!muted) drone_std_mark_rebuild();  /* mirror the fresh-enable path */
+    else        drone_std_mark_dirty();
 }
 
 void drone_std_set_source(drone_source_t src)
@@ -330,7 +437,7 @@ void drone_std_set_source(drone_source_t src)
     if (src != DRONE_SRC_WAVE && src != DRONE_SRC_PATCH) return;
     if (s_ds.source == src) return;
     s_ds.source = src;
-    drone_std_mark_dirty();
+    drone_std_mark_rebuild();
 }
 
 void drone_std_set_wave(uint16_t amy_wave)
@@ -338,41 +445,32 @@ void drone_std_set_wave(uint16_t amy_wave)
     if (amy_wave == NOISE || amy_wave == KS) amy_wave = SAW_DOWN;
     if (s_ds.wave == amy_wave) return;
     s_ds.wave = amy_wave;
-    if (s_ds.source == DRONE_SRC_WAVE) drone_std_mark_dirty();
+    if (s_ds.source == DRONE_SRC_WAVE) drone_std_mark_rebuild();
 }
 
 void drone_std_set_chord(chord_type_t chord)
 {
     if (chord >= CHORD_TYPE_COUNT) return;
     if (s_ds.chord == chord) return;
-    /* Release the old chord before the resize or extra voices stick on. */
-    bool was_enabled = s_ds.enabled;
-    if (was_enabled) {
-        s_ds.enabled = false;
-        drone_std_apply_enabled();
-    }
     s_ds.chord = chord;
-    drone_std_rebuild();
-    if (was_enabled) {
-        s_ds.enabled = true;
-        drone_std_apply_enabled();
-    }
+    drone_std_mark_dirty();
 }
 
 void drone_std_set_root_note(uint8_t note)
 {
-    uint8_t clamped = (uint8_t)SEQ_CLAMP_INT((int)note, 24, 72);
+    uint8_t clamped = (uint8_t)SEQ_CLAMP_INT((int)note, DRONE_STD_ROOT_MIN,
+                                             DRONE_STD_ROOT_MAX);
     if (s_ds.root_note == clamped) return;
-    bool was_enabled = s_ds.enabled;
-    if (was_enabled) {
-        s_ds.enabled = false;
-        drone_std_apply_enabled();
-    }
     s_ds.root_note = clamped;
-    if (was_enabled) {
-        s_ds.enabled = true;
-        drone_std_apply_enabled();
-    }
+    drone_std_mark_dirty();
+}
+
+void drone_std_set_follow(drone_follow_t f)
+{
+    if (f >= DRONE_FOLLOW_COUNT) return;
+    if (s_ds.follow == f) return;
+    s_ds.follow = f;
+    drone_std_mark_dirty();
 }
 
 void drone_std_set_level(float v)
@@ -380,7 +478,7 @@ void drone_std_set_level(float v)
     v = SEQ_CLAMP_F32(v, 0.0f, 1.0f);
     if (fabsf(s_ds.level - v) < 0.001f) return;
     s_ds.level = v;
-    drone_std_mark_dirty();
+    drone_std_mark_rebuild();
 }
 
 void drone_std_set_patch(uint16_t patch)
@@ -389,40 +487,24 @@ void drone_std_set_patch(uint16_t patch)
     if (drone_patch_excluded(patch)) patch = SEQ_PATCH_TRIANGLE;
     if (s_ds.patch == patch) return;
     s_ds.patch = patch;
-    if (s_ds.source == DRONE_SRC_PATCH) drone_std_mark_dirty();
+    if (s_ds.source == DRONE_SRC_PATCH) drone_std_mark_rebuild();
 }
 
 void drone_std_set_sub_enabled(bool on)
 {
     if (s_ds.sub_enabled == on) return;
     s_ds.sub_enabled = on;
-    if (on) {
-        drone_std_mark_dirty();
-    } else {
-        /* Note-off stays synchronous: the sounding sub must release now. */
-        int sub_midi = SEQ_CLAMP_INT((int)s_ds.root_note + (int)s_ds.sub_interval,
-                                     12, 108);
-        drone_std_note(DRONE_STD_SYNTH_SUB, false, (float)sub_midi);
-    }
+    /* On configures the sub synth; off only releases its note. */
+    if (on) drone_std_mark_rebuild();
+    else    drone_std_mark_dirty();
 }
 
 void drone_std_set_sub_interval(int8_t st)
 {
     int v = SEQ_CLAMP_INT((int)st, -36, 0);
     if (s_ds.sub_interval == (int8_t)v) return;
-    bool was_on = s_ds.enabled && s_ds.sub_enabled;
-    if (was_on) {
-        /* Release at the OLD interval before it changes, or the note sticks. */
-        int old_midi = SEQ_CLAMP_INT((int)s_ds.root_note + (int)s_ds.sub_interval,
-                                     12, 108);
-        drone_std_note(DRONE_STD_SYNTH_SUB, false, (float)old_midi);
-    }
     s_ds.sub_interval = (int8_t)v;
-    if (was_on) {
-        int new_midi = SEQ_CLAMP_INT((int)s_ds.root_note + (int)s_ds.sub_interval,
-                                     12, 108);
-        drone_std_note(DRONE_STD_SYNTH_SUB, true, (float)new_midi);
-    }
+    drone_std_mark_dirty();
 }
 
 void drone_std_set_amp_trim(float v)
@@ -430,7 +512,7 @@ void drone_std_set_amp_trim(float v)
     v = SEQ_CLAMP_F32(v, 0.0f, 1.0f);
     if (fabsf(s_ds.vp.amp_trim - v) < 0.001f) return;
     s_ds.vp.amp_trim = v;
-    drone_std_mark_dirty();
+    drone_std_mark_rebuild();
 }
 
 /* ── Envelopes ── */
@@ -576,6 +658,7 @@ drone_source_t drone_std_get_source(void)       { return s_ds.source; }
 uint16_t       drone_std_get_wave(void)         { return s_ds.wave; }
 chord_type_t   drone_std_get_chord(void)        { return s_ds.chord; }
 uint8_t        drone_std_get_root_note(void)    { return s_ds.root_note; }
+drone_follow_t drone_std_get_follow(void)       { return s_ds.follow; }
 float          drone_std_get_level(void)        { return s_ds.level; }
 uint16_t       drone_std_get_patch(void)        { return s_ds.patch; }
 bool           drone_std_get_sub_enabled(void)  { return s_ds.sub_enabled; }

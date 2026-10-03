@@ -151,17 +151,36 @@ chord types (`chord_types.h`; `CHORD_OFF`, the boot default, is root only):
 | Min6 | 0, 3, 7, 9 |
 | 9    | 0, 4, 7, 10, 14 |
 
-`drone_set_chord()` releases the old chord's held notes, rebuilds the main synth
-to the new voice count, then re-triggers — so switching to a smaller chord never
-leaves voices stuck on.
+The main synth always holds `DRONE_CHORD_MAX_NOTES` voices, so a chord change
+never rebuilds it: the drone keeps a record of the notes it has sounding and
+`drone_reconcile()` releases the ones the new voicing drops, attacks the ones
+it adds, and holds the notes both share without a retrigger.
 
 The **sub** stays a single voice at `chord_root + sub_interval` (default −12,
 range 0 to −36). This is deliberate: low frequencies + polyphony invite phase
 cancellation, so the low end is kept mono.
 
-The drone does **not** follow the global chord progression — its ROOT/CHORD
-rows are always manual. (The progression re-voices chord-mode layers and
-re-roots the arp, not the drone.)
+### Progression follow
+
+The FOLLOW row (`drone_follow_t`, both drones) ties the drone to the chord
+progression's applied chord, the one the melodic rows are playing:
+
+- **OFF** — own ROOT and CHORD.
+- **ROOT** — own chord shape on the progression chord's root, placed at the
+  pitch nearest the drone's ROOT (−6..+5 semitones, kept within 24–72).
+- **CHORD** — as ROOT, with the progression chord's type.
+
+With no progression chord applied, ROOT and CHORD sound as OFF. A follow change
+goes out from the progression service (`drone_core_follow_changed()`) with its
+note events timed (`amy_event.time`) for the bar line the chord change is due
+on, so the drone moves with the rows instead of at the service's lead point.
+Every later drone note event is sent no earlier than that time, which keeps
+releases ahead of attacks in AMY's time-ordered queue.
+
+Setters that change which notes sound (enable, solo, root, chord, follow, sub)
+only record the new value; `drone_core_service()` applies them at the next UI
+frame (at most 50 ms later), so several edits in one frame coalesce into one
+re-voice.
 
 ## Tempo sync
 
@@ -199,9 +218,9 @@ Everything it derives comes from the global BPM and AMY's 48-PPQ tick counter:
    > the sweep drifted with load. Deriving phase from the absolute tick count
    > removes the dependency entirely.
 
-`drone_set_enabled()` fires sustained note-ons (enable) / note-offs (disable); on
-disable the ADSR **release** fades the chord out in time with the tempo-set
-envelope.
+Enabling sounds sustained note-ons and disabling releases them (at the next
+service frame); on disable the ADSR **release** fades the chord out in time
+with the tempo-set envelope.
 
 ## ADSR envelope (shared graph editor)
 
@@ -223,8 +242,8 @@ opens the editor bound to the drone; commit calls
 ## PATCH mode
 
 The carrier's source is one of two independent voice models, switched by
-`drone_set_source()`; chord voicing (see [Chords](#chords)) rebuilds the voice
-count in whichever mode is active, without changing modes:
+`drone_set_source()`; chord voicing (see [Chords](#chords)) re-voices the held
+notes in whichever mode is active, without changing modes:
 
 ```mermaid
 stateDiagram-v2
@@ -235,8 +254,8 @@ stateDiagram-v2
     WAVE --> PATCH : drone_set_source(DRONE_SRC_PATCH)
     PATCH --> WAVE : drone_set_source(DRONE_SRC_WAVE)
 
-    WAVE --> WAVE : drone_set_chord() (rebuild voice count, re-trigger)
-    PATCH --> PATCH : drone_set_chord() (rebuild voice count, re-trigger)
+    WAVE --> WAVE : drone_set_chord() (re-voice held notes)
+    PATCH --> PATCH : drone_set_chord() (re-voice held notes)
 
     state WAVE {
         [*] --> Stuttering
@@ -270,8 +289,9 @@ The slot map is `components/synth_core/include/synth_slots.h`; this drone owns
 `amy_cfg.max_synths`, and the default 250 oscs leave ample headroom (5-voice
 main x 2 oscs + sub x 2 = ~12 oscs).
 
-**Sequencer tags: zero.** The drone uses **direct** (immediate, non-scheduled)
-note-on/param events, so it consumes no entries in AMY's `sequences[]` table —
+**Sequencer tags: zero.** The drone sends plain note-on/param events (notes at
+most timed via `amy_event.time`, see [Progression follow](#progression-follow)),
+so it consumes no entries in AMY's `sequences[]` table —
 no interaction with the sequencer/arp/ratchet tag windows.
 
 ## Concurrency / safety
@@ -300,7 +320,8 @@ DRONE     : ON
 SOURCE    : WAVE          (WAVE / PATCH)
 WAVE      : SAW           (WAVE only: SAW/SAWUP/PULSE/TRI/SINE)
 ROOT      : A2            (C1..C5, shifts the whole voicing)
-CHORD     : Min7          (11 shared chord types)
+CHORD     : Min7          (11 shared chord types; "(prog)" under CHORD follow)
+FOLLOW    : OFF           (OFF/ROOT/CHORD, progression follow)
 RES       : 1.50          (0.1..3.0)
 PEAK      : 0.5           (WAVE only: always-on level, keep > 0)
 DUCK      : 0.5           (WAVE only: stutter depth)

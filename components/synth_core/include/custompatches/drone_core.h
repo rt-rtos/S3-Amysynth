@@ -68,26 +68,58 @@ typedef enum {
     DRONE_PAT_COUNT
 } drone_pattern_t;
 
+/* Chord progression follow, shared by both drones. Append-only: the stutter
+ * drone's value persists in project snapshots.
+ *   OFF   - root_note + own chord, the progression is ignored.
+ *   ROOT  - own chord shape on the applied progression chord's root, placed at
+ *           the pitch nearest root_note (-6..+5 semitones, kept in 24..72).
+ *   CHORD - as ROOT, with the applied chord's type instead of the own chord.
+ * With no progression chord applied (progression off or empty, or before its
+ * first apply) ROOT and CHORD sound as OFF. A follow change lands on the bar
+ * line the progression change is due on; notes the old and new voicing share
+ * keep sounding without a retrigger. */
+typedef enum {
+    DRONE_FOLLOW_OFF = 0,
+    DRONE_FOLLOW_ROOT,
+    DRONE_FOLLOW_CHORD,
+    DRONE_FOLLOW_COUNT
+} drone_follow_t;
+
 /* ── Lifecycle ── */
 void drone_core_init(void);
 
-/* Per-UI-frame service: advances the tempo-locked filter sweep and keeps the
- * LFO frequency in sync with the current BPM. Cheap no-op while disabled.
- * Call once per UI frame, like arp_core_service(). */
+/* Per-UI-frame service: drains the setters' pending rebuild and note changes
+ * (the only place outside drone_core_follow_changed() that sends drone notes),
+ * advances the tempo-locked filter sweep and keeps the LFO frequency in sync
+ * with the current BPM. Call once per UI frame from synth_ui_task, like
+ * arp_core_service(). */
 void drone_core_service(void);
 
-/* ── Parameter setters ── */
+/* Re-voice the drone after the applied progression chord changed.
+ * Obligations: synth_ui_task only (it reads
+ * sequencer_core_progression_applied_chord()); called by the progression
+ * service, after drone_core_service() has run in the same frame.
+ * Guarantees: no-op under DRONE_FOLLOW_OFF; otherwise the note changes are sent
+ * now, timed for the applied chord's land tick (immediately when that tick is
+ * 0 or already past). */
+void drone_core_follow_changed(void);
+
+/* ── Parameter setters ──
+ * Setters that change which notes sound (enable, solo mute, root, chord,
+ * follow, sub on/off and interval) and those that rebuild the synths only
+ * record: the sound change lands at the next drone_core_service() frame
+ * (<= 50 ms). They send no notes, so they may be called from any task. */
 void drone_set_enabled(bool on);          /* sustained note-on/off of the voices */
 
 /* Silence the drone without disturbing drone_set_enabled()'s state: used by the
  * sequencer solo hook, so releasing solo restores whatever the user had set.
- * Releases/re-triggers the sustained voices synchronously - call from the UI
- * task. Unrelated to the stutter duck depth (drone_set_amp_duck). */
+ * Unrelated to the stutter duck depth (drone_set_amp_duck). */
 void drone_set_solo_muted(bool muted);
 void drone_set_source(drone_source_t src);/* WAVE <-> PATCH (rebuilds the synths) */
 void drone_set_wave(uint16_t amy_wave);   /* SAW_DOWN/SAW_UP/PULSE/TRIANGLE/SINE  */
 void drone_set_chord(chord_type_t chord); /* chord preset the carrier plays       */
 void drone_set_root_note(uint8_t midi_note); /* drone-local root (24..72); independent of global quantizer root */
+void drone_set_follow(drone_follow_t f);  /* progression follow; invalid values ignored */
 void drone_set_resonance(float r);        /* filter resonance                     */
 /* Carrier amplitude - Peak/Duck dB model (WAVE mode only).
  *   PEAK 0..1 linear: the on-beat carrier level. Default 0.5.
@@ -138,6 +170,7 @@ drone_source_t drone_get_source(void);
 uint16_t       drone_get_wave(void);
 chord_type_t   drone_get_chord(void);
 uint8_t        drone_get_root_note(void);
+drone_follow_t drone_get_follow(void);
 float          drone_get_resonance(void);
 float          drone_get_amp_peak(void);   /* 0..1 on-beat level knob value        */
 float          drone_get_amp_duck(void);   /* 0..1 duck depth knob value           */
@@ -164,6 +197,7 @@ const char *drone_rate_name(drone_rate_t rate);
 const char *drone_wave_name(uint16_t amy_wave);
 const char *drone_chord_name(chord_type_t chord);   /* wraps chord_type_name() */
 const char *drone_pattern_name(drone_pattern_t p);
+const char *drone_follow_name(drone_follow_t f);    /* OFF / ROOT / CHORD */
 
 #ifdef __cplusplus
 }

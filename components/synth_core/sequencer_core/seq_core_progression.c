@@ -1,4 +1,6 @@
 #include "sequencer_core/seq_core_internal.h"
+#include "custompatches/drone_core.h"
+#include "custompatches/drone_std_core.h"
 
 /* ── State definitions — owns chord progression ──────────────────────── */
 chord_progression_t s_prog = {
@@ -140,15 +142,26 @@ static uint8_t chord_type_to_scale_index(chord_type_t ct)
  * once, BAR launch holds the apply up to a bar, and set_entry on the live
  * entry lands immediately, so entries[current] runs ahead of what sounds.
  * Written by chord_progression_apply_current() and cleared by the service
- * drain, both on synth_ui_task, and read on synth_ui_task (arp refresh and the
- * arp view) - one task, so no seqlock. */
+ * drain, both on synth_ui_task, and read on synth_ui_task (arp refresh, the
+ * arp view and the drones' follow) - one task, so no seqlock. */
 static struct {
-    bool    valid;
-    uint8_t root_pc;
-    uint8_t scale_idx;
+    bool         valid;
+    uint8_t      root_pc;
+    uint8_t      scale_idx;
+    chord_type_t chord_type;
+    uint32_t     land_tick;   /* bar-line tick the chord sounds from; 0 = now */
 } s_prog_applied;
 
-void chord_progression_apply_current(void)
+/* Everything that voices the applied chord outside the melodic rows re-reads
+ * it: the arp on its next service frame, the drones right away. */
+static void prog_applied_changed(void)
+{
+    arp_core_mark_dirty();
+    drone_core_follow_changed();
+    drone_std_core_follow_changed();
+}
+
+void chord_progression_apply_current(uint32_t land_tick)
 {
     if (s_prog.count == 0) return;
     const chord_prog_entry_t *e = &s_prog.entries[s_prog.current];
@@ -163,12 +176,14 @@ void chord_progression_apply_current(void)
     }
     sequencer_refresh_melodic_layers(false);
 
-    /* A CHORD-mode arp snaps to this chord: publish it and let the arp
-     * re-emit on its next service frame. */
-    s_prog_applied.root_pc   = e->root;
-    s_prog_applied.scale_idx = chord_type_to_scale_index(e->chord_type);
-    s_prog_applied.valid     = true;
-    arp_core_mark_dirty();
+    /* A CHORD-mode arp and a following drone take this chord: publish it and
+     * notify them. */
+    s_prog_applied.root_pc    = e->root;
+    s_prog_applied.scale_idx  = chord_type_to_scale_index(e->chord_type);
+    s_prog_applied.chord_type = e->chord_type;
+    s_prog_applied.land_tick  = land_tick;
+    s_prog_applied.valid      = true;
+    prog_applied_changed();
 }
 
 bool sequencer_core_progression_arp_chord(uint8_t *root_pc, uint8_t *scale_idx)
@@ -176,6 +191,16 @@ bool sequencer_core_progression_arp_chord(uint8_t *root_pc, uint8_t *scale_idx)
     if (!s_prog_applied.valid) return false;
     if (root_pc)   *root_pc   = s_prog_applied.root_pc;
     if (scale_idx) *scale_idx = s_prog_applied.scale_idx;
+    return true;
+}
+
+bool sequencer_core_progression_applied_chord(uint8_t *root_pc, chord_type_t *type,
+                                              uint32_t *land_tick)
+{
+    if (!s_prog_applied.valid) return false;
+    if (root_pc)   *root_pc   = s_prog_applied.root_pc;
+    if (type)      *type      = s_prog_applied.chord_type;
+    if (land_tick) *land_tick = s_prog_applied.land_tick;
     return true;
 }
 
@@ -198,7 +223,8 @@ uint8_t sequencer_core_progression_service(void)
      * corrections and drains while stopped bypass the hold. */
     if (s_prog_apply_pending) {
         bool drain_now = true;
-        if (s_prog.apply_at_bar && s_playing && !s_prog_apply_immediate) {
+        bool bar_held = s_prog.apply_at_bar && s_playing && !s_prog_apply_immediate;
+        if (bar_held) {
             /* Arm on the bar the edit was made in, so an edit inside the lead
              * window still lands on the upcoming line. */
             if (s_apply_armed_bar == UINT32_MAX) s_apply_armed_bar = sequencer_bars_elapsed();
@@ -216,18 +242,22 @@ uint8_t sequencer_core_progression_service(void)
                 if (sequencer_core_set_layer_tracks(li, rows)) grown |= (uint8_t)(1u << li);
             }
             if (s_prog.enabled && s_prog.count > 0) {
-                chord_progression_apply_current();
+                /* A held apply lands on the bar line it was held for. */
+                chord_progression_apply_current(
+                    bar_held ? s_bar_baseline + bars_ahead * SEQ_TICKS_PER_BAR : 0u);
             } else {
                 /* Disabled or empty: the caller already cleared chord_mode, or
                  * a manual per-layer chord changed. Re-resolve every melodic
                  * layer against its own chord/scale state. */
                 sequencer_refresh_melodic_layers(false);
-                /* No chord for a CHORD-mode arp any more; it falls back to the
-                 * global key. Only a real drop re-emits, so manual per-layer
-                 * chord edits leave the arp alone. */
+                /* No chord for a CHORD-mode arp or a following drone any more;
+                 * they fall back to the global key and their own chord. Only a
+                 * real drop notifies, so manual per-layer chord edits leave
+                 * them alone. */
                 if (s_prog_applied.valid) {
                     s_prog_applied.valid = false;
-                    arp_core_mark_dirty();
+                    s_prog_applied.land_tick = 0;
+                    prog_applied_changed();
                 }
             }
         }
@@ -253,7 +283,8 @@ uint8_t sequencer_core_progression_service(void)
              * service stall longer than a bar then catches up over successive
              * ticks instead of permanently shifting the form. */
             s_prog.entry_start_bar += e->duration_bars;
-            chord_progression_apply_current();
+            chord_progression_apply_current(s_bar_baseline
+                                            + s_prog.entry_start_bar * SEQ_TICKS_PER_BAR);
             ESP_LOGI(TAG, "progression -> entry %u (root=%u type=%u)",
                      next, s_prog.entries[next].root, (unsigned)s_prog.entries[next].chord_type);
         }

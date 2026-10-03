@@ -728,12 +728,13 @@ typedef struct {
     uint8_t         swing;
     float           blip;
     drone_pattern_t pattern;
+    drone_follow_t  follow;
     seq_env_t       env, env2;
 } staged_drone_t;
 
 static void ser_drone(tlv_writer_t *w)
 {
-    size_t h = tlv_begin_section(w, TAG_DRON, 1);
+    size_t h = tlv_begin_section(w, TAG_DRON, 2);
     tlv_put_u8(w, drone_get_enabled() ? 1 : 0);
     tlv_put_u8(w, (uint8_t)drone_get_source());
     tlv_put_u16(w, drone_get_wave());
@@ -754,6 +755,7 @@ static void ser_drone(tlv_writer_t *w)
     tlv_put_u8(w, drone_get_swing());
     tlv_put_f32(w, drone_get_blip());
     tlv_put_u8(w, (uint8_t)drone_get_pattern());
+    tlv_put_u8(w, (uint8_t)drone_get_follow());
     seq_env_t e; drone_get_envelope(&e);   ser_env(w, &e);
     seq_env_t e2; drone_get_envelope2(&e2); ser_env(w, &e2);
     tlv_end_section(w, h);
@@ -794,6 +796,8 @@ static bool parse_drone(tlv_reader_t *b, staged_drone_t *d)
     d->blip = SEQ_CLAMP_F32(d->blip, 0.0f, 1.0f);
     if (!tlv_get_u8(b, &v)) return false;
     d->pattern = (v >= DRONE_PAT_COUNT) ? DRONE_PAT_FULL : (drone_pattern_t)v;
+    if (!tlv_get_u8(b, &v)) return false;
+    d->follow = (v >= DRONE_FOLLOW_COUNT) ? DRONE_FOLLOW_OFF : (drone_follow_t)v;
     if (!de_env(b, &d->env))  return false;
     if (!de_env(b, &d->env2)) return false;
     return true;
@@ -822,6 +826,7 @@ static void apply_drone(const staged_drone_t *d)
     drone_set_swing(d->swing);
     drone_set_blip(d->blip);
     drone_set_pattern(d->pattern);
+    drone_set_follow(d->follow);
     drone_set_envelope(&d->env);
     drone_set_envelope2(&d->env2);
     drone_set_enabled(d->enabled);
@@ -1129,7 +1134,7 @@ bool project_snapshot_load_buffer(const uint8_t *payload, size_t len, const char
             got_arp = ok;
             break;
         case TAG_DRON:
-            if (got_drone || ver != 1) { ok = false; break; }
+            if (got_drone || ver != 2) { ok = false; break; }
             ok = parse_drone(&body, &staged_drone);
             got_drone = ok;
             break;

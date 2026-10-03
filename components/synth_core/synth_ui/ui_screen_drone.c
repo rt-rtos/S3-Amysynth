@@ -25,6 +25,7 @@ typedef enum {
     DROW_WAVE,        /* WAVE only */
     DROW_ROOT,        /* drone-local root note (both modes) */
     DROW_CHORD,
+    DROW_FOLLOW,      /* chord progression follow (both modes) */
     DROW_RES,
     DROW_CONST,       /* WAVE only */
     DROW_MOD,         /* WAVE only */
@@ -84,8 +85,17 @@ static void drone_row_label_value(drone_logical_row_t r,
             break;
         }
         case DROW_CHORD:
+            /* Under CHORD follow the progression supplies the chord type; the
+             * own chord stays editable for when follow is switched off. */
             snprintf(label, DRONE_LABEL_LEN, "CHORD");
-            snprintf(value, DRONE_VALUE_LEN, "%s", drone_chord_name(drone_get_chord()));
+            if (drone_get_follow() == DRONE_FOLLOW_CHORD)
+                snprintf(value, DRONE_VALUE_LEN, "(prog)");
+            else
+                snprintf(value, DRONE_VALUE_LEN, "%s", drone_chord_name(drone_get_chord()));
+            break;
+        case DROW_FOLLOW:
+            snprintf(label, DRONE_LABEL_LEN, "FOLLOW");
+            snprintf(value, DRONE_VALUE_LEN, "%s", drone_follow_name(drone_get_follow()));
             break;
         case DROW_RES:
             snprintf(label, DRONE_LABEL_LEN, "RES");
@@ -204,6 +214,11 @@ static void drone_edit_row(drone_logical_row_t r, int delta)
              * first chord instead of stranding it at the end. */
             int c = ((int)drone_get_chord() + dir + CHORD_TYPE_COUNT) % CHORD_TYPE_COUNT;
             drone_set_chord((chord_type_t)c);
+            break;
+        }
+        case DROW_FOLLOW: {
+            int f = ((int)drone_get_follow() + dir + DRONE_FOLLOW_COUNT) % DRONE_FOLLOW_COUNT;
+            drone_set_follow((drone_follow_t)f);
             break;
         }
         case DROW_RES: {

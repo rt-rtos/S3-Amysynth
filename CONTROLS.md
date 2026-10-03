@@ -254,6 +254,12 @@ Both are a scrollable parameter list.
 | Button 3 (tap) | Menu (the way back to the normal drone from the stutter drone) |
 | SHIFT + Button 1 | Open the ADSR editor on the drone. Editors then cycle EG0, EG1, Filter, LFO, DIST (normal drone: no EG1 page; stutter drone: no LFO or DIST tab) |
 
+The FOLLOW row after CHORD (both drones, wraps) sets how the drone follows
+the chord progression: OFF plays its own ROOT and CHORD, ROOT moves its own
+chord shape onto each progression chord's root nearest its ROOT, CHORD does
+the same with the progression chord's type (the CHORD row then reads
+"(prog)").
+
 ## Prog screen
 
 | Input | Action |

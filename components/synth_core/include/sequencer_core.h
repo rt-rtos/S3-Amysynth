@@ -891,7 +891,8 @@ void sequencer_core_notify_solo_changed(void);
 /* ── Global chord progression ─────────────────────────────────────────────
  * A list of (root, chord_type, duration_bars) entries that auto-advances.
  * When enabled, all melodic layer quantizers follow the active chord, and so
- * does an arp in CHORD quant mode (sequencer_core_progression_arp_chord).
+ * does an arp in CHORD quant mode (sequencer_core_progression_arp_chord) and
+ * a drone with follow on (sequencer_core_progression_applied_chord).
  * progression_service() must be called at ~20 Hz from the UI task. */
 void    sequencer_core_progression_set_enabled(bool en);
 bool    sequencer_core_progression_get_enabled(void);
@@ -910,6 +911,18 @@ bool    sequencer_core_progression_get_apply_at_bar(void);
  * an emptied progression). The value changes only on a chord apply or such a
  * drain, each of which marks the arp dirty. */
 bool    sequencer_core_progression_arp_chord(uint8_t *root_pc, uint8_t *scale_idx);
+/* The same applied chord as its root pitch class (0-11) and chord type, plus
+ * land_tick: the absolute sequencer tick of the bar line it sounds from, or 0
+ * when it applied immediately (a non-held drain, or stopped transport). The
+ * drones' progression follow reads it.
+ * Obligations: call from synth_ui_task only, as for
+ * sequencer_core_progression_arp_chord(). NULL out-pointers are skipped.
+ * Guarantees: true with the outputs written once a chord apply has landed;
+ * false with the outputs untouched while no progression chord is applied. The
+ * value changes only on a chord apply or a disable/empty drain, each of which
+ * calls drone_core_follow_changed() and drone_std_core_follow_changed(). */
+bool    sequencer_core_progression_applied_chord(uint8_t *root_pc, chord_type_t *type,
+                                                 uint32_t *land_tick);
 void    sequencer_core_progression_set_entry(uint8_t idx, uint8_t root,
                                              chord_type_t chord_type,
                                              uint8_t duration_bars);

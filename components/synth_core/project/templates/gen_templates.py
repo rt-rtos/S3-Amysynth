@@ -218,6 +218,9 @@ def constant_checks(fw):
     for sym in ('FULL', 'FOUR', 'OFFBEAT', 'GALLOP', 'DUB'):
         checks.append(('DRONE_PAT_' + sym, getattr(S, 'DRONE_PAT_' + sym), DRONE_H, e,
                        'DRONE_PAT_' + sym))
+    for sym in ('OFF', 'ROOT', 'CHORD'):
+        checks.append(('DRONE_FOLLOW_' + sym, getattr(S, 'DRONE_FOLLOW_' + sym), DRONE_H, e,
+                       'DRONE_FOLLOW_' + sym))
     for sym in ('SINE', 'PULSE', 'SAW_DOWN', 'SAW_UP', 'TRIANGLE'):
         checks.append(('WAVE_' + sym, getattr(S, 'WAVE_' + sym), AMY_H, d, sym))
     for sym in ('DRUMS', 'DRONES', 'CLIPS'):
