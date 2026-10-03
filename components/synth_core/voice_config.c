@@ -208,6 +208,11 @@ static void unison_engine_coefs(amy_event *e, uint8_t group, uint8_t n,
     e->unison_blend   = blend;
     e->pan_coefs[COEF_CONST] = unison_head_pan(u, group);
     e->amp_coefs[COEF_CONST] = base_amp * unison_group_gain(n, group, blend);
+    /* Start phase i/n per grid copy, as unison_copy_coefs: the engine
+     * respreads copy k of a group from its copy 0 by k/(n/2), so copy 0 at
+     * g/n puts grid copy 2k+g at (2k+g)/n. A set trigger_phase also restarts
+     * every copy on each note-on. */
+    e->trigger_phase = (float)group / (float)n;
 }
 
 void voice_build_wave(const voice_wave_cfg_t *cfg)

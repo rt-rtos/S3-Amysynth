@@ -198,7 +198,7 @@ void voice_build_wave(const voice_wave_cfg_t *cfg);
  * detune/spread/blend turn without a rebuild (mirrors fm_voice_push_live).
  * On the headed layout the copies take detune and blend and the two heads take
  * the spread on their pan CONST; on the engine layout each cluster osc takes
- * its unison fields, group gain and pan. A count or layout change needs a
+ * its unison fields, group gain, pan and start phase. A count or layout change needs a
  * rebuild instead (the pool shape moves). base_amp = the build's
  * osc0_amp_const (the heads carry it on the headed layout, so the copies
  * ignore it). No-op when count <= 1. Known interaction: an
