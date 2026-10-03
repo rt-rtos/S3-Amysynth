@@ -82,13 +82,18 @@ static void melodic_filter_apply(uint8_t layer_idx, uint8_t track,
  * rows own the matrix (a drum row, or a row whose filter block is authored). The
  * dist push and this one never clobber each other - amy_event slots start at
  * the unset sentinel and voice_apply_dist_osc() authors CONST only. The cutoff
- * rails ride the filter and go out only while it is enabled. */
+ * rails ride the filter and go out only while it is enabled. The DRIVE/MIX
+ * rails go out only on an osc-addressed event: AMY reads dist fields on an
+ * event that names no osc at bus scope (CONST only) and drops them before the
+ * voice fan-out, so those rows get dist_push_eg_depths() instead. */
 static void filter_push_eg_depths(amy_event *e, bool own, const seq_filter_t *f)
 {
+    bool dist_ok = AMY_IS_SET(e->osc);
     for (uint8_t eg = 0; eg < 2u; eg++) {
         uint8_t slot = (eg == 0u) ? COEF_EG0 : COEF_EG1;
         for (uint8_t t = 0; t < SEQ_EGT_COUNT; t++) {
             if (t == SEQ_EGT_CUTOFF && !f->enabled) continue;
+            if ((t == SEQ_EGT_DRIVE || t == SEQ_EGT_MIX) && !dist_ok) continue;
             float d = f->eg_depth[eg][t];
             if (!own && d == 0.0f) continue;
             switch (t) {
@@ -102,6 +107,28 @@ static void filter_push_eg_depths(amy_event *e, bool own, const seq_filter_t *f)
     }
 }
 
+/* The DRIVE/MIX rails alone, to osc 0, where voice_apply_dist() puts the stage
+ * on a row whose depth event names no osc. Ownership as filter_push_eg_depths(). */
+static void dist_push_eg_depths(uint8_t synth, bool own, const seq_filter_t *f)
+{
+    bool any = own;
+    for (uint8_t eg = 0; eg < 2u; eg++)
+        if (f->eg_depth[eg][SEQ_EGT_DRIVE] != 0.0f || f->eg_depth[eg][SEQ_EGT_MIX] != 0.0f)
+            any = true;
+    if (!any) return;
+    amy_event *e = amy_helpers_event_begin();
+    e->synth = synth;
+    e->osc   = 0;
+    for (uint8_t eg = 0; eg < 2u; eg++) {
+        uint8_t slot = (eg == 0u) ? COEF_EG0 : COEF_EG1;
+        float dd = f->eg_depth[eg][SEQ_EGT_DRIVE];
+        float dm = f->eg_depth[eg][SEQ_EGT_MIX];
+        if (own || dd != 0.0f) e->dist_drive_coefs[slot] = dd;
+        if (own || dm != 0.0f) e->dist_mix_coefs[slot]   = dm;
+    }
+    amy_helpers_event_send(e);
+}
+
 void sequencer_core_push_eg_depths(uint8_t synth, int osc,
                                    const seq_filter_t *f, bool own)
 {
@@ -111,6 +138,7 @@ void sequencer_core_push_eg_depths(uint8_t synth, int osc,
     if (osc >= 0) e->osc = (uint8_t)osc;
     filter_push_eg_depths(e, own, f);
     amy_helpers_event_send(e);
+    if (osc < 0) dist_push_eg_depths(synth, own, f);
 }
 
 /* Push one dist block where the row's layout carries the stage, then, on an
@@ -369,6 +397,7 @@ static void melodic_filter_push_osc(uint8_t layer_idx, uint8_t track,
         e->duty_coefs[COEF_CONST] = 0.5f + f->ks_duty_ofs;
     }
     amy_helpers_event_send(e);
+    if (osc < 0) dist_push_eg_depths(layer->synth_id[track], own, f);
 }
 
 /* Apply one filter config to a row's AMY synth. Shared by the stored-state
