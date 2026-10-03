@@ -11,8 +11,6 @@ NAME = 'BOOM BAP'
 BPM = 90
 KEY, SCALE = D, SCALE_MINOR
 PROGRESSION = [(D, CHORD_MIN7, 1), (G, CHORD_MIN7, 1), (Bb, CHORD_MAJ7, 1), (A, CHORD_DOM7, 1)]
-SLOT_BASS = 0
-CHORDS = {SLOT_BASS: [38]}                  # D2
 SWING = 20
 
 KICK = merge(hits('x......x..x.....'), {15: dict(every=2, vel=-20)})
@@ -36,9 +34,9 @@ def drums():
 
 def bass():
     L = melodic_layer(SWING, gate=80, groove=60, voices=1, porta=30, chord=PROGRESSION[0][:2])
-    claim(L, 0, P_SINE, SLOT_BASS,
+    claim(L, 0, P_SINE, 38,  # D2
           vp(amp_env=env(3, 400, 50, 150), dst=dist(DIST_CLIP, 3, 50), trim=0.6),
-          BASS)
+          BASS, follow=FOLLOW_ROOT)
     L['patch'] = P_SINE
     return L
 
@@ -60,5 +58,5 @@ def build(mutes=()):
     g = glob(BPM, KEY, SCALE, bus0=dict(eq_high_db=-2, reverb_level=15),
              bus1=dict(eq_high_db=-2, bus_dist_type=DIST_CLIP, bus_dist_drive=2,
                        bus_dist_mix=30, level=200))
-    p = project(g, [drums(), bass(), keys()], progression=PROGRESSION, chords=CHORDS)
+    p = project(g, [drums(), bass(), keys()], progression=PROGRESSION)
     return apply_mutes(p, PARTS, mutes)

@@ -11,9 +11,8 @@ NAME = 'HOUSE'
 BPM = 124
 KEY, SCALE = C_, SCALE_MINOR
 PROGRESSION = [(C_, CHORD_MIN7, 2), (F, CHORD_MIN7, 2)]
-SLOT_BASS, SLOT_STAB = 0, 1
-CHORDS = {SLOT_BASS: [36],                  # C2
-          SLOT_STAB: [58, 62, 63, 67]}      # Bb3 D4 Eb4 G4
+SLOT_STAB = 0
+CHORDS = {SLOT_STAB: [58, 62, 63, 67]}      # Bb3 D4 Eb4 G4
 SWING = 8
 
 KICK = hits('x...x...x...x...')
@@ -36,11 +35,11 @@ def drums():
 
 def bass():
     L = melodic_layer(SWING, gate=60, groove=50, voices=1, chord=PROGRESSION[0][:2])
-    claim(L, 0, P_SAW_DOWN, SLOT_BASS,
+    claim(L, 0, P_SAW_DOWN, 36,  # C2
           vp(amp_env=env(2, 180, 40, 80), eg1=env(2, 150, 0, 80),
              flt=filt(FILTER_LPF24, 350, 1.5, eg1_cutoff=1.5), dst=dist(DIST_CLIP, 4, 60),
              trim=1.0),
-          BASS)
+          BASS, follow=FOLLOW_ROOT)
     L['patch'] = P_SAW_DOWN
     return L
 

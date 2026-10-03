@@ -12,8 +12,6 @@ NAME = 'TRAP'
 BPM = 140
 KEY, SCALE = A, SCALE_MINOR
 PROGRESSION = [(A, CHORD_MIN, 2), (F, CHORD_MAJ, 2)]
-SLOT_808 = 0
-CHORDS = {SLOT_808: [33]}                   # A1
 
 KICK = merge(hits('x.....x..x......'), {14: dict(every=2, vel=-10)})
 SNARE = hits('........x.......')
@@ -40,11 +38,11 @@ def drums():
 
 def bass808():
     L = melodic_layer(0, gate=100, groove=30, voices=1, porta=70, chord=PROGRESSION[0][:2])
-    claim(L, 0, P_SINE, SLOT_808,
+    claim(L, 0, P_SINE, 33,  # A1
           vp(amp_env=env(1, 0, 100, 1100), eg1=env(0, 60, 0, 40),
              flt=filt(FILTER_LPF, 2000, 0.7, eg1_pitch=1.0),
              dst=dist(DIST_CLIP, 3, 60), trim=0.7),
-          BASS)
+          BASS, follow=FOLLOW_ROOT)
     L['patch'] = P_SINE
     return L
 
@@ -62,5 +60,5 @@ def build(mutes=()):
     g = glob(BPM, KEY, SCALE,
              bus0=dict(echo_level=15, echo_feedback=35, echo_tone=-20,
                        reverb_level=20))
-    p = project(g, [drums(), bass808()], arp_=melody(), progression=PROGRESSION, chords=CHORDS)
+    p = project(g, [drums(), bass808()], arp_=melody(), progression=PROGRESSION)
     return apply_mutes(p, PARTS, mutes)

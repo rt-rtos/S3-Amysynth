@@ -11,8 +11,6 @@ NAME = 'SYNTHWAVE'
 BPM = 100
 KEY, SCALE = A, SCALE_MINOR
 PROGRESSION = [(A, CHORD_MIN, 1), (F, CHORD_MAJ, 1), (C_, CHORD_MAJ, 1), (G, CHORD_MAJ, 1)]
-SLOT_BASS = 0
-CHORDS = {SLOT_BASS: [45]}                  # A2
 
 KICK = merge(hits('x.......x.......'), {10: dict(every=2, vel=-10)})
 SNARE = hits('....x.......x...')
@@ -34,11 +32,11 @@ def drums():
 
 def bass():
     L = melodic_layer(0, gate=50, groove=40, voices=1, chord=PROGRESSION[0][:2])
-    claim(L, 0, P_SAW_DOWN, SLOT_BASS,
+    claim(L, 0, P_SAW_DOWN, 45,  # A2
           vp(amp_env=env(2, 150, 60, 60), eg1=env(2, 120, 0, 60),
              flt=filt(FILTER_LPF24, 800, 1.0, eg1_cutoff=1.0), dst=dist(DIST_CLIP, 3, 50),
              trim=0.8),
-          BASS)
+          BASS, follow=FOLLOW_ROOT)
     L['patch'] = P_SAW_DOWN
     return L
 
@@ -67,6 +65,5 @@ def build(mutes=()):
              bus0=dict(chorus_level=35, reverb_level=30, reverb_liveness=85,
                        echo_level=15, echo_feedback=30, echo_tone=-20),
              bus1=dict(level=200))
-    p = project(g, [drums(), bass(), pad()], arp_=arpeggio(), progression=PROGRESSION,
-                chords=CHORDS)
+    p = project(g, [drums(), bass(), pad()], arp_=arpeggio(), progression=PROGRESSION)
     return apply_mutes(p, PARTS, mutes)
