@@ -76,15 +76,20 @@ melodic layer, running at 108 BPM. From there:
   fold and bitcrush in any combination) - bound to whichever instrument
   opened them. See
   [Voice editors](#voice-editors).
-- **FM operator editor** - a DX7-chart editor for a live 6-operator FM
-  voice: custom operator topologies, per-operator 4-level envelopes, ratio
-  or fixed frequency, level, mute and feedback, with the 32 DX7 algorithms
-  as starting points. See
-  [FM operator editor](#fm-operator-editor).
+- **Voice builders** - two patches authored on the device: a DX7-chart
+  editor for a live 6-operator FM voice (custom operator topologies,
+  per-operator 4-level envelopes, ratio or fixed frequency, level, mute and
+  feedback, with the 32 DX7 algorithms as starting points), and a wavetable
+  builder that makes a 64-frame morphing table from nine parameters (sync
+  ratio, saw-to-square shape, brightness and a formant peak for two
+  keyframes, plus a harmonic range cap) and saves it with the project. Any
+  wavetable row can also set its frame per track or lock it per step. See
+  [VOICE-BUILDERS.md](VOICE-BUILDERS.md).
 - **Patches** - AMY's Juno (128) and DX7 (128) banks, piano, seven raw
   oscillator waves (including noise and Karplus-Strong), three designed
-  bass presets, five wavetable banks, four fixed FM presets plus the custom
-  FM voice, and additive organ/bell voices.
+  bass presets, five wavetable banks plus the app's own wavetables (QuadSaw,
+  QuadSawComb, SyncSweep, Drawbars) and the custom wavetable, four fixed FM
+  presets plus the custom FM voice, and additive organ/bell voices.
 - **Drum banks** - the built-in TR-808 bank, plus the Gamma9001 banks (909,
   Linn, MR12, SynFX, Power, Perc, Misc: 136 samples streamed from the
   `drums` flash partition) selectable per layer from the menu, with
@@ -517,7 +522,8 @@ is open, `MY_BUTTON_3` cycles editor pages instead of toggling the menu.
 | Screen: Arp | Arpeggiator |
 | Screen: Drone | Free-running drone (the stutter drone is a dive row inside it) |
 | Screen: Prog | Chord progression editor |
-| Screen: FM | 6-op FM operator editor for patch 276 (with `CONFIG_SYNTH_CUSTOM_FM`) - see [FM operator editor](#fm-operator-editor) |
+| Screen: FM | 6-op FM operator editor for patch 276 (with `CONFIG_SYNTH_CUSTOM_FM`) - see [VOICE-BUILDERS.md](VOICE-BUILDERS.md#fm-custom-patch-276) |
+| Screen: WT | Wavetable builder for patch 288 (with `CONFIG_SYNTH_CUSTOM_WT`, default on) - see [VOICE-BUILDERS.md](VOICE-BUILDERS.md#custom-wavetable-patch-288) |
 | Layer / Chords / Bounce / Prog Gen / FX / Projects / Wireless | Dive pages inside the menu (see below) |
 | DEV | Developer screen (with `CONFIG_SYNTH_DEV_MENU`, default on): heap, per-core load, OOM count, status/drop bars |
 
@@ -543,7 +549,8 @@ Controls: [CONTROLS.md](CONTROLS.md#sequencer-screen-seq).
 
 **Per-step popup** (`MY_BUTTON_SHIFT` + `MY_BUTTON_2` on a step): pitch
 offset, probability, ratchet, every-Nth-loop and previous-step conditions,
-velocity, nudge and ratchet taper. Fields, ranges and inputs:
+velocity, nudge, ratchet taper and, on wavetable rows, a frame lock (FRM).
+Fields, ranges and inputs:
 [CONTROLS.md](CONTROLS.md#step-trig-popup).
 
 **Per-track options (menu -> Layer):**
@@ -552,15 +559,15 @@ The Layer page carries the track selector, **Repeat** (the track fires every
 1/2/4/8 bars), **Mute**, **Solo** (solo overrides mute; a **ClrSolo** row
 appears while anything is soloed and clears all solos), and for melodic
 layers **Chord / Root / Type** (read-only while the global progression is
-enabled).
+enabled) and, on a wavetable track, **Frame** (the frame its notes start on;
+see [VOICE-BUILDERS.md](VOICE-BUILDERS.md#frame-position-frame-and-frm)).
 
 **Patch selection:**
 
-`MY_BUTTON_1` hold + encoder cycles a curated catalog of 30 patches by
-default: four DX7 voices (E.Piano 1, Piano 1, Syn-Lead 1, Flute 1), two
+`MY_BUTTON_1` hold + encoder cycles a curated catalog by default: four DX7 voices (E.Piano 1, Piano 1, Syn-Lead 1, Flute 1), two
 Junos (A18 Piano, B61 E.Piano with tremolo), the built-in piano, the seven
-raw waves, the three bass presets, the five wavetables, the five FM voices
-and the three additive voices (entries for build options that are off are
+raw waves, the three bass presets, the five wavetables, the five FM voices,
+the three additive voices, the app's wavetables and the custom wavetable (entries for build options that are off are
 skipped). Set `CONFIG_SEQ_PATCH_BROWSE_FULL_RANGE=y` to walk the full
 numeric range instead:
 
@@ -574,6 +581,8 @@ numeric range instead:
 | 267-271 | Wavetable banks (with `CONFIG_AMY_WAVETABLE`, default on) |
 | 272-276 | FM Bass, FM E.Piano, FM Bell, FM Lead, FM Custom (with `CONFIG_SYNTH_CUSTOM_FM`) |
 | 277-279 | Add Organ (8 harmonics), Add Bell (6 inharmonic partials), Add Custom (with `CONFIG_SYNTH_ADDITIVE`) |
+| 280-287 | App wavetables: QuadSaw, QuadSawComb, SyncSweep, Drawbars; the remaining slots are empty and skipped |
+| 288 | Custom wavetable, built on the device (with `CONFIG_SYNTH_CUSTOM_WT`) |
 
 Add Custom currently plays the organ default; it has no editor screen yet.
 
@@ -997,120 +1006,15 @@ your ears here. Every change auditions live on the bound instrument. Commit, can
 voice-block source flip work as in the other editors. The stutter drone
 has no distortion page; the free-running drone does.
 
-## FM operator editor
+## Voice builders
 
-Patch **276 (FM Custom)** is one live-editable 6-operator DX7-style voice on
-AMY's ALGO oscillator: a control osc plus six sine operators per note. Every
-sequencer row and the arp that use patch 276 play the same voice, so an edit
-on this screen changes all of them at once - it is one authored instrument,
-not a per-track setting. The fixed FM presets 272-275 are not editable here.
-Requires `CONFIG_SYNTH_CUSTOM_FM`; open it with **Menu → Screen: FM**.
-
-The voice is not yet stored in project snapshots: it resets to its default
-(algorithm 1, only the OP2 → OP1 pair audible) on boot.
-
-### Screen
-
-Two pages, flipped with `MY_BUTTON_SHOULDER`. Page 1 is the chart and the
-panel below; page 2 holds the selected operator's frequency and envelope.
-
-Left on page 1, the operator chart in DX7 algorithm-sheet layout: carriers
-on the bottom row over a shared output bus, each modulator stacked above what
-it modulates, a small loop on the feedback operator. Operators are labelled
-OP1-OP6 as on the DX7 sheets (OP1 is the leftmost carrier of every
-algorithm); the selected one is drawn inverted, a muted one is struck
-diagonally, and a frame around a box means the cursor is on the chart rather
-than in the panel. Right, the selected operator's rows:
-
-| Row | Meaning |
-|---|---|
-| RAT | Coarse frequency, the same control as page 2's coarse cell: `RAT 2.00` for a ratio operator, `FIX 440` for a fixed-frequency one |
-| LVL | 0-100 %. For a modulator this *is* the modulation index (brightness); for a carrier it is that carrier's gain. 0 silences the operator |
-| TO | What the operator modulates: OUT (carrier), or one or more other operators (`TO  OP2`, `TO 2+3`) |
-| FB | Feedback amount 0-120 %, voice-level - see below |
-| ALG | DX7 algorithm 1-32, or CUST for an authored topology |
-
-### Controls
-
-Controls: [CONTROLS.md](CONTROLS.md#fm-screen). From the sequencer grid,
-`MY_BUTTON_SHIFT` + encoder on an FM row steps the algorithm without leaving
-the grid ([CONTROLS.md](CONTROLS.md#sequencer-screen-seq)).
-
-### Page 2: frequency and envelope
-
-The FRQ cell switches the operator between ratio mode (it tracks the note
-at its ratio) and fixed mode (it sounds one frequency whatever the note);
-each switch is seeded from what the operator sounds at A4. Coarse steps the
-curated ratios 0.5, 1, 1.5, 2 ... 12, 14, 16 while keeping any fine offset,
-or a semitone in fixed mode. Fine moves 0.1 Hz, shown in ratio mode as the
-operator's frequency at A4.
-
-Each operator has its own DX7-style 4-level amplitude envelope (EG0), edited
-as numbers: from L4 a note rises to L1 over T1, then L2 over T2, then L3
-over T3, and holds L3 while the key is down; the release returns to L4 over
-T4. Levels are DX7 output levels 0-99 (0.75 dB per step, 0 silent). The
-default is a short percussive shape (T 4 / 300 / 0 / 200 ms, L 99 / 93 /
-93 / 0) on the DX7 curve - the curve is what makes a modulator envelope
-sound like FM instead of a fading sine. The row's ordinary ADSR, opened from
-the sequencer, still applies on top as a VCA over the carriers - both shape
-the note.
-
-Beside the T/L column a read-only plot draws the envelope: level on the
-vertical axis, segment widths log-compressed in time, a short fixed stub for
-the sustain. The segment of the T or the point of the L under the cursor is
-marked, and the trace is dotted while the operator is muted.
-
-`MY_BUTTON_2` mutes the selected operator on either page, for auditioning;
-mute is not saved.
-
-### Custom topologies and their limits
-
-Turning TO, linking, or moving the feedback loop switches ALG to CUST,
-seeded from the algorithm you were on, fan-out included, so you always start
-from what you were hearing. The ALG row (or `MY_BUTTON_SHIFT` + encoder on
-this screen) walks 1 ... 32 then CUST and wraps; CUST keeps the last
-authored topology until you edit it again.
-
-```mermaid
-flowchart LR
-    UI["FM screen<br/>RAT / LVL / TO / FB / ALG"] --> Voice["fm_voice_t<br/>op_targets[] + fb_op"]
-    Voice --> Compile["fm_graph_compile<br/>order + bus assignment"]
-    Compile -- "rejects" --> Voice
-    Compile --> Row["AMY custom algorithm row<br/>(alternating rows, never half-written)"]
-    Row --> Event["osc 0 routing event<br/>algorithm + algo_source[] + feedback"]
-    Event --> Render["render_algo<br/>6 slots over BUS_ONE / BUS_TWO"]
-    Table["DX7 rows 1-32"] -- "decode" --> Voice
-```
-
-- **Fan-out.** An operator either goes to OUT or modulates one or more
-  other operators, as in the DX7 algorithms where one modulator feeds two.
-  The TO row sets a single target; link mode (`MY_BUTTON_1` on page 1, see
-  [CONTROLS.md](CONTROLS.md#linking)) adds and removes targets. A fan-out
-  connection has no depth of its own: the modulator's level and envelope
-  drive every target equally. The chart stacks a modulator above its first
-  target only, so a further target's connector may cross other boxes.
-- **Two modulation buses.** AMY renders the six operators in sequence through
-  two shared block buses (plus a scratch copy for the read-and-overwrite
-  case), which is why routing is a compiled program rather than free wiring.
-  The compiler searches render orders and bus assignments so every modulator
-  renders before what it modulates, and refuses a graph that would need a
-  third bus; link mode shows such a link as `LINK: NO BUS`. With six
-  single-target operators every acyclic wiring fits (all 16,807 of them), so
-  the TO row only ever skips cycles; some fan-out shapes do not fit.
-- **No cycles.** TO skips the operator itself and anything already modulating
-  it, and link mode refuses a loop (`LINK: LOOP`). The buses hold whole
-  256-sample blocks, so a routing loop would be block-delayed feedback, not
-  FM feedback - that is what the FB flag is for.
-- **One feedback operator, one amount.** Self-feedback is the DX7 kind (the
-  operator's own last two output samples, averaged, added to its phase every
-  sample) and is a flag on exactly one operator; the amount lives on the
-  voice, which is the FB row. The FB row is struck through while the
-  selected operator is not the one carrying the loop; clicking it there moves
-  the loop to that operator, clicking it on the loop's operator adjusts the
-  amount. FB at 0 % disables the path, so a loop with no amount is silent.
-- **Level, not on/off.** There is no operator enable (mute is audition
-  only); an unused operator is one at LVL 0 %. The default voice ships with four operators at 0 % for
-  exactly this reason.
+Two patches are authored on the device rather than picked from a bank: the
+6-operator FM Custom voice (patch 276, **Menu -> Screen: FM**) and the
+custom wavetable (patch 288, **Menu -> Screen: WT**). Each is one voice
+shared by every row and the arp that plays it, and edits are heard live.
+The wavetable is saved with the project; the FM voice is not yet. User guide
+and implementation: [VOICE-BUILDERS.md](VOICE-BUILDERS.md). Controls:
+[CONTROLS.md](CONTROLS.md#fm-screen) and [CONTROLS.md](CONTROLS.md#wt-screen).
 
 ---
 
@@ -1122,6 +1026,7 @@ flowchart LR
 - [SEQUENCER-ARCHITECTURE.md](SEQUENCER-ARCHITECTURE.md) - sequencer core, layers, tags, timing
 - [ARP-ARCHITECTURE.md](components/synth_core/ARP-ARCHITECTURE.md) - the standalone arpeggiator
 - [DRONE.md](components/synth_core/custompatches/DRONE.md) - the stutter drone (voice model, chords, tempo sync)
+- [VOICE-BUILDERS.md](VOICE-BUILDERS.md) - the FM and wavetable builders: user guide and implementation
 - [AMY-EDITS.md](AMY-EDITS.md) - local patches to the vendored AMY engine
 - [UAC-EDITS.md](UAC-EDITS.md) - local patches to the vendored USB audio class driver
 - Per-component READMEs under `components/`
@@ -1155,7 +1060,7 @@ and real-time firmware. The interesting problems it has run into so far:
 - surviving allocation failure on a part with ~100 KB of internal RAM free,
   and getting that resilience merged into the engine upstream
 - learning AMY's voice/patch/envelope model well enough to extend it - the arp,
-  drones, FM operator editor, live BLE voice and resampler are built entirely
+  drones, voice builders, live BLE voice and resampler are built entirely
   on its public event API
 - fitting a usable UI on a 128x64 display with one encoder and a few buttons,
   including editors that show what the engine is actually doing (the live
