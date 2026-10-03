@@ -308,6 +308,7 @@ float sequencer_step_velocity(const seq_layer_t *layer,
 /* Set once at init by the app layer; NULL until then, so the core stays usable
  * (and testable) with no arp/drone modules linked in at all. */
 static seq_solo_change_cb_t s_solo_change_cb = NULL;
+static seq_transport_change_cb_t s_transport_change_cb = NULL;   /* likewise */
 
 /* True when any track of any layer has solo engaged (solo is global:
  * sequencer_core.h). Scans only the rows each layer has (num_tracks): a row
@@ -865,9 +866,8 @@ void sequencer_core_set_playing(bool p)
         }
 
         /* Silence only the sequencer's own synth slots (per-layer melodic/drum
-         * plus the arp). The drone slots are deliberately spared: they manage
-         * their own lifecycle and never auto-resume, so a global notes-off
-         * would silence the drone permanently. */
+         * plus the arp). The drone slots are left to the transport hook: a
+         * notes-off here would desync each drone's sounding-set bookkeeping. */
         for (uint8_t i = 0; i < s_num_layers; i++) {
             seq_layer_t *layer = &s_layers[i];
             for (uint8_t t = 0; t < layer->num_tracks; t++) {
@@ -877,6 +877,12 @@ void sequencer_core_set_playing(bool p)
         sequencer_kill_synth_voices(SEQ_ARP_SYNTH);
         clip_player_on_transport(false);
     }
+    if (s_transport_change_cb) s_transport_change_cb(s_playing);
+}
+
+void sequencer_core_set_transport_change_cb(seq_transport_change_cb_t cb)
+{
+    s_transport_change_cb = cb;
 }
 
 void sequencer_core_set_track_midi_note(uint8_t layer_idx, uint8_t track,

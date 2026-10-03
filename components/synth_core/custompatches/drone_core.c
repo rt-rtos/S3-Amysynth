@@ -127,6 +127,7 @@ typedef struct {
                                    separate from `enabled` so the user's own
                                    on/off survives a solo round-trip. Unrelated
                                    to amp_duck, which is the stutter depth. */
+    bool           paused;      /* silenced by a stopped transport, likewise */
     drone_source_t source;
     uint16_t       wave;        /* AMY wave constant for the carrier */
     chord_type_t   chord;       /* chord preset (shared chord_type_t) */
@@ -402,10 +403,10 @@ static void drone_note(uint8_t synth, bool on, float midi_note, uint32_t land_ms
 }
 
 /* Whether the drone should be making sound right now: the user's switch AND not
- * silenced by a solo elsewhere. */
+ * silenced by a solo elsewhere or a stopped transport. */
 static inline bool drone_sounding(void)
 {
-    return s_d.enabled && !s_d.solo_muted;
+    return s_d.enabled && !s_d.solo_muted && !s_d.paused;
 }
 
 /* Root and chord the drone voices now: its own, or under follow the applied
@@ -711,6 +712,15 @@ void drone_set_solo_muted(bool muted)
     else        drone_mark_dirty();
 }
 
+void drone_set_paused(bool paused)
+{
+    if (s_d.paused == paused) return;
+    s_d.paused = paused;
+    if (!s_d.enabled) return;
+    if (!paused) drone_mark_rebuild();   /* as for the solo round-trip */
+    else         drone_mark_dirty();
+}
+
 void drone_set_source(drone_source_t src)
 {
     if (src != DRONE_SRC_WAVE && src != DRONE_SRC_PATCH) return;
@@ -969,6 +979,25 @@ void drone_set_envelope2(const seq_env_t *env)
     ESP_LOGI(TAG, "drone env1 -> A%u D%u S%u%% R%u",
              (unsigned)s_d.vp.env1.attack_ms, (unsigned)s_d.vp.env1.decay_ms,
              (unsigned)s_d.vp.env1.sustain_pct, (unsigned)s_d.vp.env1.release_ms);
+}
+
+void drone_get_voice_params(voice_params_t *out)
+{
+    if (out) *out = s_d.vp;
+}
+
+void drone_set_voice_params(const voice_params_t *vp)
+{
+    if (!vp) return;
+    s_d.vp = *vp;
+    if (s_d.vp.env.attack_ms < 2)   s_d.vp.env.attack_ms = 2;
+    if (s_d.vp.env.release_ms < 5)  s_d.vp.env.release_ms = 5;
+    if (s_d.vp.env1.attack_ms < 2)  s_d.vp.env1.attack_ms = 2;
+    if (s_d.vp.env1.release_ms < 5) s_d.vp.env1.release_ms = 5;
+    s_d.vp.amp_trim = SEQ_CLAMP_F32(s_d.vp.amp_trim, 0.0f, 1.0f);
+    /* The rebuild resets every osc, then re-imposes only the authored
+     * envelopes and re-reads s_amp_peak_lin(). */
+    drone_mark_rebuild();
 }
 
 /* ── Getters ── */

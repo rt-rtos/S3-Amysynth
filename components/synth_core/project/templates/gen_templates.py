@@ -173,7 +173,7 @@ def constant_checks(fw):
     for k, v in C.ECHO_DIV.items():                 # '1/8D' -> FX_ECHO_DIV_8D
         checks.append(("ECHO_DIV['%s']" % k, v, AMY_FX_H, e, 'FX_ECHO_DIV_' + k[2:]))
     for sym in ('MAJ', 'MIN', 'MAJ7', 'MIN7', 'DOM7', 'SUS2', 'SUS4', 'DIM', 'AUG', 'MIN9',
-                'MAJ9', 'MAJ6', 'MIN6', 'DOM9'):
+                'MAJ9', 'MAJ6', 'MIN6', 'DOM9', 'OFF'):
         checks.append(('CHORD_' + sym, getattr(S, 'CHORD_' + sym), CHORD_TYPES_H, e, 'CHORD_' + sym))
     for sym in ('LPF', 'BPF', 'HPF', 'LPF24'):
         checks.append(('FILTER_' + sym, getattr(S, 'FILTER_' + sym), SEQ_MODEL_H, d,

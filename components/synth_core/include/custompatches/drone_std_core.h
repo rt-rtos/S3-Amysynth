@@ -54,6 +54,10 @@ void drone_std_set_enabled(bool on);           /* sustained note-on/off        *
  * the sequencer solo hook, so releasing solo restores whatever the user had
  * set. */
 void drone_std_set_solo_muted(bool muted);
+
+/* Silence the drone while the transport is stopped; same contract as
+ * drone_set_paused(). */
+void drone_std_set_paused(bool paused);
 void drone_std_set_source(drone_source_t src); /* WAVE <-> PATCH               */
 void drone_std_set_wave(uint16_t amy_wave);    /* carrier wave (WAVE mode)     */
 void drone_std_set_chord(chord_type_t chord);
@@ -89,6 +93,12 @@ void drone_std_reapply_dist(void);
 /* ── Free LFO (shared LFO editor; WAVE mode only takes effect) ── */
 void drone_std_get_lfo(seq_lfo_t *out);
 void drone_std_set_lfo(const seq_lfo_t *lfo);
+
+/* ── Whole voice-params block (project store) ──
+ * Same contract as drone_get/set_voice_params(): authored flags included,
+ * clamped, applied by a rebuild at the next drone_std_core_service() frame. */
+void drone_std_get_voice_params(voice_params_t *out);
+void drone_std_set_voice_params(const voice_params_t *vp);
 
 /* ── Getters (for the list UI) ── */
 bool           drone_std_get_enabled(void);

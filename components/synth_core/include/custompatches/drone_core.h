@@ -115,6 +115,12 @@ void drone_set_enabled(bool on);          /* sustained note-on/off of the voices
  * sequencer solo hook, so releasing solo restores whatever the user had set.
  * Unrelated to the stutter duck depth (drone_set_amp_duck). */
 void drone_set_solo_muted(bool muted);
+
+/* Silence the drone while the transport is stopped, the same way: used by the
+ * transport hook (seq_transport_change_cb_t). Stop releases the notes through
+ * the envelope; play brings the drone back as a fresh enable does. Starts
+ * unpaused: the core's transport boots playing. */
+void drone_set_paused(bool paused);
 void drone_set_source(drone_source_t src);/* WAVE <-> PATCH (rebuilds the synths) */
 void drone_set_wave(uint16_t amy_wave);   /* SAW_DOWN/SAW_UP/PULSE/TRIANGLE/SINE  */
 void drone_set_chord(chord_type_t chord); /* chord preset the carrier plays       */
@@ -163,6 +169,13 @@ void drone_set_envelope2(const seq_env_t *env);
  * synth. Cancel restores by calling these again with the stored values. */
 void drone_preview_envelope(const seq_env_t *env);
 void drone_preview_envelope2(const seq_env_t *env);
+
+/* ── Whole voice-params block (project store) ──
+ * The block with its authored flags, so a load restores an unauthored
+ * envelope as unauthored. The set clamps like the per-block setters and
+ * rebuilds the synths at the next drone_core_service() frame. */
+void drone_get_voice_params(voice_params_t *out);
+void drone_set_voice_params(const voice_params_t *vp);
 
 /* ── Getters (for the list UI) ── */
 bool           drone_get_enabled(void);

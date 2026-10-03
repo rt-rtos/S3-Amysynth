@@ -190,6 +190,15 @@ float lfo_rate_to_hz(lfo_rate_t rate, uint16_t bpm);
 /* ── Core lifecycle ── */
 void sequencer_core_init(void);
 void sequencer_core_set_playing(bool playing);
+
+/* Fired on every transport change, after the core has re-armed (play) or
+ * silenced (stop) its own voices; `playing` is the new state. The handler
+ * owns pausing the voices sequencer_core does not drive, as for the solo hook
+ * (seq_solo_change_cb_t). Runs on the caller of sequencer_core_set_playing(),
+ * which is a Core 0 task. */
+typedef void (*seq_transport_change_cb_t)(bool playing);
+void sequencer_core_set_transport_change_cb(seq_transport_change_cb_t cb);
+
 /* Absolute tick of the next bar line on the sequencer's bar grid (a multiple
  * of SEQ_TICKS_PER_BAR strictly after now), or 0 while the transport is
  * stopped. UI task. */

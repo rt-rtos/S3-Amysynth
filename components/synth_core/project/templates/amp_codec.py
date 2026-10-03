@@ -1,7 +1,7 @@
 """Reader/writer for S3-Amysynth project files (Pnn.amp).
 
 Mirrors components/synth_core/project/project_snapshot.c field for field:
-GLOB v5, LAYR v23, ARP v13, DRON v2, PROG v1, CHRD v1, CLIP v2, PGEN v1,
+GLOB v5, LAYR v23, ARP v13, DRON v3, DSTD v1, PROG v1, CHRD v1, CLIP v2, PGEN v1,
 inside project_store.c's 32-byte header (magic "AMYP", fmt 1, name, len, CRC32).
 Field order IS the format; when the firmware bumps a section version, update
 the matching read_/write_ pair and VER here (gen_templates.py fails the build
@@ -17,8 +17,10 @@ MAGIC = 0x50594D41
 FMT_VERSION = 1
 NAME_LEN = 16
 
-TAG = {k: struct.unpack('<I', k.encode())[0] for k in ('GLOB', 'LAYR', 'ARP ', 'DRON', 'PROG', 'CHRD', 'CLIP', 'PGEN')}
-VER = {'GLOB': 5, 'LAYR': 23, 'ARP ': 13, 'DRON': 2, 'PROG': 1, 'CHRD': 1, 'CLIP': 2, 'PGEN': 1}
+TAG = {k: struct.unpack('<I', k.encode())[0] for k in ('GLOB', 'LAYR', 'ARP ', 'DRON', 'DSTD', 'PROG', 'CHRD', 'CLIP',
+                                                       'PGEN')}
+VER = {'GLOB': 5, 'LAYR': 23, 'ARP ': 13, 'DRON': 3, 'DSTD': 1, 'PROG': 1, 'CHRD': 1, 'CLIP': 2,
+       'PGEN': 1}
 
 SEQ_TRACKS = 5
 SEQ_MAX_STEPS = 32
@@ -309,28 +311,50 @@ def r_arp(r):
 
 DRON_FIELDS = [('enabled', 'b1'), ('source', 'u8'), ('wave', 'u16'), ('chord', 'u8'), ('root', 'u8'),
                ('patch', 'u16'), ('resonance', 'f32'), ('amp_peak', 'f32'), ('amp_duck', 'f32'),
-               ('amp_trim', 'f32'), ('rate', 'u8'), ('sub_enabled', 'b1'), ('sub_interval', 'i8'),
+               ('rate', 'u8'), ('sub_enabled', 'b1'), ('sub_interval', 'i8'),
                ('sweep_lo', 'f32'), ('sweep_hi', 'f32'), ('sweep_bars', 'u8'), ('gate_len', 'f32'),
                ('swing', 'u8'), ('blip', 'f32'), ('pattern', 'u8'), ('follow', 'u8')]
 
 
-def w_dron(d):
+DSTD_FIELDS = [('enabled', 'b1'), ('source', 'u8'), ('wave', 'u16'), ('chord', 'u8'), ('root', 'u8'),
+               ('follow', 'u8'), ('level', 'f32'), ('patch', 'u16'), ('sub_enabled', 'b1'),
+               ('sub_interval', 'i8')]
+
+
+def w_fields_vp(fields, d):
+    """The drone sections: scalar fields, then the whole voice_params_t."""
     w = W()
-    for k, t in DRON_FIELDS:
+    for k, t in fields:
         if t == 'b1':
             w.u8(1 if d[k] else 0)
         else:
             getattr(w, t)(d[k])
-    w_env(w, d['env']); w_env(w, d['env2'])
+    w_vp(w, d['vp'])
     return bytes(w.b)
 
 
-def r_dron(r):
+def r_fields_vp(fields, r):
     d = {}
-    for k, t in DRON_FIELDS:
+    for k, t in fields:
         d[k] = (r.u8() != 0) if t == 'b1' else getattr(r, t)()
-    d['env'] = r_env(r); d['env2'] = r_env(r)
+    d['vp'] = r_vp(r)
     return d
+
+
+def w_dron(d):
+    return w_fields_vp(DRON_FIELDS, d)
+
+
+def r_dron(r):
+    return r_fields_vp(DRON_FIELDS, r)
+
+
+def w_dstd(d):
+    return w_fields_vp(DSTD_FIELDS, d)
+
+
+def r_dstd(r):
+    return r_fields_vp(DSTD_FIELDS, r)
 
 
 def w_prog(p):
@@ -403,6 +427,7 @@ def encode_payload(p):
         w.section('LAYR', w_layr(L))
     w.section('ARP ', w_arp(p['arp']))
     w.section('DRON', w_dron(p['drone']))
+    w.section('DSTD', w_dstd(p['drone_std']))
     w.section('PROG', w_prog(p['prog']))
     w.section('CHRD', w_chrd(p['chords']))
     w.section('CLIP', w_clip(p['clip']))
@@ -429,6 +454,7 @@ def decode_file(data):
     r = R(payload)
     p = dict(name=name, layers=[])
     readers = {'GLOB': ('glob', r_glob), 'ARP ': ('arp', r_arp), 'DRON': ('drone', r_dron),
+               'DSTD': ('drone_std', r_dstd),
                'PROG': ('prog', r_prog), 'CHRD': ('chords', r_chrd), 'CLIP': ('clip', r_clip),
                'PGEN': ('pgen', r_pgen)}
     while not r.done():

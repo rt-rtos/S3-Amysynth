@@ -15,6 +15,7 @@ C_, Db, D, Eb, E, F, Gb, G, Ab, A, Bb, B = range(12)
 # chord_type_t (quantizer.c s_chord_intervals order)
 CHORD_MAJ, CHORD_MIN, CHORD_MAJ7, CHORD_MIN7, CHORD_DOM7, CHORD_SUS2, CHORD_SUS4 = range(7)
 CHORD_DIM, CHORD_AUG, CHORD_MIN9, CHORD_MAJ9, CHORD_MAJ6, CHORD_MIN6, CHORD_DOM9 = range(7, 14)
+CHORD_OFF = 14   # the root alone
 
 # quantizer.c s_scales[] index
 SCALE_CHROMATIC, SCALE_MAJOR, SCALE_MINOR, SCALE_DORIAN, SCALE_PHRYGIAN = range(5)
@@ -257,16 +258,29 @@ def drone(enabled, chord, root, wave=WAVE_SAW_DOWN, peak=0.6, duck=0.0, rate=DRO
           sweep=(400.0, 1600.0), sweep_bars=8, res=1.2, pattern=DRONE_PAT_FULL,
           amp_env=None, sub=False, follow=DRONE_FOLLOW_OFF):
     return dict(enabled=enabled, source=DRONE_SRC_WAVE, wave=wave, chord=chord, root=root,
-                patch=25, resonance=res, amp_peak=peak, amp_duck=duck, amp_trim=1.0,
+                patch=25, resonance=res, amp_peak=peak, amp_duck=duck,
                 rate=rate, sub_enabled=sub, sub_interval=-12, sweep_lo=float(sweep[0]),
                 sweep_hi=float(sweep[1]), sweep_bars=sweep_bars, gate_len=0.5, swing=0,
-                blip=0.0, pattern=pattern, follow=follow, env=amp_env or env(200, 300, 100, 600),
-                env2=env(15, 400, 25, 400))
+                blip=0.0, pattern=pattern, follow=follow,
+                vp=vp(amp_env=amp_env or env(200, 300, 100, 600), eg1=env(15, 400, 25, 400),
+                      melodic=False))
+
+
+def drone_std_off():
+    """drone_std_core_init(): off, editor seeds unauthored."""
+    v = vp(melodic=False)
+    v['env'] = env(200, 300, 100, 600); v['env1'] = env(15, 400, 25, 400)
+    v['filter'].update(filter_type=FILTER_LPF, cutoff_hz=1200.0, resonance=1.0)
+    v['lfo'].update(wave=LFO_SINE, rate=LFO_1BAR, depth=50, targets=LFO_TGT_FILTER)
+    return dict(enabled=False, source=DRONE_SRC_WAVE, wave=WAVE_SAW_DOWN, chord=CHORD_OFF,
+                root=45, follow=DRONE_FOLLOW_OFF, level=0.5, patch=25, sub_enabled=True,
+                sub_interval=-12, vp=v)
 
 
 def project(glob_, layers, arp_=None, drone_=None, progression=None, chords=None):
     chords = chords or {}
     return dict(glob=glob_, layers=layers, arp=arp_ or arp_off(), drone=drone_ or drone_off(),
+                drone_std=drone_std_off(),
                 prog=dict(enabled=bool(progression), entries=progression or []),
                 chords=[chords.get(i, []) for i in range(C.SEQ_CHORD_SLOTS)],
                 clip=dict(bars=4, stereo=False, tail=2, level=[100, 100], mode=[0, 0], after=0),

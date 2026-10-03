@@ -40,6 +40,7 @@ typedef struct {
     bool           solo_muted;   /* silenced because a sequencer track is soloed;
                                     separate from `enabled` so the user's own
                                     on/off survives a solo round-trip        */
+    bool           paused;       /* silenced by a stopped transport, likewise */
     drone_source_t source;
     uint16_t       wave;         /* AMY wave constant for the carrier      */
     chord_type_t   chord;
@@ -224,10 +225,10 @@ static void drone_std_note(uint8_t synth, bool on, float midi_note, uint32_t lan
 }
 
 /* Whether the drone should be making sound right now: the user's switch AND not
- * silenced by a solo elsewhere. */
+ * silenced by a solo elsewhere or a stopped transport. */
 static inline bool drone_std_sounding(void)
 {
-    return s_ds.enabled && !s_ds.solo_muted;
+    return s_ds.enabled && !s_ds.solo_muted && !s_ds.paused;
 }
 
 /* Root and chord the drone voices now (drone_follow_t). */
@@ -430,6 +431,15 @@ void drone_std_set_solo_muted(bool muted)
     if (!s_ds.enabled) return;      /* nothing sounding either way */
     if (!muted) drone_std_mark_rebuild();  /* mirror the fresh-enable path */
     else        drone_std_mark_dirty();
+}
+
+void drone_std_set_paused(bool paused)
+{
+    if (s_ds.paused == paused) return;
+    s_ds.paused = paused;
+    if (!s_ds.enabled) return;
+    if (!paused) drone_std_mark_rebuild();
+    else         drone_std_mark_dirty();
 }
 
 void drone_std_set_source(drone_source_t src)
@@ -650,6 +660,26 @@ void drone_std_set_lfo(const seq_lfo_t *lfo)
         voice_apply_native_lfo(DRONE_STD_SYNTH_SUB, on ? &s_ds.vp.lfo : NULL,
                                seq_get_bpm());
     }
+}
+
+void drone_std_get_voice_params(voice_params_t *out)
+{
+    if (out) *out = s_ds.vp;
+}
+
+void drone_std_set_voice_params(const voice_params_t *vp)
+{
+    if (!vp) return;
+    s_ds.vp = *vp;
+    if (s_ds.vp.env.attack_ms < 2)   s_ds.vp.env.attack_ms = 2;
+    if (s_ds.vp.env.release_ms < 5)  s_ds.vp.env.release_ms = 5;
+    if (s_ds.vp.env1.attack_ms < 2)  s_ds.vp.env1.attack_ms = 2;
+    if (s_ds.vp.env1.release_ms < 5) s_ds.vp.env1.release_ms = 5;
+    voice_dist_clamp(&s_ds.vp.dist);
+    s_ds.vp.amp_trim = SEQ_CLAMP_F32(s_ds.vp.amp_trim, 0.0f, 1.0f);
+    /* The rebuild resets every osc, then pushes the filter and LFO and
+     * re-imposes only the authored envelopes and distortion. */
+    drone_std_mark_rebuild();
 }
 
 /* ── Getters ── */

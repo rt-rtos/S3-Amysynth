@@ -19,6 +19,7 @@
 #include "seq_core_config.h"   /* SEQ_SWING_MAX - same-component engine limits */
 #include "arp_core.h"
 #include "custompatches/drone_core.h"
+#include "custompatches/drone_std_core.h"
 #include "custompatches/clip_bounce.h"
 #include "custompatches/clip_player.h"
 #include "amy_fx.h"
@@ -40,6 +41,7 @@ static const char *TAG = "project_snapshot";
 #define TAG_LAYR 0x5259414Cu
 #define TAG_ARP  0x20505241u
 #define TAG_DRON 0x4E4F5244u
+#define TAG_DSTD 0x44545344u
 #define TAG_PROG 0x474F5250u
 #define TAG_CHRD 0x44524843u
 #define TAG_CLIP 0x50494C43u
@@ -208,7 +210,7 @@ static bool de_lfo(tlv_reader_t *r, seq_lfo_t *l)
     return true;
 }
 
-/* ── Shared voice_params_t codec (per track, LAYR) ───────────────────────── */
+/* ── Shared voice_params_t codec (LAYR per track, DRON, DSTD) ───────────── */
 
 static void ser_vp(tlv_writer_t *w, const voice_params_t *vp)
 {
@@ -732,7 +734,6 @@ typedef struct {
     float           resonance;
     float           amp_peak;
     float           amp_duck;
-    float           amp_trim;
     drone_rate_t    rate;
     bool            sub_enabled;
     int8_t          sub_interval;
@@ -743,12 +744,12 @@ typedef struct {
     float           blip;
     drone_pattern_t pattern;
     drone_follow_t  follow;
-    seq_env_t       env, env2;
+    voice_params_t  vp;
 } staged_drone_t;
 
 static void ser_drone(tlv_writer_t *w)
 {
-    size_t h = tlv_begin_section(w, TAG_DRON, 2);
+    size_t h = tlv_begin_section(w, TAG_DRON, 3);
     tlv_put_u8(w, drone_get_enabled() ? 1 : 0);
     tlv_put_u8(w, (uint8_t)drone_get_source());
     tlv_put_u16(w, drone_get_wave());
@@ -758,7 +759,6 @@ static void ser_drone(tlv_writer_t *w)
     tlv_put_f32(w, drone_get_resonance());
     tlv_put_f32(w, drone_get_amp_peak());
     tlv_put_f32(w, drone_get_amp_duck());
-    tlv_put_f32(w, drone_get_amp_trim());
     tlv_put_u8(w, (uint8_t)drone_get_rate());
     tlv_put_u8(w, drone_get_sub_enabled() ? 1 : 0);
     tlv_put_i8(w, drone_get_sub_interval());
@@ -770,8 +770,7 @@ static void ser_drone(tlv_writer_t *w)
     tlv_put_f32(w, drone_get_blip());
     tlv_put_u8(w, (uint8_t)drone_get_pattern());
     tlv_put_u8(w, (uint8_t)drone_get_follow());
-    seq_env_t e; drone_get_envelope(&e);   ser_env(w, &e);
-    seq_env_t e2; drone_get_envelope2(&e2); ser_env(w, &e2);
+    voice_params_t vp; drone_get_voice_params(&vp); ser_vp(w, &vp);
     tlv_end_section(w, h);
 }
 
@@ -793,8 +792,6 @@ static bool parse_drone(tlv_reader_t *b, staged_drone_t *d)
     d->amp_peak = SEQ_CLAMP_F32(d->amp_peak, 0.0f, 1.0f);
     if (!tlv_get_f32(b, &d->amp_duck))  return false;
     d->amp_duck = SEQ_CLAMP_F32(d->amp_duck, 0.0f, 1.0f);
-    if (!tlv_get_f32(b, &d->amp_trim))  return false;
-    d->amp_trim = SEQ_CLAMP_F32(d->amp_trim, 0.0f, 1.0f);
     if (!tlv_get_u8(b, &v)) return false;
     d->rate = (v >= DRONE_RATE_COUNT) ? DRONE_RATE_1_4 : (drone_rate_t)v;
     { uint8_t se; if (!tlv_get_u8(b, &se)) return false; d->sub_enabled = se != 0; }
@@ -812,8 +809,7 @@ static bool parse_drone(tlv_reader_t *b, staged_drone_t *d)
     d->pattern = (v >= DRONE_PAT_COUNT) ? DRONE_PAT_FULL : (drone_pattern_t)v;
     if (!tlv_get_u8(b, &v)) return false;
     d->follow = (v >= DRONE_FOLLOW_COUNT) ? DRONE_FOLLOW_OFF : (drone_follow_t)v;
-    if (!de_env(b, &d->env))  return false;
-    if (!de_env(b, &d->env2)) return false;
+    if (!de_vp(b, &d->vp)) return false;
     return true;
 }
 
@@ -829,7 +825,6 @@ static void apply_drone(const staged_drone_t *d)
     drone_set_resonance(d->resonance);
     drone_set_amp_peak(d->amp_peak);
     drone_set_amp_duck(d->amp_duck);
-    drone_set_amp_trim(d->amp_trim);
     drone_set_rate(d->rate);
     drone_set_sub_interval(d->sub_interval);
     drone_set_sub_enabled(d->sub_enabled);
@@ -841,9 +836,80 @@ static void apply_drone(const staged_drone_t *d)
     drone_set_blip(d->blip);
     drone_set_pattern(d->pattern);
     drone_set_follow(d->follow);
-    drone_set_envelope(&d->env);
-    drone_set_envelope2(&d->env2);
+    drone_set_voice_params(&d->vp);
     drone_set_enabled(d->enabled);
+}
+
+/* ── DSTD section (normal drone) ──────────────────────────────────────────── */
+
+typedef struct {
+    bool            enabled;
+    drone_source_t  source;
+    uint16_t        wave;
+    chord_type_t    chord;
+    uint8_t         root;
+    drone_follow_t  follow;
+    float           level;
+    uint16_t        patch;
+    bool            sub_enabled;
+    int8_t          sub_interval;
+    voice_params_t  vp;
+} staged_drone_std_t;
+
+static void ser_drone_std(tlv_writer_t *w)
+{
+    size_t h = tlv_begin_section(w, TAG_DSTD, 1);
+    tlv_put_u8(w, drone_std_get_enabled() ? 1 : 0);
+    tlv_put_u8(w, (uint8_t)drone_std_get_source());
+    tlv_put_u16(w, drone_std_get_wave());
+    tlv_put_u8(w, (uint8_t)drone_std_get_chord());
+    tlv_put_u8(w, drone_std_get_root_note());
+    tlv_put_u8(w, (uint8_t)drone_std_get_follow());
+    tlv_put_f32(w, drone_std_get_level());
+    tlv_put_u16(w, drone_std_get_patch());
+    tlv_put_u8(w, drone_std_get_sub_enabled() ? 1 : 0);
+    tlv_put_i8(w, drone_std_get_sub_interval());
+    voice_params_t vp; drone_std_get_voice_params(&vp); ser_vp(w, &vp);
+    tlv_end_section(w, h);
+}
+
+static bool parse_drone_std(tlv_reader_t *b, staged_drone_std_t *d)
+{
+    uint8_t v;
+    if (!tlv_get_u8(b, &v)) return false;
+    d->enabled = v != 0;
+    if (!tlv_get_u8(b, &v)) return false;
+    d->source = (v > DRONE_SRC_PATCH) ? DRONE_SRC_PATCH : (drone_source_t)v;
+    if (!tlv_get_u16(b, &d->wave)) return false;
+    if (!tlv_get_u8(b, &v)) return false;
+    d->chord = (v >= CHORD_TYPE_COUNT) ? CHORD_MAJ : (chord_type_t)v;
+    if (!tlv_get_u8(b, &d->root)) return false;
+    if (!tlv_get_u8(b, &v)) return false;
+    d->follow = (v >= DRONE_FOLLOW_COUNT) ? DRONE_FOLLOW_OFF : (drone_follow_t)v;
+    if (!tlv_get_f32(b, &d->level)) return false;
+    d->level = SEQ_CLAMP_F32(d->level, 0.0f, 1.0f);
+    if (!tlv_get_u16(b, &d->patch)) return false;
+    d->patch = clamp_patch(d->patch);
+    { uint8_t se; if (!tlv_get_u8(b, &se)) return false; d->sub_enabled = se != 0; }
+    if (!tlv_get_i8(b, &d->sub_interval)) return false;
+    if (!de_vp(b, &d->vp)) return false;
+    return true;
+}
+
+/* As apply_drone(): enabled LAST, an unplayable patch leaves the live one. */
+static void apply_drone_std(const staged_drone_std_t *d)
+{
+    drone_std_set_source(d->source);
+    drone_std_set_wave(d->wave);
+    drone_std_set_chord(d->chord);
+    drone_std_set_root_note(d->root);
+    drone_std_set_follow(d->follow);
+    drone_std_set_level(d->level);
+    if (!drone_patch_excluded(d->patch)) drone_std_set_patch(d->patch);
+    drone_std_set_sub_interval(d->sub_interval);
+    drone_std_set_sub_enabled(d->sub_enabled);
+    drone_std_set_voice_params(&d->vp);
+    drone_std_set_enabled(d->enabled);
 }
 
 /* ── CLIP section ─────────────────────────────────────────────────────────── */
@@ -1084,6 +1150,7 @@ bool project_snapshot_save(uint8_t slot, const char *name)
     }
     ser_arp(&w);
     ser_drone(&w);
+    ser_drone_std(&w);
     ser_prog(&w);
     ser_chrd(&w);
     ser_clip(&w);
@@ -1103,16 +1170,24 @@ bool project_snapshot_load_buffer(const uint8_t *payload, size_t len, const char
     if (!payload) return false;
     if (!name) name = "";
 
+    /* Heap, not stack: the drones' voice_params_t blocks would put this frame
+     * past the 1 KB -Wstack-usage limit. */
+    typedef struct {
+        staged_drone_t     drone;
+        staged_drone_std_t dstd;
+    } staged_drones_t;
     seq_layer_t *staged_layers =
         heap_caps_malloc(sizeof(seq_layer_t) * MAX_LAYERS, MALLOC_CAP_SPIRAM);
-    if (!staged_layers) {
+    staged_drones_t *sd = heap_caps_calloc(1, sizeof(*sd), MALLOC_CAP_SPIRAM);
+    if (!staged_layers || !sd) {
+        free(staged_layers);
+        free(sd);
         ESP_LOGE(TAG, "load '%s': SPIRAM allocation failed", name);
         return false;
     }
 
     staged_glob_t  staged_glob;  memset(&staged_glob, 0, sizeof staged_glob);
     staged_arp_t   staged_arp;   memset(&staged_arp, 0, sizeof staged_arp);
-    staged_drone_t staged_drone; memset(&staged_drone, 0, sizeof staged_drone);
     staged_prog_t  staged_prog;  memset(&staged_prog, 0, sizeof staged_prog);
     staged_clip_t  staged_clip;  memset(&staged_clip, 0, sizeof staged_clip);
     staged_pgen_t  staged_pgen;  memset(&staged_pgen, 0, sizeof staged_pgen);
@@ -1120,7 +1195,7 @@ bool project_snapshot_load_buffer(const uint8_t *payload, size_t len, const char
     memset(staged_chords, 0, sizeof staged_chords);
     uint8_t staged_layer_count = 0;
     bool got_glob = false, got_arp = false, got_drone = false, got_prog = false;
-    bool got_chrd = false, got_clip = false, got_pgen = false;
+    bool got_chrd = false, got_clip = false, got_pgen = false, got_dstd = false;
 
     tlv_reader_t r;
     tlv_reader_init(&r, payload, len);
@@ -1148,9 +1223,14 @@ bool project_snapshot_load_buffer(const uint8_t *payload, size_t len, const char
             got_arp = ok;
             break;
         case TAG_DRON:
-            if (got_drone || ver != 2) { ok = false; break; }
-            ok = parse_drone(&body, &staged_drone);
+            if (got_drone || ver != 3) { ok = false; break; }
+            ok = parse_drone(&body, &sd->drone);
             got_drone = ok;
+            break;
+        case TAG_DSTD:
+            if (got_dstd || ver != 1) { ok = false; break; }
+            ok = parse_drone_std(&body, &sd->dstd);
+            got_dstd = ok;
             break;
         case TAG_PROG:
             if (got_prog || ver != 1) { ok = false; break; }
@@ -1191,6 +1271,7 @@ bool project_snapshot_load_buffer(const uint8_t *payload, size_t len, const char
 
     if (!ok) {
         free(staged_layers);
+        free(sd);
         ESP_LOGW(TAG, "load '%s': validation failed, no changes made", name);
         return false;
     }
@@ -1226,7 +1307,12 @@ bool project_snapshot_load_buffer(const uint8_t *payload, size_t len, const char
 
     apply_glob(&staged_glob);
     if (got_arp)   apply_arp(&staged_arp);
-    if (got_drone) apply_drone(&staged_drone);
+    /* A file without a drone section leaves that drone off, not playing
+     * whatever the session had (the project is the whole persisted state). */
+    if (got_drone) apply_drone(&sd->drone);
+    else           drone_set_enabled(false);
+    if (got_dstd)  apply_drone_std(&sd->dstd);
+    else           drone_std_set_enabled(false);
     if (got_prog)  apply_prog(&staged_prog);
     if (got_pgen)  apply_pgen(&staged_pgen);
     if (got_clip)  apply_clip(&staged_clip);
@@ -1239,6 +1325,7 @@ bool project_snapshot_load_buffer(const uint8_t *payload, size_t len, const char
     synth_ui_reload_mirror_from_core();
 
     free(staged_layers);
+    free(sd);
     ESP_LOGI(TAG, "load '%s' OK: %u layer(s)", name, staged_layer_count);
     return true;
 }

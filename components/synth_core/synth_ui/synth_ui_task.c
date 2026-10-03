@@ -313,6 +313,14 @@ static void ui_solo_change(bool any_solo)
     drone_std_set_solo_muted(any_solo);
 }
 
+/* The same join for the transport: the arp is re-armed by the core itself,
+ * the drones are paused here. */
+static void ui_transport_change(bool playing)
+{
+    drone_set_paused(!playing);
+    drone_std_set_paused(!playing);
+}
+
 void synth_ui_init(u8g2_t *u8g2)
 {
     s_u8g2 = u8g2;
@@ -335,6 +343,7 @@ void synth_ui_init(u8g2_t *u8g2)
     DIAG_HEAP_CHECK("ui_init: after drone_std_core_init");
     /* After the three module inits: the hook may fire as soon as it is set. */
     sequencer_core_set_solo_change_cb(ui_solo_change);
+    sequencer_core_set_transport_change_cb(ui_transport_change);
 #if CONFIG_SYNTH_CUSTOM_FM
     fm_voice_default(&s_fm_voice);
 #endif
