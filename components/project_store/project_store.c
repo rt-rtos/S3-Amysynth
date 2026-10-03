@@ -39,6 +39,24 @@ static void put_hdr(uint8_t hdr[PROJECT_HDR_LEN], const char *name,
     tlv_put_u32(&w, crc);
 }
 
+/* Decode put_hdr()'s layout and validate it: magic, format version <= ours,
+ * payload length within the write-side bounds. One check for slot files and
+ * in-memory images alike. */
+static bool hdr_decode(const uint8_t hdr[PROJECT_HDR_LEN], uint32_t *payload_len,
+                       uint32_t *crc, char nm[PROJECT_NAME_LEN])
+{
+    uint32_t magic = 0;
+    uint16_t ver = 0, reserved = 0;
+    tlv_reader_t r;
+    tlv_reader_init(&r, hdr, PROJECT_HDR_LEN);
+    bool ok = tlv_get_u32(&r, &magic) && tlv_get_u16(&r, &ver)
+           && tlv_get_u16(&r, &reserved)
+           && tlv_get_bytes(&r, nm, PROJECT_NAME_LEN)
+           && tlv_get_u32(&r, payload_len) && tlv_get_u32(&r, crc);
+    return ok && magic == PROJECT_MAGIC && ver <= PROJECT_FMT_VERSION
+              && *payload_len > 0 && *payload_len <= (1u << 20);
+}
+
 bool project_store_write(uint8_t slot, const char *name,
                          const uint8_t *payload, size_t payload_len)
 {
@@ -92,19 +110,9 @@ bool project_store_read(uint8_t slot, uint8_t **out, size_t *out_len,
     uint8_t hdr[PROJECT_HDR_LEN];
     bool ok = fread(hdr, 1, PROJECT_HDR_LEN, f) == PROJECT_HDR_LEN;
 
-    uint32_t magic = 0, payload_len = 0, crc = 0;
-    uint16_t ver = 0, reserved = 0;
+    uint32_t payload_len = 0, crc = 0;
     char nm[PROJECT_NAME_LEN] = {0};
-    if (ok) {
-        tlv_reader_t r;
-        tlv_reader_init(&r, hdr, PROJECT_HDR_LEN);
-        ok = tlv_get_u32(&r, &magic) && tlv_get_u16(&r, &ver)
-          && tlv_get_u16(&r, &reserved)
-          && tlv_get_bytes(&r, nm, PROJECT_NAME_LEN)
-          && tlv_get_u32(&r, &payload_len) && tlv_get_u32(&r, &crc);
-    }
-    ok = ok && magic == PROJECT_MAGIC && ver <= PROJECT_FMT_VERSION
-            && payload_len > 0 && payload_len <= (1u << 20);
+    ok = ok && hdr_decode(hdr, &payload_len, &crc, nm);
 
     uint8_t *buf = NULL;
     if (ok) {
@@ -121,6 +129,26 @@ bool project_store_read(uint8_t slot, uint8_t **out, size_t *out_len,
     }
     *out = buf;
     if (out_len) *out_len = payload_len;
+    if (name_out) memcpy(name_out, nm, PROJECT_NAME_LEN);
+    return true;
+}
+
+bool project_store_check_image(const uint8_t *img, size_t len,
+                               const uint8_t **payload, size_t *payload_len,
+                               char name_out[PROJECT_NAME_LEN])
+{
+    if (!img || !payload || !payload_len || len < PROJECT_HDR_LEN)
+        return false;
+
+    uint32_t plen = 0, crc = 0;
+    char nm[PROJECT_NAME_LEN] = {0};
+    if (!hdr_decode(img, &plen, &crc, nm)
+        || len != PROJECT_HDR_LEN + (size_t)plen
+        || project_crc32(img + PROJECT_HDR_LEN, plen) != crc)
+        return false;
+
+    *payload     = img + PROJECT_HDR_LEN;
+    *payload_len = plen;
     if (name_out) memcpy(name_out, nm, PROJECT_NAME_LEN);
     return true;
 }
@@ -270,6 +298,11 @@ bool project_store_write(uint8_t slot, const char *name,
 bool project_store_read(uint8_t slot, uint8_t **out, size_t *out_len,
                         char name_out[PROJECT_NAME_LEN])
 { (void)slot; (void)out; (void)out_len; (void)name_out; return false; }
+
+bool project_store_check_image(const uint8_t *img, size_t len,
+                               const uint8_t **payload, size_t *payload_len,
+                               char name_out[PROJECT_NAME_LEN])
+{ (void)img; (void)len; (void)payload; (void)payload_len; (void)name_out; return false; }
 
 bool project_store_delete(uint8_t slot)
 { (void)slot; return false; }

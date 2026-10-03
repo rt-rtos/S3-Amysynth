@@ -1076,18 +1076,15 @@ bool project_snapshot_save(uint8_t slot, const char *name)
     return ok;
 }
 
-bool project_snapshot_load(uint8_t slot)
+bool project_snapshot_load_buffer(const uint8_t *payload, size_t len, const char *name)
 {
-    uint8_t *payload = NULL;
-    size_t   len = 0;
-    char     name[PROJECT_NAME_LEN];
-    if (!project_store_read(slot, &payload, &len, name)) return false;
+    if (!payload) return false;
+    if (!name) name = "";
 
     seq_layer_t *staged_layers =
         heap_caps_malloc(sizeof(seq_layer_t) * MAX_LAYERS, MALLOC_CAP_SPIRAM);
     if (!staged_layers) {
-        free(payload);
-        ESP_LOGE(TAG, "load slot %u: SPIRAM allocation failed", slot);
+        ESP_LOGE(TAG, "load '%s': SPIRAM allocation failed", name);
         return false;
     }
 
@@ -1172,8 +1169,7 @@ bool project_snapshot_load(uint8_t slot)
 
     if (!ok) {
         free(staged_layers);
-        free(payload);
-        ESP_LOGW(TAG, "load slot %u: validation failed, no changes made", slot);
+        ESP_LOGW(TAG, "load '%s': validation failed, no changes made", name);
         return false;
     }
 
@@ -1221,9 +1217,20 @@ bool project_snapshot_load(uint8_t slot)
     synth_ui_reload_mirror_from_core();
 
     free(staged_layers);
-    free(payload);
-    ESP_LOGI(TAG, "load slot %u ('%s') OK: %u layer(s)", slot, name, staged_layer_count);
+    ESP_LOGI(TAG, "load '%s' OK: %u layer(s)", name, staged_layer_count);
     return true;
+}
+
+bool project_snapshot_load(uint8_t slot)
+{
+    uint8_t *payload = NULL;
+    size_t   len = 0;
+    char     name[PROJECT_NAME_LEN];
+    if (!project_store_read(slot, &payload, &len, name)) return false;
+
+    bool ok = project_snapshot_load_buffer(payload, len, name);
+    free(payload);
+    return ok;
 }
 
 #if CONFIG_SYNTH_PROJECT_SELFTEST

@@ -6,6 +6,7 @@
  * ONLY - it is the layers applier (sequencer_core_set_layers_applier(),
  * sequencer_core.h) and drains the deferred UI mirror. */
 
+#include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include "sdkconfig.h"
@@ -22,6 +23,12 @@ bool project_snapshot_save(uint8_t slot, const char *name);
  * Stops the transport. Returns false and leaves the session untouched on
  * any validation failure. */
 bool project_snapshot_load(uint8_t slot);
+
+/* Parse + apply an already validated TLV payload (the part of a project image
+ * after its header, see project_store_check_image()); `name` is only logged.
+ * Same context and guarantees as project_snapshot_load(): the session is left
+ * untouched on any failure. Neither frees nor keeps `payload`. */
+bool project_snapshot_load_buffer(const uint8_t *payload, size_t len, const char *name);
 
 #if CONFIG_SYNTH_PROJECT_SELFTEST
 /* Full serialize -> parse -> apply -> delete round-trip against live

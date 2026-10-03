@@ -38,6 +38,17 @@ bool project_store_write(uint8_t slot, const char *name,
 bool project_store_read(uint8_t slot, uint8_t **out, size_t *out_len,
                         char name_out[PROJECT_NAME_LEN]);
 
+/* Validate an in-memory project image (32-byte header + payload, the layout
+ * of a slot file) with the same header checks as project_store_read(), plus
+ * len == 32 + payload_len and CRC32 over the payload.
+ * Context: any task; no allocation, no FS access.
+ * On success: *payload points into img, *payload_len is its length, name_out
+ * (if non-NULL) holds the header name. Returns false on any invalid image
+ * (or NULL img/payload/payload_len), leaving the outputs unwritten. */
+bool project_store_check_image(const uint8_t *img, size_t len,
+                               const uint8_t **payload, size_t *payload_len,
+                               char name_out[PROJECT_NAME_LEN]);
+
 /* Unlink final path. Returns true if gone or absent. */
 bool project_store_delete(uint8_t slot);
 
