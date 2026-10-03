@@ -5,7 +5,11 @@
 #ifdef WT_MANIFEST_INCLUDES
 #include "quadsaw.h"
 #include "quadsawcomb.h"
+#include "syncsweep.h"
+#include "drawbars.h"
 #else
 WT_ENTRY(quadsaw, "QuadSaw", 64)
 WT_ENTRY(quadsawcomb, "QuadSawComb", 64)
+WT_ENTRY(syncsweep, "SyncSweep", 64)
+WT_ENTRY(drawbars, "Drawbars", 64)
 #endif
