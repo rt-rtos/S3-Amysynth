@@ -851,9 +851,9 @@ void set_event_for_osc(int base_osc, int rel_osc, struct amy_event *event) {
     EVENT_FROM_OSC_ARRAY(pan_coefs, NUM_COMBO_COEFS);
     EVENT_FROM_OSC(feedback);
     EVENT_FROM_OSC(trigger_phase);
-    // LOCAL EDIT (S3-Amysynth, experimental): unison cluster; count 1 is the
-    // default and stays unset, like the distortion enables.
-    if (synth[osc]->unison_count > 1) {
+    // LOCAL EDIT (S3-Amysynth, experimental): unison cluster; count 1 with no
+    // offset is the default and stays unset, like the distortion enables.
+    if (synth[osc]->unison_count > 1 || synth[osc]->unison_offset != 0) {
         event->unison_count = synth[osc]->unison_count;
         event->unison_spacing = synth[osc]->unison_spacing;
         event->unison_offset = synth[osc]->unison_offset;

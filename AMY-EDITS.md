@@ -159,9 +159,10 @@ their phase in `synthinfo.unison_phase[]` and respread from copy 0 at every
 note-on (`unison_note_on()`). Deltas `UNISON_COUNT/SPACING/OFFSET/BLEND` sit
 above `NOTE_SOURCE_CHANNEL` (the ids below are auto-numbered and never cross
 the wire). `play_delta` clamps the count to 1..`AMY_UNISON_MAX` (8) and the
-blend to 0..1. Count 1 (the default) is the previous single render, one step and
-one amp pair per renderer. Waves without a LUT renderer (PCM, KS, ALGO,
-partials, noise) ignore the count.
+blend to 0..1. Count 1 with offset 0 (the default) is the previous single
+render, one step and one amp pair per renderer; count 1 with an offset renders
+its one copy at that offset (a two-copy unison is two such clusters). Waves
+without a LUT renderer (PCM, KS, ALGO, partials, noise) ignore the count.
 
 The terms that depend only on the cluster parameters - the copy ratios
 `2^(offset + i * spacing)` and the power-normalized weights - live in a

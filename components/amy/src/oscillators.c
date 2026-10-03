@@ -378,13 +378,14 @@ static void unison_terms_fill(unison_terms *t, uint8_t n, float spacing, float o
     t->blend = blend;
 }
 
-// Per-block copy table: step and amp pair per copy.  n = 1 is exactly the
-// single step/amp pair the renderers used before; the cluster path scales
-// the caller's freq by each copy's ratio.
+// Per-block copy table: step and amp pair per copy.  n = 1 with no offset is
+// exactly the single step/amp pair the renderers used before; the cluster
+// path scales the caller's freq by each copy's ratio, which includes a
+// single copy sitting at its offset.
 static uint8_t unison_prepare(uint16_t osc, unison_copy *c, float freq, SAMPLE last_amp, SAMPLE amp) {
     uint8_t n = synth[osc]->unison_count;
     float base_step = freq * (1.0f / (float)AMY_SAMPLE_RATE);
-    if (n <= 1) {
+    if (n <= 1 && synth[osc]->unison_offset == 0) {
         c[0].step = F2P(base_step);
         c[0].last_amp = last_amp;
         c[0].amp = amp;
