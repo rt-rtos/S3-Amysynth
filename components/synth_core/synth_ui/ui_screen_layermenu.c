@@ -18,36 +18,23 @@
  *
  * The layer is always seq_state.active_layer_idx - the one the grid shows -
  * so there is no layer selector to keep in sync. The Track row is page state:
- * it picks which row Follow/Repeat/Mute/Solo edit, seeded from the sequencer
- * cursor when the page opens.
+ * it picks which row Follow/Repeat/Mute/Solo and the two sub-pages edit,
+ * seeded from the sequencer cursor when the page opens.
+ *
+ * Two dive rows sit above Back: `Unison >` on a melodic layer and `PCM >` on
+ * the drum layer while the drum engine is PCM (sub-pages in
+ * ui_screen_layer_sub.c).
  *
  * Drum layer: the melodic-only rows render "--" and their edits no-op, so the
- * page is always safe to open. ClrSolo exists only while something is soloed,
- * which is what makes the row list dynamic. */
-
-typedef enum {
-    LM_STEPS = 0,
-    LM_SWING,
-    LM_PATCH_SCOPE,
-    LM_GATE,
-    LM_GLIDE,
-    LM_GROOVE,
-    LM_CHORD,
-    LM_ROOT,
-    LM_TYPE,
-    LM_TRACK,
-    LM_FOLLOW,
-    LM_REPEAT,
-    LM_MUTE,
-    LM_SOLO,
-    LM_CLRSOLO,
-    LM_BACK,
-    LM_COUNT
-} layer_item_id_t;
+ * page is always safe to open. ClrSolo exists only while something is soloed;
+ * it and the dive rows are what make the row list dynamic. Row ids
+ * (layer_item_id_t) are in synth_ui_internal.h, so the page router can land
+ * on a row by id. */
 
 static menu_item_view_t s_lm_items[LM_COUNT];
 
-/* The track Follow/Repeat/Mute/Solo edit; page state, not engine state. */
+/* The track Follow/Repeat/Mute/Solo and the sub-pages edit; page state, not
+ * engine state. */
 static uint8_t s_lm_track = 0;
 
 /* Swing detents are engine ticks, not swing_pct points: pct values that floor
@@ -88,13 +75,21 @@ static uint8_t layermenu_active_melodic_layer(void)
 }
 
 /* The rows the cursor can land on, in navigation order. ClrSolo comes and goes
- * with the global solo state, so the visible list is built per frame rather
- * than indexed as a fixed range. Returns the count; `rows` holds LM_COUNT. */
+ * with the global solo state and the dive rows with the layer type and drum
+ * engine, so the visible list is built per frame rather than indexed as a
+ * fixed range. Returns the count; `rows` holds LM_COUNT. */
 static uint8_t lm_row_list(uint8_t *rows)
 {
+    uint8_t li  = seq_state.active_layer_idx;
+    bool    mel = (layermenu_active_melodic_layer() != 0xFF);
+    bool    pcm = li < seq_state.num_layers &&
+                  seq_state.layers[li].type == SEQ_LAYER_DRUM &&
+                  sequencer_core_get_drum_engine() == SEQ_DRUM_PCM;
     uint8_t n = 0;
     for (uint8_t id = 0; id < LM_COUNT; id++) {
         if (id == LM_CLRSOLO && !sequencer_core_any_solo()) continue;
+        if (id == LM_UNISON && !mel) continue;
+        if (id == LM_PCM && !pcm) continue;
         rows[n++] = id;
     }
     return n;
@@ -123,14 +118,19 @@ void layermenu_menu_clamp_cursor(void)
     if (seq_state.menu_cursor >= n) seq_state.menu_cursor = (uint8_t)(n - 1u);
 }
 
-uint8_t layermenu_menu_gate_row(void)
+uint8_t layermenu_menu_row_index(uint8_t id)
 {
     uint8_t rows[LM_COUNT];
     uint8_t n = lm_row_list(rows);
     for (uint8_t i = 0; i < n; i++) {
-        if (rows[i] == LM_GATE) return i;
+        if (rows[i] == id) return i;
     }
-    return 0;
+    return 0xFF;
+}
+
+uint8_t layermenu_menu_track(void)
+{
+    return s_lm_track;
 }
 
 uint8_t layermenu_menu_item_count(void)
@@ -253,6 +253,12 @@ const menu_item_view_t *layermenu_menu_build_items(void)
         case LM_CLRSOLO:
             snprintf(it->label, MENU_LABEL_LEN, "ClrSolo");
             break;
+        case LM_UNISON:
+        case LM_PCM:
+            snprintf(it->label, MENU_LABEL_LEN, "%s",
+                     rows[i] == LM_UNISON ? "Unison" : "PCM");
+            snprintf(it->value, MENU_VALUE_LEN, ">");
+            break;
         case LM_BACK:
         default:
             snprintf(it->label, MENU_LABEL_LEN, "< Back");
@@ -292,7 +298,8 @@ static bool lm_row_is_editable(uint8_t row)
     case LM_SOLO:
         return true;
     default:
-        return false;   /* ClrSolo is an action, Back is navigation */
+        return false;   /* ClrSolo is an action, dive rows and Back are
+                           navigation */
     }
 }
 

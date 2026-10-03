@@ -337,18 +337,34 @@ void    sequencer_core_set_drum_pcm_mode(uint8_t layer_idx, uint8_t track,
                                          uint8_t pcm_mode);
 uint8_t sequencer_core_get_drum_pcm_mode(uint8_t layer_idx, uint8_t track);
 
-/* ── Melodic per-layer unison (PROTOTYPE - dev menu) ──
- * Spec and layouts: voice_unison_t in seq_model.h. One spec per melodic layer,
- * applied to all of its rows; count 1 = off. Raw-wave/wavetable patches only
- * (KS excluded), native-LFO builds only; a spec set while another patch is
- * loaded is stored and applies on the next wave build. A count or layout
- * change rebuilds the layer's voices (sounding notes stop, like a wave
- * change); detune/spread/blend changes push live. The getter serves defaults
- * until the first set (count 1 = inactive). Volatile - not serialized. UI task
- * only; no-op for the drum layer / out-of-range. */
-void           sequencer_core_set_unison(uint8_t layer_idx,
-                                         const voice_unison_t *u);
-voice_unison_t sequencer_core_get_unison(uint8_t layer_idx);
+/* ── Melodic per-track unison ──
+ * Spec and layouts: voice_unison_t in seq_model.h. One spec per melodic track
+ * (seq_layer_t.track_unison[], serialized with the layer); count 1 = off.
+ * Raw-wave/wavetable patches only (KS excluded), native-LFO builds only; a
+ * spec stored on a row playing another patch applies on its next wave build.
+ * The Layer menu's Unison page follows the layer's patch scope: LAYER scope
+ * edits every track (set_layer_unison), TRACK scope one (set_track_unison).
+ * A change that moves any row's EFFECTIVE copy count rebuilds the whole layer
+ * (sounding notes stop, like a wave change); detune/spread/blend changes push
+ * live to the rows that carry copies. The getter serves {1, 12, 50, 100}
+ * until the row is first set, and fills `.layout` with the global backend;
+ * setters ignore `u->layout` and clamp count 1..VOICE_UNISON_MAX_COPIES,
+ * detune 0..VOICE_UNISON_MAX_DETUNE, spread/blend 0..100.
+ * The backend (voice_unison_layout_t, default ENGINE) is one global DEV knob,
+ * not serialized; changing it rebuilds every melodic layer with a row carrying
+ * unison under the old or the new backend.
+ * track_unison_max: the highest effective count the row's patch and as-built
+ * voice count allow (the UI caps Count with it), 0 = the row cannot carry
+ * unison.
+ * UI task only; no-op for drum / out-of-range layers. */
+voice_unison_t sequencer_core_get_track_unison(uint8_t layer_idx, uint8_t track);
+void           sequencer_core_set_track_unison(uint8_t layer_idx, uint8_t track,
+                                               const voice_unison_t *u);
+void           sequencer_core_set_layer_unison(uint8_t layer_idx,
+                                               const voice_unison_t *u);
+uint8_t        sequencer_core_get_unison_layout(void);
+void           sequencer_core_set_unison_layout(uint8_t layout);
+uint8_t        sequencer_core_track_unison_max(uint8_t layer_idx, uint8_t track);
 
 /* KS voices per melodic row, 1..CONFIG_SEQ_KS_VOICES_MAX (clamped): every row
  * whose patch is KS plays exactly this many voices, chord rows included,

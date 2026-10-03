@@ -82,6 +82,10 @@ static bool    s_fxbus_page = false;
 static uint8_t s_fxhub_cursor = 0;
 /* Per-layer page (item model in ui_screen_layermenu.c). */
 static bool    s_layer_page = false;
+/* The Layer page's sub-pages (item model in ui_screen_layer_sub.c). Back
+ * lands on the dive row by id, since the Layer page's row list is dynamic. */
+static bool    s_layer_uni_page = false;
+static bool    s_layer_pcm_page = false;
 #if CONFIG_SYNTH_PROJECT_STORE
 static bool    s_projects_page = false;
 #endif
@@ -100,6 +104,8 @@ static bool    s_wireless_page = false;
 const char *menu_page_title(void)
 {
     if (s_layer_page) return layermenu_menu_title();
+    if (s_layer_uni_page) return layer_uni_menu_title();
+    if (s_layer_pcm_page) return layer_pcm_menu_title();
     if (s_fxbus_page) return fx_menu_title();
     if (s_fx_page) return "GLOBAL FX";
 #if CONFIG_SYNTH_PROJECT_STORE
@@ -146,6 +152,20 @@ void menu_build_view(menu_view_t *out)
          * input handlers pull seq_state.menu_cursor itself back into range. */
         out->cursor  = (seq_state.menu_cursor < out->count)
                        ? seq_state.menu_cursor : (uint8_t)(out->count - 1u);
+        out->editing = seq_state.menu_editing;
+        return;
+    }
+    if (s_layer_uni_page) {
+        out->items   = layer_uni_menu_build_items();
+        out->count   = layer_uni_menu_item_count();
+        out->cursor  = seq_state.menu_cursor;
+        out->editing = seq_state.menu_editing;
+        return;
+    }
+    if (s_layer_pcm_page) {
+        out->items   = layer_pcm_menu_build_items();
+        out->count   = layer_pcm_menu_item_count();
+        out->cursor  = seq_state.menu_cursor;
         out->editing = seq_state.menu_editing;
         return;
     }
@@ -426,7 +446,8 @@ static void menu_edit_value(menu_item_id_t id, int delta)
 /* True while a sub-page (not the main list) is showing. */
 static bool menu_on_subpage(void)
 {
-    return s_layer_page || s_fxbus_page || s_fx_page ||
+    return s_layer_page || s_layer_uni_page || s_layer_pcm_page ||
+           s_fxbus_page || s_fx_page ||
 #if CONFIG_SYNTH_PROJECT_STORE
            s_projects_page ||
 #endif
@@ -440,6 +461,8 @@ static bool menu_on_subpage(void)
 static int menu_page_item_count(void)
 {
     return s_layer_page ? (int)layermenu_menu_item_count() :
+           s_layer_uni_page ? (int)layer_uni_menu_item_count() :
+           s_layer_pcm_page ? (int)layer_pcm_menu_item_count() :
            s_fxbus_page ? (int)fx_menu_item_count() :
            s_fx_page ? (int)fxhub_item_count() :
 #if CONFIG_SYNTH_PROJECT_STORE
@@ -466,8 +489,20 @@ void synth_ui_menu_toggle(void)
          * per-visit state is refreshed: the Layer page re-seeds its Track row
          * from the grid cursor, and the Projects page drops an armed load/save
          * or a half-typed rename, so one click after reopening cannot fire
-         * what was armed before the menu closed. */
-        if (s_layer_page) layermenu_menu_reset();
+         * what was armed before the menu closed. A Layer sub-page collapses to
+         * the Layer page on its dive row: the layer, track or drum engine it
+         * was bound to may have changed meanwhile. */
+        if (s_layer_uni_page || s_layer_pcm_page) {
+            uint8_t dive = s_layer_uni_page ? (uint8_t)LM_UNISON : (uint8_t)LM_PCM;
+            s_layer_uni_page = false;
+            s_layer_pcm_page = false;
+            s_layer_page = true;
+            layermenu_menu_reset();
+            /* 0xFF when the row went away; the clamp below lands on Back. */
+            seq_state.menu_cursor = layermenu_menu_row_index(dive);
+        } else if (s_layer_page) {
+            layermenu_menu_reset();
+        }
 #if CONFIG_SYNTH_PROJECT_STORE
         if (s_projects_page) projects_menu_reset();
 #endif
@@ -522,6 +557,8 @@ static void menu_clear_subpages(void)
     s_fx_page = false;
     s_fxbus_page = false;
     s_layer_page = false;
+    s_layer_uni_page = false;
+    s_layer_pcm_page = false;
 #if CONFIG_SYNTH_PROJECT_STORE
     s_projects_page = false;
 #endif
@@ -556,7 +593,7 @@ void synth_ui_menu_toggle_layer_page(void)
         menu_clear_subpages();
         s_main_cursor = MI_LAYER_MENU;
         s_layer_page = true;
-        seq_state.menu_cursor = layermenu_menu_gate_row();
+        seq_state.menu_cursor = layermenu_menu_row_index(LM_GATE);
     }
     synth_ui_menu_toggle();
 }
@@ -569,6 +606,10 @@ bool synth_ui_menu_handle_encoder(long delta)
     if (seq_state.menu_editing) {
         if (s_layer_page) {
             layermenu_menu_edit_value(seq_state.menu_cursor, (int)delta);
+        } else if (s_layer_uni_page) {
+            layer_uni_menu_edit_value(seq_state.menu_cursor, (int)delta);
+        } else if (s_layer_pcm_page) {
+            layer_pcm_menu_edit_value(seq_state.menu_cursor, (int)delta);
         } else if (s_fxbus_page) {
             fx_menu_edit_value(seq_state.menu_cursor, (int)delta);
         } else if (s_fx_page) {
@@ -614,9 +655,36 @@ bool synth_ui_menu_handle_button(void)
             s_layer_page = false;
             seq_state.menu_cursor  = s_main_cursor;
             seq_state.menu_editing = false;
+        } else if (idx == layermenu_menu_row_index(LM_UNISON) ||
+                   idx == layermenu_menu_row_index(LM_PCM)) {
+            /* Dive into the sub-page; Back finds the row again by id. */
+            s_layer_uni_page = (idx == layermenu_menu_row_index(LM_UNISON));
+            s_layer_pcm_page = !s_layer_uni_page;
+            s_layer_page = false;
+            seq_state.menu_cursor  = 0;
+            seq_state.menu_editing = false;
         } else {
             seq_state.menu_editing = layermenu_menu_handle_click(idx);
             layermenu_menu_clamp_cursor();   /* ClrSolo may have just vanished */
+        }
+        s_force_redraw = true;
+        return true;
+    }
+
+    if (s_layer_uni_page || s_layer_pcm_page) {
+        uint8_t idx = seq_state.menu_cursor;
+        bool uni = s_layer_uni_page;
+        if (uni ? layer_uni_menu_item_is_back(idx) : layer_pcm_menu_item_is_back(idx)) {
+            /* Back to the Layer page, on the row this page was dived from. */
+            s_layer_uni_page = false;
+            s_layer_pcm_page = false;
+            s_layer_page = true;
+            seq_state.menu_cursor  = layermenu_menu_row_index(uni ? LM_UNISON : LM_PCM);
+            seq_state.menu_editing = false;
+            layermenu_menu_clamp_cursor();   /* the dive row may have gone */
+        } else {
+            seq_state.menu_editing = uni ? layer_uni_menu_handle_click(idx)
+                                         : layer_pcm_menu_handle_click(idx);
         }
         s_force_redraw = true;
         return true;

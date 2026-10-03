@@ -319,9 +319,10 @@ bool sequencer_core_delete_layer(uint8_t layer_idx)
 }
 
 /* Row `t` of a growing melodic layer: the next default base note, row
- * `src`'s sound (voice block and its source, and in TRACK scope its patch) so
- * the added chord tone matches its neighbour, and a copy of row `src`'s grid
- * and per-step decoration so the row has a rhythm the moment it exists. */
+ * `src`'s sound (voice block and its source, unison, and in TRACK scope its
+ * patch) so the added chord tone matches its neighbour, and a copy of row
+ * `src`'s grid and per-step decoration so the row has a rhythm the moment it
+ * exists. */
 static void seq_grow_melodic_row(uint8_t idx, seq_layer_t *layer, uint8_t t,
                                  uint8_t src)
 {
@@ -330,6 +331,7 @@ static void seq_grow_melodic_row(uint8_t idx, seq_layer_t *layer, uint8_t t,
     seq_seed_melodic_row(idx, layer, t, patch);
     /* After the seed, whose default envelopes it replaces. */
     layer->vp[t]          = layer->vp[src];
+    layer->track_unison[t] = layer->track_unison[src];
     layer->vp_src[t]      = layer->vp_src[src];
     layer->repeat_rate[t] = 0;
     layer->mute[t]        = false;

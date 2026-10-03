@@ -198,8 +198,31 @@ bool     menu_shoulder_goes_main(void);
  *     repeat/mute/solo block (item model in ui_screen_layermenu.c; page state
  *     and input routing live in ui_screen_menu.c). Reached from the `Layer >`
  *     dive row on the main list. The visible row list is dynamic (ClrSolo
- *     comes and goes with the global solo state), so the count is a call, not
- *     a constant, and the handlers clamp the shared menu cursor. ─────────── */
+ *     comes and goes with the global solo state, the Unison/PCM dive rows with
+ *     the layer type and drum engine), so the count is a call, not a
+ *     constant, and the handlers clamp the shared menu cursor. ─────────── */
+typedef enum {
+    LM_STEPS = 0,
+    LM_SWING,
+    LM_PATCH_SCOPE,
+    LM_GATE,
+    LM_GLIDE,
+    LM_GROOVE,
+    LM_CHORD,
+    LM_ROOT,
+    LM_TYPE,
+    LM_TRACK,
+    LM_FOLLOW,
+    LM_REPEAT,
+    LM_MUTE,
+    LM_SOLO,
+    LM_CLRSOLO,
+    LM_UNISON,      /* dive row: Unison sub-page, melodic layers */
+    LM_PCM,         /* dive row: PCM sub-page, drum layer on the PCM engine */
+    LM_BACK,
+    LM_COUNT
+} layer_item_id_t;
+
 const menu_item_view_t *layermenu_menu_build_items(void);
 uint8_t  layermenu_menu_item_count(void);
 bool     layermenu_menu_item_is_back(uint8_t idx);
@@ -207,8 +230,31 @@ bool     layermenu_menu_handle_click(uint8_t idx);
 void     layermenu_menu_edit_value(uint8_t idx, int delta);
 void     layermenu_menu_reset(void);
 void     layermenu_menu_clamp_cursor(void);
-uint8_t  layermenu_menu_gate_row(void);   /* visible-list index of the Gate row */
+/* Visible-list index of row `id` (layer_item_id_t), or 0xFF while that row is
+ * not shown. */
+uint8_t  layermenu_menu_row_index(uint8_t id);
+/* The track the page targets (its Track row): Follow/Repeat/Mute/Solo and the
+ * Unison/PCM sub-pages. */
+uint8_t  layermenu_menu_track(void);
 const char *layermenu_menu_title(void);
+
+/* ─── Layer sub-pages, dived into from the Layer page (item model in
+ *     ui_screen_layer_sub.c; page state and input routing in
+ *     ui_screen_menu.c). Both edit the active layer at the Layer page's track
+ *     (layermenu_menu_track). Unison: Count/Detune/Spread/Blend, following
+ *     the layer's patch scope. PCM: the drum track's PCM playback mode. ─── */
+const menu_item_view_t *layer_uni_menu_build_items(void);
+uint8_t  layer_uni_menu_item_count(void);
+bool     layer_uni_menu_item_is_back(uint8_t idx);
+bool     layer_uni_menu_handle_click(uint8_t idx);
+void     layer_uni_menu_edit_value(uint8_t idx, int delta);
+const char *layer_uni_menu_title(void);
+const menu_item_view_t *layer_pcm_menu_build_items(void);
+uint8_t  layer_pcm_menu_item_count(void);
+bool     layer_pcm_menu_item_is_back(uint8_t idx);
+bool     layer_pcm_menu_handle_click(uint8_t idx);
+void     layer_pcm_menu_edit_value(uint8_t idx, int delta);
+const char *layer_pcm_menu_title(void);
 
 /* ─── Projects storage page (item model in ui_screen_projects.c; page state
  *     and input routing live in ui_screen_menu.c). Declared unconditionally:

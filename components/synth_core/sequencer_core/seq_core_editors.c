@@ -234,7 +234,7 @@ static void lfo_restore_target_neutrals(uint8_t layer_idx, uint8_t track,
      * copies' blend weights and the heads' spread, so restate them. */
     uint8_t copies = seq_track_unison_copies(layer_idx, track);
     if (copies > 1u) {
-        voice_unison_t eff = sequencer_core_get_unison(layer_idx);
+        voice_unison_t eff = sequencer_core_get_track_unison(layer_idx, track);
         eff.count = copies;
         voice_push_unison_live(s_layers[layer_idx].synth_id[track], &eff, 1.0f);
     }

@@ -49,7 +49,7 @@ static const char *TAG = "project_snapshot";
 
 /* LAYR section version: the writer's tag and the loader's only accepted
  * value. */
-#define LAYR_VERSION 22
+#define LAYR_VERSION 23
 
 _Static_assert(SEQ_TRACKS == 5 && SEQ_MAX_STEPS == 32,
                "LAYR format assumes 5x32; bump LAYR_VERSION");
@@ -426,6 +426,10 @@ static void ser_layer(tlv_writer_t *w, const seq_layer_t *L)
         tlv_put_u16(w, L->track_patch[t]);
         tlv_put_u16(w, L->track_pcm_preset[t]);
         tlv_put_u8(w, L->track_pcm_mode[t]);
+        tlv_put_u8(w, L->track_unison[t].count);
+        tlv_put_u8(w, L->track_unison[t].detune_cents);
+        tlv_put_u8(w, L->track_unison[t].spread_pct);
+        tlv_put_u8(w, L->track_unison[t].blend_pct);
         tlv_put_u8(w, L->repeat_rate[t]);
         tlv_put_u8(w, L->mute[t] ? 1 : 0);
         tlv_put_u8(w, L->solo[t] ? 1 : 0);
@@ -504,6 +508,16 @@ static bool parse_layer(tlv_reader_t *b, seq_layer_t *L)
         L->track_patch[t] = clamp_patch(L->track_patch[t]);
         if (!tlv_get_u16(b, &L->track_pcm_preset[t])) return false;
         if (!tlv_get_u8(b, &L->track_pcm_mode[t]))    return false;
+        /* Unison raw fields; count 0 (never set) survives the round trip. */
+        voice_unison_t *u = &L->track_unison[t];
+        if (!tlv_get_u8(b, &u->count))        return false;
+        if (!tlv_get_u8(b, &u->detune_cents)) return false;
+        if (!tlv_get_u8(b, &u->spread_pct))   return false;
+        if (!tlv_get_u8(b, &u->blend_pct))    return false;
+        u->count        = SEQ_CLAMP_U8(u->count, 0u, VOICE_UNISON_MAX_COPIES);
+        u->detune_cents = SEQ_CLAMP_U8(u->detune_cents, 0u, VOICE_UNISON_MAX_DETUNE);
+        u->spread_pct   = SEQ_CLAMP_U8(u->spread_pct, 0u, 100u);
+        u->blend_pct    = SEQ_CLAMP_U8(u->blend_pct, 0u, 100u);
         { uint8_t v; if (!tlv_get_u8(b, &v)) return false; L->repeat_rate[t] = v; }
         { uint8_t v; if (!tlv_get_u8(b, &v)) return false; L->mute[t] = v != 0; }
         { uint8_t v; if (!tlv_get_u8(b, &v)) return false; L->solo[t] = v != 0; }

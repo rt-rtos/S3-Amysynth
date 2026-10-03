@@ -338,12 +338,13 @@ typedef enum {
     SEQ_VP_SRC_LAYER = 1,
 } seq_vp_src_t;
 
-/* ── Unison spec (per melodic layer; PROTOTYPE - dev-menu backed, volatile) ──
+/* ── Unison spec (per melodic track: seq_layer_t.track_unison) ──
  * N detuned copies of the wave build's audible osc, fanned symmetrically in
  * pitch (detune_cents at the outermost copy) and stereo (spread_pct of full
  * width), blend_pct tapering the outer copies against the center. count = 1
  * disables and restores the single-osc build exactly. Raw-wave/wavetable
- * patches only (KS excluded); not serialized.
+ * patches only (KS excluded). Storage, scope and the global backend:
+ * sequencer_core.h, "Melodic per-track unison".
  *
  * Three layouts (`layout`): the unchained fan gives every copy its own
  * filter, envelope, dist stage and pan mixdown; the headed layout splits the
@@ -366,7 +367,8 @@ typedef struct {
     uint8_t detune_cents; /* outermost copy's offset, 0..VOICE_UNISON_MAX_DETUNE */
     uint8_t spread_pct;   /* stereo width: 0 = all center, 100 = full L/R fan */
     uint8_t blend_pct;    /* outer-copy level: 100 = equal, 0 = center only */
-    uint8_t layout;       /* voice_unison_layout_t */
+    uint8_t layout;       /* voice_unison_layout_t; unused in storage (0), the
+                             getter fills in the global backend */
 } voice_unison_t;
 
 #define VOICE_UNISON_MAX_COPIES 7u
@@ -490,6 +492,10 @@ typedef struct {
                                         sub-mode (PCM_PLAY/PCM_LOOP*...);
                                         0 = engine default (one-shot). Same
                                         mirror discipline as track_pcm_preset. */
+    voice_unison_t track_unison[SEQ_TRACKS]; /* melodic, per row; count 0 =
+                                        never set (the getter's defaults,
+                                        memset default). Read through
+                                        sequencer_core_get_track_unison().  */
     uint32_t synth_flags;            /* shared flags across the layer's rows  */
     uint8_t  num_voices;             /* per-synth voice count                 */
 
