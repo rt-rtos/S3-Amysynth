@@ -132,18 +132,27 @@ static void dist_push_eg_depths(uint8_t synth, bool own, const seq_filter_t *f)
 }
 
 /* The SCAN rails alone, one event per osc in `mask` (the oscs that render the
- * wave). Ownership as filter_push_eg_depths(). */
+ * wave), with the resting scan position. An envelope starts each note at 0,
+ * so a routed SCAN rests on the frame its sweep leaves from: the first frame,
+ * or the last when every routed depth is negative. Unrouted, it rests on the
+ * middle frame (0.5), which the LFO's SCAN swings around. Sent on every call,
+ * so removing the routing restores the middle. EG slots: ownership as
+ * filter_push_eg_depths(). */
 static void scan_push_eg_depths(uint8_t synth, uint8_t mask, bool own,
                                 const seq_filter_t *f)
 {
     float d0 = f->eg_depth[0][SEQ_EGT_SCAN];
     float d1 = f->eg_depth[1][SEQ_EGT_SCAN];
-    if (!mask || (!own && d0 == 0.0f && d1 == 0.0f)) return;
+    if (!mask) return;
+    float rest = 0.5f;
+    if (d0 > 0.0f || d1 > 0.0f)      rest = 0.0f;
+    else if (d0 < 0.0f || d1 < 0.0f) rest = 1.0f;
     for (uint8_t o = 0; (uint8_t)(mask >> o) != 0u; o++) {
         if (!(mask & (uint8_t)(1u << o))) continue;
         amy_event *e = amy_helpers_event_begin();
         e->synth = synth;
         e->osc   = o;
+        e->duty_coefs[COEF_CONST] = rest;
         if (own || d0 != 0.0f) e->duty_coefs[COEF_EG0] = d0;
         if (own || d1 != 0.0f) e->duty_coefs[COEF_EG1] = d1;
         amy_helpers_event_send(e);
