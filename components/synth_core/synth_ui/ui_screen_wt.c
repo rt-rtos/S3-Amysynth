@@ -8,15 +8,17 @@
 /* ════════════════════════════════════════════════════════════════════════
  *  Custom wavetable editor
  * ════════════════════════════════════════════════════════════════════════
- * Edits the builder's nine parameters (custompatches/wt_builder.h; domains
- * in wt_synth.h); every edit marks the table dirty and the seq_ui task
- * rebuilds it in slices. Rendered by display_wt.c. The view only formats
- * the parameters and copies the builder's cached previews: no table math
- * here. Controls: CONTROLS.md. */
+ * Edits the builder's sixteen parameters (custompatches/wt_builder.h;
+ * domains in wt_synth.h) one keyframe at a time; every edit marks the table
+ * dirty and the seq_ui task rebuilds it in slices. Rendered by display_wt.c.
+ * The view only formats the parameters and copies the builder's cached
+ * previews: no table math here. Controls: CONTROLS.md. */
 
 _Static_assert(WT_VIEW_POINTS == WT_PREVIEW_POINTS, "display_wt.h preview width");
+_Static_assert(WT_VIEW_KEYS == WT_KEYS, "display_wt.h keyframe count");
 
-static uint8_t s_wt_cursor  = WT_CUR_A_SHP;
+static uint8_t s_wt_cursor  = WT_CUR_SHP;
+static uint8_t s_wt_key     = 0;          /* focused keyframe: 0 = A, 1 = M, 2 = B */
 static bool    s_wt_editing = false;
 
 bool synth_ui_wt_is_active(void)
@@ -29,16 +31,15 @@ bool synth_ui_wt_on_range(void)
     return s_wt_cursor == WT_CUR_RNG;
 }
 
-/* Keyframe of a keyframe-row cursor stop: 0 = A, 1 = B. */
-static uint8_t wt_cursor_keyframe(uint8_t c)
+uint8_t synth_ui_wt_keyframe(void)
 {
-    return (c >= WT_CUR_B_SHP) ? 1u : 0u;
+    return s_wt_key;
 }
 
+/* Cursor stops map onto wt_field_t in the same order. */
 static wt_field_t wt_cursor_field(uint8_t c)
 {
-    if (c == WT_CUR_RNG) return WT_FIELD_RANGE;
-    return (wt_field_t)(WT_FIELD_SHAPE + (c - WT_CUR_A_SHP) % WT_KEY_ROWS);
+    return (wt_field_t)(WT_FIELD_SHAPE + (c - WT_CUR_SHP));
 }
 
 void wt_build_view(wt_view_t *out)
@@ -52,26 +53,23 @@ void wt_build_view(wt_view_t *out)
 
     out->cursor     = s_wt_cursor;
     out->editing    = s_wt_editing;
+    out->key        = s_wt_key;
     out->generation = wt_builder_generation();
-    out->show = (s_wt_cursor == WT_CUR_RNG) ? WT_SHOW_BOTH
-              : wt_cursor_keyframe(s_wt_cursor) ? WT_SHOW_B : WT_SHOW_A;
+
+    const uint8_t k = s_wt_key;
+    snprintf(out->cells[WT_CUR_SHP], WT_CELL_LEN, "%u", (unsigned)p.shape[k]);
+    snprintf(out->cells[WT_CUR_WID], WT_CELL_LEN, "%u", (unsigned)p.width[k]);
+    snprintf(out->cells[WT_CUR_BRT], WT_CELL_LEN, "%u", (unsigned)p.bright[k]);
+    snprintf(out->cells[WT_CUR_SYN], WT_CELL_LEN, "%u.%u",
+             (unsigned)(p.sync[k] / 10u), (unsigned)(p.sync[k] % 10u));
+    if (p.peak[k] == 0u) snprintf(out->cells[WT_CUR_PK], WT_CELL_LEN, "off");
+    else                 snprintf(out->cells[WT_CUR_PK], WT_CELL_LEN, "%u", (unsigned)p.peak[k]);
 
     char note[4];
     ui_note_name(wt_synth_clean_note(p.range), note);
-    snprintf(out->clean, sizeof(out->clean), "clean %s", note);
-
-    for (uint8_t k = 0; k < 2u; k++) {
-        char (*c)[WT_CELL_LEN] = &out->cells[k ? WT_CUR_B_SHP : WT_CUR_A_SHP];
-        snprintf(c[0], WT_CELL_LEN, "%u", (unsigned)p.shape[k]);
-        snprintf(c[1], WT_CELL_LEN, "%u", (unsigned)p.bright[k]);
-        snprintf(c[2], WT_CELL_LEN, "%u.%u", (unsigned)(p.sync[k] / 10u), (unsigned)(p.sync[k] % 10u));
-        if (p.peak[k] == 0u) snprintf(c[3], WT_CELL_LEN, "off");
-        else                 snprintf(c[3], WT_CELL_LEN, "%u", (unsigned)p.peak[k]);
-    }
     snprintf(out->cells[WT_CUR_RNG], WT_CELL_LEN, "%s", note);
 
-    memcpy(out->frame0, pv.frame0, sizeof(out->frame0));
-    memcpy(out->frame63, pv.frame63, sizeof(out->frame63));
+    memcpy(out->wave, pv.frame, sizeof(out->wave));
 }
 
 uint32_t wt_view_signature(wt_view_t *out)
@@ -86,11 +84,12 @@ static void wt_edit(int delta)
 {
     wt_params_t p;
     wt_builder_get_params(&p);
-    uint8_t k = wt_cursor_keyframe(s_wt_cursor);
+    uint8_t k = s_wt_key;
     wt_field_t f = wt_cursor_field(s_wt_cursor);
     int v;
     switch (f) {
         case WT_FIELD_SHAPE:  v = SEQ_CLAMP_INT((int)p.shape[k] + delta, 0, 100);  break;
+        case WT_FIELD_WIDTH:  v = SEQ_CLAMP_INT((int)p.width[k] + delta, 10, 90);  break;
         case WT_FIELD_BRIGHT: v = SEQ_CLAMP_INT((int)p.bright[k] + delta, 0, 10); break;
         case WT_FIELD_SYNC:   v = SEQ_CLAMP_INT((int)p.sync[k] + delta, 10, 80);  break;
         case WT_FIELD_PEAK:
@@ -125,11 +124,19 @@ bool synth_ui_wt_handle_button(void)
     return true;
 }
 
+bool synth_ui_wt_next_keyframe(void)
+{
+    if (!synth_ui_wt_is_active()) return false;
+    s_wt_key = (uint8_t)((s_wt_key + 1u) % WT_KEYS);
+    s_force_redraw = true;
+    return true;
+}
+
 bool synth_ui_wt_copy_keyframe(void)
 {
     if (!synth_ui_wt_is_active()) return false;
     if (s_wt_cursor == WT_CUR_RNG) return true;
-    wt_builder_copy_keyframe(wt_cursor_keyframe(s_wt_cursor));
+    wt_builder_copy_keyframe(s_wt_key);
     s_force_redraw = true;
     return true;
 }
@@ -141,8 +148,10 @@ bool synth_ui_wt_reset_keyframe(void)
         wt_params_t d;
         wt_params_default(&d);
         wt_builder_set_field(WT_FIELD_RANGE, 0, d.range);
+    } else if (s_wt_key == 1u) {
+        wt_builder_blend_mid();
     } else {
-        wt_builder_reset_keyframe(wt_cursor_keyframe(s_wt_cursor));
+        wt_builder_reset_keyframe(s_wt_key);
     }
     s_force_redraw = true;
     return true;

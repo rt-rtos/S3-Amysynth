@@ -260,12 +260,12 @@ static void dispatch_button_event(my_button_id_t button_id, button_event_t event
 {
     /* MY_BUTTON_SHOULDER, per view: SEQ toggles the step under the cursor
      * (two-handed tracker-style entry), GRAPH flips the routing depth's sign,
-     * LFO flips the target checklist tab, FM flips the editor page, MENU
-     * leaves a sub-page for the main list (button 3 reopens the last page, so
-     * this is the way home). Step entry, the polarity flip and the menu jump
-     * take PRESS_DOWN for zero tap latency; the tab and page flips are
-     * deliberate navigation gestures, so they wait for the click. All events
-     * consumed. */
+     * LFO flips the target checklist tab, FM flips the editor page, WT cycles
+     * the focused keyframe, MENU leaves a sub-page for the main list (button 3
+     * reopens the last page, so this is the way home). Step entry, the
+     * polarity flip and the menu jump take PRESS_DOWN for zero tap latency;
+     * the tab, page and keyframe flips are deliberate navigation gestures, so
+     * they wait for the click. All events consumed. */
     if (button_id == MY_BUTTON_SHOULDER) {
         ui_view_id_t sv = synth_ui_active_view();
         if (event == BUTTON_PRESS_DOWN) {
@@ -282,6 +282,10 @@ static void dispatch_button_event(my_button_id_t button_id, button_event_t event
 #if CONFIG_SYNTH_CUSTOM_FM
         } else if (event == BUTTON_SINGLE_CLICK && sv == UI_VIEW_FM) {
             synth_ui_fm_toggle_page();
+#endif
+#if CONFIG_SYNTH_CUSTOM_WT
+        } else if (event == BUTTON_SINGLE_CLICK && sv == UI_VIEW_WT) {
+            synth_ui_wt_next_keyframe();
 #endif
         }
         return;
@@ -415,10 +419,10 @@ static void dispatch_button_event(my_button_id_t button_id, button_event_t event
     }
 
 #if CONFIG_SYNTH_CUSTOM_WT
-    /* WT screen: Button 1 copies the focused keyframe to the other one,
-     * Button 2 resets it; neither is a hold (the patch-select and pitch holds
-     * would edit the layer behind the screen). Clear both latches in case
-     * one was held when the screen switched. */
+    /* WT screen: Button 1 copies the focused keyframe to the next one,
+     * Button 2 resets it or blends M; neither is a hold (the patch-select
+     * and pitch holds would edit the layer behind the screen). Clear both
+     * latches in case one was held when the screen switched. */
     if ((button_id == MY_BUTTON_1 || button_id == MY_BUTTON_2) &&
         synth_ui_active_view() == UI_VIEW_WT) {
         s_patch_held = false;

@@ -73,10 +73,11 @@ bool wt_builder_init(void)
 
 void wt_builder_set_field(wt_field_t field, uint8_t keyframe, uint8_t value)
 {
-    uint8_t k = keyframe ? 1 : 0;
+    uint8_t k = keyframe > WT_KEYS - 1 ? WT_KEYS - 1 : keyframe;
     wt_params_t t = s_params;
     switch (field) {
         case WT_FIELD_SHAPE:  t.shape[k]  = value; wt_params_clamp(&t); s_params.shape[k]  = t.shape[k];  break;
+        case WT_FIELD_WIDTH:  t.width[k]  = value; wt_params_clamp(&t); s_params.width[k]  = t.width[k];  break;
         case WT_FIELD_BRIGHT: t.bright[k] = value; wt_params_clamp(&t); s_params.bright[k] = t.bright[k]; break;
         case WT_FIELD_SYNC:   t.sync[k]   = value; wt_params_clamp(&t); s_params.sync[k]   = t.sync[k];   break;
         case WT_FIELD_PEAK:   t.peak[k]   = value; wt_params_clamp(&t); s_params.peak[k]   = t.peak[k];   break;
@@ -101,8 +102,10 @@ void wt_builder_get_params(wt_params_t *out)
 
 void wt_builder_copy_keyframe(uint8_t from)
 {
-    uint8_t a = from ? 1 : 0, b = (uint8_t)(1 - a);
+    uint8_t a = from > WT_KEYS - 1 ? WT_KEYS - 1 : from;
+    uint8_t b = (uint8_t)((a + 1) % WT_KEYS);
     s_params.shape[b]  = s_params.shape[a];
+    s_params.width[b]  = s_params.width[a];
     s_params.bright[b] = s_params.bright[a];
     s_params.sync[b]   = s_params.sync[a];
     s_params.peak[b]   = s_params.peak[a];
@@ -113,11 +116,18 @@ void wt_builder_reset_keyframe(uint8_t k)
 {
     wt_params_t d;
     wt_params_default(&d);
-    k = k ? 1 : 0;
+    if (k > WT_KEYS - 1) k = WT_KEYS - 1;
     s_params.shape[k]  = d.shape[k];
+    s_params.width[k]  = d.width[k];
     s_params.bright[k] = d.bright[k];
     s_params.sync[k]   = d.sync[k];
     s_params.peak[k]   = d.peak[k];
+    mark_dirty();
+}
+
+void wt_builder_blend_mid(void)
+{
+    wt_params_blend_mid(&s_params);
     mark_dirty();
 }
 

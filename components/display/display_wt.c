@@ -1,39 +1,72 @@
 #include "display_wt.h"
 
-/* Grid: 7 px rows in the blue band, the column header on the first, the
- * four keyframe rows, then RNG on the last row above the hint strip (y 57).
- * Cell boxes as on the FM screen's page 2 (framed while browsing, filled
- * while adjusting). */
-#define WT_HDR_Y      21
-#define WT_ROW_Y0     28
-#define WT_ROW_H      7
-#define WT_LABEL_X    1
-#define WT_COL_A_X    15
-#define WT_COL_B_X    39
-#define WT_COL_W      22
+/* Top band: two rows of 7 px boxes (baselines y 7 and 15), u8g2_font_4x6_tr.
+ * Keyframe tabs and RNG left of the border at x 30, parameter cells of
+ * 31 px at x 33, 65 and 97 right of it. The row 1 slot at x 97 stays empty:
+ * display_badge_draw() probes the top row for unlit pixels. Every cell has
+ * its label at x + 2 and its value right-aligned to end at x + width - 2;
+ * the cursor cell is framed while browsing and filled while adjusting. */
+#define WT_ROW1_Y     7
+#define WT_ROW2_Y     15
+#define WT_BOX_H      7
+#define WT_TAB_W      9
+#define WT_TAB_STEP   10
+#define WT_BORDER_X   30
+#define WT_CELL_W     31
+#define WT_RNG_W      29
 
-/* Waveform panel right of a divider: one pixel column per preview point. */
-#define WT_DIV_X      63
-#define WT_WAVE_X     64
+/* Waveform below the band: one pixel column per preview point. */
 #define WT_WAVE_TOP   17
 #define WT_WAVE_BOT   56
 #define WT_WAVE_MID   ((WT_WAVE_TOP + WT_WAVE_BOT) / 2)
 #define WT_WAVE_AMP   ((WT_WAVE_BOT - WT_WAVE_TOP) / 2)
 
-static const char *const s_row_labels[WT_KEY_ROWS] = { "SHP", "BRT", "SYN", "PK" };
+typedef struct {
+    uint8_t     x, y, w;
+    const char *label;
+} wt_cell_pos_t;
 
-static void draw_cell(u8g2_t *u8g2, uint8_t bx, uint8_t y, const char *txt, bool on, bool editing)
+/* Indexed by WT_CUR_*. */
+static const wt_cell_pos_t s_cells[WT_CUR_COUNT] = {
+    [WT_CUR_SHP] = { 33, WT_ROW1_Y, WT_CELL_W, "SHP" },
+    [WT_CUR_WID] = { 65, WT_ROW1_Y, WT_CELL_W, "WID" },
+    [WT_CUR_BRT] = { 33, WT_ROW2_Y, WT_CELL_W, "BRT" },
+    [WT_CUR_SYN] = { 65, WT_ROW2_Y, WT_CELL_W, "SYN" },
+    [WT_CUR_PK]  = { 97, WT_ROW2_Y, WT_CELL_W, "PK" },
+    [WT_CUR_RNG] = { 0,  WT_ROW2_Y, WT_RNG_W,  "RNG" },
+};
+
+static const char *const s_tabs[WT_VIEW_KEYS] = { "A", "M", "B" };
+
+static void draw_cell(u8g2_t *u8g2, const wt_cell_pos_t *c, const char *val, bool on, bool editing)
 {
-    uint8_t w = (uint8_t)u8g2_GetStrWidth(u8g2, txt);
-    uint8_t tx = (uint8_t)(bx + (WT_COL_W - w) / 2);
+    uint8_t vw = (uint8_t)u8g2_GetStrWidth(u8g2, val);
+    uint8_t vx = (uint8_t)(c->x + c->w - 1 - vw);
+    uint8_t top = (uint8_t)(c->y - 6);
     if (on && editing) {
-        u8g2_DrawBox(u8g2, bx, (uint8_t)(y - 6), WT_COL_W, WT_ROW_H);
+        u8g2_DrawBox(u8g2, c->x, top, c->w, WT_BOX_H);
         u8g2_SetDrawColor(u8g2, 0);
-        u8g2_DrawStr(u8g2, tx, y, txt);
-        u8g2_SetDrawColor(u8g2, 1);
-    } else {
-        if (on) u8g2_DrawFrame(u8g2, bx, (uint8_t)(y - 6), WT_COL_W, WT_ROW_H);
-        u8g2_DrawStr(u8g2, tx, y, txt);
+    } else if (on) {
+        u8g2_DrawFrame(u8g2, c->x, top, c->w, WT_BOX_H);
+    }
+    u8g2_DrawStr(u8g2, (uint8_t)(c->x + 2), c->y, c->label);
+    u8g2_DrawStr(u8g2, vx, c->y, val);
+    u8g2_SetDrawColor(u8g2, 1);
+}
+
+static void draw_tabs(u8g2_t *u8g2, uint8_t key)
+{
+    for (uint8_t k = 0; k < WT_VIEW_KEYS; k++) {
+        uint8_t bx = (uint8_t)(k * WT_TAB_STEP);
+        uint8_t tx = (uint8_t)(bx + (WT_TAB_W - u8g2_GetStrWidth(u8g2, s_tabs[k]) + 1) / 2);
+        if (k == key) {
+            u8g2_DrawBox(u8g2, bx, (uint8_t)(WT_ROW1_Y - 6), WT_TAB_W, WT_BOX_H);
+            u8g2_SetDrawColor(u8g2, 0);
+            u8g2_DrawStr(u8g2, tx, WT_ROW1_Y, s_tabs[k]);
+            u8g2_SetDrawColor(u8g2, 1);
+        } else {
+            u8g2_DrawStr(u8g2, tx, WT_ROW1_Y, s_tabs[k]);
+        }
     }
 }
 
@@ -42,43 +75,39 @@ static uint8_t wave_y(int8_t v)
     return (uint8_t)(WT_WAVE_MID - ((int)v * WT_WAVE_AMP) / 127);
 }
 
-static void draw_wave(u8g2_t *u8g2, const int8_t *pts)
+static void draw_wave_line(u8g2_t *u8g2, const int8_t *pts)
 {
     for (uint8_t i = 0; i + 1u < WT_VIEW_POINTS; i++) {
-        u8g2_DrawLine(u8g2, (uint8_t)(WT_WAVE_X + i), wave_y(pts[i]),
-                      (uint8_t)(WT_WAVE_X + i + 1u), wave_y(pts[i + 1u]));
+        u8g2_DrawLine(u8g2, i, wave_y(pts[i]), (uint8_t)(i + 1u), wave_y(pts[i + 1u]));
+    }
+}
+
+static void draw_wave_dots(u8g2_t *u8g2, const int8_t *pts)
+{
+    for (uint8_t i = 0; i < WT_VIEW_POINTS; i = (uint8_t)(i + 2u)) {
+        u8g2_DrawPixel(u8g2, i, wave_y(pts[i]));
     }
 }
 
 void display_wt_draw_frame(u8g2_t *u8g2, const wt_view_t *view)
 {
     u8g2_ClearBuffer(u8g2);
-    u8g2_SetDrawColor(u8g2, 1);
-    u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
-    u8g2_DrawStr(u8g2, 2, 8, "WT CUSTOM");
     if (view == NULL) return;
-    uint8_t cw = (uint8_t)u8g2_GetStrWidth(u8g2, view->clean);
-    u8g2_DrawStr(u8g2, (uint8_t)(126 - cw), 8, view->clean);
-
+    u8g2_SetDrawColor(u8g2, 1);
     u8g2_SetFont(u8g2, u8g2_font_4x6_tr);
-    u8g2_DrawStr(u8g2, (uint8_t)(WT_COL_A_X + WT_COL_W / 2 - 2), WT_HDR_Y, "A");
-    u8g2_DrawStr(u8g2, (uint8_t)(WT_COL_B_X + WT_COL_W / 2 - 2), WT_HDR_Y, "B");
-    for (uint8_t r = 0; r < WT_KEY_ROWS; r++) {
-        uint8_t y = (uint8_t)(WT_ROW_Y0 + r * WT_ROW_H);
-        u8g2_DrawStr(u8g2, WT_LABEL_X, y, s_row_labels[r]);
-        uint8_t ca = (uint8_t)(WT_CUR_A_SHP + r), cb = (uint8_t)(WT_CUR_B_SHP + r);
-        draw_cell(u8g2, WT_COL_A_X, y, view->cells[ca], view->cursor == ca, view->editing);
-        draw_cell(u8g2, WT_COL_B_X, y, view->cells[cb], view->cursor == cb, view->editing);
-    }
-    uint8_t ry = (uint8_t)(WT_ROW_Y0 + WT_KEY_ROWS * WT_ROW_H);
-    u8g2_DrawStr(u8g2, WT_LABEL_X, ry, "RNG");
-    draw_cell(u8g2, WT_COL_A_X, ry, view->cells[WT_CUR_RNG], view->cursor == WT_CUR_RNG,
-              view->editing);
 
-    u8g2_DrawVLine(u8g2, WT_DIV_X, WT_WAVE_TOP, WT_WAVE_BOT - WT_WAVE_TOP + 1);
-    for (uint8_t x = WT_WAVE_X; x < 128u; x = (uint8_t)(x + 4u)) {
+    uint8_t key = (view->key < WT_VIEW_KEYS) ? view->key : 0;
+    draw_tabs(u8g2, key);
+    u8g2_DrawVLine(u8g2, WT_BORDER_X, 0, WT_ROW2_Y + 1);
+    for (uint8_t c = 0; c < WT_CUR_COUNT; c++) {
+        draw_cell(u8g2, &s_cells[c], view->cells[c], view->cursor == c, view->editing);
+    }
+
+    for (uint8_t x = 0; x < WT_VIEW_POINTS; x = (uint8_t)(x + 4u)) {
         u8g2_DrawPixel(u8g2, x, WT_WAVE_MID);
     }
-    if (view->show != WT_SHOW_B) draw_wave(u8g2, view->frame0);
-    if (view->show != WT_SHOW_A) draw_wave(u8g2, view->frame63);
+    for (uint8_t k = 0; k < WT_VIEW_KEYS; k++) {
+        if (k != key) draw_wave_dots(u8g2, view->wave[k]);
+    }
+    draw_wave_line(u8g2, view->wave[key]);
 }

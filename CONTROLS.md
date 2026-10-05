@@ -16,7 +16,7 @@ is right and this file is stale.
 | Button 1 | `MY_BUTTON_1` | Hold modifier (acts on press, released on release), or a press action in some views |
 | Button 2 | `MY_BUTTON_2` | Same as button 1 |
 | Button 3 | `MY_BUTTON_3` | Acts on tap |
-| SHOULDER (LB) | `MY_BUTTON_SHOULDER` | Left shoulder button. Acts on press, except the LFO tab flip and the FM page flip (tap) |
+| SHOULDER (LB) | `MY_BUTTON_SHOULDER` | Left shoulder button. Acts on press, except the LFO tab flip, the FM page flip and the WT keyframe cycle (tap) |
 | SHIFT (RB) | `MY_BUTTON_SHIFT` | Right shoulder button. Hold modifier; a bare tap does nothing |
 
 Pin assignments: `components/my_buttons/my_buttons.c` (`s_button_gpios[]`).
@@ -56,7 +56,7 @@ preconditions are not met does nothing.
 
 The bottom line shows `1:<b1> 2:<b2> 3:<b3>` and, in the menu on a sub-page,
 ` LB:Main`; on the FM screen ` LB:Pg2` or ` LB:Pg1` (the page SHOULDER flips
-to). It is read from `ui_view_table[]` (`ui_view_resolve.c`) for the
+to); on the WT screen ` LB:Key`. It is read from `ui_view_table[]` (`ui_view_resolve.c`) for the
 active view. SHIFT chords are not shown. The strip is hidden on the Prog
 screen and on the drone visualiser; a DEV status bar replaces it on every screen
 while on.
@@ -66,7 +66,7 @@ while on.
 | Seq | Patch | Pitch | Menu |
 | Arp, Stutter, Normal drone | Patch | - | Menu |
 | FM | Link (page 1), - (page 2) | Mute | Menu (Done while linking) |
-| WT | Copy (- on RNG) | Reset | Menu |
+| WT | Copy (- on RNG) | Reset (Blend on keyframe M, off RNG) | Menu |
 | Menu | - (Save while naming) | - (Disc while naming) | Menu |
 | Prog | Del | +Add | Menu |
 | DEV | - | - | Menu |
@@ -359,34 +359,38 @@ loop. An accepted click switches ALG to CUST and sounds at once.
 
 Requires `CONFIG_SYNTH_CUSTOM_WT`. Edits the one custom wavetable, patch 288
 (`Wavetable: Custom`), shared by every row, the arp and the drones on that
-patch and saved with the project. The table morphs from keyframe A (frame 0)
-to keyframe B (frame 63); each keyframe has four rows, plus one global row:
+patch and saved with the project. The table morphs through three keyframes:
+A (frame 0), M (frame 32) and B (frame 63). Each keyframe has five rows, plus
+one global row:
 
 | Row | Range | Meaning |
 |---|---|---|
 | SHP | 0..100 | Shape: the synced waveform, saw at 0 to square at 100 |
+| WID | 10..90 | Width: pulse width of the square part in percent, 50 = symmetric square. No effect at SHP 0 |
 | BRT | 0..10 | Bright: slope above the sync harmonic; 10 leaves the waveform as is, 0 rolls off steeply. No effect once Sync reaches the Range cap (Sync 7-8 at G#7) |
 | SYN | 1.0..8.0 | Hard-sync ratio; whole numbers are that many waveform periods per cycle. Range G#7 limits Sync to 7.0 |
 | PK | off, 2..63 | +12 dB formant bump on that harmonic |
 | RNG | the clean note | Harmonic cap 63 / 31 / 15 / 7, shown as the highest note that plays without aliasing (F#4 / F#5 / G6 / G#7) |
 
-The title shows `clean <note>` for the current RNG. The right panel draws
-frame 0 while the cursor is in column A, frame 63 in column B, and both on
-RNG; it updates when the rebuild after an edit finishes. Cursor stops, in
-order: A.SHP, A.BRT, A.SYN, A.PK, B.SHP, B.BRT, B.SYN, B.PK, RNG.
+The screen has no title. The top band holds, left of a vertical border, the
+keyframe tabs `A M B` (the focused one filled) above the RNG cell, and right
+of it the focused keyframe's rows: SHP and WID on the first line, BRT, SYN
+and PK on the second. Below, the waveform spans the full width: the focused
+keyframe as a line, the other two as dotted traces. It updates when the
+rebuild after an edit finishes. Cursor stops, in order: SHP, WID, BRT, SYN,
+PK, RNG; they apply to the focused keyframe.
 
 | Input | Action |
 |---|---|
 | Encoder turn, browsing | Move the cursor (clamped) |
 | Encoder click | Enter / leave adjusting |
-| Encoder turn, adjusting | Change the value by one step (SYN 0.1); PK steps off <-> 2 |
-| Button 1 (press) | Copy the focused keyframe to the other one. RNG: nothing |
-| Button 2 (press) | Reset the focused keyframe to the saw (SHP 0, BRT 10, SYN 1.0, PK off). RNG: range back to F#5 |
+| Encoder turn, adjusting | Change the value by one step (SYN 0.1, WID 1); PK steps off <-> 2 |
+| SHOULDER (tap) | Focus the next keyframe, A -> M -> B -> A; the cursor stop and adjusting state stay |
+| Button 1 (press) | Copy the focused keyframe to the next one: A -> M, M -> B, B -> A. RNG: nothing |
+| Button 2 (press) | A or B: reset it to the saw (SHP 0, WID 50, BRT 10, SYN 1.0, PK off). M: set it to the halfway blend of A and B, which makes the table a plain A-to-B morph. RNG: range back to F#5 |
 | SHIFT + turn | Same as a plain turn |
 | Button 0 (tap / hold) | Cycle the active layer / play-stop |
 | Button 3 (tap) | Menu |
-
-SHOULDER does nothing here.
 
 ## DEV screen
 

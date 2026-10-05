@@ -1,7 +1,7 @@
 """Reader/writer for S3-Amysynth project files (Pnn.amp).
 
 Mirrors components/synth_core/project/project_snapshot.c field for field:
-GLOB v5, LAYR v24, ARP v13, DRON v3, DSTD v1, PROG v1, CHRD v1, CLIP v2, PGEN v1, WTCU v1,
+GLOB v5, LAYR v24, ARP v13, DRON v3, DSTD v1, PROG v1, CHRD v1, CLIP v2, PGEN v1, WTCU v2,
 inside project_store.c's 32-byte header (magic "AMYP", fmt 1, name, len, CRC32).
 Field order IS the format; when the firmware bumps a section version, update
 the matching read_/write_ pair and VER here (gen_templates.py fails the build
@@ -20,7 +20,7 @@ NAME_LEN = 16
 TAG = {k: struct.unpack('<I', k.encode())[0] for k in ('GLOB', 'LAYR', 'ARP ', 'DRON', 'DSTD', 'PROG', 'CHRD', 'CLIP',
                                                        'PGEN', 'WTCU')}
 VER = {'GLOB': 5, 'LAYR': 24, 'ARP ': 13, 'DRON': 3, 'DSTD': 1, 'PROG': 1, 'CHRD': 1, 'CLIP': 2,
-       'PGEN': 1, 'WTCU': 1}
+       'PGEN': 1, 'WTCU': 2}
 
 SEQ_TRACKS = 5
 SEQ_MAX_STEPS = 32
@@ -419,20 +419,20 @@ def r_pgen(r):
     return g
 
 
-WTCU_KEYS = ('shape', 'bright', 'sync', 'peak')
+WTCU_KEYS = ('shape', 'width', 'bright', 'sync', 'peak')
 
 
 def w_wtcu(c):
-    """Custom wavetable parameters: per key a two-item list [A, B], then range."""
+    """Custom wavetable parameters: per key a three-item list [A, M, B], then range."""
     w = W()
     for k in WTCU_KEYS:
-        w.u8(c[k][0]); w.u8(c[k][1])
+        w.u8(c[k][0]); w.u8(c[k][1]); w.u8(c[k][2])
     w.u8(c['range'])
     return bytes(w.b)
 
 
 def r_wtcu(r):
-    c = {k: [r.u8(), r.u8()] for k in WTCU_KEYS}
+    c = {k: [r.u8(), r.u8(), r.u8()] for k in WTCU_KEYS}
     c['range'] = r.u8()
     return c
 

@@ -152,6 +152,16 @@ static const char *hint_wt_b1(void)
 {
     return synth_ui_wt_on_range() ? "-" : "Copy";
 }
+/* WT button 2: blends M from A and B while M is focused, else resets. */
+static const char *hint_wt_b2(void)
+{
+    return (synth_ui_wt_keyframe() == 1u && !synth_ui_wt_on_range()) ? "Blend" : "Reset";
+}
+/* WT SHOULDER: cycles the focused keyframe. */
+static const char *hint_wt_bs(void)
+{
+    return "Key";
+}
 #endif
 
 /* ─── The table: one row per view, indexed by ui_view_id_t ─────────────── */
@@ -180,7 +190,7 @@ const ui_view_desc_t ui_view_table[UI_VIEW_COUNT] = {
     [UI_VIEW_DEV]       = { "DEV",    NULL,          NULL,           "-",      "-",     "Menu",  NULL,               NULL,                   30 },
 #endif
 #if CONFIG_SYNTH_CUSTOM_WT
-    [UI_VIEW_WT]        = { "WT",     sig_wt,        draw_wt,        NULL,     "Reset", "Menu",  hint_wt_b1,         NULL,                    0 },
+    [UI_VIEW_WT]        = { "WT",     sig_wt,        draw_wt,        NULL,     NULL,    "Menu",  hint_wt_b1,         hint_wt_b2,            110, hint_wt_bs },
 #else
     [UI_VIEW_WT]        = { "WT",     NULL,          NULL,           "-",      "-",     "Menu",  NULL,               NULL,                    0 },
 #endif

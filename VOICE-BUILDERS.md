@@ -7,7 +7,7 @@ Two patches are built on the device instead of chosen from a bank:
 | Patch | 276 | 288 (`Wavetable: Custom`) |
 | Open with | Menu -> Screen: FM | Menu -> Screen: WT |
 | Build option | `CONFIG_SYNTH_CUSTOM_FM` (default off, work in progress) | `CONFIG_SYNTH_CUSTOM_WT` (default on; needs `CONFIG_AMY_WAVETABLE`) |
-| What you author | a 6-operator DX7-style FM voice: routing, levels, frequencies, envelopes, feedback | a 64-frame wavetable morphing between two keyframes, from nine parameters |
+| What you author | a 6-operator DX7-style FM voice: routing, levels, frequencies, envelopes, feedback | a 64-frame wavetable morphing through three keyframes, from sixteen parameters |
 | Saved with the project | not yet: resets to its default voice on boot | yes |
 | Controls | [CONTROLS.md](CONTROLS.md#fm-screen) | [CONTROLS.md](CONTROLS.md#wt-screen) |
 
@@ -208,11 +208,12 @@ an LFO, a fixed setting per track or a lock per step) moves the timbre.
 AMY reads two neighbouring frames and crossfades between them, so positions
 between frames are smooth.
 
-The custom wavetable is built from two keyframes: **A** is frame 0, **B** is
-frame 63, and the 62 frames between them morph from A to B. You set each
-keyframe with four parameters, plus one Range for the whole table. The table
-is rebuilt after every edit, in the background, and replaces the old one
-within about 50 ms.
+The custom wavetable is built from three keyframes: **A** is frame 0, **M**
+is frame 32 and **B** is frame 63. Frames 0 to 32 morph from A to M, frames
+32 to 63 from M to B. You set each keyframe with five parameters, plus one
+Range for the whole table: sixteen parameters in all. The table is rebuilt
+after every edit, in the background, and replaces the old one within about
+50 ms.
 
 ### What the parameters do
 
@@ -227,14 +228,21 @@ restarts at the start of every cycle.
 - **Shape** is the slave's waveform: saw at 0, square at 100, a blend in
   between. Shape and Sync combine: a square synced at 3.5 is a different
   sound from a saw synced at 3.5.
+- **Width** is the pulse width of the square part, 10 to 90 percent of each
+  slave period; 50 is the symmetric square. It acts only through the square
+  part, so it does nothing at Shape 0 and the most at Shape 100. Moving it
+  between keyframes gives pulse-width modulation along the table.
 - **Bright** sets how fast the harmonics above the sync harmonic fall away:
   10 leaves the waveform as it is, lower values roll the top off, 0 is close
   to a sine at the sync pitch. Below the sync harmonic nothing changes.
 - **Peak** adds a resonant bump (+12 dB) on one harmonic, 2 to 63, or Off. It
   is counted in harmonics of the note, so it moves with the pitch you play
-  (a wavetable cannot hold a formant at a fixed frequency). From Off on one
-  keyframe to a number on the other, the bump fades in at that harmonic
-  instead of sliding up from the bottom.
+  (a wavetable cannot hold a formant at a fixed frequency). A keyframe with
+  Peak Off borrows the position of a set one, so the bump fades in and out
+  in place instead of sliding up from the bottom: an Off A takes M's
+  harmonic if M is set, else B's; an Off B takes M's, else A's; an Off M
+  takes the harmonic halfway (in pitch) between A and B if both are set,
+  else the one that is set. All three Off is no bump.
 - **Range** caps the number of harmonics at 63, 31, 15 or 7 and shows the
   highest note that plays without aliasing (F#4, F#5, G6, G#7). One table
   serves every note, and a high note pushes its upper harmonics past what
@@ -242,21 +250,28 @@ restarts at the start of every cycle.
   Range for the highest notes the patch will play: bass lines can use F#4
   (63 harmonics, the brightest), leads F#5 or G6.
 
-Between A and B, Shape, Bright and the Peak's strength move evenly; Sync and
-the Peak's harmonic move evenly in pitch (each frame the same musical step),
-which is how a sweep sounds even.
+Between neighbouring keyframes, Shape, Width, Bright and the Peak's strength
+move evenly; Sync and the Peak's harmonic move evenly in pitch (each frame
+the same musical step), which is how a sweep sounds even. Frame 32 is
+exactly M.
 
 ### Things to try
 
-| Sound | A | B |
-|---|---|---|
-| A plain saw, as a starting point | default (Button 2 resets a keyframe) | Button 1 on A copies it here |
-| Brightness morph, a filter sweep without the filter | Bright 2 | Bright 10 |
-| Saw to square | Shape 0 | Shape 100 |
-| Classic sync sweep | Sync 1.0 | Sync 6.0 |
-| Talking formant | Peak 3 | Peak 14 |
-| Octave stack (QuadSaw-like end) | Sync 1.0 | Sync 4.0 |
-| Dark sync | Sync 1.0, Bright 3 | Sync 5.5, Bright 3 |
+| Sound | A | M | B |
+|---|---|---|---|
+| A plain saw, as a starting point | default (Button 2 resets A or B) | Button 1 on A copies it here | Button 1 on M copies it here |
+| Brightness morph, a filter sweep without the filter | Bright 2 | blend | Bright 10 |
+| Saw to square | Shape 0 | blend | Shape 100 |
+| Pulse-width sweep | Shape 100, Width 50 | Shape 100, Width 10 | Shape 100, Width 50 |
+| Classic sync sweep | Sync 1.0 | blend | Sync 6.0 |
+| Sync up and back down | Sync 1.0 | Sync 6.0 | Sync 1.0 |
+| Talking formant | Peak 3 | Peak 14 | Peak 6 |
+| Octave stack (QuadSaw-like end) | Sync 1.0 | blend | Sync 4.0 |
+| Dark sync | Sync 1.0, Bright 3 | blend | Sync 5.5, Bright 3 |
+
+`blend` in the M column: set A and B, then press Button 2 with M focused.
+That sets M to the halfway point of A and B, and the table plays the plain
+A-to-B morph.
 
 Then route EG -> SCN (Scan) on the row's envelope, or an LFO to Scan, to
 sweep through the table per note, or use the frame position below.
@@ -304,9 +319,21 @@ AMY:
   harmonics' phases move a lot from one frame to the next, so a position
   halfway between two frames is up to about 2 dB quieter. This is the same
   in the built-in SyncSweep table; the alternative would no longer be a
-  real hard-sync waveform.
+  real hard-sync waveform. A Sync change packed into one half of the table
+  (A to M, or M to B) moves twice as far per frame and ripples up to about
+  3.4 dB between frames, against about 2 dB across the whole table.
 - **Bright does nothing once Sync reaches the Range cap**, because the only
   harmonic left is the sync harmonic.
+- **A narrow pulse widens quickly as Sync leaves 1.0.** The slave's restart
+  starts a second pulse at the end of the cycle, next to the first one. With
+  Width 10 and a fast Sync sweep (1.0 to 8.0 in one half of the table) the
+  pulse goes from 10 % to about 16 % in the first frame, a larger timbre
+  step than anywhere else in the table.
+- **A narrow pulse lowers the whole table's level.** A narrow pulse has a
+  high peak for its loudness, and the finished table is scaled down to its
+  highest peak, so a table containing a 10 % pulse comes out quieter
+  overall, on every frame: about 6 dB (5.5 to 6.3 dB depending on Range) at
+  Bright 10, about 0.2 dB at Bright 0.
 - **A Square LFO on a wavetable row** becomes a narrower pulse when Frame or
   FRM is set between 1 and 62: the note's frame position also reaches the
   LFO oscillator, which reads it as pulse width. Frames 0 and 63, and Auto,
@@ -322,13 +349,13 @@ AMY:
 | `components/synth_core/custompatches/wt_synth.c`, `include/custompatches/wt_synth.h` | The spectrum model: parameters in, 64 frames out. Pure math, no AMY or RTOS calls |
 | `components/synth_core/custompatches/wt_builder.c`, `include/custompatches/wt_builder.h` | Owns the parameters, the buffers and the rebuild; the table's AMY preset |
 | `components/synth_core/synth_ui/ui_screen_wt.c` | The screen: cursor, edits, buttons, view building |
-| `components/display/display_wt.c` | The parameter grid, title and waveform panel |
+| `components/display/display_wt.c` | The keyframe tabs, parameter cells and full-width waveform |
 | `components/synth_core/custompatches/wavetable_bank.c` | Maps patch 288 to the builder's preset and names it |
-| `components/synth_core/project/project_snapshot.c` | The `WTCU` section: the nine parameter bytes |
+| `components/synth_core/project/project_snapshot.c` | The `WTCU` section: the sixteen parameter bytes |
 
 ```mermaid
 flowchart LR
-    ENC["Encoder / buttons<br/>WT screen"] --> PAR["wt_builder parameters<br/>9 bytes + dirty flag"]
+    ENC["Encoder / buttons<br/>WT screen"] --> PAR["wt_builder parameters<br/>16 bytes + dirty flag"]
     LOAD["Project load"] --> PAR
     PAR -->|"dirty"| SRV["wt_builder_service()<br/>every UI wake, 16 frames"]
     SRV --> GEN["wt_synth_build_frames()<br/>into a PSRAM scratch"]
@@ -339,9 +366,10 @@ flowchart LR
 ```
 
 **The spectrum model.** For each frame, `wt_synth_build_frames()`
-interpolates the parameters between A and B and builds the frame's
-harmonics directly: the exact spectrum of a hard-synced saw and of a
-hard-synced square, computed from the steps in each waveform and blended by
+interpolates the parameters between the two keyframes around it (A and M,
+or M and B) and builds the frame's harmonics directly: the exact spectrum of
+a hard-synced saw and of a hard-synced pulse of the given Width, computed
+from the steps in each waveform and blended by
 Shape; the Bright slope above the sync harmonic; levelling to a plain saw's
 loudness; the Peak; the Range cap. An inverse FFT then turns the harmonics
 into the 256-sample frame. Building from harmonics is what makes every frame
@@ -362,7 +390,7 @@ in the same AMY event as its pitch and velocity
 fields to the voice it allocates and to no other, which is why each note
 keeps its own frame.
 
-**Saving.** The project stores the nine parameter bytes (`WTCU` section),
+**Saving.** The project stores the sixteen parameter bytes (`WTCU` section),
 never the table; a load sets the parameters and the table is rebuilt within
 about 50 ms. A project without the section loads the default saw. The track
 Frame values and step FRM locks are stored with the layer.

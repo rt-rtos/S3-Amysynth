@@ -9,7 +9,7 @@ extern "C" {
 #endif
 
 /* ── Custom wavetable builder (SEQ_PATCH_WAVETABLE_CUSTOM) ────────────────
- * Owns the one global custom table: its nine parameters (wt_params_t, the
+ * Owns the one global custom table: its sixteen parameters (wt_params_t, the
  * math in wt_synth.h), the live AMY memory preset WT_BUILDER_PRESET
  * (wavetable_bank.h) every row, the arp and the drones play on patch 288,
  * a 64 KB PSRAM float scratch, and the rebuild that turns a parameter edit
@@ -38,7 +38,7 @@ extern "C" {
  *
  * Execution context: init on app_main after wavetable_bank_init(), before any
  * task can apply a patch. The parameter writers (setters, set_params,
- * copy/reset_keyframe) run on any Core-0 task: encoder_task, button_task,
+ * copy/reset_keyframe, blend_mid) run on any Core-0 task: encoder_task, button_task,
  * seq_ui on project load. The service, generation() and preview() run on the
  * seq_ui task only. wt_builder_preset() and get_params() are lock-free from
  * any Core-0 task. Nothing here is for the render task or an ISR. */
@@ -51,6 +51,7 @@ extern "C" {
 
 typedef enum {
     WT_FIELD_SHAPE = 0,
+    WT_FIELD_WIDTH,
     WT_FIELD_BRIGHT,
     WT_FIELD_SYNC,
     WT_FIELD_PEAK,
@@ -64,18 +65,23 @@ typedef enum {
  * parameters, the service does nothing). */
 bool wt_builder_init(void);
 
-/* Store one field of keyframe 0 (A) or 1 (B), clamped to its domain
- * (wt_synth.h; a peak of 1 becomes Off), and mark the table dirty. */
+/* Store one field of keyframe 0 (A), 1 (M) or 2 (B; above 2 clamps to 2),
+ * clamped to its domain (wt_synth.h; a peak of 1 becomes Off), and mark the
+ * table dirty. */
 void wt_builder_set_field(wt_field_t field, uint8_t keyframe, uint8_t value);
 
 /* Whole parameter set (project load); clamped, then marked dirty. */
 void wt_builder_set_params(const wt_params_t *p);
 void wt_builder_get_params(wt_params_t *out);
 
-/* Copy keyframe `from` (0 or 1) over the other one. */
+/* Copy all five fields of keyframe `from` (0..2) over the next one,
+ * (from + 1) % 3: A -> M, M -> B, B -> A. */
 void wt_builder_copy_keyframe(uint8_t from);
-/* Keyframe k back to the default saw; range untouched. */
+/* Keyframe k (0..2) back to the default saw; range untouched. */
 void wt_builder_reset_keyframe(uint8_t k);
+/* Keyframe 1 (M) to the halfway blend of A and B (wt_params_blend_mid()),
+ * then mark the table dirty. */
+void wt_builder_blend_mid(void);
 
 /* One rebuild step (see above). seq_ui task, every wake. */
 void wt_builder_service(void);
@@ -87,7 +93,7 @@ uint16_t wt_builder_preset(void);
  * rebuild redraws the preview. */
 uint32_t wt_builder_generation(void);
 
-/* Previews of frames 0 and 63 of the live table. */
+/* Previews of frames 0, WT_MID_FRAME and 63 of the live table. */
 void wt_builder_preview(wt_preview_t *out);
 
 #ifdef __cplusplus

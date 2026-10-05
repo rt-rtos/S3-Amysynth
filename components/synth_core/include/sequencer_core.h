@@ -139,7 +139,7 @@ static inline bool sequencer_core_lfo_native_layout(uint16_t patch,
 #define SEQ_PATCH_WAVETABLE_APP_MAX   (SEQ_PATCH_WAVETABLE_APP_BASE + SEQ_PATCH_WAVETABLE_APP_SLOTS - 1)
 
 /* ── Custom wavetable (custompatches/wt_builder.h; CONFIG_SYNTH_CUSTOM_WT) ──
- * One global table built on the device from nine parameters and edited on
+ * One global table built on the device from sixteen parameters and edited on
  * the WT screen; every row, the arp and the drones on this patch share it.
  * Numbered past the app bank, whose slots stay manifest-only. */
 #define SEQ_PATCH_WAVETABLE_CUSTOM    288

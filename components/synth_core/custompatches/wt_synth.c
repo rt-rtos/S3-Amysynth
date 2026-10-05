@@ -38,8 +38,9 @@ static void twiddles_init(void)
 
 void wt_params_default(wt_params_t *p)
 {
-    for (int k = 0; k < 2; k++) {
+    for (int k = 0; k < WT_KEYS; k++) {
         p->shape[k]  = 0;
+        p->width[k]  = 50;
         p->bright[k] = 10;
         p->sync[k]   = 10;
         p->peak[k]   = 0;
@@ -49,8 +50,10 @@ void wt_params_default(wt_params_t *p)
 
 void wt_params_clamp(wt_params_t *p)
 {
-    for (int k = 0; k < 2; k++) {
+    for (int k = 0; k < WT_KEYS; k++) {
         if (p->shape[k] > 100) p->shape[k] = 100;
+        if (p->width[k] < 10)  p->width[k] = 10;
+        if (p->width[k] > 90)  p->width[k] = 90;
         if (p->bright[k] > 10) p->bright[k] = 10;
         if (p->sync[k] < 10)   p->sync[k] = 10;
         if (p->sync[k] > 80)   p->sync[k] = 80;
@@ -58,6 +61,25 @@ void wt_params_clamp(wt_params_t *p)
         if (p->peak[k] > 63)   p->peak[k] = 63;
     }
     if (p->range > 3) p->range = 3;
+}
+
+static uint8_t geo_mean(uint8_t a, uint8_t b)
+{
+    return (uint8_t)lrintf(sqrtf((float)a * (float)b));
+}
+
+void wt_params_blend_mid(wt_params_t *p)
+{
+    p->shape[1]  = (uint8_t)((p->shape[0]  + p->shape[2]  + 1) / 2);
+    p->width[1]  = (uint8_t)((p->width[0]  + p->width[2]  + 1) / 2);
+    p->bright[1] = (uint8_t)((p->bright[0] + p->bright[2] + 1) / 2);
+    p->sync[1]   = geo_mean(p->sync[0], p->sync[2]);
+    if (p->peak[0] && p->peak[2]) {
+        uint8_t pk = geo_mean(p->peak[0], p->peak[2]);
+        p->peak[1] = pk < 2 ? 2 : pk;
+    } else {
+        p->peak[1] = 0;
+    }
 }
 
 uint8_t wt_synth_harmonics(uint8_t range)
@@ -151,8 +173,9 @@ static void add_jump(float *buf, uint8_t H, float th, float jump)
 }
 
 /* One frame, spectrum model steps 1-5, into its own WT_CYCLE-float slot.
- * `r` is the effective sync ratio (already capped at H). */
-static void build_frame(float *buf, uint8_t H, float shape, float bright,
+ * `r` is the effective sync ratio (already capped at H); `width` is the
+ * square part's pulse width, 0.10..0.90. */
+static void build_frame(float *buf, uint8_t H, float shape, float width, float bright,
                         float r, float amount, float pos)
 {
     memset(buf, 0, WT_CYCLE * sizeof(float));
@@ -162,9 +185,10 @@ static void build_frame(float *buf, uint8_t H, float shape, float bright,
      * linear in the steps, so the two waveforms' steps are summed weighted.
      * Saw (+1 -> -1 ramp): +2 at every slave restart th_k = 2 pi k / r inside
      * the cycle, and at phase 0 the step 2 (r - kmax) back from where the cut
-     * ramp ended. Square (+1 then -1, no slope): +2 at each restart, -2 at
-     * each half period 2 pi (k + 1/2) / r inside the cycle, and at phase 0
-     * the step from the cycle's end value back to +1, so the steps sum to 0. */
+     * ramp ended. Square (+1 for `width` of each slave period, then -1, no
+     * slope): +2 at each restart, -2 at 2 pi (k + width) / r inside the
+     * cycle, and at phase 0 the step from the cycle's end value back to +1,
+     * so the steps sum to 0. */
     int kmax = (int)ceilf(r - 1e-6f) - 1;
     if (kmax < 0) kmax = 0;
     float sq_last = 1.0f;                    /* the square's value at the cycle end */
@@ -172,8 +196,8 @@ static void build_frame(float *buf, uint8_t H, float shape, float bright,
         add_jump(buf, H, 2.0f * WT_PI * (float)k / r, 2.0f);
         sq_last += 2.0f;
     }
-    for (int k = 0; (float)k + 0.5f < r - 1e-6f; k++) {
-        add_jump(buf, H, 2.0f * WT_PI * ((float)k + 0.5f) / r, -2.0f * shape);
+    for (int k = 0; (float)k + width < r - 1e-6f; k++) {
+        add_jump(buf, H, 2.0f * WT_PI * ((float)k + width) / r, -2.0f * shape);
         sq_last -= 2.0f;
     }
     float restart = (1.0f - shape) * 2.0f * (r - (float)kmax) + shape * (1.0f - sq_last);
@@ -220,26 +244,37 @@ void wt_synth_build_frames(const wt_params_t *p, uint8_t first, uint8_t count, f
     twiddles_init();
     const uint8_t H = wt_synth_harmonics(p->range);
 
-    /* An Off peak is amount 0 at the other keyframe's position. */
-    float pa = (float)(p->peak[0] ? p->peak[0] : p->peak[1]);
-    float pb = (float)(p->peak[1] ? p->peak[1] : p->peak[0]);
-    float amt_a = p->peak[0] ? 1.0f : 0.0f;
-    float amt_b = p->peak[1] ? 1.0f : 0.0f;
-    float ra = (float)p->sync[0] / 10.0f;
-    float rb = (float)p->sync[1] / 10.0f;
+    /* Effective peak positions per keyframe (the peak rule in wt_synth.h);
+     * all 0 when no keyframe has a peak. */
+    const uint8_t *pk = p->peak;
+    float pos_k[WT_KEYS], amt_k[WT_KEYS], ratio_k[WT_KEYS];
+    pos_k[0] = (float)(pk[0] ? pk[0] : (pk[1] ? pk[1] : pk[2]));
+    pos_k[2] = (float)(pk[2] ? pk[2] : (pk[1] ? pk[1] : pk[0]));
+    if (pk[1])               pos_k[1] = (float)pk[1];
+    else if (pk[0] && pk[2]) pos_k[1] = sqrtf((float)pk[0] * (float)pk[2]);
+    else                     pos_k[1] = (float)(pk[0] ? pk[0] : pk[2]);
+    for (int k = 0; k < WT_KEYS; k++) {
+        amt_k[k]   = pk[k] ? 1.0f : 0.0f;
+        ratio_k[k] = (float)p->sync[k] / 10.0f;
+    }
 
     unsigned end = (unsigned)first + count;
     if (end > WT_FRAMES) end = WT_FRAMES;
     for (unsigned f = first; f < end; f++) {
-        float t = (float)f / (float)(WT_FRAMES - 1);
-        float shape  = ((float)p->shape[0] + ((float)p->shape[1] - (float)p->shape[0]) * t) / 100.0f;
-        float bright = (float)p->bright[0] + ((float)p->bright[1] - (float)p->bright[0]) * t;
-        float amount = amt_a + (amt_b - amt_a) * t;
+        /* Segment A -> M up to WT_MID_FRAME, M -> B after it. */
+        int a = (f <= WT_MID_FRAME) ? 0 : 1, b = a + 1;
+        float u = (f <= WT_MID_FRAME)
+                ? (float)f / (float)WT_MID_FRAME
+                : (float)(f - WT_MID_FRAME) / (float)(WT_FRAMES - 1 - WT_MID_FRAME);
+        float shape  = ((float)p->shape[a] + ((float)p->shape[b] - (float)p->shape[a]) * u) / 100.0f;
+        float width  = ((float)p->width[a] + ((float)p->width[b] - (float)p->width[a]) * u) / 100.0f;
+        float bright = (float)p->bright[a] + ((float)p->bright[b] - (float)p->bright[a]) * u;
+        float amount = amt_k[a] + (amt_k[b] - amt_k[a]) * u;
         /* Effective ratio: capped at H, so the sync harmonic always survives. */
-        float r   = ra * powf(rb / ra, t);
+        float r   = ratio_k[a] * powf(ratio_k[b] / ratio_k[a], u);
         if (r > (float)H) r = (float)H;
-        float pos = (pa > 0.0f) ? pa * powf(pb / pa, t) : 1.0f;
-        build_frame(frames + f * WT_CYCLE, H, shape, bright, r, amount, pos);
+        float pos = (pos_k[a] > 0.0f) ? pos_k[a] * powf(pos_k[b] / pos_k[a], u) : 1.0f;
+        build_frame(frames + f * WT_CYCLE, H, shape, width, bright, r, amount, pos);
     }
 }
 
@@ -263,10 +298,12 @@ void wt_synth_finish(float *frames, int16_t *out, wt_preview_t *pv)
 
     /* Previews before the conversion overwrites frame 0. */
     float ps = scale * 127.0f / WT_FULL_SCALE;
-    const float *f63 = frames + (WT_FRAMES - 1) * WT_CYCLE;
-    for (int i = 0; i < WT_PREVIEW_POINTS; i++) {
-        pv->frame0[i]  = preview_point(frames[i * (WT_CYCLE / WT_PREVIEW_POINTS)] * ps);
-        pv->frame63[i] = preview_point(f63[i * (WT_CYCLE / WT_PREVIEW_POINTS)] * ps);
+    static const uint8_t key_frame[WT_KEYS] = { 0, WT_MID_FRAME, WT_FRAMES - 1 };
+    for (int k = 0; k < WT_KEYS; k++) {
+        const float *src = frames + key_frame[k] * WT_CYCLE;
+        for (int i = 0; i < WT_PREVIEW_POINTS; i++) {
+            pv->frame[k][i] = preview_point(src[i * (WT_CYCLE / WT_PREVIEW_POINTS)] * ps);
+        }
     }
 
     /* Forward and through byte copies, so `out` may alias `frames`: the

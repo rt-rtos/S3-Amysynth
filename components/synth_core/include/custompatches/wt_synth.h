@@ -7,18 +7,26 @@ extern "C" {
 #endif
 
 /* ── Custom wavetable synthesis (the in-app builder's math) ────────────────
- * Turns nine parameter bytes into a 64-frame x 256-sample AMY wavetable.
+ * Turns sixteen parameter bytes into a 64-frame x 256-sample AMY wavetable.
  * Each frame is a sum of harmonics 1..H, so it is band-limited, periodic and
  * DC-free by construction. This file is the single home of the spectrum
  * model; wt_builder.h owns the parameters, the buffers and the slicing.
  *
- * Two keyframes, index 0 = A (frame 0) and 1 = B (frame 63). Per frame,
- * t = f/63: shape, bright and the peak amount interpolate linearly, the sync
- * ratio and the peak position geometrically. An Off peak counts as amount 0
- * at the other keyframe's position, so a peak fades in place; both Off is no
- * peak. Parameter domains:
+ * Three keyframes, index 0 = A (frame 0), 1 = M (frame WT_MID_FRAME = 32)
+ * and 2 = B (frame 63). Frame f <= 32 interpolates A -> M with u = f/32, a
+ * later frame M -> B with u = (f - 32)/31, so frame 32 is exactly M. Within
+ * a segment shape, width, bright and the peak amount interpolate linearly,
+ * the sync ratio and the peak position geometrically.
+ *
+ * Peak: a keyframe's amount is 1 if its peak is set, else 0. A set peak sits
+ * on its own harmonic. An Off A takes M's position if M is set, else B's; an
+ * Off B takes M's, else A's; an Off M takes sqrt(A * B) if both are set,
+ * else the one that is set. So a peak fades in place; all three Off is no
+ * peak. Parameter domains (each per keyframe except range):
  *   shape  0..100   the synced waveform: saw at 0 to square at 100 (a blend
  *                   of the two hard-synced spectra)
+ *   width  10..90   pulse width of the square part in percent; 50 is the
+ *                   symmetric square, no effect at shape 0
  *   bright 0..10    slope above the sync harmonic: factor
  *                   min(1, (n/r)^-(2.5 * (1 - bright/10))); 10 leaves the
  *                   slave's own spectrum
@@ -36,34 +44,47 @@ extern "C" {
  * Peak, then a 256-point inverse real FFT. Convention:
  * frame(x) = sum_n Re(c[n] e^{i n x}).
  *
+ * Level: a narrow pulse has a high crest factor, and since wt_synth_finish()
+ * scales the whole table to its peak, a table containing a 10 % pulse comes
+ * out several dB quieter overall.
+ *
  * Contract: stateless apart from a twiddle table filled once on first use
  * (idempotent); no AMY, no FreeRTOS, no allocation; float only; compiles on
  * the host. Callable from any task, never from the render path or an ISR. */
 
 #define WT_FRAMES          64
 #define WT_CYCLE           256     /* WAVETABLE_SAMPLES_PER_CYCLE, oscillators.c */
-#define WT_PREVIEW_POINTS  64
+#define WT_PREVIEW_POINTS  128
+#define WT_KEYS            3
+#define WT_MID_FRAME       32
 
 typedef struct {
-    uint8_t shape[2];
-    uint8_t bright[2];
-    uint8_t sync[2];
-    uint8_t peak[2];
+    uint8_t shape[WT_KEYS];
+    uint8_t width[WT_KEYS];
+    uint8_t bright[WT_KEYS];
+    uint8_t sync[WT_KEYS];
+    uint8_t peak[WT_KEYS];
     uint8_t range;
-} wt_params_t;
+} wt_params_t;                      /* index 0 = A, 1 = M, 2 = B */
 
-/* Every 4th sample of frames 0 and 63 of the finished table, scaled to
- * -127..127 relative to 32000. */
+/* Every 2nd sample of frames 0, WT_MID_FRAME and 63 of the finished table,
+ * scaled to -127..127 relative to 32000. */
 typedef struct {
-    int8_t frame0[WT_PREVIEW_POINTS];
-    int8_t frame63[WT_PREVIEW_POINTS];
+    int8_t frame[WT_KEYS][WT_PREVIEW_POINTS];   /* frames 0, WT_MID_FRAME, 63 */
 } wt_preview_t;
 
-/* A = B = saw (shape 0, bright 10, sync 10, peak Off); range 1 (H = 31). */
+/* A = M = B = saw (shape 0, width 50, bright 10, sync 10, peak Off); range 1
+ * (H = 31). */
 void wt_params_default(wt_params_t *p);
 
 /* Clamp every field into its domain; a peak of 1 becomes 0 (Off). */
 void wt_params_clamp(wt_params_t *p);
+
+/* Write keyframe 1 (M) as the halfway point of 0 and 2: rounded means of
+ * shape, width and bright, rounded sqrt(a * b) of sync, and of peak (at
+ * least 2) if both peaks are set, else peak Off. Pure; `p` clamped on entry
+ * stays clamped. */
+void wt_params_blend_mid(wt_params_t *p);
 
 /* Harmonic cap H for a range index (out-of-domain ranges clamp to 3). */
 uint8_t wt_synth_harmonics(uint8_t range);
@@ -80,9 +101,10 @@ uint8_t wt_synth_clean_note(uint8_t range);
 void wt_synth_build_frames(const wt_params_t *p, uint8_t first, uint8_t count, float *frames);
 
 /* Finish a fully built table: if its peak exceeds 32000, scale the whole
- * table down to it; fill `pv` from frames 0 and 63; then convert every
- * sample to int16 into `out`. `out` may alias `frames`: the conversion runs
- * forward, and int16[i] at byte 2i never overtakes float[i] at byte 4i. */
+ * table down to it; fill `pv` from frames 0, WT_MID_FRAME and 63; then
+ * convert every sample to int16 into `out`. `out` may alias `frames`: the
+ * conversion runs forward, and int16[i] at byte 2i never overtakes float[i]
+ * at byte 4i. */
 void wt_synth_finish(float *frames, int16_t *out, wt_preview_t *pv);
 
 #ifdef __cplusplus

@@ -316,8 +316,8 @@ config SYNTH_CUSTOM_WT
 	default y
 	help
 		Compiles in the Custom wavetable patch (288): a 64-frame table built
-		on the device from nine parameters (Shape, Bright, Sync and Peak for
-		each of two keyframes, plus a harmonic Range cap), edited on the
+		on the device from sixteen parameters (Shape, Width, Bright, Sync and
+		Peak for each of three keyframes, plus a harmonic Range cap), edited on the
 		"Screen: WT" page and saved with the project. The table is rebuilt
 		in slices on the UI task and costs 32 KB of PSRAM for the live table
 		plus 64 KB for the build scratch.

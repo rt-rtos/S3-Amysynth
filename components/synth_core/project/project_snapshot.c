@@ -1095,19 +1095,21 @@ static void apply_pgen(const staged_pgen_t *g)
 }
 
 /* ── WTCU section (custom wavetable, CONFIG_SYNTH_CUSTOM_WT) ───────────────
- * The builder's nine parameter bytes in wt_params_t order; the table itself
- * is never stored, the load rebuilds it. Written only when the builder is
- * compiled in; a build without it skips the section as unknown. */
+ * Version 2: the builder's sixteen parameter bytes in wt_params_t order
+ * (shape, width, bright, sync, peak per keyframe A, M, B, then range); the
+ * table itself is never stored, the load rebuilds it. Written only when the
+ * builder is compiled in; a build without it skips the section as unknown. */
 #if CONFIG_SYNTH_CUSTOM_WT
 static void ser_wtcu(tlv_writer_t *w)
 {
-    size_t h = tlv_begin_section(w, TAG_WTCU, 1);
+    size_t h = tlv_begin_section(w, TAG_WTCU, 2);
     wt_params_t p;
     wt_builder_get_params(&p);
-    for (uint8_t k = 0; k < 2; k++) tlv_put_u8(w, p.shape[k]);
-    for (uint8_t k = 0; k < 2; k++) tlv_put_u8(w, p.bright[k]);
-    for (uint8_t k = 0; k < 2; k++) tlv_put_u8(w, p.sync[k]);
-    for (uint8_t k = 0; k < 2; k++) tlv_put_u8(w, p.peak[k]);
+    for (uint8_t k = 0; k < WT_KEYS; k++) tlv_put_u8(w, p.shape[k]);
+    for (uint8_t k = 0; k < WT_KEYS; k++) tlv_put_u8(w, p.width[k]);
+    for (uint8_t k = 0; k < WT_KEYS; k++) tlv_put_u8(w, p.bright[k]);
+    for (uint8_t k = 0; k < WT_KEYS; k++) tlv_put_u8(w, p.sync[k]);
+    for (uint8_t k = 0; k < WT_KEYS; k++) tlv_put_u8(w, p.peak[k]);
     tlv_put_u8(w, p.range);
     tlv_end_section(w, h);
 }
@@ -1115,10 +1117,11 @@ static void ser_wtcu(tlv_writer_t *w)
 /* Clamped here (crash-safety for foreign data); the builder clamps again. */
 static bool parse_wtcu(tlv_reader_t *b, wt_params_t *p)
 {
-    for (uint8_t k = 0; k < 2; k++) if (!tlv_get_u8(b, &p->shape[k]))  return false;
-    for (uint8_t k = 0; k < 2; k++) if (!tlv_get_u8(b, &p->bright[k])) return false;
-    for (uint8_t k = 0; k < 2; k++) if (!tlv_get_u8(b, &p->sync[k]))   return false;
-    for (uint8_t k = 0; k < 2; k++) if (!tlv_get_u8(b, &p->peak[k]))   return false;
+    for (uint8_t k = 0; k < WT_KEYS; k++) if (!tlv_get_u8(b, &p->shape[k]))  return false;
+    for (uint8_t k = 0; k < WT_KEYS; k++) if (!tlv_get_u8(b, &p->width[k]))  return false;
+    for (uint8_t k = 0; k < WT_KEYS; k++) if (!tlv_get_u8(b, &p->bright[k])) return false;
+    for (uint8_t k = 0; k < WT_KEYS; k++) if (!tlv_get_u8(b, &p->sync[k]))   return false;
+    for (uint8_t k = 0; k < WT_KEYS; k++) if (!tlv_get_u8(b, &p->peak[k]))   return false;
     if (!tlv_get_u8(b, &p->range)) return false;
     wt_params_clamp(p);
     return true;
@@ -1303,7 +1306,7 @@ bool project_snapshot_load_buffer(const uint8_t *payload, size_t len, const char
             break;
 #if CONFIG_SYNTH_CUSTOM_WT
         case TAG_WTCU:
-            if (got_wtcu || ver != 1) { ok = false; break; }
+            if (got_wtcu || ver != 2) { ok = false; break; }
             ok = parse_wtcu(&body, &staged_wtcu);
             got_wtcu = ok;
             break;
