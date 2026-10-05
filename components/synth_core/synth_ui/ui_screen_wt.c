@@ -40,9 +40,9 @@ bool synth_ui_wt_is_active(void)
     return seq_state.ui_mode == UI_MODE_WT && !seq_state.menu_open;
 }
 
-bool synth_ui_wt_on_range(void)
+bool synth_ui_wt_on_harmonics(void)
 {
-    return s_wt_cursor == WT_CUR_RNG;
+    return s_wt_cursor == WT_CUR_HRM;
 }
 
 uint8_t synth_ui_wt_keyframe(void)
@@ -72,7 +72,7 @@ void wt_build_view(wt_view_t *out)
 
     char note[4];
     ui_note_name(wt_synth_clean_note(p.range), note);
-    snprintf(out->cells[WT_CUR_RNG], WT_CELL_LEN, "%s", note);
+    snprintf(out->cells[WT_CUR_HRM], WT_CELL_LEN, "%u %s", (unsigned)wt_synth_harmonics(p.range), note);
 
     if (s_wt_key == WT_VIEW_KEY_SCAN) {
         out->frame = s_wt_frame;
@@ -132,7 +132,8 @@ static void wt_edit(int delta)
             v = (p.peak[k] == 0u) ? ((delta > 0) ? 1 + delta : 0) : (int)p.peak[k] + delta;
             v = (v < 2) ? 0 : SEQ_CLAMP_INT(v, 2, 63);
             break;
-        case WT_FIELD_RANGE:  v = SEQ_CLAMP_INT((int)p.range + delta, 0, 3);      break;
+        /* Shown as a harmonic count, so turning up means more: a lower range index. */
+        case WT_FIELD_RANGE:  v = SEQ_CLAMP_INT((int)p.range - delta, 0, 3);      break;
         default: return;
     }
     wt_builder_set_field(f, k, (uint8_t)v);
@@ -178,7 +179,7 @@ bool synth_ui_wt_next_keyframe(void)
 bool synth_ui_wt_copy_keyframe(void)
 {
     if (!synth_ui_wt_is_active()) return false;
-    if (s_wt_cursor == WT_CUR_RNG || s_wt_key == WT_VIEW_KEY_SCAN) return true;
+    if (s_wt_cursor == WT_CUR_HRM || s_wt_key == WT_VIEW_KEY_SCAN) return true;
     wt_builder_copy_keyframe(s_wt_key);
     s_force_redraw = true;
     return true;
@@ -188,7 +189,7 @@ bool synth_ui_wt_reset_keyframe(void)
 {
     if (!synth_ui_wt_is_active()) return false;
     if (s_wt_key == WT_VIEW_KEY_SCAN) return true;
-    if (s_wt_cursor == WT_CUR_RNG) {
+    if (s_wt_cursor == WT_CUR_HRM) {
         wt_params_t d;
         wt_params_default(&d);
         wt_builder_set_field(WT_FIELD_RANGE, 0, d.range);

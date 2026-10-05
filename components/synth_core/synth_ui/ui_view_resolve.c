@@ -147,17 +147,17 @@ static const char *hint_fm_b3(void)
 }
 #endif
 #if CONFIG_SYNTH_CUSTOM_WT
-/* WT button 1: copy the focused keyframe, nothing on RNG or the scan tab. */
+/* WT button 1: copy the focused keyframe, nothing on the harmonics cell or the scan tab. */
 static const char *hint_wt_b1(void)
 {
-    return (synth_ui_wt_on_range() || synth_ui_wt_keyframe() > 2u) ? "-" : "Copy";
+    return (synth_ui_wt_on_harmonics() || synth_ui_wt_keyframe() > 2u) ? "-" : "Copy";
 }
 /* WT button 2: blends M from A and B while M is focused, else resets;
  * nothing on the scan tab. */
 static const char *hint_wt_b2(void)
 {
     if (synth_ui_wt_keyframe() > 2u) return "-";
-    return (synth_ui_wt_keyframe() == 1u && !synth_ui_wt_on_range()) ? "Blend" : "Reset";
+    return (synth_ui_wt_keyframe() == 1u && !synth_ui_wt_on_harmonics()) ? "Blend" : "Reset";
 }
 /* WT SHOULDER: cycles the focused keyframe. */
 static const char *hint_wt_bs(void)

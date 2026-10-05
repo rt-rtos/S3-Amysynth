@@ -211,7 +211,7 @@ between frames are smooth.
 The custom wavetable is built from three keyframes: **A** is frame 0, **M**
 is frame 32 and **B** is frame 63. Frames 0 to 32 morph from A to M, frames
 32 to 63 from M to B. You set each keyframe with five parameters, plus one
-Range for the whole table: sixteen parameters in all. The table is rebuilt
+Harmonics setting for the whole table: sixteen parameters in all. The table is rebuilt
 after every edit, in the background, and replaces the old one within about
 50 ms.
 
@@ -243,12 +243,13 @@ restarts at the start of every cycle.
   harmonic if M is set, else B's; an Off B takes M's, else A's; an Off M
   takes the harmonic halfway (in pitch) between A and B if both are set,
   else the one that is set. All three Off is no bump.
-- **Range** caps the number of harmonics at 63, 31, 15 or 7 and shows the
-  highest note that plays without aliasing (F#4, F#5, G6, G#7). One table
+- **Harmonics** sets how many harmonics a frame may hold: 63, 31, 15 or 7.
+  More is brighter. The cell also shows the highest note that plays without
+  aliasing at that count: `63 F#4`, `31 F#5`, `15 G6`, `7 G#7`. One table
   serves every note, and a high note pushes its upper harmonics past what
-  the 48 kHz output can carry; those fold back as inharmonic noise. Pick the
-  Range for the highest notes the patch will play: bass lines can use F#4
-  (63 harmonics, the brightest), leads F#5 or G6.
+  the 48 kHz output can carry; those fold back as inharmonic noise. Use the
+  highest count whose note still covers the part: 63 for bass lines, 31 or
+  15 for leads. A lower count than the part needs only removes harmonics.
 
 Between neighbouring keyframes, Shape, Width, Bright and the Peak's strength
 move evenly; Sync and the Peak's harmonic move evenly in pitch (each frame
@@ -299,7 +300,7 @@ under the Layer page in [CONTROLS.md](CONTROLS.md#menu).
 The parameters are chosen so that every table they can make plays cleanly in
 AMY:
 
-- **No aliasing below the Range note.** Every frame stops at the Range's
+- **No aliasing up to the note shown beside Harmonics.** Every frame stops at the Harmonics
   harmonic cap.
 - **No dips in the morph.** Neighbouring frames are close, so AMY's
   crossfade between them never cancels the sound. The one exception is
@@ -308,7 +309,7 @@ AMY:
   plain saw, so sweeping the frame position or changing Shape does not jump
   in volume. A Peak adds level, as a resonance does.
 - **No silent frames.** Saw and square share the sync harmonic, and Sync is
-  limited to the Range cap (G#7 limits it to 7.0), so no setting removes
+  limited to the Harmonics count (7 harmonics limit it to 7.0), so no setting removes
   every harmonic.
 - **No clicks at the loop point.** Frames are built from harmonics, so every
   cycle joins itself exactly.
@@ -322,7 +323,7 @@ AMY:
   real hard-sync waveform. A Sync change packed into one half of the table
   (A to M, or M to B) moves twice as far per frame and ripples up to about
   3.4 dB between frames, against about 2 dB across the whole table.
-- **Bright does nothing once Sync reaches the Range cap**, because the only
+- **Bright does nothing once Sync reaches the Harmonics count**, because the only
   harmonic left is the sync harmonic.
 - **A narrow pulse widens quickly as Sync leaves 1.0.** The slave's restart
   starts a second pulse at the end of the cycle, next to the first one. With
@@ -332,7 +333,7 @@ AMY:
 - **A narrow pulse lowers the whole table's level.** A narrow pulse has a
   high peak for its loudness, and the finished table is scaled down to its
   highest peak, so a table containing a 10 % pulse comes out quieter
-  overall, on every frame: about 6 dB (5.5 to 6.3 dB depending on Range) at
+  overall, on every frame: about 6 dB (5.5 to 6.3 dB depending on Harmonics) at
   Bright 10, about 0.2 dB at Bright 0.
 - **A Square LFO on a wavetable row** becomes a narrower pulse when Frame or
   FRM is set between 1 and 62: the note's frame position also reaches the
@@ -371,7 +372,7 @@ or M and B) and builds the frame's harmonics directly: the exact spectrum of
 a hard-synced saw and of a hard-synced pulse of the given Width, computed
 from the steps in each waveform and blended by
 Shape; the Bright slope above the sync harmonic; levelling to a plain saw's
-loudness; the Peak; the Range cap. An inverse FFT then turns the harmonics
+loudness; the Peak; the Harmonics cap. An inverse FFT then turns the harmonics
 into the 256-sample frame. Building from harmonics is what makes every frame
 band-limited and loop-continuous by construction.
 

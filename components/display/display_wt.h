@@ -10,7 +10,8 @@ extern "C" {
 
 /* ── Custom wavetable screen ─────────────────────────────────────────────
  * No title. Top band, two 4x6 rows: left of a vertical border the keyframe
- * tabs A M B (the focused one filled) above the RNG cell; right of it the
+ * tabs A M B (the focused one filled) above the harmonics cell (the
+ * harmonic count and its clean note, no label); right of it the
  * focused keyframe's five parameters, SHP and WID on row 1 (the third slot
  * left free for the BLE badge), BRT, SYN and PK on row 2. The cursor cell is
  * framed while browsing and filled while adjusting. Below, the full-width
@@ -31,10 +32,10 @@ enum {
     WT_CUR_BRT,
     WT_CUR_SYN,
     WT_CUR_PK,
-    WT_CUR_RNG,
+    WT_CUR_HRM,
     WT_CUR_COUNT,
 };
-#define WT_CELL_LEN     6
+#define WT_CELL_LEN     8
 #define WT_VIEW_KEYS    3
 #define WT_VIEW_KEY_SCAN WT_VIEW_KEYS    /* `key` value of the scan tab */
 #define WT_VIEW_FRAMES  64
@@ -51,7 +52,7 @@ typedef struct {
     uint8_t  harm_count;                    /* bars shown, 1..WT_VIEW_HARMONICS */
     uint8_t  harm[WT_VIEW_HARMONICS];       /* half-dB below full scale per harmonic */
     uint32_t generation;                    /* table rebuilds; redraws the preview */
-    char     cells[WT_CUR_COUNT][WT_CELL_LEN];      /* focused keyframe + RNG */
+    char     cells[WT_CUR_COUNT][WT_CELL_LEN];      /* focused keyframe + harmonics */
     int8_t   wave[WT_VIEW_KEYS][WT_VIEW_POINTS];    /* -127..127, A M B; scan tab: [0] is the frame */
 } wt_view_t;
 

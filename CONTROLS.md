@@ -66,7 +66,7 @@ while on.
 | Seq | Patch | Pitch | Menu |
 | Arp, Stutter, Normal drone | Patch | - | Menu |
 | FM | Link (page 1), - (page 2) | Mute | Menu (Done while linking) |
-| WT | Copy (- on RNG and the S tab) | Reset (Blend on keyframe M, off RNG; - on the S tab) | Menu |
+| WT | Copy (- on HRM and the S tab) | Reset (Blend on keyframe M, off HRM; - on the S tab) | Menu |
 | Menu | - (Save while naming) | - (Disc while naming) | Menu |
 | Prog | Del | +Add | Menu |
 | DEV | - | - | Menu |
@@ -361,30 +361,30 @@ Requires `CONFIG_SYNTH_CUSTOM_WT`. Edits the one custom wavetable, patch 288
 (`Wavetable: Custom`), shared by every row, the arp and the drones on that
 patch and saved with the project. The table morphs through three keyframes:
 A (frame 0), M (frame 32) and B (frame 63). Each keyframe has five rows, plus
-one global row:
+one global row (HRM):
 
 | Row | Range | Meaning |
 |---|---|---|
 | SHP | 0..100 | Shape: the synced waveform, saw at 0 to square at 100 |
 | WID | 10..90 | Width: pulse width of the square part in percent, 50 = symmetric square. No effect at SHP 0 |
-| BRT | 0..10 | Bright: slope above the sync harmonic; 10 leaves the waveform as is, 0 rolls off steeply. No effect once Sync reaches the Range cap (Sync 7-8 at G#7) |
-| SYN | 1.0..8.0 | Hard-sync ratio; whole numbers are that many waveform periods per cycle. Range G#7 limits Sync to 7.0 |
+| BRT | 0..10 | Bright: slope above the sync harmonic; 10 leaves the waveform as is, 0 rolls off steeply. No effect once Sync reaches the harmonic count (Sync 7-8 at 7 harmonics) |
+| SYN | 1.0..8.0 | Hard-sync ratio; whole numbers are that many waveform periods per cycle. 7 harmonics limits Sync to 7.0 |
 | PK | off, 2..63 | +12 dB formant bump on that harmonic |
-| RNG | the clean note | Harmonic cap 63 / 31 / 15 / 7, shown as the highest note that plays without aliasing (F#4 / F#5 / G6 / G#7) |
+| HRM | 63 / 31 / 15 / 7 | Harmonics: how many harmonics every frame may hold, shown with the highest note that then plays without aliasing: `63 F#4`, `31 F#5`, `15 G6`, `7 G#7`. More harmonics is brighter and lowers that note. The cell has no label on screen |
 
 The screen has no title. The top band holds, left of a vertical border, the
-tabs `A M B S` (the focused one filled) above the RNG cell, and right
+tabs `A M B S` (the focused one filled) above the harmonics cell, and right
 of it the focused keyframe's rows: SHP and WID on the first line, BRT, SYN
 and PK on the second. Below, the waveform spans the full width: the focused
 keyframe as a line, the other two as dotted traces. It updates when the
 rebuild after an edit finishes. Cursor stops, in order: SHP, WID, BRT, SYN,
-PK, RNG; they apply to the focused keyframe.
+PK, HRM; they apply to the focused keyframe.
 
 The S tab is a scan viewer: the parameter cells give way to a `FRAME`
 readout and a ruler with ticks on frames 0, 32 and 63, and the waveform
 shows that one frame of the table with no other trace. A click swaps the
 waveform for the frame's harmonics as bars: harmonic 1 on the left up to the
-Range's cap (63, 31, 15 or 7 bars, widened to fill the screen), 60 dB from
+harmonic count (63, 31, 15 or 7 bars, widened to fill the screen), 60 dB from
 top to bottom, dotted lines 20 and 40 dB below full scale. The tab only
 changes what is drawn; no parameter and no sounding note follows it.
 
@@ -396,8 +396,8 @@ changes what is drawn; no parameter and no sounding note follows it.
 | SHOULDER (tap) | Focus the next tab, A -> M -> B -> S -> A; the cursor stop, adjusting state and scan frame stay |
 | Encoder turn, S tab | Step the displayed frame, 0..63 (clamped). Button 1 and Button 2 do nothing there |
 | Encoder click, S tab | Flip between the frame's waveform and its harmonics |
-| Button 1 (press) | Copy the focused keyframe to the next one: A -> M, M -> B, B -> A. RNG: nothing |
-| Button 2 (press) | A or B: reset it to the saw (SHP 0, WID 50, BRT 10, SYN 1.0, PK off). M: set it to the halfway blend of A and B, which makes the table a plain A-to-B morph. RNG: range back to F#5 |
+| Button 1 (press) | Copy the focused keyframe to the next one: A -> M, M -> B, B -> A. HRM: nothing |
+| Button 2 (press) | A or B: reset it to the saw (SHP 0, WID 50, BRT 10, SYN 1.0, PK off). M: set it to the halfway blend of A and B, which makes the table a plain A-to-B morph. HRM: back to 31 harmonics |
 | SHIFT + turn | Same as a plain turn |
 | Button 0 (tap / hold) | Cycle the active layer / play-stop |
 | Button 3 (tap) | Menu |

@@ -1,7 +1,7 @@
 #include "display_wt.h"
 
 /* Top band: two rows of 7 px boxes (baselines y 7 and 15), u8g2_font_4x6_tr.
- * Keyframe tabs and RNG left of the border at x 30, parameter cells of
+ * Keyframe tabs and the harmonics cell left of the border at x 30, parameter cells of
  * 31 px at x 33, 65 and 97 right of it. The row 1 slot at x 97 stays empty:
  * display_badge_draw() probes the top row for unlit pixels. Every cell has
  * its label at x + 2 and its value right-aligned to end at x + width - 2;
@@ -16,7 +16,7 @@
 #define WT_TAB_STEP   7
 #define WT_BORDER_X   30
 #define WT_CELL_W     31
-#define WT_RNG_W      29
+#define WT_HRM_W      29
 #define WT_RULER_X0    34
 #define WT_RULER_X1    126
 #define WT_RULER_Y     12
@@ -39,7 +39,7 @@ static const wt_cell_pos_t s_cells[WT_CUR_COUNT] = {
     [WT_CUR_BRT] = { 33, WT_ROW2_Y, WT_CELL_W, "BRT" },
     [WT_CUR_SYN] = { 65, WT_ROW2_Y, WT_CELL_W, "SYN" },
     [WT_CUR_PK]  = { 97, WT_ROW2_Y, WT_CELL_W, "PK" },
-    [WT_CUR_RNG] = { 0,  WT_ROW2_Y, WT_RNG_W,  "RNG" },
+    [WT_CUR_HRM] = { 0,  WT_ROW2_Y, WT_HRM_W,  "" },
 };
 
 static const char *const s_tabs[WT_VIEW_KEYS + 1] = { "A", "M", "B", "S" };
@@ -149,7 +149,7 @@ void display_wt_draw_frame(u8g2_t *u8g2, const wt_view_t *view)
     draw_tabs(u8g2, key);
     u8g2_DrawVLine(u8g2, WT_BORDER_X, 0, WT_ROW2_Y + 1);
     if (key == WT_VIEW_KEY_SCAN) {
-        draw_cell(u8g2, &s_cells[WT_CUR_RNG], view->cells[WT_CUR_RNG], false, false);
+        draw_cell(u8g2, &s_cells[WT_CUR_HRM], view->cells[WT_CUR_HRM], false, false);
         draw_cell(u8g2, &s_scan_cell, view->frame_txt, true, true);
         draw_ruler(u8g2, view->frame < WT_VIEW_FRAMES ? view->frame : WT_VIEW_FRAMES - 1);
         if (view->spectrum) {
