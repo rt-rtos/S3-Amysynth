@@ -111,6 +111,12 @@ void wt_synth_finish(float *frames, int16_t *out, wt_preview_t *pv);
  * on wt_preview_t's scale and sample spacing. */
 void wt_synth_preview_frame(const int16_t *frame, int8_t *out);
 
+/* Harmonic levels of one frame of a finished int16 table. out[n - 1], for
+ * n = 1..count (count <= 63), is harmonic n's attenuation below full scale
+ * (amplitude 32000) in half-dB steps: 0 = full scale or above, 255 = 127.5 dB
+ * down or silent. */
+void wt_synth_frame_harmonics(const int16_t *frame, uint8_t count, uint8_t *out);
+
 #ifdef __cplusplus
 }
 #endif

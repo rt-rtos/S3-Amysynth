@@ -99,6 +99,26 @@ static void draw_centre_line(u8g2_t *u8g2)
     }
 }
 
+/* 60 dB over the waveform area's rows: 3 half-dB units per pixel. */
+static void draw_harmonics(u8g2_t *u8g2, const uint8_t *harm, uint8_t count)
+{
+    const uint8_t rows = WT_WAVE_BOT - WT_WAVE_TOP + 1;
+    if (count == 0 || count > WT_VIEW_HARMONICS) count = WT_VIEW_HARMONICS;
+    uint8_t slot = (uint8_t)(WT_VIEW_POINTS / count);
+    uint8_t x0 = (uint8_t)((WT_VIEW_POINTS - slot * count) / 2);
+    for (uint8_t db = 20; db < 60; db = (uint8_t)(db + 20)) {
+        for (uint8_t x = 0; x < WT_VIEW_POINTS; x = (uint8_t)(x + 4u)) {
+            u8g2_DrawPixel(u8g2, x, (uint8_t)(WT_WAVE_TOP + (db * 2u) / 3u));
+        }
+    }
+    for (uint8_t n = 0; n < count; n++) {
+        uint8_t drop = (uint8_t)(harm[n] / 3u);
+        if (drop >= rows) continue;
+        u8g2_DrawBox(u8g2, (uint8_t)(x0 + n * slot), (uint8_t)(WT_WAVE_TOP + drop),
+                     (uint8_t)(slot - 1u), (uint8_t)(rows - drop));
+    }
+}
+
 static uint8_t wave_y(int8_t v)
 {
     return (uint8_t)(WT_WAVE_MID - ((int)v * WT_WAVE_AMP) / 127);
@@ -128,14 +148,19 @@ void display_wt_draw_frame(u8g2_t *u8g2, const wt_view_t *view)
     uint8_t key = (view->key <= WT_VIEW_KEY_SCAN) ? view->key : 0;
     draw_tabs(u8g2, key);
     u8g2_DrawVLine(u8g2, WT_BORDER_X, 0, WT_ROW2_Y + 1);
-    draw_centre_line(u8g2);
     if (key == WT_VIEW_KEY_SCAN) {
         draw_cell(u8g2, &s_cells[WT_CUR_RNG], view->cells[WT_CUR_RNG], false, false);
         draw_cell(u8g2, &s_scan_cell, view->frame_txt, true, true);
         draw_ruler(u8g2, view->frame < WT_VIEW_FRAMES ? view->frame : WT_VIEW_FRAMES - 1);
-        draw_wave_line(u8g2, view->wave[0]);
+        if (view->spectrum) {
+            draw_harmonics(u8g2, view->harm, view->harm_count);
+        } else {
+            draw_centre_line(u8g2);
+            draw_wave_line(u8g2, view->wave[0]);
+        }
         return;
     }
+    draw_centre_line(u8g2);
     for (uint8_t c = 0; c < WT_CUR_COUNT; c++) {
         draw_cell(u8g2, &s_cells[c], view->cells[c], view->cursor == c, view->editing);
     }

@@ -293,6 +293,27 @@ void wt_synth_preview_frame(const int16_t *frame, int8_t *out)
     }
 }
 
+/* One Goertzel pass per harmonic: s[j] = x[j] + 2 cos(w) s[j-1] - s[j-2],
+ * |X|^2 = s1^2 + s2^2 - 2 cos(w) s1 s2, amplitude 2 |X| / WT_CYCLE. */
+void wt_synth_frame_harmonics(const int16_t *frame, uint8_t count, uint8_t *out)
+{
+    twiddles_init();
+    if (count > WT_CYCLE / 4 - 1) count = WT_CYCLE / 4 - 1;
+    for (int n = 1; n <= count; n++) {
+        float c = 2.0f * TW_COS(n);
+        float s1 = 0.0f, s2 = 0.0f;
+        for (int j = 0; j < WT_CYCLE; j++) {
+            float s0 = (float)frame[j] + c * s1 - s2;
+            s2 = s1;
+            s1 = s0;
+        }
+        float pw = s1 * s1 + s2 * s2 - c * s1 * s2;
+        float amp = (pw > 0.0f) ? 2.0f * sqrtf(pw) / (float)WT_CYCLE : 0.0f;
+        long att = (amp > 0.0f) ? lrintf(-40.0f * log10f(amp / WT_FULL_SCALE)) : 255;
+        out[n - 1] = (uint8_t)(att < 0 ? 0 : att > 255 ? 255 : att);
+    }
+}
+
 void wt_synth_finish(float *frames, int16_t *out, wt_preview_t *pv)
 {
     const uint32_t total = (uint32_t)WT_FRAMES * WT_CYCLE;

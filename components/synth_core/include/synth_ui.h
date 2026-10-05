@@ -164,7 +164,8 @@ void    synth_ui_fm_link_end(void);
  * a keyframe the cursor walks its SHP, WID, BRT, SYN, PK, then RNG
  * (ui_screen_wt.c) and handle_button toggles adjusting. On the scan tab the
  * encoder steps the displayed frame 0..63 (view only: no parameter and no
- * note changes) and the buttons below do nothing. next_keyframe (SHOULDER)
+ * note changes), handle_button flips between that frame's waveform and its
+ * harmonics, and copy/reset do nothing. next_keyframe (SHOULDER)
  * cycles the focus A -> M -> B -> scan -> A and keeps the cursor stop, the
  * adjusting state and the scan frame. copy_keyframe (Button 1)
  * copies the focused keyframe to the next one (A -> M, M -> B, B -> A),

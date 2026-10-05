@@ -382,8 +382,11 @@ PK, RNG; they apply to the focused keyframe.
 
 The S tab is a scan viewer: the parameter cells give way to a `FRAME`
 readout and a ruler with ticks on frames 0, 32 and 63, and the waveform
-shows that one frame of the table with no other trace. It only changes what
-is drawn; no parameter and no sounding note follows it.
+shows that one frame of the table with no other trace. A click swaps the
+waveform for the frame's harmonics as bars: harmonic 1 on the left up to the
+Range's cap (63, 31, 15 or 7 bars, widened to fill the screen), 60 dB from
+top to bottom, dotted lines 20 and 40 dB below full scale. The tab only
+changes what is drawn; no parameter and no sounding note follows it.
 
 | Input | Action |
 |---|---|
@@ -391,7 +394,8 @@ is drawn; no parameter and no sounding note follows it.
 | Encoder click | Enter / leave adjusting |
 | Encoder turn, adjusting | Change the value by one step (SYN 0.1, WID 1); PK steps off <-> 2 |
 | SHOULDER (tap) | Focus the next tab, A -> M -> B -> S -> A; the cursor stop, adjusting state and scan frame stay |
-| Encoder turn, S tab | Step the displayed frame, 0..63 (clamped). Encoder click, Button 1 and Button 2 do nothing there |
+| Encoder turn, S tab | Step the displayed frame, 0..63 (clamped). Button 1 and Button 2 do nothing there |
+| Encoder click, S tab | Flip between the frame's waveform and its harmonics |
 | Button 1 (press) | Copy the focused keyframe to the next one: A -> M, M -> B, B -> A. RNG: nothing |
 | Button 2 (press) | A or B: reset it to the saw (SHP 0, WID 50, BRT 10, SYN 1.0, PK off). M: set it to the halfway blend of A and B, which makes the table a plain A-to-B morph. RNG: range back to F#5 |
 | SHIFT + turn | Same as a plain turn |

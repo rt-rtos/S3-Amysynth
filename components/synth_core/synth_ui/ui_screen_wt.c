@@ -17,10 +17,22 @@
 _Static_assert(WT_VIEW_POINTS == WT_PREVIEW_POINTS, "display_wt.h preview width");
 _Static_assert(WT_VIEW_KEYS == WT_KEYS, "display_wt.h keyframe count");
 _Static_assert(WT_VIEW_FRAMES == WT_FRAMES, "display_wt.h frame count");
+_Static_assert(WT_VIEW_HARMONICS == WT_CYCLE / 4 - 1, "display_wt.h harmonic count");
 
 static uint8_t s_wt_cursor  = WT_CUR_SHP;
 static uint8_t s_wt_key     = 0;          /* focused tab: 0 = A, 1 = M, 2 = B, WT_VIEW_KEY_SCAN */
 static uint8_t s_wt_frame   = 0;          /* scan tab: the frame shown */
+static bool    s_wt_spectrum = false;     /* scan tab: harmonics, not the waveform */
+
+/* The scan tab's harmonics, recomputed only when the frame, the table or the
+ * harmonic count changes (wt_builder_frame_harmonics() is not per-wake work).
+ * seq_ui task only, like the view it feeds. */
+static struct {
+    uint32_t generation;
+    uint8_t  frame, count;
+    bool     valid;
+    uint8_t  harm[WT_VIEW_HARMONICS];
+} s_wt_harm;
 static bool    s_wt_editing = false;
 
 bool synth_ui_wt_is_active(void)
@@ -65,7 +77,22 @@ void wt_build_view(wt_view_t *out)
     if (s_wt_key == WT_VIEW_KEY_SCAN) {
         out->frame = s_wt_frame;
         snprintf(out->frame_txt, sizeof(out->frame_txt), "%u", (unsigned)s_wt_frame);
-        wt_builder_frame_preview(s_wt_frame, out->wave[0]);
+        if (!s_wt_spectrum) {
+            wt_builder_frame_preview(s_wt_frame, out->wave[0]);
+            return;
+        }
+        uint8_t count = wt_synth_harmonics(p.range);
+        if (!s_wt_harm.valid || s_wt_harm.generation != out->generation ||
+            s_wt_harm.frame != s_wt_frame || s_wt_harm.count != count) {
+            wt_builder_frame_harmonics(s_wt_frame, count, s_wt_harm.harm);
+            s_wt_harm.generation = out->generation;
+            s_wt_harm.frame = s_wt_frame;
+            s_wt_harm.count = count;
+            s_wt_harm.valid = true;
+        }
+        out->spectrum   = true;
+        out->harm_count = count;
+        memcpy(out->harm, s_wt_harm.harm, count);
         return;
     }
 
@@ -130,7 +157,11 @@ bool synth_ui_wt_handle_encoder(int delta)
 bool synth_ui_wt_handle_button(void)
 {
     if (!synth_ui_wt_is_active()) return false;
-    if (s_wt_key == WT_VIEW_KEY_SCAN) return true;
+    if (s_wt_key == WT_VIEW_KEY_SCAN) {
+        s_wt_spectrum = !s_wt_spectrum;
+        s_force_redraw = true;
+        return true;
+    }
     s_wt_editing = !s_wt_editing;
     s_force_redraw = true;
     return true;

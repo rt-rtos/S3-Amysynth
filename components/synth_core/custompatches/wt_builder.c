@@ -189,3 +189,13 @@ void wt_builder_frame_preview(uint8_t frame, int8_t *out)
     if (frame > WT_FRAMES - 1) frame = WT_FRAMES - 1;
     wt_synth_preview_frame(s_live + (uint32_t)frame * WT_CYCLE, out);
 }
+
+void wt_builder_frame_harmonics(uint8_t frame, uint8_t count, uint8_t *out)
+{
+    if (!s_ready) {
+        memset(out, 255, count);
+        return;
+    }
+    if (frame > WT_FRAMES - 1) frame = WT_FRAMES - 1;
+    wt_synth_frame_harmonics(s_live + (uint32_t)frame * WT_CYCLE, count, out);
+}
