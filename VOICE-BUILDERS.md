@@ -243,9 +243,9 @@ restarts at the start of every cycle.
   harmonic if M is set, else B's; an Off B takes M's, else A's; an Off M
   takes the harmonic halfway (in pitch) between A and B if both are set,
   else the one that is set. All three Off is no bump.
-- **Harmonics** sets how many harmonics a frame may hold: 63, 31, 15 or 7.
+- **Harmonics** sets how many harmonics a frame may hold: 63, 31 or 15.
   More is brighter. The cell also shows the highest note that plays without
-  aliasing at that count: `63 F#4`, `31 F#5`, `15 G6`, `7 G#7`. One table
+  aliasing at that count: `63 F#4`, `31 F#5`, `15 G6`. One table
   serves every note, and a high note pushes its upper harmonics past what
   the 48 kHz output can carry; those fold back as inharmonic noise. Use the
   highest count whose note still covers the part: 63 for bass lines, 31 or
@@ -300,17 +300,19 @@ under the Layer page in [CONTROLS.md](CONTROLS.md#menu).
 The parameters are chosen so that every table they can make plays cleanly in
 AMY:
 
-- **No aliasing up to the note shown beside Harmonics.** Every frame stops at the Harmonics
-  harmonic cap.
+- **No aliasing up to the note shown beside Harmonics.** Every frame stops
+  at the Harmonics count. Above G6 every setting aliases; the smallest
+  count is 15, because fewer harmonics leave the parameters nothing to
+  shape.
 - **No dips in the morph.** Neighbouring frames are close, so AMY's
   crossfade between them never cancels the sound. The one exception is
   below.
 - **No level jumps.** Every frame is levelled to the same loudness as a
   plain saw, so sweeping the frame position or changing Shape does not jump
   in volume. A Peak adds level, as a resonance does.
-- **No silent frames.** Saw and square share the sync harmonic, and Sync is
-  limited to the Harmonics count (7 harmonics limit it to 7.0), so no setting removes
-  every harmonic.
+- **No silent frames.** Saw and square share the sync harmonic, and the
+  smallest Harmonics count (15) is above the highest Sync (8.0), so no
+  setting removes every harmonic.
 - **No clicks at the loop point.** Frames are built from harmonics, so every
   cycle joins itself exactly.
 
@@ -323,8 +325,6 @@ AMY:
   real hard-sync waveform. A Sync change packed into one half of the table
   (A to M, or M to B) moves twice as far per frame and ripples up to about
   3.4 dB between frames, against about 2 dB across the whole table.
-- **Bright does nothing once Sync reaches the Harmonics count**, because the only
-  harmonic left is the sync harmonic.
 - **A narrow pulse widens quickly as Sync leaves 1.0.** The slave's restart
   starts a second pulse at the end of the cycle, next to the first one. With
   Width 10 and a fast Sync sweep (1.0 to 8.0 in one half of the table) the

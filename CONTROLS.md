@@ -367,10 +367,10 @@ one global row (HRM):
 |---|---|---|
 | SHP | 0..100 | Shape: the synced waveform, saw at 0 to square at 100 |
 | WID | 10..90 | Width: pulse width of the square part in percent, 50 = symmetric square. No effect at SHP 0 |
-| BRT | 0..10 | Bright: slope above the sync harmonic; 10 leaves the waveform as is, 0 rolls off steeply. No effect once Sync reaches the harmonic count (Sync 7-8 at 7 harmonics) |
-| SYN | 1.0..8.0 | Hard-sync ratio; whole numbers are that many waveform periods per cycle. 7 harmonics limits Sync to 7.0 |
+| BRT | 0..10 | Bright: slope above the sync harmonic; 10 leaves the waveform as is, 0 rolls off steeply. |
+| SYN | 1.0..8.0 | Hard-sync ratio; whole numbers are that many waveform periods per cycle. |
 | PK | off, 2..63 | +12 dB formant bump on that harmonic |
-| HRM | 63 / 31 / 15 / 7 | Harmonics: how many harmonics every frame may hold, shown with the highest note that then plays without aliasing: `63 F#4`, `31 F#5`, `15 G6`, `7 G#7`. More harmonics is brighter and lowers that note. The cell has no label on screen |
+| HRM | 63 / 31 / 15 | Harmonics: how many harmonics every frame may hold, shown with the highest note that then plays without aliasing: `63 F#4`, `31 F#5`, `15 G6`. More harmonics is brighter and lowers that note. Notes above G6 alias at every setting. The cell has no label on screen |
 
 The screen has no title. The top band holds, left of a vertical border, the
 tabs `A M B S` (the focused one filled) above the harmonics cell, and right
@@ -384,7 +384,7 @@ The S tab is a scan viewer: the parameter cells give way to a `FRAME`
 readout and a ruler with ticks on frames 0, 32 and 63, and the waveform
 shows that one frame of the table with no other trace. A click swaps the
 waveform for the frame's harmonics as bars: harmonic 1 on the left up to the
-harmonic count (63, 31, 15 or 7 bars, widened to fill the screen), 60 dB from
+harmonic count (63, 31 or 15 bars, widened to fill the screen), 60 dB from
 top to bottom, dotted lines 20 and 40 dB below full scale. The tab only
 changes what is drawn; no parameter and no sounding note follows it.
 

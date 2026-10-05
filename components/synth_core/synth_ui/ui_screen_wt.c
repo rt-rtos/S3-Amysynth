@@ -133,7 +133,7 @@ static void wt_edit(int delta)
             v = (v < 2) ? 0 : SEQ_CLAMP_INT(v, 2, 63);
             break;
         /* Shown as a harmonic count, so turning up means more: a lower range index. */
-        case WT_FIELD_RANGE:  v = SEQ_CLAMP_INT((int)p.range - delta, 0, 3);      break;
+        case WT_FIELD_RANGE:  v = SEQ_CLAMP_INT((int)p.range - delta, 0, WT_RANGES - 1); break;
         default: return;
     }
     wt_builder_set_field(f, k, (uint8_t)v);

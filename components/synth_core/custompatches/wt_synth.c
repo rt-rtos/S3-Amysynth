@@ -15,7 +15,7 @@
 #define WT_FFT_M       (WT_CYCLE / 2)         /* complex points of the half-length FFT */
 #define WT_TW_LEN      (WT_CYCLE * 3 / 4)
 
-static const uint8_t s_harmonics[4] = { 63, 31, 15, 7 };
+static const uint8_t s_harmonics[WT_RANGES] = { 63, 31, 15 };
 
 /* sin(2 pi k / WT_CYCLE) over three quarters of a cycle, so cos(2 pi k /
  * WT_CYCLE) is entry k + WT_CYCLE/4. Filled once on first use; every caller
@@ -60,7 +60,7 @@ void wt_params_clamp(wt_params_t *p)
         if (p->peak[k] == 1)   p->peak[k] = 0;
         if (p->peak[k] > 63)   p->peak[k] = 63;
     }
-    if (p->range > 3) p->range = 3;
+    if (p->range > WT_RANGES - 1) p->range = WT_RANGES - 1;
 }
 
 static uint8_t geo_mean(uint8_t a, uint8_t b)
@@ -84,7 +84,7 @@ void wt_params_blend_mid(wt_params_t *p)
 
 uint8_t wt_synth_harmonics(uint8_t range)
 {
-    return s_harmonics[range > 3 ? 3 : range];
+    return s_harmonics[range > WT_RANGES - 1 ? WT_RANGES - 1 : range];
 }
 
 uint8_t wt_synth_clean_note(uint8_t range)

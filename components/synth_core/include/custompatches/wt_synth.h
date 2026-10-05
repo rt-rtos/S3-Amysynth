@@ -30,11 +30,11 @@ extern "C" {
  *   bright 0..10    slope above the sync harmonic: factor
  *                   min(1, (n/r)^-(2.5 * (1 - bright/10))); 10 leaves the
  *                   slave's own spectrum
- *   sync   10..80   hard-sync ratio x10 (1.0..8.0); 10 = the plain saw. The
- *                   ratio used is capped at H, so harmonic r always survives
+ *   sync   10..80   hard-sync ratio x10 (1.0..8.0); 10 = the plain saw. Every
+ *                   H is above 8, so harmonic r and some above it survive
  *   peak   0, 2..63 0 = Off, else a +12 dB Gaussian bump (sigma 1/6 octave)
  *                   centred on that harmonic
- *   range  0..3     harmonic cap H = 63, 31, 15, 7
+ *   range  0..2     harmonic cap H = 63, 31, 15
  *
  * Per frame: the exact spectrum of the hard-synced slave (saw/square blend)
  * for the effective ratio, the Bright slope, a levelling gain on that
@@ -57,6 +57,7 @@ extern "C" {
 #define WT_PREVIEW_POINTS  128
 #define WT_KEYS            3
 #define WT_MID_FRAME       32
+#define WT_RANGES          3
 
 typedef struct {
     uint8_t shape[WT_KEYS];
@@ -86,11 +87,11 @@ void wt_params_clamp(wt_params_t *p);
  * stays clamped. */
 void wt_params_blend_mid(wt_params_t *p);
 
-/* Harmonic cap H for a range index (out-of-domain ranges clamp to 3). */
+/* Harmonic cap H for a range index (out-of-domain ranges clamp to the last). */
 uint8_t wt_synth_harmonics(uint8_t range);
 
 /* Highest MIDI note whose fundamental f satisfies f <= 24000 / H, i.e. the
- * top note that plays without aliasing: 66 (F#4), 78, 91, 104 (G#7). */
+ * top note that plays without aliasing: 66 (F#4), 78 (F#5), 91 (G6). */
 uint8_t wt_synth_clean_note(uint8_t range);
 
 /* Write frames first .. first+count-1 into `frames`, the base of the whole
