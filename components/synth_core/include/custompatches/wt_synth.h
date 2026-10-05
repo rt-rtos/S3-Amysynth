@@ -107,6 +107,10 @@ void wt_synth_build_frames(const wt_params_t *p, uint8_t first, uint8_t count, f
  * at byte 4i. */
 void wt_synth_finish(float *frames, int16_t *out, wt_preview_t *pv);
 
+/* Preview of one frame of a finished int16 table into out[WT_PREVIEW_POINTS],
+ * on wt_preview_t's scale and sample spacing. */
+void wt_synth_preview_frame(const int16_t *frame, int8_t *out);
+
 #ifdef __cplusplus
 }
 #endif

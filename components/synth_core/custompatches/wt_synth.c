@@ -286,6 +286,13 @@ static int8_t preview_point(float v)
     return (int8_t)s;
 }
 
+void wt_synth_preview_frame(const int16_t *frame, int8_t *out)
+{
+    for (int i = 0; i < WT_PREVIEW_POINTS; i++) {
+        out[i] = preview_point((float)frame[i * (WT_CYCLE / WT_PREVIEW_POINTS)] * (127.0f / WT_FULL_SCALE));
+    }
+}
+
 void wt_synth_finish(float *frames, int16_t *out, wt_preview_t *pv)
 {
     const uint32_t total = (uint32_t)WT_FRAMES * WT_CYCLE;

@@ -160,15 +160,19 @@ void    synth_ui_fm_link_end(void);
 /* Custom wavetable editor (CONFIG_SYNTH_CUSTOM_WT) over the builder's
  * parameters (custompatches/wt_builder.h). Active when seq_state.ui_mode ==
  * UI_MODE_WT and no overlay is up; the calls return false and do nothing
- * otherwise. One keyframe (A, M or B) is focused; the cursor walks its SHP,
- * WID, BRT, SYN, PK, then RNG (ui_screen_wt.c); handle_button toggles
- * adjusting. next_keyframe (SHOULDER) cycles the focus A -> M -> B -> A and
- * keeps the cursor stop and the adjusting state. copy_keyframe (Button 1)
+ * otherwise. One tab is focused: a keyframe (A, M or B) or the scan tab. On
+ * a keyframe the cursor walks its SHP, WID, BRT, SYN, PK, then RNG
+ * (ui_screen_wt.c) and handle_button toggles adjusting. On the scan tab the
+ * encoder steps the displayed frame 0..63 (view only: no parameter and no
+ * note changes) and the buttons below do nothing. next_keyframe (SHOULDER)
+ * cycles the focus A -> M -> B -> scan -> A and keeps the cursor stop, the
+ * adjusting state and the scan frame. copy_keyframe (Button 1)
  * copies the focused keyframe to the next one (A -> M, M -> B, B -> A),
  * nothing on RNG; reset_keyframe (Button 2) resets a focused A or B to the
  * saw, sets a focused M to the halfway blend of A and B, or the range to its
  * default on RNG. on_range() is true while the cursor is on RNG and
- * keyframe() returns the focused keyframe 0..2, both for the hint strip. All
+ * keyframe() returns the focused tab (0..2, 3 = scan), both for the hint
+ * strip. All
  * UI/input task. */
 bool    synth_ui_wt_is_active(void);
 bool    synth_ui_wt_handle_encoder(int delta);

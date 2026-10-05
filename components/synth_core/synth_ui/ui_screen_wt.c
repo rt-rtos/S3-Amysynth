@@ -16,9 +16,11 @@
 
 _Static_assert(WT_VIEW_POINTS == WT_PREVIEW_POINTS, "display_wt.h preview width");
 _Static_assert(WT_VIEW_KEYS == WT_KEYS, "display_wt.h keyframe count");
+_Static_assert(WT_VIEW_FRAMES == WT_FRAMES, "display_wt.h frame count");
 
 static uint8_t s_wt_cursor  = WT_CUR_SHP;
-static uint8_t s_wt_key     = 0;          /* focused keyframe: 0 = A, 1 = M, 2 = B */
+static uint8_t s_wt_key     = 0;          /* focused tab: 0 = A, 1 = M, 2 = B, WT_VIEW_KEY_SCAN */
+static uint8_t s_wt_frame   = 0;          /* scan tab: the frame shown */
 static bool    s_wt_editing = false;
 
 bool synth_ui_wt_is_active(void)
@@ -56,6 +58,17 @@ void wt_build_view(wt_view_t *out)
     out->key        = s_wt_key;
     out->generation = wt_builder_generation();
 
+    char note[4];
+    ui_note_name(wt_synth_clean_note(p.range), note);
+    snprintf(out->cells[WT_CUR_RNG], WT_CELL_LEN, "%s", note);
+
+    if (s_wt_key == WT_VIEW_KEY_SCAN) {
+        out->frame = s_wt_frame;
+        snprintf(out->frame_txt, sizeof(out->frame_txt), "%u", (unsigned)s_wt_frame);
+        wt_builder_frame_preview(s_wt_frame, out->wave[0]);
+        return;
+    }
+
     const uint8_t k = s_wt_key;
     snprintf(out->cells[WT_CUR_SHP], WT_CELL_LEN, "%u", (unsigned)p.shape[k]);
     snprintf(out->cells[WT_CUR_WID], WT_CELL_LEN, "%u", (unsigned)p.width[k]);
@@ -64,10 +77,6 @@ void wt_build_view(wt_view_t *out)
              (unsigned)(p.sync[k] / 10u), (unsigned)(p.sync[k] % 10u));
     if (p.peak[k] == 0u) snprintf(out->cells[WT_CUR_PK], WT_CELL_LEN, "off");
     else                 snprintf(out->cells[WT_CUR_PK], WT_CELL_LEN, "%u", (unsigned)p.peak[k]);
-
-    char note[4];
-    ui_note_name(wt_synth_clean_note(p.range), note);
-    snprintf(out->cells[WT_CUR_RNG], WT_CELL_LEN, "%s", note);
 
     memcpy(out->wave, pv.frame, sizeof(out->wave));
 }
@@ -106,7 +115,9 @@ bool synth_ui_wt_handle_encoder(int delta)
 {
     if (!synth_ui_wt_is_active()) return false;
     if (delta == 0) return true;
-    if (s_wt_editing) {
+    if (s_wt_key == WT_VIEW_KEY_SCAN) {
+        s_wt_frame = (uint8_t)SEQ_CLAMP_INT((int)s_wt_frame + delta, 0, (int)WT_FRAMES - 1);
+    } else if (s_wt_editing) {
         wt_edit(delta);
     } else {
         int c = (int)s_wt_cursor + delta;
@@ -119,6 +130,7 @@ bool synth_ui_wt_handle_encoder(int delta)
 bool synth_ui_wt_handle_button(void)
 {
     if (!synth_ui_wt_is_active()) return false;
+    if (s_wt_key == WT_VIEW_KEY_SCAN) return true;
     s_wt_editing = !s_wt_editing;
     s_force_redraw = true;
     return true;
@@ -127,7 +139,7 @@ bool synth_ui_wt_handle_button(void)
 bool synth_ui_wt_next_keyframe(void)
 {
     if (!synth_ui_wt_is_active()) return false;
-    s_wt_key = (uint8_t)((s_wt_key + 1u) % WT_KEYS);
+    s_wt_key = (uint8_t)((s_wt_key + 1u) % (WT_KEYS + 1u));
     s_force_redraw = true;
     return true;
 }
@@ -135,7 +147,7 @@ bool synth_ui_wt_next_keyframe(void)
 bool synth_ui_wt_copy_keyframe(void)
 {
     if (!synth_ui_wt_is_active()) return false;
-    if (s_wt_cursor == WT_CUR_RNG) return true;
+    if (s_wt_cursor == WT_CUR_RNG || s_wt_key == WT_VIEW_KEY_SCAN) return true;
     wt_builder_copy_keyframe(s_wt_key);
     s_force_redraw = true;
     return true;
@@ -144,6 +156,7 @@ bool synth_ui_wt_copy_keyframe(void)
 bool synth_ui_wt_reset_keyframe(void)
 {
     if (!synth_ui_wt_is_active()) return false;
+    if (s_wt_key == WT_VIEW_KEY_SCAN) return true;
     if (s_wt_cursor == WT_CUR_RNG) {
         wt_params_t d;
         wt_params_default(&d);

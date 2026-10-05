@@ -66,7 +66,7 @@ while on.
 | Seq | Patch | Pitch | Menu |
 | Arp, Stutter, Normal drone | Patch | - | Menu |
 | FM | Link (page 1), - (page 2) | Mute | Menu (Done while linking) |
-| WT | Copy (- on RNG) | Reset (Blend on keyframe M, off RNG) | Menu |
+| WT | Copy (- on RNG and the S tab) | Reset (Blend on keyframe M, off RNG; - on the S tab) | Menu |
 | Menu | - (Save while naming) | - (Disc while naming) | Menu |
 | Prog | Del | +Add | Menu |
 | DEV | - | - | Menu |
@@ -373,19 +373,25 @@ one global row:
 | RNG | the clean note | Harmonic cap 63 / 31 / 15 / 7, shown as the highest note that plays without aliasing (F#4 / F#5 / G6 / G#7) |
 
 The screen has no title. The top band holds, left of a vertical border, the
-keyframe tabs `A M B` (the focused one filled) above the RNG cell, and right
+tabs `A M B S` (the focused one filled) above the RNG cell, and right
 of it the focused keyframe's rows: SHP and WID on the first line, BRT, SYN
 and PK on the second. Below, the waveform spans the full width: the focused
 keyframe as a line, the other two as dotted traces. It updates when the
 rebuild after an edit finishes. Cursor stops, in order: SHP, WID, BRT, SYN,
 PK, RNG; they apply to the focused keyframe.
 
+The S tab is a scan viewer: the parameter cells give way to a `FRAME`
+readout and a ruler with ticks on frames 0, 32 and 63, and the waveform
+shows that one frame of the table with no other trace. It only changes what
+is drawn; no parameter and no sounding note follows it.
+
 | Input | Action |
 |---|---|
 | Encoder turn, browsing | Move the cursor (clamped) |
 | Encoder click | Enter / leave adjusting |
 | Encoder turn, adjusting | Change the value by one step (SYN 0.1, WID 1); PK steps off <-> 2 |
-| SHOULDER (tap) | Focus the next keyframe, A -> M -> B -> A; the cursor stop and adjusting state stay |
+| SHOULDER (tap) | Focus the next tab, A -> M -> B -> S -> A; the cursor stop, adjusting state and scan frame stay |
+| Encoder turn, S tab | Step the displayed frame, 0..63 (clamped). Encoder click, Button 1 and Button 2 do nothing there |
 | Button 1 (press) | Copy the focused keyframe to the next one: A -> M, M -> B, B -> A. RNG: nothing |
 | Button 2 (press) | A or B: reset it to the saw (SHP 0, WID 50, BRT 10, SYN 1.0, PK off). M: set it to the halfway blend of A and B, which makes the table a plain A-to-B morph. RNG: range back to F#5 |
 | SHIFT + turn | Same as a plain turn |

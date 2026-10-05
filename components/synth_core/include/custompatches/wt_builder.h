@@ -39,8 +39,8 @@ extern "C" {
  * Execution context: init on app_main after wavetable_bank_init(), before any
  * task can apply a patch. The parameter writers (setters, set_params,
  * copy/reset_keyframe, blend_mid) run on any Core-0 task: encoder_task, button_task,
- * seq_ui on project load. The service, generation() and preview() run on the
- * seq_ui task only. wt_builder_preset() and get_params() are lock-free from
+ * seq_ui on project load. The service, generation(), preview() and
+ * frame_preview() run on the seq_ui task only. wt_builder_preset() and get_params() are lock-free from
  * any Core-0 task. Nothing here is for the render task or an ISR. */
 
 #define WT_FRAMES_PER_SLICE 16
@@ -95,6 +95,11 @@ uint32_t wt_builder_generation(void);
 
 /* Previews of frames 0, WT_MID_FRAME and 63 of the live table. */
 void wt_builder_preview(wt_preview_t *out);
+
+/* Preview of any frame 0..63 of the live table (above 63 clamps) into
+ * out[WT_PREVIEW_POINTS]; zeros while the builder is unavailable. Reads the
+ * table the service writes, hence the seq_ui task only. */
+void wt_builder_frame_preview(uint8_t frame, int8_t *out);
 
 #ifdef __cplusplus
 }
