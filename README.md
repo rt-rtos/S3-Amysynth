@@ -22,6 +22,16 @@ Everything is synthesized on the chip: nothing is precomputed and nothing stream
 > USB port, so audio and the serial diagnostics run side by side during
 > development. The I2S DAC is wired and is the intended standalone output.
 
+## Try it in the browser
+
+**[rt-rtos.github.io/amysynth-web](https://rt-rtos.github.io/amysynth-web/)**
+runs this firmware's application code and the AMY engine compiled to
+WebAssembly from the same sources: the sequencer, the screens, the editors
+and the built-in templates, with keyboard, mouse, touch or a gamepad as the
+buttons and encoder. Nothing is sent anywhere; it runs in the page. It is
+not an emulation of the chip, so render timing, USB and Bluetooth are not
+part of it.
+
 ## Prototype Video
 
 <video src="https://rt-rtos.github.io/assets/Amysynth/genre-templates.mp4" poster="assets/1.jpg" controls loop playsinline width="640"></video>
