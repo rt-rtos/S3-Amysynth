@@ -15,6 +15,25 @@ typedef display_seq_state_t synth_ui_state_t;
  * the FreeRTOS UI task. Must be called after amy_start(). */
 void synth_ui_init(u8g2_t *u8g2);
 
+/* The UI task's cadence: one slice every SYNTH_UI_SLICE_MS, phases
+ * 0..SYNTH_UI_SLICES_PER_FRAME-1 in order, so phase 0 comes round once per
+ * 50 ms frame. */
+#define SYNTH_UI_SLICE_MS          10
+#define SYNTH_UI_SLICES_PER_FRAME  5
+
+/* One slice of the UI task's loop. Phase 0 runs the per-frame services (the
+ * module service drains, deferred layer edits, project load/save) and then the
+ * render gate: the screen is drawn and flushed only if its signature changed.
+ * The other phases draw only when the active layer's playhead step has moved
+ * since the last draw.
+ *
+ * synth_ui_init() starts the task that calls this; nothing else on the device
+ * does. Obligations for any other driver of the loop: call it from the task
+ * registered as the layers applier (sequencer_core_set_layers_applier()),
+ * after synth_ui_init(), with phase < SYNTH_UI_SLICES_PER_FRAME, never
+ * concurrently with itself. Task context; may block on the display bus. */
+void synth_ui_slice(uint8_t phase);
+
 /* Add a new sequencer layer (drum or melodic). Returns the layer index
  * or 0xFF if the layer table is full. Safe to call after init. */
 uint8_t synth_ui_add_layer(seq_layer_type_t type, uint8_t num_steps);

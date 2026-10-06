@@ -279,30 +279,32 @@ static void ui_render(void)
     }
 }
 
-#define UI_STEP_POLL_MS       10
-#define UI_SLICES_PER_FRAME   5     /* services and the render gate keep their 50 ms frame */
+void synth_ui_slice(uint8_t phase)
+{
+#if CONFIG_SYNTH_CUSTOM_WT
+    /* Custom wavetable rebuild: at most one slice per wake, on every
+     * phase, so a full table spreads over five wakes. */
+    wt_builder_service();
+#endif
+    if (phase == 0) {
+        ui_services();
+        ui_render();
+    } else if (sequencer_core_get_current_step(seq_state.active_layer_idx)
+               != seq_state.current_step) {
+        /* Playhead moved between frames: render now instead of at the next 50 ms slot. */
+        ui_render();
+    }
+}
 
 static void synth_ui_task(void *pvParameters)
 {
     (void)pvParameters;
     TickType_t last_wake_time = xTaskGetTickCount();
-    const TickType_t slice = pdMS_TO_TICKS(UI_STEP_POLL_MS);
+    const TickType_t slice = pdMS_TO_TICKS(SYNTH_UI_SLICE_MS);
     uint8_t phase = 0;
     for (;;) {
-#if CONFIG_SYNTH_CUSTOM_WT
-        /* Custom wavetable rebuild: at most one slice per wake, on every
-         * phase, so a full table spreads over five wakes. */
-        wt_builder_service();
-#endif
-        if (phase == 0) {
-            ui_services();
-            ui_render();
-        } else if (sequencer_core_get_current_step(seq_state.active_layer_idx)
-                   != seq_state.current_step) {
-            /* Playhead moved between frames: render now instead of at the next 50 ms slot. */
-            ui_render();
-        }
-        phase = (uint8_t)((phase + 1) % UI_SLICES_PER_FRAME);
+        synth_ui_slice(phase);
+        phase = (uint8_t)((phase + 1) % SYNTH_UI_SLICES_PER_FRAME);
         vTaskDelayUntil(&last_wake_time, slice);
     }
 }
