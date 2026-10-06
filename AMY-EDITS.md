@@ -5,7 +5,7 @@ Upstream commit: `0fb0a00` (v1.2.163, vendored 2026-09-05). The vendor base is
 upstream `main` as is. Three of this repo's own upstream PRs merged after
 this base; their code is still carried and is listed under "Merged upstream,
 still carried until the next sync". The Karplus-Strong entries are an earlier
-shape of the still-open #1204. Each active entry states its upstream status.
+shape of #1204, merged upstream on 2026-10-06 (1.2.191) and not yet vendored. Each active entry states its upstream status.
 Previous bases: v1.2.160 `a89df0c`, v1.2.145 `55e044d`, v1.2.121 `85a7025`,
 v1.2.104 `fd09bd2`, v1.2.31 `1e23c70`. The submodule tracks upstream `main`
 (`.gitmodules` `branch = main`; refresh with `git submodule update --remote amy`).
@@ -206,7 +206,7 @@ Codegen-driven edits from the per-function probe, each marked in place:
   and with pointer walks for the ring and the output it is a 29-insn
   hardware loop carrying the gain ramp (the index loop was 35). Its tuning
   allpass is the one-multiply form; the index loop's tuning stage uses the
-  same form, so both read the allpass memory alike. Open upstream PR #1204
+  same form, so both read the allpass memory alike. Merged upstream PR #1204
   renders KS with the same split-at-wrap loop and gain ramp, always tuned,
   and keeps the allpass memory in `synth[osc]->ks_tune_state`; the index
   loop is local.
@@ -229,7 +229,7 @@ Codegen-driven edits from the per-function probe, each marked in place:
   "Merged upstream, still carried until the next sync").
 
 
-### `oscillators.c` — Karplus-Strong ring-index init + sample-rate-derived buffer length (open upstream PR #1204)
+### `oscillators.c` — Karplus-Strong ring-index init + sample-rate-derived buffer length (merged upstream PR #1204)
 
 Two universal bugs, found 2026-08-25 while surveying the delay/comb machinery
 and measured with a host sim of the vendored tree (fixed-point build).
@@ -256,12 +256,12 @@ Both are target-agnostic, so they belong upstream rather than here.
 The larger shared-ring defect these two sat next to is fixed by the entry
 below.
 
-Both are the first two commits of open upstream PR
+Both are the first two commits of merged upstream PR
 [#1204](https://github.com/shorepine/amy/pull/1204). The PR's version also
 keeps `buflen >= 1` in `ks_note_on()` and skips notes at or above the sample
 rate in `render_ks()`; the vendored code has neither guard.
 
-### `oscillators.c` + `amy.h` + `amy.c` — per-osc Karplus-Strong ring binding (open upstream PR #1204, different shape)
+### `oscillators.c` + `amy.h` + `amy.c` — per-osc Karplus-Strong ring binding (merged upstream PR #1204, different shape)
 
 `ks_buffer` is a pool of rings, but which ring an osc played was decided by a
 single module-global cursor (`ks_polyphony_index`) that every KS osc
@@ -304,7 +304,7 @@ their own caps, defaulting to `ram_caps_synth` (`// LOCAL EDIT` in amy.h and
 api.c). Only the rings move; the owner table and allpass state are a few bytes
 per ring and stay in `ram_caps_synth`.
 
-Upstream status: open PR [#1204](https://github.com/shorepine/amy/pull/1204)
+Upstream status: merged PR [#1204](https://github.com/shorepine/amy/pull/1204)
 fixes the same defect in a different shape. The ring is owned by the osc
 (`synth[osc]->ks_ring`), allocated at its first KS note-on from
 `ram_caps_oscs` and freed in `free_osc()`; there is no pool, owner table or
@@ -313,7 +313,7 @@ switch. The vendored pool (`ks_index`, `ks_row_owner`, `ks_alloc_row()`,
 `KS_NO_ROW`, `ram_caps_ks`) is an earlier design and goes away when the PR
 is adopted, together with the `ks_oscs` sizing in `main/main.c`.
 
-### `oscillators.c` + `amy.h` + `filters.c` - Karplus-Strong loop allpass: fractional period (open upstream PR #1204) and dispersion trial knobs (local)
+### `oscillators.c` + `amy.h` + `filters.c` - Karplus-Strong loop allpass: fractional period (merged upstream PR #1204) and dispersion trial knobs (local)
 
 `render_ks` dropped the fraction of `AMY_SAMPLE_RATE / freq`: `buflen = floor(P)`
 and the two-tap average is centred half a sample ahead, so the loop closed at
@@ -356,14 +356,14 @@ tuning stage off or dispersion stages on, is a plain 35-instruction loop
 0 stages) is `ks_render_tuned`, a hardware loop (render-path arithmetic
 entry). The chain is unrolled so no nested loop sits inside it.
 
-Upstream status: the tuning stage is commit 5 of open PR
+Upstream status: the tuning stage is commit 5 of merged PR
 [#1204](https://github.com/shorepine/amy/pull/1204), same math and
 one-multiply form, always on and with its memory in
 `synth[osc]->ks_tune_state` (one `SAMPLE` per osc, cleared at note-on). The
 dispersion stages, `ks_loop_set()`/`ks_loop_get()`, `ks_ap_state` and the
 move of `allpass1_chain`/`FILT_MUL_SS` to `amy.h` are local only.
 
-### `oscillators.c` - Karplus-Strong pluck position from `duty` (open upstream PR #1204)
+### `oscillators.c` - Karplus-Strong pluck position from `duty` (merged upstream PR #1204)
 
 KS ignored `duty`; every note started from the same kind of burst, flat on
 average and random per pluck (host sim, A2: harmonic 2 at +12 dB against
@@ -394,7 +394,7 @@ purpose: the pluck is a patch setting, and `msynth->duty` would also be
 stale at note-on (it is refreshed only for sounding oscs, so a duty change
 made while the voice is silent would reach the note after next).
 
-Upstream status: commit 7 of open PR
+Upstream status: commit 7 of merged PR
 [#1204](https://github.com/shorepine/amy/pull/1204) carries the same
 `ks_pluck()`, `KS_PICK_MIX` and `KS_PICK_RAMP`; the PR multiplies with
 `SMULR7` where the vendored copy uses `FILT_MUL_SS`.
@@ -424,7 +424,7 @@ Written under the render lock, read by `ks_note_on`. Local only; not part
 of PR #1204, whose `duty` pluck covers the comb and pulse but not the
 velocity lowpass.
 
-### `oscillators.c` - Karplus-Strong gain ramp (open upstream PR #1204)
+### `oscillators.c` - Karplus-Strong gain ramp (merged upstream PR #1204)
 
 `render_ks` multiplied the whole block by `msynth->amp`, which
 `hold_and_modify()` has already advanced to the envelope's value at the end
@@ -434,7 +434,7 @@ blocks): a decay zippered and a note-on played its first block at the
 end-of-block level. The gain now ramps from `last_amp` to `amp` across the
 block with the `incremental_amp` idiom of `render_envelope()`, and
 `last_amp` advances at the end. A constant gain is bit-exact with before.
-Cost: one add per sample. Commit 6 of open PR
+Cost: one add per sample. Commit 6 of merged PR
 [#1204](https://github.com/shorepine/amy/pull/1204) carries the same ramp.
 
 ### `oscillators.c` + `amy.h` + `amy.c` - Karplus-Strong note-off release (local trial)
@@ -451,7 +451,7 @@ case does. Trial knob `ks_release_set()` / `ks_release_get()` (`amy.h`),
 default on; off is the upstream behaviour bit for bit. Set from the app's
 DEV menu ("KS loop > Release"); written under the lock.
 
-Upstream status: commit 3 of open PR
+Upstream status: commit 3 of merged PR
 [#1204](https://github.com/shorepine/amy/pull/1204) takes a different rule.
 It deletes `ks_note_off()` and sends KS through the default release unless
 EG0 is still the key gate `reset_osc_params()` installs
@@ -1089,7 +1089,7 @@ Track local, project-specific changes made against the upstream AMY component he
   - **Kept** (reapplied over v1.2.121): 48 kHz ESP branch, fixed-point
     Kconfig gate + `ldexpf`, render lock + lock prototypes, PIE render-clear
     extension + `malloc_caps_block` call sites, delta-pool PSRAM spill,
-    COARSE profiler, ingest/tick split (`flush_due_deltas`, open PR #1049),
+    COARSE profiler, ingest/tick split (`flush_due_deltas`, merged PR #1049),
     `amy_voice_base_osc()` + `instrument_get_num_voices()` clamp,
     `amy_gamma9001_pcm_bytes()`, IDF 6.0 task signatures, dead dual-core
     bus-sum skip, residual IRAM annotations (now filters.c x2 +
