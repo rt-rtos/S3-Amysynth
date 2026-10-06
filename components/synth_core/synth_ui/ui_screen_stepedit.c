@@ -9,7 +9,7 @@
  *  Step Trig editor — per-step pitch offset / probability / ratchet / cond
  * ════════════════════════════════════════════════════════════════════════
  * Addressed by the sequencer grid's cursor (active_layer_idx / selected_track /
- * selected_step), not a parallel one. Opened from main.c's dispatch; controls
+ * selected_step), not a parallel one. Opened from the gesture dispatcher; controls
  * are in CONTROLS.md. The last field, Frame (the step's wavetable frame lock,
  * sequencer_core_set_step_frame), is listed only while the track plays a
  * wavetable patch. */

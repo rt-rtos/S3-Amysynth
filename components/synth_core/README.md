@@ -72,7 +72,7 @@ precedence resolver (`ui_view_resolve.c`), patch cycling
 `amy_start()` and `usb_audio_init()`). It initializes the helpers, engine,
 arp, drone and sampler, creates the boot drum + melodic layers, starts
 playback, and spawns the UI task. Input arrives via
-`synth_ui_handle_encoder(delta)` and the button dispatch in `main.c`.
+`synth_ui_handle_encoder(delta)` and the gesture dispatcher in `main/input_dispatch.c`.
 
 ## Melodic Envelope System
 

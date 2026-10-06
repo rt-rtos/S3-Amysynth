@@ -9,7 +9,7 @@
 The sequencer is split into cooperating layers:
 
 ```
-main.c  ──button events──▶  synth_ui/  ──state changes──▶  sequencer_core/  ──amy_add_event──▶  AMY engine
+main/   ──button events──▶  synth_ui/  ──state changes──▶  sequencer_core/  ──amy_add_event──▶  AMY engine
                             (FreeRTOS task + screens)         (engine TUs)
                                    │
                              display_*.c  ──u8g2──▶  SSD1306 OLED
@@ -366,7 +366,7 @@ decorated-step trig path consult it.
 
 Per-button behavior: [CONTROLS.md](CONTROLS.md). GPIOs: `s_button_gpios[]` in
 `components/my_buttons/my_buttons.c`. Buttons are dispatched by
-`dispatch_button_event()` in `main/main.c`.
+`input_dispatch_button()` in `main/input_dispatch.c`.
 
 Dispatch model: `iot_button` delivers events on the system `esp_timer` task,
 where the callback only enqueues them (depth-16 queue in `main.c`; a full queue

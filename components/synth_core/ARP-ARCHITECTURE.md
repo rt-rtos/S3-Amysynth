@@ -339,7 +339,7 @@ view is on top.
 
 See [CONTROLS.md](../../CONTROLS.md#arp-screen).
 
-### Seq/Arp isolation (`main.c`)
+### Seq/Arp isolation (`main/input_dispatch.c`)
 
 While the arp screen is active, all **sequencer-editing** gestures are blocked
 so hidden sequencer state can't be mutated behind the arp view:

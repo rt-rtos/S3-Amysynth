@@ -292,8 +292,8 @@ bool     wireless_menu_handle_click(uint8_t idx);
 void     wireless_menu_edit_value(uint8_t idx, int delta);
 void     wireless_menu_reset(void);
 /* synth_ui_wireless_page_is_open() (public, synth_ui.h) lives in
- * ui_screen_menu.c alongside the page state; the editors and main.c's shift
- * chord bind the live-play voice on it instead of a ui_mode. */
+ * ui_screen_menu.c alongside the page state; the editors and the gesture
+ * dispatcher's shift chord bind the live-play voice on it instead of a ui_mode. */
 
 /* ─── Chords page: chord-preset editor (item model in ui_screen_chords.c;
  *     page state and input routing in ui_screen_menu.c). Slot list + per-slot

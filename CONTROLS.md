@@ -1,8 +1,8 @@
 # Controls
 
 User-facing control scheme: which physical input does what, on each screen,
-overlay and editor. The gesture dispatcher is `dispatch_button_event()` and
-`encoder_process_steps()` in `main/main.c`; per-screen input handlers are in
+overlay and editor. The gesture dispatcher is `input_dispatch_button()` and
+`input_dispatch_encoder_steps()` in `main/input_dispatch.c`; per-screen input handlers are in
 `components/synth_core/synth_ui/`. When code and this file disagree, the code
 is right and this file is stale.
 

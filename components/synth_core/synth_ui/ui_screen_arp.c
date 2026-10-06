@@ -9,9 +9,9 @@
  *  ARP SCREEN
  * ════════════════════════════════════════════════════════════════════════ */
 
-/* View-resolved, not ui_mode: main.c's input isolation guard keys off this, so
- * answering true under the filter/LFO overlays (which leave ui_mode alone) would
- * swallow those editors' own MY_BUTTON_0 taps. */
+/* View-resolved, not ui_mode: the gesture dispatcher's isolation guard keys
+ * off this, so answering true under the filter/LFO overlays (which leave
+ * ui_mode alone) would swallow those editors' own MY_BUTTON_0 taps. */
 bool synth_ui_arp_is_active(void)
 {
     return synth_ui_active_view() == UI_VIEW_ARP;

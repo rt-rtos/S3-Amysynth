@@ -23,7 +23,8 @@ a mono sub tracks the chord root an octave (or more) below. Everything
 | `../synth_ui/ui_screen_drone.c` | The screen's input handling and view building. |
 | `../../display/display_drone.{c,h}` | The screen renderer (scrollable label:value list + the visualizer view). |
 | `../voice_config.c` | Shared voice layer: builds the 2-osc WAVE voice, wires the native LFO. |
-| `main/main.c` | Sets `amy_cfg.max_synths` from `SYNTH_SLOT_COUNT`; routes drone-screen input. |
+| `main/main.c` | Sets `amy_cfg.max_synths` from `SYNTH_SLOT_COUNT`. |
+| `main/input_dispatch.c` | Routes drone-screen input. |
 
 The module mirrors the **arp module** pattern 1:1 (standalone engine + own synth
 slots + own screen, driven from the menu). If you understand `arp_core`, you
@@ -305,7 +306,7 @@ lock; all config/notes must be deltas).
 
 Inputs: [CONTROLS.md](../../../CONTROLS.md#drone-screens).
 
-A drone-screen isolation guard in `main.c` (mirroring the arp guard) suppresses
+A drone-screen isolation guard in `main/input_dispatch.c` (mirroring the arp guard) suppresses
 the sequencer's editing gestures while the drone screen is up, but keeps the
 menu toggle and global play/pause live. The guard stands down while the graph
 editor or menu overlays are on top, so those never conflict.

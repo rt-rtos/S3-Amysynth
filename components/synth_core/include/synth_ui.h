@@ -30,7 +30,7 @@ void synth_ui_cycle_active_layer(void);
 
 /* Input dispatch ── called from encoder / button tasks. The user-facing
  * control scheme (buttons, chords, per-screen behavior) is CONTROLS.md; the
- * gesture dispatcher is main.c. */
+ * gesture dispatcher is main/input_dispatch.c. */
 void synth_ui_handle_encoder(long delta);
 void synth_ui_handle_button(void);
 /* Toggle the grid step under the cursor. Returns true if a step was
@@ -193,8 +193,9 @@ uint16_t seq_get_bpm(void);
 uint8_t  seq_get_active_layer_idx(void);
 
 /* ── Graph pop-up integration ────────────────────────────────────────────────
- * Hooks for the reusable graph_popup widget, called from main.c; the pop-up
- * state and U8g2 plumbing stay inside the synth_ui module. */
+ * Hooks for the reusable graph_popup widget, called from the gesture
+ * dispatcher; the pop-up state and U8g2 plumbing stay inside the synth_ui
+ * module. */
 
 /* True while the graph pop-up overlay is open. */
 bool synth_ui_graph_is_active(void);
@@ -202,7 +203,7 @@ bool synth_ui_graph_is_active(void);
 /* Open the curve editor seeded from the current melodic ADSR envelope. */
 void synth_ui_graph_open_envelope(void);
 
-/* SHIFT+0 loop-bounce chord (main.c button dispatch): a press starts a bounce
+/* SHIFT+0 loop-bounce chord (the gesture dispatcher): a press starts a bounce
  * into the first empty slot, cancels one still waiting for its bar line, or
  * stops a running one on the next pattern-period boundary; a long press
  * discards a running one. */
@@ -288,8 +289,8 @@ void synth_ui_cycle_editor(void);
 
 /* ── Step Trig editor (per-step pitch / probability / ratchet / conditional) ─
  * Full-screen popup addressed by the sequencer grid's own cursor (active layer
- * / selected track / selected step). Opened and closed from main.c's SHIFT+2
- * chord; input model in ui_screen_stepedit.c. */
+ * / selected track / selected step). Opened and closed from the gesture
+ * dispatcher's SHIFT+2 chord; input model in ui_screen_stepedit.c. */
 bool synth_ui_stepedit_is_active(void);
 void synth_ui_stepedit_open(void);
 void synth_ui_stepedit_close(void);
@@ -298,9 +299,9 @@ bool synth_ui_stepedit_handle_button(void);
 
 /* ─── View precedence - the single source of truth ──────────────────────
  * synth_ui_active_view() is the ONLY place the "which screen/overlay is
- * showing" precedence lives. Every consumer (draw, hint strip, both main.c
- * input routers, ui_view_table[]) resolves once and dispatches on the result,
- * so input and draw can never disagree.
+ * showing" precedence lives. Every consumer (draw, hint strip, both gesture
+ * dispatcher entry points, ui_view_table[]) resolves once and dispatches on
+ * the result, so input and draw can never disagree.
  *
  * Order (high to low): FILTER > LFO > DIST > STEPEDIT > GRAPH > MENU >
  * mode-tail. The first six are the input-capturing overlays

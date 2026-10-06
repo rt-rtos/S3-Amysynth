@@ -197,8 +197,8 @@ static void drone_std_edit_row(drone_std_row_t r, int delta)
 
 /* True only when this screen itself owns the display: resolving through view
  * precedence excludes the filter/LFO overlays, which sit on top without
- * clearing ui_mode. main.c's input isolation guard keys off this, so a stale
- * "screen is up" would swallow the editors' own MY_BUTTON_0 taps. */
+ * clearing ui_mode. The gesture dispatcher's isolation guard keys off this,
+ * so a stale "screen is up" would swallow the editors' own MY_BUTTON_0 taps. */
 bool synth_ui_drone_std_is_active(void)
 {
     return synth_ui_active_view() == UI_VIEW_DRONE_STD;

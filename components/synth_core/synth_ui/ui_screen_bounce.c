@@ -449,7 +449,7 @@ void bounce_menu_service(void)
     if (changed) s_force_redraw = true;
 }
 
-/* SHIFT+0 from any screen (main.c button dispatch). The bounce module does
+/* SHIFT+0 from any screen (the gesture dispatcher). The bounce module does
  * the transport; the redraw request is for the REC badge and, if open, the
  * page. */
 void synth_ui_bounce_chord(bool long_press)
