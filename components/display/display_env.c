@@ -1,11 +1,12 @@
 #include "display_env.h"
 
-#define ENV_MID_X0  60      /* left edge of the shared mid/right band */
+#define ENV_MID_X0  60      /* leftmost start of the middle readout */
 
 static void env_draw_topbar(u8g2_t *u8g2, const env_view_t *v)
 {
     u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
     u8g2_DrawStr(u8g2, 2, 8, v->label);
+    int label_end = 2 + (int)u8g2_GetStrWidth(u8g2, v->label);
 
     uint8_t rw = 0;
     if (v->right[0]) {
@@ -22,19 +23,22 @@ static void env_draw_topbar(u8g2_t *u8g2, const env_view_t *v)
     }
 
     if (v->active[0]) {
-        int x = (int)u8g2_GetStrWidth(u8g2, v->label) + 2 + 2;   /* label at x=2 */
-        u8g2_SetFont(u8g2, u8g2_font_5x7_tf);
-        int aw = (int)u8g2_GetStrWidth(u8g2, v->active);
-        if (x + aw < (int)(128 - rw - 4))
-            u8g2_DrawStr(u8g2, (uint8_t)x, 8, v->active);
+        /* A second, small row under the label: rows 9..13 of the bar. */
+        u8g2_SetFont(u8g2, u8g2_font_4x6_tr);
+        u8g2_DrawStr(u8g2, 2, 14, v->active);
     }
 
     if (v->mid[0]) {
         u8g2_SetFont(u8g2, u8g2_font_5x7_tr);
-        uint8_t tw = (uint8_t)u8g2_GetStrWidth(u8g2, v->mid);
-        /* Between the left label (~x=56) and the right readout. */
-        int mx = ENV_MID_X0 + (int)((128 - ENV_MID_X0 - (int)rw - 4 - (int)tw) / 2);
-        if (mx < ENV_MID_X0) mx = ENV_MID_X0;
+        int tw = (int)u8g2_GetStrWidth(u8g2, v->mid);
+        /* Centred between the label and the right readout or edge. The label
+         * of a sequencer row ends at x=68 (11 characters with its badge),
+         * which leaves 11 characters of this font. */
+        int x0 = label_end + 2;
+        if (x0 < ENV_MID_X0) x0 = ENV_MID_X0;
+        int x1 = rw ? (128 - (int)rw - 4) : 126;
+        int mx = x0 + (x1 - x0 - tw) / 2;
+        if (mx < x0) mx = x0;
         u8g2_DrawStr(u8g2, (uint8_t)mx, 8, v->mid);
     }
 
@@ -61,4 +65,5 @@ void env_view_draw(u8g2_t *u8g2, const env_view_t *v, const gpopup_t *plot)
         u8g2_SetDrawColor(u8g2, 1);
         u8g2_DrawStr(u8g2, tx, ty, v->type_code);
     }
+
 }

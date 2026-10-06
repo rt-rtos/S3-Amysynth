@@ -15,14 +15,15 @@ extern "C" {
 
 /* View state: preformatted text, so the renderer owns layout only. Empty
  * strings are not drawn. The right readout and the middle readout share the
- * 60..126 px band; the host fills at most one of them. */
+ * band right of the label; the host fills at most one of them. Beside an
+ * 11-character label the middle readout has room for 11 characters. */
 typedef struct {
     char        label[24];    /* left: edit target and EG ("L1 T2 EG0*")    */
-    char        mid[24];      /* selected point's value ("A 120ms")         */
+    char        mid[24];      /* selected point's value ("D230ms S80")      */
     char        right[16];    /* right readout (target depth, SWG, AMP)     */
     bool        right_flash;  /* draw right inverted: type-cycle flash      */
-    char        active[8];    /* one letter per target the EG drives,
-                                 dropped when it would hit the right text   */
+    char        active[8];    /* one letter per target the EG drives, as a
+                                 small row under the label                  */
     const char *type_code;    /* curve-type code in the plot corner, or NULL */
 } env_view_t;
 

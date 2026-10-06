@@ -2692,6 +2692,20 @@ uint32_t graph_view_signature(void)
 
 /* ── Draw wrappers (encapsulate private editor state from synth_ui_task) ── */
 
+/* A segment time for the top bar's point readout: "230ms" below one second,
+ * "1.2s" from there, so it is never longer than five characters and the
+ * longest readout, "D60.0s S100", keeps to the 11 that fit beside a sequencer
+ * row's label (display_env.h). */
+static void graph_format_time(char *out, size_t n, uint32_t ms)
+{
+    if (ms < 1000u) {
+        snprintf(out, n, "%lums", (unsigned long)ms);
+    } else {
+        uint32_t tenths = (ms + 50u) / 100u;
+        snprintf(out, n, "%lu.%lus", (unsigned long)(tenths / 10u), (unsigned long)(tenths % 10u));
+    }
+}
+
 /* Fill the envelope editor view (display_env.h) from the editor state. */
 static void graph_build_view(env_view_t *v)
 {
@@ -2761,15 +2775,16 @@ static void graph_build_view(env_view_t *v)
         uint32_t cum_a = graph_x_to_ms(pts[1].x);
         uint32_t cum_d = graph_x_to_ms(pts[2].x);
         uint32_t cum_r = graph_x_to_ms(pts[3].x);
+        char t[16];
         if (c == 1) {
-            snprintf(v->mid, sizeof(v->mid), "A %lums", (unsigned long)cum_a);
+            graph_format_time(t, sizeof(t), cum_a);
+            snprintf(v->mid, sizeof(v->mid), "A%s", t);
         } else if (c == 2) {
-            uint32_t d = (cum_d > cum_a) ? (cum_d - cum_a) : 0;
-            snprintf(v->mid, sizeof(v->mid), "D %lums S %u%%",
-                     (unsigned long)d, (unsigned)(pts[2].y * 100.0f + 0.5f));
+            graph_format_time(t, sizeof(t), (cum_d > cum_a) ? (cum_d - cum_a) : 0);
+            snprintf(v->mid, sizeof(v->mid), "D%s S%u", t, (unsigned)(pts[2].y * 100.0f + 0.5f));
         } else {
-            uint32_t r = (cum_r > cum_d) ? (cum_r - cum_d) : 0;
-            snprintf(v->mid, sizeof(v->mid), "R %lums", (unsigned long)r);
+            graph_format_time(t, sizeof(t), (cum_r > cum_d) ? (cum_r - cum_d) : 0);
+            snprintf(v->mid, sizeof(v->mid), "R%s", t);
         }
     }
 
