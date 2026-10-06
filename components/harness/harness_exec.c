@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <strings.h>
 #include <inttypes.h>
 
 #include "esp_app_desc.h"
@@ -18,6 +19,10 @@
 
 #include "harness.h"
 #include "sequencer_core.h"
+#include "synth_ui.h"
+#if CONFIG_SYNTH_PROJECT_STORE
+#include "project_templates.h"
+#endif
 #include "dropout_stats.h"
 #include "render_stats.h"
 #include "usb_device_uac.h"
@@ -151,6 +156,32 @@ static void cmd_tr_bpm(char *args, harness_reply_fn reply)
     REPLY("ok bpm=%u", (unsigned)sequencer_core_get_bpm());
 }
 
+#if CONFIG_SYNTH_PROJECT_STORE
+/* "pr.tpl" lists the built-in templates as "TPL <i> <name>" lines; "pr.tpl
+ * <name or index>" queues one for the UI task to load. Names carry spaces,
+ * so the whole argument is the name. */
+static void cmd_pr_tpl(char *args, harness_reply_fn reply)
+{
+    size_t n = project_templates_count();
+    for (size_t len = strlen(args); len > 0 && args[len - 1] == ' '; len--) args[len - 1] = '\0';
+    if (*args == '\0') {
+        for (size_t i = 0; i < n; i++) printf("TPL %u %s\n", (unsigned)i, project_templates_name(i));
+        REPLY("ok n=%u", (unsigned)n);
+        return;
+    }
+    char *end;
+    size_t i = (size_t)strtoul(args, &end, 10);
+    if (*end != '\0') {
+        for (i = 0; i < n; i++) {
+            if (strcasecmp(args, project_templates_name(i)) == 0) break;
+        }
+    }
+    if (i >= n) { REPLY("err unknown template '%s'", args); return; }
+    if (!synth_ui_projects_request_template(i)) { REPLY("err a load or save is queued"); return; }
+    REPLY("ok tpl=%u %s", (unsigned)i, project_templates_name(i));
+}
+#endif
+
 void harness_exec(const harness_hooks_t *hooks, const char *cmdline,
                   harness_reply_fn reply)
 {
@@ -216,6 +247,13 @@ void harness_exec(const harness_hooks_t *hooks, const char *cmdline,
     else if (strcmp(line, "tr.play") == 0) { sequencer_core_set_playing(true);  REPLY("ok"); }
     else if (strcmp(line, "tr.stop") == 0) { sequencer_core_set_playing(false); REPLY("ok"); }
     else if (strcmp(line, "tr.bpm") == 0)  cmd_tr_bpm(args, reply);
+    else if (strcmp(line, "pr.tpl") == 0) {
+#if CONFIG_SYNTH_PROJECT_STORE
+        cmd_pr_tpl(args, reply);
+#else
+        REPLY("err project store not compiled in");
+#endif
+    }
     else if (strcmp(line, "in.btn") == 0)  cmd_in_btn(hooks, args, reply);
     else if (strcmp(line, "in.enc") == 0)  cmd_in_enc(hooks, args, reply);
     else REPLY("err unknown cmd '%s'", line);

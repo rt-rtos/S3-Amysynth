@@ -62,6 +62,7 @@ static char    s_status_msg[MENU_VALUE_LEN];
 typedef enum { PREQ_NONE = 0, PREQ_LOAD, PREQ_SAVE, PREQ_LOAD_TPL } proj_req_t;
 static volatile proj_req_t s_req = PREQ_NONE;   /* set last: publishes the fields below */
 static uint8_t             s_req_slot     = 0;   /* template index for PREQ_LOAD_TPL */
+static bool                s_req_quiet    = false; /* no row status: not from the menu */
 static uint8_t             s_req_idx      = 0;
 static bool                s_req_has_name = false;
 static char                s_req_name[PROJECT_NAME_LEN];
@@ -469,14 +470,24 @@ void projects_menu_service(void)
         set_status(s_req_idx, ok ? "LOADED" : "LOAD FAIL");
     } else if (s_req == PREQ_LOAD_TPL) {
         bool ok = project_templates_load(s_req_slot);
-        set_status(s_req_idx, ok ? "LOADED" : "LOAD FAIL");
+        if (!s_req_quiet) set_status(s_req_idx, ok ? "LOADED" : "LOAD FAIL");
     } else {
         bool ok = project_snapshot_save(s_req_slot,
                                         s_req_has_name ? s_req_name : NULL);
         set_status(s_req_idx, ok ? "SAVED" : "SAVE FAIL");
         s_dirty = true;
     }
+    s_req_quiet = false;
     s_req = PREQ_NONE;
+}
+
+bool synth_ui_projects_request_template(size_t i)
+{
+    if (i >= project_templates_count() || s_req != PREQ_NONE) return false;
+    s_req_slot  = (uint8_t)i;
+    s_req_quiet = true;
+    s_req       = PREQ_LOAD_TPL;
+    return true;
 }
 
 #endif /* CONFIG_SYNTH_PROJECT_STORE */

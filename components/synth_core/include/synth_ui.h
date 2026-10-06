@@ -1,4 +1,5 @@
 #pragma once
+#include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -68,6 +69,14 @@ void synth_ui_cycle_drum_patch(int delta);
 void synth_ui_cycle_fm_algo(int delta);
 void synth_ui_set_drum_select_mode(bool held);
 void synth_ui_set_patch_select_mode(bool held);
+
+/* Queue a load of built-in template i (project_templates.h: count and names)
+ * through the Projects menu's deferred request, so it runs on the UI task as
+ * a load from the menu does, on the next UI frame. Returns false and queues
+ * nothing when i is out of range or a load or save is already queued. Any
+ * task context after synth_ui_init(); not ISR-safe. No menu row shows a
+ * status for it. Only with CONFIG_SYNTH_PROJECT_STORE. */
+bool synth_ui_projects_request_template(size_t i);
 
 /* ── Menu overlay ────────────────────────────────────────────────────────
  * A modal overlay above the active screen (below the graph editor); while
