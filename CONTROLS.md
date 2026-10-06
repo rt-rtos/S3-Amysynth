@@ -303,10 +303,14 @@ target and the target labels for several: `TO 1+2+3` up to three, `TO 1234`
 above that. A muted operator's box is struck diagonally.
 
 Page 2: the selected operator's frequency and 4-level envelope, `MUTE` in the
-title while it is muted. Cursor stops, in order: OP, FRQ, coarse, fine, T1,
-L1, T2, L2, T3, L3, T4, L4. From L4 a note rises to L1 over T1, then L2 over
-T2, then L3 over T3, and holds L3; the release returns to L4 over T4. Levels
-are DX7 levels (0.75 dB per step, 99 full, 0 silent).
+title while it is muted. Cursor stops, in order: OP, FRQ, coarse, fine, R1,
+L1, R2, L2, R3, L3, R4, L4. From L4 a note moves to L1 at rate R1, then to L2
+at R2, then to L3 at R3, and holds L3; the release returns to L4 at R4. Levels
+are DX7 levels (0.75 dB per step, 99 full, 0 silent). Rates are DX7 rates
+(0..99, higher is faster; six steps halve the time). A rate is a slope: at the
+same rate a segment between levels close together is over sooner than one
+between levels far apart, and a segment between equal levels takes no time.
+The plot shows the resulting shape.
 
 | Input | Action |
 |---|---|
@@ -314,7 +318,7 @@ are DX7 levels (0.75 dB per step, 99 full, 0 silent).
 | Encoder click, page 1 | On a box: jump to its RAT row. On FB when the selected operator is not the feedback operator: make it the feedback operator. On another row (or FB on the feedback operator): enter / leave adjusting |
 | Encoder turn, adjusting, page 1 | RAT: coarse, as below. LVL: 5 %. TO: one target operator or OUT, replacing any set of targets. FB: 5 %, 0..120 %. ALG: step the algorithm |
 | Encoder click, page 2 | FRQ: toggle RAT / FIX (seeded from the operator's pitch at A4). Other cells: enter / leave adjusting |
-| Encoder turn, adjusting, page 2 | OP: select OP1..OP6. Coarse: ratio mode steps the curated ratios, keeping the fine offset; fixed mode 1 semitone. Fine: 0.1 Hz (ratio mode shown as Hz at A4). T1..T4: about 8 % of the time, at least 1 ms. L1..L4: 1 |
+| Encoder turn, adjusting, page 2 | OP: select OP1..OP6. Coarse: ratio mode steps the curated ratios, keeping the fine offset; fixed mode 1 semitone. Fine: 0.1 Hz (ratio mode shown as Hz at A4). R1..R4: 1. L1..L4: 1 |
 | Button 2 (press) | Mute / unmute the selected operator (not saved) |
 | SHOULDER (tap) | Flip the page |
 | Button 1 (press), page 1 | Start linking from the selected operator (below). Page 2: nothing |

@@ -16,9 +16,11 @@ _Static_assert(FM_NUM_OPS == FM_GRAPH_OPS, "fm_graph and fm_voice disagree on op
 fm_voice_t s_fm_voice;
 
 /* Default operator envelope: short and percussive so a fresh voice decays
- * before any operator envelope is authored. L93 is ~0.59 linear. */
+ * before any operator envelope is authored: a 4 ms attack, 290 ms down to
+ * L2, a release of about 200 ms. L93 is ~0.59 linear. R3 joins equal levels and takes
+ * no time until L3 is moved. */
 static const fm_op_env_t s_fm_op_env_default = {
-    .time_ms = { 4u, 300u, 0u, 200u },
+    .rate    = { 77u, 32u, 40u, 59u },
     .level   = { 99u, 93u, 93u, 0u },
     .eg_type = ENVELOPE_DX7,       /* the DX7 attack curve: what makes modulator envelopes sound right */
 };
@@ -30,6 +32,48 @@ float fm_voice_level_to_amp(uint8_t level)
     if (level == 0u) return 0.0f;
     if (level > 99u) level = 99u;
     return exp2f(((float)level - 99.0f) / 8.0f);
+}
+
+/* fm.py's MIN_LEVEL and ATTACK_RANGE: an attack is the curve
+ * 109 - 75 * exp(-t / tc), which starts at level 34. */
+#define FM_EG_ATTACK_FLOOR  34.0f
+#define FM_EG_ATTACK_RANGE  75.0f
+#define FM_EG_RELEASE_NOMINAL_DROP  60.0f   /* fm.py: a release between equal levels */
+
+/* Seconds into the attack curve at which it passes `level`. */
+static float fm_eg_attack_pos(float level, float t_const)
+{
+    if (level < FM_EG_ATTACK_FLOOR) level = FM_EG_ATTACK_FLOOR;
+    return -t_const * logf((FM_EG_ATTACK_FLOOR + FM_EG_ATTACK_RANGE - level) / FM_EG_ATTACK_RANGE);
+}
+
+static uint8_t fm_eg_99(uint8_t x)
+{
+    return (x > 99u) ? 99u : x;
+}
+
+void fm_voice_env_times_ms(const fm_op_env_t *env, uint32_t out_ms[4])
+{
+    float cur = (float)fm_eg_99(env->level[3]);
+    for (uint8_t s = 0; s < 4u; s++) {
+        float target = (float)fm_eg_99(env->level[s]);
+        float rate = (float)fm_eg_99(env->rate[s]);
+        float sec;
+        if (target > cur) {
+            float t_const = 0.008f * exp2f((65.0f - rate) / 6.0f);
+            sec = fm_eg_attack_pos(target, t_const) - fm_eg_attack_pos(cur, t_const);
+        } else {
+            float drop = cur - target;
+            if (s == 3u && drop == 0.0f) drop = FM_EG_RELEASE_NOMINAL_DROP;
+            sec = drop / (0.5f + 0.5f * exp2f(rate / 6.0f));
+        }
+        uint32_t lo = (s == 0u) ? VOICE_ENV_ATTACK_MIN_MS
+                    : (s == 3u) ? VOICE_ENV_RELEASE_MIN_MS : 0u;
+        float ms = sec * 1000.0f;
+        out_ms[s] = (ms >= (float)VOICE_ENV_TIME_MAX_MS) ? VOICE_ENV_TIME_MAX_MS
+                  : SEQ_CLAMP_U32((uint32_t)ms, lo, VOICE_ENV_TIME_MAX_MS);
+        cur = target;
+    }
 }
 
 /* ── Custom program double-buffer ─────────────────────────────────────────
@@ -164,17 +208,17 @@ static void fm_voice_send_op(uint8_t synth_id, const fm_voice_t *voice, uint8_t 
     e->eg_type[0]            = env->eg_type;
     /* Five pairs: L4 at t=0, the three note-on segments (AMY sustains on the
      * pair before the last), then the release back to L4. */
+    uint32_t t_ms[4];
+    fm_voice_env_times_ms(env, t_ms);
     e->eg0_times[0]  = 0u;
     e->eg0_values[0] = fm_voice_level_to_amp(env->level[3]);
-    e->eg0_times[1]  = SEQ_CLAMP_U32(env->time_ms[0], VOICE_ENV_ATTACK_MIN_MS,
-                                     VOICE_ENV_TIME_MAX_MS);
+    e->eg0_times[1]  = t_ms[0];
     e->eg0_values[1] = fm_voice_level_to_amp(env->level[0]);
-    e->eg0_times[2]  = SEQ_CLAMP_U32(env->time_ms[1], 0u, VOICE_ENV_TIME_MAX_MS);
+    e->eg0_times[2]  = t_ms[1];
     e->eg0_values[2] = fm_voice_level_to_amp(env->level[1]);
-    e->eg0_times[3]  = SEQ_CLAMP_U32(env->time_ms[2], 0u, VOICE_ENV_TIME_MAX_MS);
+    e->eg0_times[3]  = t_ms[2];
     e->eg0_values[3] = fm_voice_level_to_amp(env->level[2]);
-    e->eg0_times[4]  = SEQ_CLAMP_U32(env->time_ms[3], VOICE_ENV_RELEASE_MIN_MS,
-                                     VOICE_ENV_TIME_MAX_MS);
+    e->eg0_times[4]  = t_ms[3];
     e->eg0_values[4] = fm_voice_level_to_amp(env->level[3]);
     amy_helpers_event_send(e);
 }
@@ -331,26 +375,6 @@ static int fm_ratio_nearest_index(float ratio)
     return best;
 }
 
-static uint32_t fm_time_min(uint8_t seg)
-{
-    return (seg == 0u) ? VOICE_ENV_ATTACK_MIN_MS
-         : (seg == 3u) ? VOICE_ENV_RELEASE_MIN_MS : 0u;
-}
-
-static uint16_t fm_step_time(uint16_t t, int delta, uint32_t lo, uint32_t hi)
-{
-    int32_t v = (int32_t)t;
-    int32_t dir = (delta > 0) ? 1 : -1;
-    int n = (delta > 0) ? delta : -delta;
-    for (int i = 0; i < n; i++) {
-        int32_t s = (int32_t)((float)v * 0.08f + 0.5f);
-        if (s < 1) s = 1;
-        v += dir * s;
-        v = SEQ_CLAMP_INT(v, (int32_t)lo, (int32_t)hi);
-    }
-    return (uint16_t)v;
-}
-
 void fm_voice_step(fm_voice_t *v, uint8_t op, fm_field_t field, int delta)
 {
     if (field == FM_FIELD_FEEDBACK) {
@@ -388,9 +412,9 @@ void fm_voice_step(fm_voice_t *v, uint8_t op, fm_field_t field, int delta)
             v->op_level[op] = SEQ_CLAMP_F32(lvl, 0.0f, 1.0f);
             break;
         }
-        case FM_FIELD_T1: case FM_FIELD_T2: case FM_FIELD_T3: case FM_FIELD_T4: {
-            uint8_t s = (uint8_t)(field - FM_FIELD_T1);
-            env->time_ms[s] = fm_step_time(env->time_ms[s], delta, fm_time_min(s), VOICE_ENV_TIME_MAX_MS);
+        case FM_FIELD_R1: case FM_FIELD_R2: case FM_FIELD_R3: case FM_FIELD_R4: {
+            uint8_t s = (uint8_t)(field - FM_FIELD_R1);
+            env->rate[s] = (uint8_t)SEQ_CLAMP_INT((int)env->rate[s] + delta, 0, FM_EG_RATE_MAX);
             break;
         }
         case FM_FIELD_L1: case FM_FIELD_L2: case FM_FIELD_L3: case FM_FIELD_L4: {
@@ -439,8 +463,7 @@ void fm_voice_clamp(fm_voice_t *v)
                                          FM_FIXED_HZ_DEFAULT);
         v->op_level[i]    = fm_clamp_f32(v->op_level[i], 0.0f, 1.0f, 0.0f);
         for (uint8_t s = 0; s < 4u; s++) {
-            env->time_ms[s] = (uint16_t)SEQ_CLAMP_U32(env->time_ms[s], fm_time_min(s),
-                                                      VOICE_ENV_TIME_MAX_MS);
+            if (env->rate[s] > FM_EG_RATE_MAX) env->rate[s] = FM_EG_RATE_MAX;
             if (env->level[s] > FM_EG_LEVEL_MAX) env->level[s] = FM_EG_LEVEL_MAX;
         }
         if (env->eg_type > ENVELOPE_TRUE_EXPONENTIAL) env->eg_type = ENVELOPE_DX7;

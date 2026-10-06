@@ -46,15 +46,31 @@ extern "C" {
 #define FM_NUM_OPS      6
 #define FM_ALGO_CUSTOM  0xFF   /* algorithm: use op_targets[]/fb_op */
 
-/* DX7-style 4-level operator envelope. From L4 the note-on rises to L1 over
- * T1, then L2 over T2, then L3 over T3, and holds L3 while the key is down;
- * the release returns to L4 over T4. Levels are DX7 0..99 (0.75 dB per step,
- * 99 = full scale, 0 = silence). */
+/* DX7-style 4-rate, 4-level operator envelope. From L4 the note-on moves to
+ * L1 at R1, then to L2 at R2, then to L3 at R3, and holds L3 while the key is
+ * down; the release returns to L4 at R4. Levels are DX7 0..99 (0.75 dB per
+ * step, 99 = full scale, 0 = silence). Rates are DX7 0..99, higher is faster.
+ * A rate is a slope, so how long a segment takes depends on its rate and on
+ * the two levels it joins: fm_voice_env_times_ms(). */
 typedef struct {
-    uint16_t time_ms[4];   /* T1..T4: segment durations; T4 is the release */
+    uint8_t  rate[4];      /* R1..R4: DX7 rates 0..99; R4 is the release */
     uint8_t  level[4];     /* L1..L4: DX7 levels 0..99; L4 = start and release target */
     uint8_t  eg_type;      /* ENVELOPE_DX7 by default; no UI row */
 } fm_op_env_t;
+
+/* The four segment times of an envelope in ms (out_ms[0..3] = T1..T4), as
+ * pushed to AMY. The one home of the rate law, which is AMY's fm.py
+ * calc_loglin_eg_breakpoints (the conversion behind the built-in DX7 patches),
+ * with levels in DX7 units:
+ *   falling: (level drop) / (0.5 + 0.5 * 2^(R/6)) seconds, i.e. 1 level/s at
+ *            R0 and 99 levels in about 2 ms at R99;
+ *   rising:  the DX7 attack curve L(t) = 109 - 75 * exp(-t / tc) entered at
+ *            the start level (34 if lower), tc = 8 ms * 2^((65 - R)/6);
+ *   equal levels: 0, except the release, which is timed as a 60-level drop.
+ * Then held to what AMY is sent: T1 at least VOICE_ENV_ATTACK_MIN_MS, T4 at
+ * least VOICE_ENV_RELEASE_MIN_MS, every time at most VOICE_ENV_TIME_MAX_MS
+ * (voice_config.h). Rates and levels above 99 are read as 99. Pure. */
+void fm_voice_env_times_ms(const fm_op_env_t *env, uint32_t out_ms[4]);
 
 /* DX7 level (0..99) to linear amplitude: 0.75 dB per step below 99, the law of
  * AMY's fm.py dx7level_to_linear, except that L0 is exact silence. The one
@@ -154,14 +170,14 @@ uint8_t fm_voice_step_algorithm(fm_voice_t *v, int dir);
 #define FM_LEVEL_STEP    0.05f      /* op_level and feedback step */
 #define FM_FEEDBACK_MAX  1.2f
 #define FM_EG_LEVEL_MAX  99
+#define FM_EG_RATE_MAX   99
 
 typedef enum {
     FM_FIELD_COARSE,    /* ratio mode: the next curated ratio (0.5 .. 16), keeping the
                          * offset from the nearest one as a factor; fixed mode: a semitone */
     FM_FIELD_FINE,      /* FM_FINE_HZ, measured at A4 in ratio mode */
     FM_FIELD_LEVEL,     /* FM_LEVEL_STEP, 0..1 */
-    FM_FIELD_T1, FM_FIELD_T2, FM_FIELD_T3, FM_FIELD_T4,  /* max(1, round(t * 0.08)) ms, recomputed
-                         * each step; held to what fm_voice pushes (voice_config.h VOICE_ENV_*) */
+    FM_FIELD_R1, FM_FIELD_R2, FM_FIELD_R3, FM_FIELD_R4,  /* 1, 0..FM_EG_RATE_MAX */
     FM_FIELD_L1, FM_FIELD_L2, FM_FIELD_L3, FM_FIELD_L4,  /* 1, 0..FM_EG_LEVEL_MAX */
     FM_FIELD_FEEDBACK,  /* FM_LEVEL_STEP, 0..FM_FEEDBACK_MAX; voice-level, op ignored */
     FM_FIELD_COUNT

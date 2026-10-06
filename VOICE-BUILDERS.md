@@ -74,19 +74,48 @@ curated ratios 0.5, 1, 1.5, 2 ... 12, 14, 16 while keeping any fine offset,
 or a semitone in fixed mode. Fine moves 0.1 Hz, shown in ratio mode as the
 operator's frequency at A4.
 
-Each operator has its own DX7-style 4-level amplitude envelope (EG0), edited
-as numbers: from L4 a note rises to L1 over T1, then L2 over T2, then L3
-over T3, and holds L3 while the key is down; the release returns to L4 over
-T4. Levels are DX7 output levels 0-99 (0.75 dB per step, 0 silent). The
-default is a short percussive shape (T 4 / 300 / 0 / 200 ms, L 99 / 93 /
-93 / 0) on the DX7 curve - the curve is what makes a modulator envelope
-sound like FM instead of a fading sine. The row's ordinary ADSR, opened from
-the sequencer, still applies on top as a VCA over the carriers - both shape
-the note.
+Each operator has its own DX7-style 4-rate, 4-level amplitude envelope
+(EG0), edited as numbers: from L4 a note moves to L1 at rate R1, then to L2
+at R2, then to L3 at R3, and holds L3 while the key is down; the release
+returns to L4 at R4. Levels are DX7 output levels 0-99 (0.75 dB per step, 0
+silent) and rates are DX7 rates 0-99, so an envelope can be typed in from a
+DX7 patch sheet. The default is a short percussive shape (R 77 / 32 / 40 /
+59, L 99 / 93 / 93 / 0: a 4 ms attack, 290 ms down to L2, a release of about
+200 ms) on the DX7 curve - the curve is what makes a modulator envelope sound
+like FM instead of a fading sine. The row's ordinary ADSR, opened from the
+sequencer, still applies on top as a VCA over the carriers - both shape the
+note.
 
-Beside the T/L column a read-only plot draws the envelope: level on the
+A rate is a slope, not a time. The time a segment takes follows from its
+rate and the two levels it joins (`fm_voice_env_times_ms()` in `fm_voice.h`
+holds the law, which is the one AMY's `fm.py` converts the built-in DX7
+patches with). Six steps of rate halve the time:
+
+| Rate | Fall over all 99 levels | Attack from silence to 99 |
+|---|---|---|
+| 20 | 18 s | 2.9 s |
+| 30 | 6.0 s | 0.92 s |
+| 40 | 1.9 s | 0.29 s |
+| 50 | 0.61 s | 91 ms |
+| 60 | 0.19 s | 29 ms |
+| 70 | 61 ms | 9 ms |
+| 80 | 19 ms | 3 ms |
+
+A fall over fewer levels is shorter in proportion: at R32 the default's 6
+levels from L1 to L2 take 290 ms, and all 99 would take 4.8 s. What follows
+from that:
+
+- Changing a level changes the time of the segments on either side of it.
+- A segment between equal levels takes no time at any rate, so the envelope
+  cannot hold a level before moving on. The release is the exception: between
+  equal levels it is timed as a 60-level drop.
+- The slowest fall is 1 level per second (R0).
+- An attack starts at level 34 if it starts lower; the levels below are
+  skipped.
+
+Beside the R/L column a read-only plot draws the envelope: level on the
 vertical axis, segment widths log-compressed in time, a short fixed stub for
-the sustain. The segment of the T or the point of the L under the cursor is
+the sustain. The segment of the R or the point of the L under the cursor is
 marked, and the trace is dotted while the operator is muted.
 
 `MY_BUTTON_2` mutes the selected operator on either page, for auditioning;
@@ -150,7 +179,8 @@ flowchart LR
 | Level | 0 .. 100 %, 5 % steps |
 | Feedback | 0 .. 120 %, 5 % steps |
 | Envelope levels | 0 .. 99 (0.75 dB per step, 0 silent) |
-| Envelope times | T1 at least 2 ms, T4 at least 5 ms, any time at most 60 s; T2 and T3 may be 0 |
+| Envelope rates | 0 .. 99 |
+| Envelope times, as sent to AMY | first segment at least 2 ms, release at least 5 ms, any segment at most 60 s |
 
 Velocity reaches the carriers through the voice's control oscillator, not
 the operators, so playing harder makes the note louder without changing the

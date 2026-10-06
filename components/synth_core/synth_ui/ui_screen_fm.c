@@ -108,22 +108,24 @@ static uint8_t fm_plot_amp_to_level(float amp)
     return (uint8_t)SEQ_CLAMP_INT((int)floorf(l + 0.5f), 0, FM_EG_LEVEL_MAX);
 }
 
-/* The page 1 envelope trace. Segment widths are log-compressed,
- * log(1 + T / 10 ms), sharing the plot width left after the sustain stub;
+/* The page 1 envelope trace. Segment widths are the segment times
+ * (fm_voice_env_times_ms()) log-compressed, log(1 + T / 10 ms), sharing the plot width left after the sustain stub;
  * a nonzero segment gets at least one column. Rising segments follow the DX7
  * attack law (evaluated in amplitude), falling ones are straight in level. */
 static void fm_build_plot(fm_view_t *out, const fm_op_env_t *env)
 {
     const int span = FM_PLOT_W - 1 - FM_PLOT_STUB_W;
     float w[4], total = 0.0f;
+    uint32_t t_ms[4];
+    fm_voice_env_times_ms(env, t_ms);
     for (uint8_t s = 0; s < 4u; s++) {
-        w[s] = logf(1.0f + (float)env->time_ms[s] / 10.0f);
+        w[s] = logf(1.0f + (float)t_ms[s] / 10.0f);
         total += w[s];
     }
     int px[4], used = 0, big = 0;
     for (uint8_t s = 0; s < 4u; s++) {
         px[s] = 0;
-        if (env->time_ms[s] != 0u && total > 0.0f) {
+        if (t_ms[s] != 0u && total > 0.0f) {
             px[s] = (int)((float)span * w[s] / total + 0.5f);
             if (px[s] < 1) px[s] = 1;
         }
@@ -174,10 +176,10 @@ static void fm_build_page_freq_eg(fm_view_t *out)
     snprintf(out->cells[FM2_CUR_FRQ], FM_CELL_LEN, "FRQ %s", fm_op_is_fixed(op) ? "FIX" : "RAT");
     fm_format_coarse(out->cells[FM2_CUR_COARSE], FM_CELL_LEN, op);
     fm_format_fine(out->cells[FM2_CUR_FINE], FM_CELL_LEN, op);
-    /* Compact column: "T1 300" then "L99" on the same line. */
+    /* Compact column: "R1 77" then "L99" on the same line. */
     for (uint8_t s = 0; s < 4u; s++) {
-        snprintf(out->cells[FM2_CUR_T1 + 2u * s], FM_CELL_LEN, "T%u %u",
-                 (unsigned)(s + 1u), (unsigned)env->time_ms[s]);
+        snprintf(out->cells[FM2_CUR_R1 + 2u * s], FM_CELL_LEN, "R%u %2u",
+                 (unsigned)(s + 1u), (unsigned)env->rate[s]);
         snprintf(out->cells[FM2_CUR_L1 + 2u * s], FM_CELL_LEN, "L%2u",
                  (unsigned)env->level[s]);
     }
@@ -289,8 +291,8 @@ static void fm_edit_page_freq_eg(int delta)
         case FM2_CUR_FINE:
             fm_step(op, FM_FIELD_FINE, delta);
             break;
-        case FM2_CUR_T1: case FM2_CUR_T2: case FM2_CUR_T3: case FM2_CUR_T4:
-            fm_step(op, (fm_field_t)(FM_FIELD_T1 + (s_fm2_cursor - FM2_CUR_T1) / 2u), delta);
+        case FM2_CUR_R1: case FM2_CUR_R2: case FM2_CUR_R3: case FM2_CUR_R4:
+            fm_step(op, (fm_field_t)(FM_FIELD_R1 + (s_fm2_cursor - FM2_CUR_R1) / 2u), delta);
             break;
         case FM2_CUR_L1: case FM2_CUR_L2: case FM2_CUR_L3: case FM2_CUR_L4:
             fm_step(op, (fm_field_t)(FM_FIELD_L1 + (s_fm2_cursor - FM2_CUR_L1) / 2u), delta);

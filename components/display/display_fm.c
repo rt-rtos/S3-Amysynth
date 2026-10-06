@@ -206,9 +206,9 @@ static void draw_eg_plot(u8g2_t *u8g2, const fm_view_t *view, bool dotted)
     static const uint8_t bp_of_l[4]  = { 1, 2, 3, 5 };   /* L4 also marks bp 0 */
     static const uint8_t prev_l[4]   = { 3, 0, 1, 2 };   /* level a Tn starts from */
     int hl_seg = -1, hl_pt = -1;
-    if (view->cursor >= FM2_CUR_T1 && view->cursor <= FM2_CUR_L4) {
-        uint8_t n = (uint8_t)((view->cursor - FM2_CUR_T1) / 2u);
-        if (((view->cursor - FM2_CUR_T1) & 1u) == 0u) hl_seg = n;
+    if (view->cursor >= FM2_CUR_R1 && view->cursor <= FM2_CUR_L4) {
+        uint8_t n = (uint8_t)((view->cursor - FM2_CUR_R1) / 2u);
+        if (((view->cursor - FM2_CUR_R1) & 1u) == 0u) hl_seg = n;
         else                                          hl_pt  = n;
     }
 
@@ -249,7 +249,7 @@ static void draw_page_freq_eg(u8g2_t *u8g2, const fm_view_t *view)
     for (uint8_t c = 0; c < FM2_CUR_COUNT; c++) {
         uint8_t y = (uint8_t)(FM2_Y0 + (c / 2u) * FM2_ROW_H);
         bool on = (view->cursor == c);
-        if (c < FM2_CUR_T1) {
+        if (c < FM2_CUR_R1) {
             uint8_t x = (c & 1u) ? FM2_COL1_X : FM2_COL0_X;
             if (on && view->editing) {
                 u8g2_DrawBox(u8g2, (uint8_t)(x + 4), (uint8_t)(y - 6), FM2_COL_W - 6, FM2_ROW_H);
