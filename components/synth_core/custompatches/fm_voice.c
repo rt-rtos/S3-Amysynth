@@ -308,3 +308,148 @@ uint8_t fm_voice_step_algorithm(fm_voice_t *v, int dir)
     v->algorithm = (uint8_t)a;
     return v->algorithm;
 }
+
+/* ── Value ranges and the edit grid ─────────────────────────────────────── */
+
+/* Curated DX7-style harmonic ratios plus a few inharmonic ones, kept short
+ * enough to step through. */
+static const float s_fm_ratio_steps[] = {
+    0.5f, 1.0f, 1.5f, 2.0f, 2.5f, 3.0f, 3.5f, 4.0f, 5.0f,
+    6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f, 14.0f, 16.0f,
+};
+#define FM_RATIO_STEP_COUNT ((int)(sizeof(s_fm_ratio_steps) / sizeof(s_fm_ratio_steps[0])))
+
+static int fm_ratio_nearest_index(float ratio)
+{
+    int best = 0;
+    float best_d = 1e9f;
+    for (int i = 0; i < FM_RATIO_STEP_COUNT; i++) {
+        float d = ratio - s_fm_ratio_steps[i];
+        if (d < 0) d = -d;
+        if (d < best_d) { best_d = d; best = i; }
+    }
+    return best;
+}
+
+static uint32_t fm_time_min(uint8_t seg)
+{
+    return (seg == 0u) ? VOICE_ENV_ATTACK_MIN_MS
+         : (seg == 3u) ? VOICE_ENV_RELEASE_MIN_MS : 0u;
+}
+
+static uint16_t fm_step_time(uint16_t t, int delta, uint32_t lo, uint32_t hi)
+{
+    int32_t v = (int32_t)t;
+    int32_t dir = (delta > 0) ? 1 : -1;
+    int n = (delta > 0) ? delta : -delta;
+    for (int i = 0; i < n; i++) {
+        int32_t s = (int32_t)((float)v * 0.08f + 0.5f);
+        if (s < 1) s = 1;
+        v += dir * s;
+        v = SEQ_CLAMP_INT(v, (int32_t)lo, (int32_t)hi);
+    }
+    return (uint16_t)v;
+}
+
+void fm_voice_step(fm_voice_t *v, uint8_t op, fm_field_t field, int delta)
+{
+    if (field == FM_FIELD_FEEDBACK) {
+        float fb = v->feedback + (float)delta * FM_LEVEL_STEP;
+        v->feedback = SEQ_CLAMP_F32(fb, 0.0f, FM_FEEDBACK_MAX);
+        return;
+    }
+    if (op >= FM_NUM_OPS) return;
+    bool fixed = (v->op_fixed & (1u << op)) != 0u;
+    fm_op_env_t *env = &v->op_env[op];
+    switch (field) {
+        case FM_FIELD_COARSE:
+            if (fixed) {
+                float hz = v->op_fixed_hz[op] * exp2f((float)delta / 12.0f);
+                v->op_fixed_hz[op] = SEQ_CLAMP_F32(hz, FM_FIXED_HZ_MIN, FM_FIXED_HZ_MAX);
+            } else {
+                float ratio = v->op_ratio[op];
+                int cur = fm_ratio_nearest_index(ratio);
+                int next = SEQ_CLAMP_INT(cur + delta, 0, FM_RATIO_STEP_COUNT - 1);
+                float r = s_fm_ratio_steps[next] * (ratio / s_fm_ratio_steps[cur]);
+                v->op_ratio[op] = SEQ_CLAMP_F32(r, FM_RATIO_MIN, FM_RATIO_MAX);
+            }
+            break;
+        case FM_FIELD_FINE:
+            if (fixed) {
+                float hz = v->op_fixed_hz[op] + FM_FINE_HZ * (float)delta;
+                v->op_fixed_hz[op] = SEQ_CLAMP_F32(hz, FM_FIXED_HZ_MIN, FM_FIXED_HZ_MAX);
+            } else {
+                float r = v->op_ratio[op] + FM_FINE_HZ * (float)delta / FM_A4_HZ;
+                v->op_ratio[op] = SEQ_CLAMP_F32(r, FM_RATIO_MIN, FM_RATIO_MAX);
+            }
+            break;
+        case FM_FIELD_LEVEL: {
+            float lvl = v->op_level[op] + (float)delta * FM_LEVEL_STEP;
+            v->op_level[op] = SEQ_CLAMP_F32(lvl, 0.0f, 1.0f);
+            break;
+        }
+        case FM_FIELD_T1: case FM_FIELD_T2: case FM_FIELD_T3: case FM_FIELD_T4: {
+            uint8_t s = (uint8_t)(field - FM_FIELD_T1);
+            env->time_ms[s] = fm_step_time(env->time_ms[s], delta, fm_time_min(s), VOICE_ENV_TIME_MAX_MS);
+            break;
+        }
+        case FM_FIELD_L1: case FM_FIELD_L2: case FM_FIELD_L3: case FM_FIELD_L4: {
+            uint8_t s = (uint8_t)(field - FM_FIELD_L1);
+            env->level[s] = (uint8_t)SEQ_CLAMP_INT((int)env->level[s] + delta, 0, FM_EG_LEVEL_MAX);
+            break;
+        }
+        default:
+            break;
+    }
+}
+
+bool fm_voice_toggle_fixed(fm_voice_t *v, uint8_t op)
+{
+    if (op >= FM_NUM_OPS) return false;
+    uint8_t bit = (uint8_t)(1u << op);
+    if (v->op_fixed & bit) {
+        float r = v->op_fixed_hz[op] / FM_A4_HZ;
+        v->op_ratio[op] = SEQ_CLAMP_F32(r, FM_RATIO_MIN, FM_RATIO_MAX);
+        v->op_fixed = (uint8_t)(v->op_fixed & ~bit);
+        return false;
+    }
+    float hz = FM_A4_HZ * v->op_ratio[op];
+    v->op_fixed_hz[op] = SEQ_CLAMP_F32(hz, FM_FIXED_HZ_MIN, FM_FIXED_HZ_MAX);
+    v->op_fixed = (uint8_t)(v->op_fixed | bit);
+    return true;
+}
+
+static float fm_clamp_f32(float x, float lo, float hi, float dflt)
+{
+    if (!isfinite(x)) return dflt;
+    return SEQ_CLAMP_F32(x, lo, hi);
+}
+
+void fm_voice_clamp(fm_voice_t *v)
+{
+    if (!v) return;
+    const uint8_t all = (uint8_t)((1u << FM_NUM_OPS) - 1u);
+    v->op_fixed = (uint8_t)(v->op_fixed & all);
+    v->op_mute  = (uint8_t)(v->op_mute & all);
+    v->feedback = fm_clamp_f32(v->feedback, 0.0f, FM_FEEDBACK_MAX, 0.0f);
+    for (uint8_t i = 0; i < FM_NUM_OPS; i++) {
+        fm_op_env_t *env = &v->op_env[i];
+        v->op_ratio[i]    = fm_clamp_f32(v->op_ratio[i], FM_RATIO_MIN, FM_RATIO_MAX, 1.0f);
+        v->op_fixed_hz[i] = fm_clamp_f32(v->op_fixed_hz[i], FM_FIXED_HZ_MIN, FM_FIXED_HZ_MAX,
+                                         FM_FIXED_HZ_DEFAULT);
+        v->op_level[i]    = fm_clamp_f32(v->op_level[i], 0.0f, 1.0f, 0.0f);
+        for (uint8_t s = 0; s < 4u; s++) {
+            env->time_ms[s] = (uint16_t)SEQ_CLAMP_U32(env->time_ms[s], fm_time_min(s),
+                                                      VOICE_ENV_TIME_MAX_MS);
+            if (env->level[s] > FM_EG_LEVEL_MAX) env->level[s] = FM_EG_LEVEL_MAX;
+        }
+        if (env->eg_type > ENVELOPE_TRUE_EXPONENTIAL) env->eg_type = ENVELOPE_DX7;
+    }
+    if (v->fb_op != FM_OP_NONE && v->fb_op >= FM_NUM_OPS) v->fb_op = FM_OP_NONE;
+    if (v->algorithm != FM_ALGO_CUSTOM && v->algorithm >= amy_num_algorithms) v->algorithm = 1;
+    fm_program_t p;
+    if (!fm_graph_compile(v->op_targets, v->fb_op, &p)) {
+        if (v->algorithm == FM_ALGO_CUSTOM) v->algorithm = 1;
+        fm_voice_seed_custom(v);
+    }
+}

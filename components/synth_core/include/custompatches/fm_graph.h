@@ -64,6 +64,20 @@ bool fm_graph_is_acyclic(const uint8_t targets[FM_GRAPH_OPS]);
 bool fm_graph_compile(const uint8_t targets[FM_GRAPH_OPS], uint8_t fb_op,
                       fm_program_t *out);
 
+/* One render slot of a program in readable form, with the two buses as they
+ * stand after it. Bus contents are operator bits (slot_op applied). */
+typedef struct {
+    uint8_t in_bus;         /* bus read: 0 none, 1, 2 */
+    uint8_t out_bus;        /* bus written: 0 = the voice output, 1, 2 */
+    bool    add;            /* sums onto out_bus instead of replacing it */
+    bool    fb;             /* the self-feedback operator */
+    uint8_t bus1, bus2;     /* operators summed on each bus after this slot */
+} fm_slot_trace_t;
+
+/* Walk a program slot by slot: the reading of the bytes fm_graph_decode()
+ * uses, kept per slot. Any bytes are accepted. */
+void fm_graph_trace(const fm_program_t *prog, fm_slot_trace_t out[FM_GRAPH_OPS]);
+
 #ifdef FM_GRAPH_STATS
 /* Host check only: search nodes used by the last fm_graph_compile(). */
 extern uint32_t fm_graph_stats_nodes;

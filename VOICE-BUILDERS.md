@@ -176,7 +176,7 @@ which is saved with the project.
 
 | File | Role |
 |---|---|
-| `components/synth_core/custompatches/fm_voice.c`, `include/custompatches/fm_voice.h` | The voice (`fm_voice_t`), its default, setters, and the events that push it to AMY |
+| `components/synth_core/custompatches/fm_voice.c`, `include/custompatches/fm_voice.h` | The voice (`fm_voice_t`), its default, setters, value ranges and edit steps, and the events that push it to AMY |
 | `components/synth_core/custompatches/fm_graph.c`, `include/custompatches/fm_graph.h` | Routing masks, cycle check, and the compiler from a custom topology to an AMY algorithm row |
 | `components/synth_core/custompatches/fm_presets.c` | The four fixed FM presets |
 | `components/synth_core/synth_ui/ui_screen_fm.c` | The screen: cursors, edits, link mode, view building |

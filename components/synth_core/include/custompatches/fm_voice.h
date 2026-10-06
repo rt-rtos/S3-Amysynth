@@ -141,6 +141,49 @@ bool fm_voice_set_fb_op(fm_voice_t *v, uint8_t fb_op);
  * were visited in between. Returns the new `algorithm` value. */
 uint8_t fm_voice_step_algorithm(fm_voice_t *v, int dir);
 
+/* ── Value ranges and the edit grid (no AMY traffic; the caller pushes) ────
+ * The range each value is held to and the step a control moves it in. Every
+ * editor of a voice goes through these, so a value one of them shows is one
+ * the others can reach. Any task; *v is the caller's to guard. */
+#define FM_RATIO_MIN     0.25f
+#define FM_RATIO_MAX     20.0f
+#define FM_FIXED_HZ_MIN  1.0f
+#define FM_FIXED_HZ_MAX  9772.0f
+#define FM_A4_HZ         440.0f     /* reference note of the fine step and of a ratio <-> fixed switch */
+#define FM_FINE_HZ       0.1f       /* fine step */
+#define FM_LEVEL_STEP    0.05f      /* op_level and feedback step */
+#define FM_FEEDBACK_MAX  1.2f
+#define FM_EG_LEVEL_MAX  99
+
+typedef enum {
+    FM_FIELD_COARSE,    /* ratio mode: the next curated ratio (0.5 .. 16), keeping the
+                         * offset from the nearest one as a factor; fixed mode: a semitone */
+    FM_FIELD_FINE,      /* FM_FINE_HZ, measured at A4 in ratio mode */
+    FM_FIELD_LEVEL,     /* FM_LEVEL_STEP, 0..1 */
+    FM_FIELD_T1, FM_FIELD_T2, FM_FIELD_T3, FM_FIELD_T4,  /* max(1, round(t * 0.08)) ms, recomputed
+                         * each step; held to what fm_voice pushes (voice_config.h VOICE_ENV_*) */
+    FM_FIELD_L1, FM_FIELD_L2, FM_FIELD_L3, FM_FIELD_L4,  /* 1, 0..FM_EG_LEVEL_MAX */
+    FM_FIELD_FEEDBACK,  /* FM_LEVEL_STEP, 0..FM_FEEDBACK_MAX; voice-level, op ignored */
+    FM_FIELD_COUNT
+} fm_field_t;
+
+/* Move one field by `delta` steps, clamped to its range. An operator index
+ * or field out of range leaves *v unchanged. */
+void fm_voice_step(fm_voice_t *v, uint8_t op, fm_field_t field, int delta);
+
+/* Switch operator op between ratio and fixed mode, seeding the new mode from
+ * what the operator sounds at A4. Returns true when the operator left ratio
+ * mode: its push then needs FM_PUSH_OP_RESET(op). op out of range: false,
+ * *v unchanged. */
+bool fm_voice_toggle_fixed(fm_voice_t *v, uint8_t op);
+
+/* Force a voice from outside (a file, a host tool) into the ranges above;
+ * values already in range are kept. A non-finite float takes the default
+ * voice's value. An algorithm past the table becomes row 1. Custom fields
+ * that are not shape-valid, acyclic and compilable are reseeded from the
+ * table row (row 1 when the voice was on CUST), so the voice always pushes. */
+void fm_voice_clamp(fm_voice_t *v);
+
 #ifdef __cplusplus
 }
 #endif

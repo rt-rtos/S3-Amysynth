@@ -37,6 +37,25 @@ void fm_graph_decode(const uint8_t ops[FM_GRAPH_OPS], fm_graph_view_t *out)
     }
 }
 
+void fm_graph_trace(const fm_program_t *prog, fm_slot_trace_t out[FM_GRAPH_OPS])
+{
+    uint8_t on[3] = { 0, 0, 0 };        /* operators on bus 1/2 */
+    for (uint8_t s = 0; s < FM_GRAPH_OPS; s++) {
+        uint8_t b = prog->ops[s];
+        uint8_t bit = (uint8_t)(1u << (prog->slot_op[s] % FM_GRAPH_OPS));
+        fm_slot_trace_t *t = &out[s];
+        t->in_bus  = (b & IN_BUS_ONE) ? BUS_ONE : (b & IN_BUS_TWO) ? BUS_TWO : BUS_NONE;
+        t->out_bus = (b & OUT_BUS_ONE) ? BUS_ONE : (b & OUT_BUS_TWO) ? BUS_TWO : BUS_NONE;
+        t->add     = (b & OUT_BUS_ADD) != 0u;
+        t->fb      = (b & FB_IN) != 0u;
+        if (t->out_bus != BUS_NONE) {
+            on[t->out_bus] = t->add ? (uint8_t)(on[t->out_bus] | bit) : bit;
+        }
+        t->bus1 = on[BUS_ONE];
+        t->bus2 = on[BUS_TWO];
+    }
+}
+
 #define ALL_OPS ((uint8_t)((1u << FM_GRAPH_OPS) - 1u))
 
 #ifdef FM_GRAPH_STATS

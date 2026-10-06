@@ -4,7 +4,6 @@
 #include "custompatches/fm_voice.h"
 #include "synth_ui/eg_shape.h"
 #include "amy.h"           /* ENVELOPE_DX7 */
-#include "voice_config.h"  /* VOICE_ENV_* clamps */
 #include "seq_clamp.h"
 #include <math.h>
 #include <stdio.h>
@@ -31,23 +30,6 @@
  * click, never in the per-tick view build: failing compiles are the costly
  * ones. Controls: CONTROLS.md. */
 
-/* Curated DX7-style harmonic ratios plus a few inharmonic ones, kept short
- * enough to encoder through. A coarse step moves to the neighbour of the
- * nearest entry and keeps the fine offset from it as a factor. */
-static const float s_fm_ratio_steps[] = {
-    0.5f, 1.0f, 1.5f, 2.0f, 2.5f, 3.0f, 3.5f, 4.0f, 5.0f,
-    6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f, 14.0f, 16.0f,
-};
-#define FM_RATIO_STEP_COUNT ((int)(sizeof(s_fm_ratio_steps) / sizeof(s_fm_ratio_steps[0])))
-
-#define FM_RATIO_MIN     0.25f
-#define FM_RATIO_MAX     20.0f
-#define FM_FIXED_HZ_MIN  1.0f
-#define FM_FIXED_HZ_MAX  9772.0f
-#define FM_A4_HZ         440.0f
-#define FM_FINE_HZ       0.1f       /* fine step per detent */
-#define FM_EG_LEVEL_MAX  99
-
 static uint8_t s_fm_page     = 0;
 static uint8_t s_fm_cursor   = FM_CUR_OP_BASE + 5;   /* start on OP1 */
 static uint8_t s_fm_selected = 5;
@@ -61,18 +43,6 @@ static uint8_t s_fm_link_cursor = 0;      /* box index 0..5 */
 static uint8_t s_fm_link_count  = 0;      /* successful clicks since linking started */
 static uint8_t s_fm_link_msg    = FM_LINK_MSG_NONE;
 static uint8_t s_fm_link_bad    = 0;      /* bit t: a click on box t would be refused */
-
-static int fm_ratio_nearest_index(float ratio)
-{
-    int best = 0;
-    float best_d = 1e9f;
-    for (int i = 0; i < FM_RATIO_STEP_COUNT; i++) {
-        float d = ratio - s_fm_ratio_steps[i];
-        if (d < 0) d = -d;
-        if (d < best_d) { best_d = d; best = i; }
-    }
-    return best;
-}
 
 static bool fm_op_is_fixed(uint8_t op)
 {
@@ -290,99 +260,41 @@ static void fm_edit_target(uint8_t op, int delta)
     }
 }
 
-/* Coarse frequency: ratio mode walks the curated list, fixed mode moves in
- * semitones. */
-static void fm_edit_coarse(uint8_t op, int delta)
+/* One field by `delta` detents on the grid of fm_voice.h, then the push. */
+static void fm_step(uint8_t op, fm_field_t field, int delta)
 {
-    if (fm_op_is_fixed(op)) {
-        float hz = s_fm_voice.op_fixed_hz[op] * exp2f((float)delta / 12.0f);
-        s_fm_voice.op_fixed_hz[op] = SEQ_CLAMP_F32(hz, FM_FIXED_HZ_MIN, FM_FIXED_HZ_MAX);
-    } else {
-        float ratio = s_fm_voice.op_ratio[op];
-        int cur = fm_ratio_nearest_index(ratio);
-        int next = SEQ_CLAMP_INT(cur + delta, 0, FM_RATIO_STEP_COUNT - 1);
-        float r = s_fm_ratio_steps[next] * (ratio / s_fm_ratio_steps[cur]);
-        s_fm_voice.op_ratio[op] = SEQ_CLAMP_F32(r, FM_RATIO_MIN, FM_RATIO_MAX);
-    }
-    sequencer_core_fm_voice_changed(op);
+    fm_voice_step(&s_fm_voice, op, field, delta);
+    sequencer_core_fm_voice_changed(field == FM_FIELD_FEEDBACK ? FM_PUSH_ROUTING : op);
 }
 
-/* Fine frequency: FM_FINE_HZ per detent, measured at A4 in ratio mode. */
-static void fm_edit_fine(uint8_t op, int delta)
-{
-    if (fm_op_is_fixed(op)) {
-        float hz = s_fm_voice.op_fixed_hz[op] + FM_FINE_HZ * (float)delta;
-        s_fm_voice.op_fixed_hz[op] = SEQ_CLAMP_F32(hz, FM_FIXED_HZ_MIN, FM_FIXED_HZ_MAX);
-    } else {
-        float r = s_fm_voice.op_ratio[op] + FM_FINE_HZ * (float)delta / FM_A4_HZ;
-        s_fm_voice.op_ratio[op] = SEQ_CLAMP_F32(r, FM_RATIO_MIN, FM_RATIO_MAX);
-    }
-    sequencer_core_fm_voice_changed(op);
-}
-
-/* RAT <-> FIX, seeding the new mode from what the operator sounds at A4.
- * Leaving ratio mode needs the osc reset (FM_PUSH_OP_RESET, fm_voice.h). */
+/* RAT <-> FIX. Leaving ratio mode needs the osc reset (FM_PUSH_OP_RESET,
+ * fm_voice.h). */
 static void fm_toggle_fixed(uint8_t op)
 {
-    uint8_t bit = (uint8_t)(1u << op);
-    if (fm_op_is_fixed(op)) {
-        float r = s_fm_voice.op_fixed_hz[op] / FM_A4_HZ;
-        s_fm_voice.op_ratio[op] = SEQ_CLAMP_F32(r, FM_RATIO_MIN, FM_RATIO_MAX);
-        s_fm_voice.op_fixed = (uint8_t)(s_fm_voice.op_fixed & ~bit);
-        sequencer_core_fm_voice_changed(op);
-    } else {
-        float hz = FM_A4_HZ * s_fm_voice.op_ratio[op];
-        s_fm_voice.op_fixed_hz[op] = SEQ_CLAMP_F32(hz, FM_FIXED_HZ_MIN, FM_FIXED_HZ_MAX);
-        s_fm_voice.op_fixed = (uint8_t)(s_fm_voice.op_fixed | bit);
-        sequencer_core_fm_voice_changed(FM_PUSH_OP_RESET(op));
-    }
-}
-
-/* Segment time: max(1, round(t * 0.08)) ms per detent, recomputed each
- * detent, clamped to what fm_voice pushes so the display stays honest. */
-static uint16_t fm_step_time(uint16_t t, int delta, uint32_t lo, uint32_t hi)
-{
-    int32_t v = (int32_t)t;
-    int32_t dir = (delta > 0) ? 1 : -1;
-    int n = (delta > 0) ? delta : -delta;
-    for (int i = 0; i < n; i++) {
-        int32_t s = (int32_t)((float)v * 0.08f + 0.5f);
-        if (s < 1) s = 1;
-        v += dir * s;
-        v = SEQ_CLAMP_INT(v, (int32_t)lo, (int32_t)hi);
-    }
-    return (uint16_t)v;
+    bool reset = fm_voice_toggle_fixed(&s_fm_voice, op);
+    sequencer_core_fm_voice_changed(reset ? FM_PUSH_OP_RESET(op) : op);
 }
 
 static void fm_edit_page_freq_eg(int delta)
 {
     uint8_t op = s_fm_selected;
-    fm_op_env_t *env = &s_fm_voice.op_env[op];
     switch (s_fm2_cursor) {
         case FM2_CUR_OP:
             /* Label order OP1..OP6 is index 5..0. */
             s_fm_selected = (uint8_t)SEQ_CLAMP_INT((int)s_fm_selected - delta, 0, FM_NUM_OPS - 1);
             break;
         case FM2_CUR_COARSE:
-            fm_edit_coarse(op, delta);
+            fm_step(op, FM_FIELD_COARSE, delta);
             break;
         case FM2_CUR_FINE:
-            fm_edit_fine(op, delta);
+            fm_step(op, FM_FIELD_FINE, delta);
             break;
-        case FM2_CUR_T1: case FM2_CUR_T2: case FM2_CUR_T3: case FM2_CUR_T4: {
-            uint8_t s = (uint8_t)((s_fm2_cursor - FM2_CUR_T1) / 2u);
-            uint32_t lo = (s == 0u) ? VOICE_ENV_ATTACK_MIN_MS
-                        : (s == 3u) ? VOICE_ENV_RELEASE_MIN_MS : 0u;
-            env->time_ms[s] = fm_step_time(env->time_ms[s], delta, lo, VOICE_ENV_TIME_MAX_MS);
-            sequencer_core_fm_voice_changed(op);
+        case FM2_CUR_T1: case FM2_CUR_T2: case FM2_CUR_T3: case FM2_CUR_T4:
+            fm_step(op, (fm_field_t)(FM_FIELD_T1 + (s_fm2_cursor - FM2_CUR_T1) / 2u), delta);
             break;
-        }
-        case FM2_CUR_L1: case FM2_CUR_L2: case FM2_CUR_L3: case FM2_CUR_L4: {
-            uint8_t s = (uint8_t)((s_fm2_cursor - FM2_CUR_L1) / 2u);
-            env->level[s] = (uint8_t)SEQ_CLAMP_INT((int)env->level[s] + delta, 0, FM_EG_LEVEL_MAX);
-            sequencer_core_fm_voice_changed(op);
+        case FM2_CUR_L1: case FM2_CUR_L2: case FM2_CUR_L3: case FM2_CUR_L4:
+            fm_step(op, (fm_field_t)(FM_FIELD_L1 + (s_fm2_cursor - FM2_CUR_L1) / 2u), delta);
             break;
-        }
         default:
             break;
     }
@@ -412,23 +324,17 @@ bool synth_ui_fm_handle_encoder(int delta)
         uint8_t op = s_fm_selected;
         switch (s_fm_cursor) {
             case FM_CUR_RATIO:
-                fm_edit_coarse(op, delta);
+                fm_step(op, FM_FIELD_COARSE, delta);
                 break;
-            case FM_CUR_LEVEL: {
-                float lvl = s_fm_voice.op_level[op] + (float)delta * 0.05f;
-                s_fm_voice.op_level[op] = SEQ_CLAMP_F32(lvl, 0.0f, 1.0f);
-                sequencer_core_fm_voice_changed(op);
+            case FM_CUR_LEVEL:
+                fm_step(op, FM_FIELD_LEVEL, delta);
                 break;
-            }
             case FM_CUR_TO:
                 fm_edit_target(op, delta);
                 break;
-            case FM_CUR_FB: {
-                float fb = s_fm_voice.feedback + (float)delta * 0.05f;
-                s_fm_voice.feedback = SEQ_CLAMP_F32(fb, 0.0f, 1.2f);
-                sequencer_core_fm_voice_changed(FM_PUSH_ROUTING);
+            case FM_CUR_FB:
+                fm_step(op, FM_FIELD_FEEDBACK, delta);
                 break;
-            }
             case FM_CUR_ALGO:
                 fm_voice_step_algorithm(&s_fm_voice, delta);
                 sequencer_core_fm_voice_changed(FM_PUSH_ROUTING);
