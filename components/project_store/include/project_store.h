@@ -18,6 +18,10 @@ extern "C" {
 #define PROJECT_MAGIC      0x50594D41u /* "AMYP" little-endian */
 #define PROJECT_FMT_VERSION 1
 
+/* Characters a project name is made of (the Projects screen's name editor
+ * and project_store_name_from() both draw from this set). */
+#define PROJECT_NAME_CHARS "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 -"
+
 typedef struct {
     bool     used;
     char     name[PROJECT_NAME_LEN];
@@ -26,7 +30,9 @@ typedef struct {
 } project_slot_info_t;
 
 /* Query slot metadata (absent = used=false, present = used=true + name/size/version).
- * Invalid header: used=true, name="<corrupt>". Returns true unless I/O fails. */
+ * Invalid header: used=true, name="<corrupt>". Returns true unless I/O fails.
+ * Context: any task; reads concurrent with another task's writes are
+ * serialized by esp_littlefs's own filesystem lock. */
 bool project_store_slot_info(uint8_t slot, project_slot_info_t *info);
 
 /* Atomic: writes <base>/Pnn.tmp, fsync, rename to <base>/Pnn.amp. */
@@ -57,6 +63,16 @@ bool project_store_rename(uint8_t slot, const char *new_name);
 
 /* Delete stale *.tmp files. Call after mount. */
 void project_store_cleanup_tmp(void);
+
+/* Map a free-form string (typically a file name) to a project name. In
+ * order: keep the part after the last '/' or '\'; drop a trailing ".amp"
+ * (any case); ASCII lowercase -> uppercase; any character not in
+ * PROJECT_NAME_CHARS -> space; collapse runs of spaces; trim; keep at most
+ * PROJECT_NAME_LEN - 1 characters; trim trailing spaces again; empty ->
+ * "IMPORT". in may be NULL (-> "IMPORT"); out is always NUL-terminated.
+ * Context: any; pure function, no FS access, present with or without
+ * CONFIG_SYNTH_PROJECT_STORE. */
+void project_store_name_from(const char *in, char out[PROJECT_NAME_LEN]);
 
 #if CONFIG_SYNTH_PROJECT_SELFTEST
 /* TLV round-trip + slot round-trip selftest. */

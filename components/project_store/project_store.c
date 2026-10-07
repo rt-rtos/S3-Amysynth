@@ -3,6 +3,7 @@
 #include "project_tlv.h"
 
 #include "sdkconfig.h"
+#include <string.h>
 #if CONFIG_SYNTH_PROJECT_STORE
 
 #include "esp_heap_caps.h"
@@ -319,3 +320,32 @@ void project_store_selftest(void)
 #endif
 
 #endif /* CONFIG_SYNTH_PROJECT_STORE */
+
+void project_store_name_from(const char *in, char out[PROJECT_NAME_LEN])
+{
+    size_t n = 0;
+    if (in) {
+        for (const char *p = in; *p; p++) {
+            if (*p == '/' || *p == '\\') in = p + 1;
+        }
+        size_t len = strlen(in);
+        if (len >= 4 && in[len - 4] == '.'
+            && (in[len - 3] | 0x20) == 'a' && (in[len - 2] | 0x20) == 'm'
+            && (in[len - 1] | 0x20) == 'p') {
+            len -= 4;
+        }
+        for (size_t i = 0; i < len && n < PROJECT_NAME_LEN - 1; i++) {
+            char c = in[i];
+            if (c >= 'a' && c <= 'z') c = (char)(c - 'a' + 'A');
+            if (strchr(PROJECT_NAME_CHARS, c) == NULL) c = ' ';
+            if (c == ' ' && (n == 0 || out[n - 1] == ' ')) continue;
+            out[n++] = c;
+        }
+        while (n > 0 && out[n - 1] == ' ') n--;
+    }
+    if (n == 0) {
+        strcpy(out, "IMPORT");
+        return;
+    }
+    out[n] = '\0';
+}

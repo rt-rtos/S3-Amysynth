@@ -52,6 +52,7 @@
 #include "live_play.h"
 #endif
 #include "harness.h"
+#include "project_xfer.h"
 #include "input_dispatch.h"
 
 #ifndef CONFIG_AMYSYNTH_INPUT_DIAGNOSTICS
@@ -604,15 +605,19 @@ void app_main(void)
         my_buttons_register_cb(main_button_event_cb, NULL);
     }
 
-    // Serial harness last among input paths: hooks need the button queue
-    // above; degrade to "harness absent" on any failure. Compiles to nothing
-    // when the harness is off (harness_init is a no-op stub there).
+    // UART0 input, last among input paths: project_xfer's reader takes
+    // project-transfer lines and hands the rest to the serial harness, whose
+    // hooks need the button queue above. Degrade to "no transfer, no
+    // harness" on failure. The harness parts compile to nothing when it is
+    // off (harness_handle_line and harness_init are no-op stubs there).
     static const harness_hooks_t s_harness_hooks = {
         .inject_button        = harness_inject_button_hook,
         .inject_encoder_steps = harness_inject_encoder_hook,
     };
-    if (harness_init(&s_harness_hooks) != ESP_OK) {
-        ESP_LOGW(TAG, "serial harness init failed; continuing without it");
+    if (project_xfer_init(harness_handle_line) == ESP_OK) {
+        harness_init(&s_harness_hooks);
+    } else {
+        ESP_LOGW(TAG, "UART0 reader init failed; no project transfer or harness");
     }
 
     // Defer rotary encoder init to a task to avoid early-boot conflicts.

@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#include "sdkconfig.h"
 #include "u8g2.h"
 #include "display_seq.h"
 
@@ -77,6 +78,52 @@ void synth_ui_set_patch_select_mode(bool held);
  * task context after synth_ui_init(); not ISR-safe. No menu row shows a
  * status for it. Only with CONFIG_SYNTH_PROJECT_STORE. */
 bool synth_ui_projects_request_template(size_t i);
+
+/* Store a whole project file (an .amp image, e.g. received by project_xfer)
+ * in a slot, on the UI task. */
+typedef enum {
+    SYNTH_UI_IMPORT_OK = 0,
+    SYNTH_UI_IMPORT_NO_FREE_SLOT,
+    SYNTH_UI_IMPORT_SLOT_USED,
+    SYNTH_UI_IMPORT_WRITE_FAILED,
+} synth_ui_import_result_t;
+
+typedef void (*synth_ui_import_done_fn)(synth_ui_import_result_t r,
+                                        uint8_t slot, const char *name,
+                                        void *ctx);
+
+/* Obligations: img/len a whole project file that project_store_check_image()
+ * accepts, heap-allocated; slot -1 (first free) or
+ * 0..CONFIG_SYNTH_PROJECT_MAX_SLOTS-1; name already mapped
+ * (project_store_name_from; copied, not kept); done non-NULL. Any task after
+ * synth_ui_init(); not ISR-safe.
+ * Returns true: the request is queued and img now belongs to synth_ui. On its
+ * next frame, after the Projects menu's own load/save, the UI task picks the
+ * slot (the first free one by project_store_slot_info(), or the given one,
+ * refused if used unless force), writes it with project_store_write(slot,
+ * name, payload, plen), frees img, marks the Projects list for redraw, then
+ * calls done(result, slot, name, ctx) once, on the UI task. Slot choice
+ * happens there, so a save queued from the menu in the same frame cannot race
+ * it.
+ * Returns false (an import is already queued, or the queue does not exist):
+ * nothing is queued and img stays the caller's. Always false without
+ * CONFIG_SYNTH_PROJECT_STORE. */
+#if CONFIG_SYNTH_PROJECT_STORE
+bool synth_ui_projects_request_import(uint8_t *img, size_t len, int slot,
+                                      bool force, const char *name,
+                                      synth_ui_import_done_fn done, void *ctx);
+#else
+static inline bool synth_ui_projects_request_import(uint8_t *img, size_t len,
+                                                    int slot, bool force,
+                                                    const char *name,
+                                                    synth_ui_import_done_fn done,
+                                                    void *ctx)
+{
+    (void)img; (void)len; (void)slot; (void)force; (void)name; (void)done;
+    (void)ctx;
+    return false;
+}
+#endif
 
 /* ── Menu overlay ────────────────────────────────────────────────────────
  * A modal overlay above the active screen (below the graph editor); while

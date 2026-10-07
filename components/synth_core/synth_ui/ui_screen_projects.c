@@ -8,6 +8,9 @@
 #include "project_snapshot.h"
 #include "project_templates.h"
 #include "esp_log.h"
+#include "esp_heap_caps.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
@@ -32,10 +35,9 @@ typedef enum { PA_LOAD = 0, PA_SAVE, PA_REN, PA_DEL, PA_EXIT, PA_COUNT } proj_ac
 #define PROJ_ROW_TEMPLATES 2   /* "Templates.." */
 #define PROJ_ROW_SLOT0     3   /* first slot row */
 
-/* Encoder alphabet for the rename editor: A-Z, 0-9, space, '-', then the
- * '#' end sentinel that commits the name early. */
-static const char PROJ_NAME_CHARS[] =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 -#";
+/* Encoder alphabet for the rename editor: the name set, then the '#' end
+ * sentinel that commits the name early. */
+static const char PROJ_EDIT_CHARS[] = PROJECT_NAME_CHARS "#";
 
 static const char *TAG = "proj_menu";
 
@@ -138,8 +140,8 @@ static void fmt_rename_value(char *out, size_t outsz)
 static int char_index(char c)
 {
     if (c == '\0') c = ' ';
-    const char *p = strchr(PROJ_NAME_CHARS, c);
-    return p ? (int)(p - PROJ_NAME_CHARS) : 0;
+    const char *p = strchr(PROJ_EDIT_CHARS, c);
+    return p ? (int)(p - PROJ_EDIT_CHARS) : 0;
 }
 
 static void enter_rename(uint8_t slot)
@@ -332,10 +334,10 @@ void projects_menu_edit_value(uint8_t idx, int delta)
     if (dir == 0) return;
 
     if (s_renaming) {
-        int n = (int)(sizeof(PROJ_NAME_CHARS) - 1);
+        int n = (int)(sizeof(PROJ_EDIT_CHARS) - 1);
         int cur = char_index(s_name_buf[s_name_pos]);
         cur = ((cur + dir) % n + n) % n;
-        s_name_buf[s_name_pos] = PROJ_NAME_CHARS[cur];
+        s_name_buf[s_name_pos] = PROJ_EDIT_CHARS[cur];
         return;
     }
 
@@ -488,6 +490,80 @@ bool synth_ui_projects_request_template(size_t i)
     s_req_quiet = true;
     s_req       = PREQ_LOAD_TPL;
     return true;
+}
+
+/* File imports (synth_ui_projects_request_import, synth_ui.h): one request
+ * by value in a depth-1 queue, separate from the menu's s_req. */
+typedef struct {
+    uint8_t                *img;
+    size_t                  len;
+    int                     slot;
+    bool                    force;
+    char                    name[PROJECT_NAME_LEN];
+    synth_ui_import_done_fn done;
+    void                   *ctx;
+} proj_import_req_t;
+
+static QueueHandle_t s_import_q = NULL;
+
+void projects_import_init(void)
+{
+    if (s_import_q != NULL) return;
+    s_import_q = xQueueCreate(1, sizeof(proj_import_req_t));
+    if (s_import_q == NULL) ESP_LOGW(TAG, "import queue alloc failed");
+}
+
+bool synth_ui_projects_request_import(uint8_t *img, size_t len, int slot,
+                                      bool force, const char *name,
+                                      synth_ui_import_done_fn done, void *ctx)
+{
+    if (s_import_q == NULL) return false;
+    proj_import_req_t r = {
+        .img = img, .len = len, .slot = slot, .force = force,
+        .done = done, .ctx = ctx,
+    };
+    snprintf(r.name, sizeof(r.name), "%s", name ? name : "");
+    return xQueueSend(s_import_q, &r, 0) == pdTRUE;
+}
+
+/* Runs once per synth_ui_task frame, after projects_menu_service(): picks the
+ * slot, writes the imported file, and reports through the request's done. */
+void projects_import_service(void)
+{
+    proj_import_req_t r;
+    if (s_import_q == NULL || xQueueReceive(s_import_q, &r, 0) != pdTRUE) return;
+
+    const uint8_t *payload = NULL;
+    size_t plen = 0;
+    bool image_ok = project_store_check_image(r.img, r.len, &payload, &plen, NULL);
+
+    synth_ui_import_result_t res = SYNTH_UI_IMPORT_OK;
+    uint8_t slot = 0;
+    project_slot_info_t info;
+    if (r.slot < 0) {
+        res = SYNTH_UI_IMPORT_NO_FREE_SLOT;
+        for (uint8_t i = 0; i < CONFIG_SYNTH_PROJECT_MAX_SLOTS; i++) {
+            if (project_store_slot_info(i, &info) && !info.used) {
+                slot = i;
+                res  = SYNTH_UI_IMPORT_OK;
+                break;
+            }
+        }
+    } else {
+        slot = (uint8_t)r.slot;
+        if (project_store_slot_info(slot, &info) && info.used && !r.force) {
+            res = SYNTH_UI_IMPORT_SLOT_USED;
+        }
+    }
+    if (res == SYNTH_UI_IMPORT_OK
+        && !(image_ok && project_store_write(slot, r.name, payload, plen))) {
+        res = SYNTH_UI_IMPORT_WRITE_FAILED;
+    }
+
+    heap_caps_free(r.img);
+    s_dirty = true;
+    s_force_redraw = true;   /* an open Projects page shows the new slot now */
+    r.done(res, slot, r.name, r.ctx);
 }
 
 #endif /* CONFIG_SYNTH_PROJECT_STORE */

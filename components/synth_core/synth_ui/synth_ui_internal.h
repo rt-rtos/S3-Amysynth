@@ -275,6 +275,8 @@ bool     projects_menu_handle_click(uint8_t idx);
 void     projects_menu_edit_value(uint8_t idx, int delta);
 void     projects_menu_reset(void);
 void     projects_menu_service(void);   /* drains the deferred load/save */
+void     projects_import_init(void);    /* creates the import queue; before the UI task */
+void     projects_import_service(void); /* drains one queued file import */
 /* Rename-editor primitives, composed by the menu overlay's public
  * synth_ui_menu_rename_* hooks (which add the page-state gating). */
 bool     projects_menu_is_renaming(void);

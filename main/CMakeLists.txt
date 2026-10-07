@@ -3,7 +3,7 @@ idf_component_register(SRCS
     "input_dispatch.c"
     "render_clock.c"
     "render_clock_i2s.c"
-    PRIV_REQUIRES seq_clamp spi_flash esp_partition esp_driver_i2s esp_driver_i2c esp_adc esp_driver_uart esp_timer esp_driver_gptimer display rotary_encoder u8g2 synth_core usb_audio my_buttons project_store wireless diagnostics status_led harness
+    PRIV_REQUIRES seq_clamp spi_flash esp_partition esp_driver_i2s esp_driver_i2c esp_adc esp_driver_uart esp_timer esp_driver_gptimer display rotary_encoder u8g2 synth_core usb_audio my_buttons project_store wireless diagnostics status_led harness project_xfer
     REQUIRES amy
     INCLUDE_DIRS "." 
 )

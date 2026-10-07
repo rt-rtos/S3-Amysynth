@@ -158,6 +158,8 @@ static void ui_services(void)
      * (sequencer_core.h), after the drains above so pending structural
      * edits resolve before a load replaces them. */
     projects_menu_service();
+    /* File import queued by project_xfer (synth_ui.h). */
+    projects_import_service();
 #endif
 
     /* Bounce page redraw pump: the recorder and the clip slots advance on
@@ -403,6 +405,10 @@ void synth_ui_init(u8g2_t *u8g2)
     project_snapshot_selftest();
     sequencer_core_set_playing(true);
     seq_state.playing = true;
+#endif
+
+#if CONFIG_SYNTH_PROJECT_STORE
+    projects_import_init();
 #endif
 
     /* Pin to Core 0: the OLED refresh does blocking I2C and is not latency
