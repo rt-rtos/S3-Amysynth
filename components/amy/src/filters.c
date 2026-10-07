@@ -695,7 +695,7 @@ void parametric_eq_update(uint16_t bus) {
     eq->eq_coeffs[0][0] = EQ_COEF((g - 1.0f) * (1.0f + a) / 2.0f);
     eq->eq_coeffs[0][1] = EQ_COEF(-a);
     // Peak: F = (1 - A2)/2 = (1 + a)/2 (1 - z^-2) / (1 - cos w0 (1 - a) z^-1 - a z^-2).
-    // With t = sin(w0)/2 this is the RBJ Q 1 band-pass the old EQ used.
+    // With t = sin(w0)/2 this is dsps_biquad_gen_bpf_f32's band-pass at Q 1.
     float w0 = 2.0f * (float)M_PI * (float)EQ_CENTER_MED / (float)AMY_SAMPLE_RATE;
     g = MAX(EQ_GAIN_MIN, MIN(EQ_GAIN_MAX, S2F(eq->eq[1])));
     s = sqrtf(g);
