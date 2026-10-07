@@ -24,10 +24,15 @@ static project_xfer_line_fn s_other = NULL;
 static bool                 s_started = false;
 
 /* Replies go through printf: raw lines on the console UART, no ESP_LOG
- * prefix, so the host keys on "P<" lines regardless of interleaved logs. */
+ * prefix, so the host keys on "P<" lines regardless of interleaved logs.
+ * Console TX busy-waits on the FIFO (no UART driver on the TX side), so a
+ * get's data lines, ~17 ms each at 115200, would keep this task runnable
+ * for seconds and starve IDLE0 into the task watchdog; one tick after each
+ * lets it run. */
 static void reply_console(const char *line)
 {
     printf("%s\n", line);
+    if (strncmp(line, "P< d ", 5) == 0) vTaskDelay(1);
 }
 
 static bool is_xfer_line(const char *line)

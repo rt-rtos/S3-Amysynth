@@ -7,15 +7,18 @@ extern "C" {
 #endif
 
 /* Project file transfer: whole .amp project files (project_store.h layout)
- * sent to the device over UART0 and stored in a project slot. The core
- * (project_xfer.c) is the line protocol below and has no driver calls, so it
- * also builds on a host; project_xfer_uart.c is the device transport, the
- * UART0 reader. amp_xfer.py in this component is the host client.
+ * sent to the device over UART0 and stored in a project slot, or read back
+ * from one. The core (project_xfer.c) is the line protocol below and has no
+ * driver calls, so it also builds on a host; project_xfer_uart.c is the
+ * device transport, the UART0 reader. amp_xfer.py in this component is the
+ * host client.
  *
  * Protocol: line-based ASCII on UART0, beside console log output. Requests
  * start with "P>", replies with "P<"; a client keys on "P<" lines and ignores
- * the rest. Every request line gets exactly one reply line. The reply to the
- * last data line of a put comes from the UI task when the write has finished.
+ * the rest. Every request line gets exactly one final reply line ("P< ok
+ * ..." or "P< err ..."); ls and get send their slot or data lines before it.
+ * The reply to the last data line of a put comes from the UI task when the
+ * write has finished.
  *
  *   P> put <slot> <len> [<name>]  -> P< ok put ready <len>
  *        Starts a transfer, dropping any unfinished one. Pre-flight first
@@ -28,6 +31,13 @@ extern "C" {
  *   P> ls                         -> P< slot <n> <size> <ver> <name>
  *                                    per used slot (ver = fmt_version, name
  *                                    last), then P< ok ls <count>
+ *   P> get <slot>                 -> P< d <base64> per 144 bytes of the slot
+ *                                    file (header + payload, as stored), then
+ *                                    P< ok get <slot> <len> <name>
+ *        The client saves the bytes as "<name>.amp"; a put of that file
+ *        stores it again under the same name. No flow control: replies only
+ *        go out, and nothing is written while they do. Errors:
+ *        "P< err slot <n> empty", "P< err read failed".
  *
  * - put pre-flight, on the calling task with project_store_slot_info(): an
  *   explicit slot that is used and has no '!' -> "P< err slot <n> in use";
@@ -59,7 +69,7 @@ extern "C" {
  * Final results: "P< ok put <slot> <NAME>", "P< err no free slot",
  * "P< err slot <n> in use", "P< err write failed".
  * Other errors (the transfer is dropped where it says so):
- *   "P< err usage"                 bad put arguments
+ *   "P< err usage"                 bad put or get arguments
  *   "P< err too large"
  *   "P< err no memory"
  *   "P< err no transfer"           d without put
@@ -108,7 +118,8 @@ void project_xfer_line(const char *line, project_xfer_reply_fn reply);
  * "P>" goes to project_xfer_line() with a printf reply; any other non-empty
  * line goes to other (NULL: ignored), on the reader task. A line of
  * PROJECT_XFER_LINE_MAX or more characters is dropped whole; if it began
- * with "P>" the reply is "P< err line too long".
+ * with "P>" the reply is "P< err line too long". A get's data lines are
+ * paced one tick apart, so the reader yields Core 0 while it streams.
  *
  * Obligations: call once, from init, after synth_ui_init().
  * Guarantees: ESP_OK with the reader running; on failure an error is returned

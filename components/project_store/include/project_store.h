@@ -44,6 +44,15 @@ bool project_store_write(uint8_t slot, const char *name,
 bool project_store_read(uint8_t slot, uint8_t **out, size_t *out_len,
                         char name_out[PROJECT_NAME_LEN]);
 
+/* As project_store_read(), but *out holds the whole slot file, the 32-byte
+ * header followed by the payload, as stored and as
+ * project_store_check_image() accepts it; *out_len is its length. Same
+ * checks, same malloc'd (SPIRAM) buffer the caller frees; false with no
+ * buffer on any failure. Context: any task; reads concurrent with another
+ * task's writes are serialized by esp_littlefs's own filesystem lock. */
+bool project_store_read_file(uint8_t slot, uint8_t **out, size_t *out_len,
+                             char name_out[PROJECT_NAME_LEN]);
+
 /* Validate an in-memory project image (32-byte header + payload, the layout
  * of a slot file) with the same header checks as project_store_read(), plus
  * len == 32 + payload_len and CRC32 over the payload.

@@ -242,6 +242,64 @@ static void cmd_ls(project_xfer_reply_fn reply)
     reply(out);
 }
 
+static const char B64_CHARS[] =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+/* Encode n (1..B64_BYTES_MAX) bytes; out takes 4 * ceil(n / 3) + 1 chars. */
+static void b64_encode(const uint8_t *in, size_t n, char *out)
+{
+    size_t o = 0;
+    for (size_t i = 0; i < n; i += 3) {
+        uint32_t v = (uint32_t)in[i] << 16;
+        if (i + 1 < n) v |= (uint32_t)in[i + 1] << 8;
+        if (i + 2 < n) v |= in[i + 2];
+        out[o++] = B64_CHARS[(v >> 18) & 63];
+        out[o++] = B64_CHARS[(v >> 12) & 63];
+        out[o++] = i + 1 < n ? B64_CHARS[(v >> 6) & 63] : '=';
+        out[o++] = i + 2 < n ? B64_CHARS[v & 63] : '=';
+    }
+    out[o] = '\0';
+}
+
+/* "<slot>": the slot file as d lines, then the ok line. */
+static void cmd_get(const char *args, project_xfer_reply_fn reply)
+{
+    char out[REPLY_MAX];
+    const char *p = skip_spaces(args);
+    unsigned slot = 0;
+    if (!(*p >= '0' && *p <= '9')) { reply("P< err usage"); return; }
+    while (*p >= '0' && *p <= '9' && slot < CONFIG_SYNTH_PROJECT_MAX_SLOTS) {
+        slot = slot * 10u + (unsigned)(*p++ - '0');
+    }
+    if (slot >= CONFIG_SYNTH_PROJECT_MAX_SLOTS || *skip_spaces(p) != '\0') {
+        reply("P< err usage");
+        return;
+    }
+
+    project_slot_info_t info;
+    if (!project_store_slot_info((uint8_t)slot, &info) || !info.used) {
+        snprintf(out, sizeof(out), "P< err slot %u empty", slot);
+        reply(out);
+        return;
+    }
+    uint8_t *img = NULL;
+    size_t len = 0;
+    char name[PROJECT_NAME_LEN];
+    if (!project_store_read_file((uint8_t)slot, &img, &len, name)) {
+        reply("P< err read failed");
+        return;
+    }
+    char line[5 + B64_LINE_MAX + 1] = "P< d ";
+    for (size_t off = 0; off < len; off += B64_BYTES_MAX) {
+        size_t n = len - off < B64_BYTES_MAX ? len - off : B64_BYTES_MAX;
+        b64_encode(img + off, n, line + 5);
+        reply(line);
+    }
+    heap_caps_free(img);
+    snprintf(out, sizeof(out), "P< ok get %u %u %s", slot, (unsigned)len, name);
+    reply(out);
+}
+
 /* Match a command word: cmd followed by the end of the line or a space. */
 static const char *match_cmd(const char *p, const char *cmd)
 {
@@ -264,6 +322,8 @@ void project_xfer_line(const char *line, project_xfer_reply_fn reply)
         reply("P< ok abort");
     } else if (match_cmd(p, "ls") != NULL) {
         cmd_ls(reply);
+    } else if ((args = match_cmd(p, "get")) != NULL) {
+        cmd_get(args, reply);
     } else {
         reply("P< err unknown command");
     }

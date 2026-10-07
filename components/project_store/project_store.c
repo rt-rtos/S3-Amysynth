@@ -97,8 +97,10 @@ bool project_store_write(uint8_t slot, const char *name,
     return true;
 }
 
-bool project_store_read(uint8_t slot, uint8_t **out, size_t *out_len,
-                        char name_out[PROJECT_NAME_LEN])
+/* Read and validate a slot file into a SPIRAM buffer: the payload alone, or
+ * (whole) the header followed by the payload, the file as stored. */
+static bool slot_load(uint8_t slot, bool whole, uint8_t **out, size_t *out_len,
+                      char name_out[PROJECT_NAME_LEN])
 {
     if (!project_fs_ok() || slot >= CONFIG_SYNTH_PROJECT_MAX_SLOTS || !out)
         return false;
@@ -115,11 +117,12 @@ bool project_store_read(uint8_t slot, uint8_t **out, size_t *out_len,
     char nm[PROJECT_NAME_LEN] = {0};
     ok = ok && hdr_decode(hdr, &payload_len, &crc, nm);
 
+    const size_t lead = whole ? PROJECT_HDR_LEN : 0;
     uint8_t *buf = NULL;
     if (ok) {
-        buf = heap_caps_malloc(payload_len, MALLOC_CAP_SPIRAM);
-        ok = buf && fread(buf, 1, payload_len, f) == payload_len
-                 && project_crc32(buf, payload_len) == crc;
+        buf = heap_caps_malloc(lead + payload_len, MALLOC_CAP_SPIRAM);
+        ok = buf && fread(buf + lead, 1, payload_len, f) == payload_len
+                 && project_crc32(buf + lead, payload_len) == crc;
     }
     fclose(f);
 
@@ -128,10 +131,23 @@ bool project_store_read(uint8_t slot, uint8_t **out, size_t *out_len,
         ESP_LOGW(TAG, "slot %u invalid/corrupt - refused", slot);
         return false;
     }
+    if (whole) memcpy(buf, hdr, PROJECT_HDR_LEN);
     *out = buf;
-    if (out_len) *out_len = payload_len;
+    if (out_len) *out_len = lead + payload_len;
     if (name_out) memcpy(name_out, nm, PROJECT_NAME_LEN);
     return true;
+}
+
+bool project_store_read(uint8_t slot, uint8_t **out, size_t *out_len,
+                        char name_out[PROJECT_NAME_LEN])
+{
+    return slot_load(slot, false, out, out_len, name_out);
+}
+
+bool project_store_read_file(uint8_t slot, uint8_t **out, size_t *out_len,
+                             char name_out[PROJECT_NAME_LEN])
+{
+    return slot_load(slot, true, out, out_len, name_out);
 }
 
 bool project_store_check_image(const uint8_t *img, size_t len,
@@ -298,6 +314,10 @@ bool project_store_write(uint8_t slot, const char *name,
 
 bool project_store_read(uint8_t slot, uint8_t **out, size_t *out_len,
                         char name_out[PROJECT_NAME_LEN])
+{ (void)slot; (void)out; (void)out_len; (void)name_out; return false; }
+
+bool project_store_read_file(uint8_t slot, uint8_t **out, size_t *out_len,
+                             char name_out[PROJECT_NAME_LEN])
 { (void)slot; (void)out; (void)out_len; (void)name_out; return false; }
 
 bool project_store_check_image(const uint8_t *img, size_t len,
