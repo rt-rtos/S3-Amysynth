@@ -603,7 +603,7 @@ Re-vendor note: done on the v1.2.104 sync - `zero()`/`copy()`,
 `malloc_caps_block`, and the aligned FM scratch all arrived with upstream;
 only the rows above remain ours.
 
-### `filters.c` + `amy.c` + `amy.h` - shelving bus EQ (upstream PR candidate)
+### `filters.c` + `amy.c` + `amy.h` - shelving bus EQ (upstream PR #1217, open)
 
 Upstream's EQ sums a negated 800 Hz LPF, a 2500 Hz BPF and a 7000 Hz HPF
 (`parametric_eq_process`), and `amy_fill_buffer` runs it only when a band is
@@ -635,8 +635,9 @@ insns for low / mid / high, all zero-overhead loops, vs 90 insns (18 mul, 25
 loads, 10 stores, no ZOL) for the old fused loop. On target (amy-bench EQ
 variant family, LTO, stereo block): 13,559 cycles with three bands active and
 4,265 with one, vs 48,560 for the old EQ at any setting; seven candidate
-shapes were priced in the same run and none was cheaper. Shelves are 6 dB/oct: +15 dB low still adds +1.9 dB at 2.5 kHz. Not
-posted upstream.
+shapes were priced in the same run and none was cheaper. Shelves are 6 dB/oct: +15 dB low still adds +1.9 dB at 2.5 kHz.
+Upstream PR #1217 carries the same code with `AMY_NOINLINE` (absent from this
+vendor base) and the regenerated `tests/ref` wavs.
 
 **Rollback:** restore upstream `parametric_eq_process` (both variants) and the
 three `dsps_biquad_gen_*` calls in `filters_init`; drop `parametric_eq_update`
