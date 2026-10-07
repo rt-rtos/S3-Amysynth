@@ -486,7 +486,6 @@ void config_eq(uint16_t bus, SAMPLE eq_l, SAMPLE eq_m, SAMPLE eq_h) {
     amy_global.bus[bus]->eq.eq[0] = eq_l;
     amy_global.bus[bus]->eq.eq[1] = eq_m;
     amy_global.bus[bus]->eq.eq[2] = eq_h;
-    parametric_eq_update(bus);  // LOCAL EDIT (S3-Amysynth): shelving EQ
 }
 
 

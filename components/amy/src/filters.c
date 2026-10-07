@@ -685,7 +685,6 @@ static SAMPLE EQ_COEF(float f) { return 0.5f * f; }
 
 void parametric_eq_update(uint16_t bus) {
     eq_state_t *eq = &amy_global.bus[bus]->eq;
-    if (eq->eq_coeffs == NULL || eq->eq_delay == NULL) return;
     float g, s, t, a;
     // Low shelf: F = (1 + A1)/2 = (1 + a)/2 (1 + z^-1) / (1 + a z^-1).
     g = MAX(EQ_GAIN_MIN, MIN(EQ_GAIN_MAX, S2F(eq->eq[0])));
@@ -709,7 +708,7 @@ void parametric_eq_update(uint16_t bus) {
     s = sqrtf(g);
     t = tanf((float)M_PI * (float)EQ_CENTER_HIGH / (float)AMY_SAMPLE_RATE) * s;
     a = (t - 1.0f) / (t + 1.0f);
-    eq->eq_coeffs[2][0] = EQ_COEF((g - 1.0f) * (1.0f - a) / 8.0f);  // up to 2.2, stored /4
+    eq->eq_coeffs[2][0] = EQ_COEF((g - 1.0f) * (1.0f - a) / 8.0f);  // c up to 2.2 at +15 dB, stored /4
     eq->eq_coeffs[2][1] = EQ_COEF(-a);
     for (int b = 0; b < 3; ++b) {
         if (eq->eq[b] != F2S(1.0f)) continue;

@@ -614,8 +614,9 @@ band at -1 dB, engages a response with a 15-21 dB notch near 1 kHz and about
 shelf, a Q 1 peak (F is the old RBJ band-pass) and a first-order high shelf.
 Flat at 0 dB, monotonic, and +n/-n dB mirror (the allpass corner moves by
 sqrt(G), so each `EQ_CENTER_*` is the half-gain point). `parametric_eq_update`
-derives the coefficients from `eq.eq[]`; `config_eq`, the `EQ_L/M/H` deltas and
-`filters_init` call it. Gains are clamped to the documented -15..+15 dB, which
+derives the coefficients from `eq.eq[]`; `filters_init` and the `EQ_L/M/H`
+deltas call it (`config_eq` only runs from `bus_reset`, before `filters_init`).
+`eq.eq[]` keeps the requested gain; only the coefficients clamp. Gains are clamped to the documented -15..+15 dB, which
 keeps every coefficient inside Q31. A band at exactly 0 dB is skipped, and
 `parametric_eq_update` clears its state when its gain returns to 0 dB, so it
 starts clean when it comes back even if `amy_fill_buffer` skipped the whole EQ
