@@ -656,26 +656,25 @@ void filters_init(uint16_t bus) {
 
 
 // LOCAL EDIT (S3-Amysynth): shelving EQ, upstream PR candidate.
-// Each band is y = x + (G-1) F(x): a first-order low shelf at EQ_CENTER_LOW,
-// a Q 1 peak at EQ_CENTER_MED and a first-order high shelf at EQ_CENTER_HIGH,
-// in series.  F = (1 + A)/2 or (1 - A)/2 for an allpass A, so |y|^2 =
-// 1 + cos^2(phi) (G^2 - 1): exactly flat at 0 dB, no overshoot, and a band at
-// 0 dB is skipped with its state cleared, so it comes back clean even after
-// amy_fill_buffer has skipped the whole EQ.  The allpass corner moves by sqrt(G) (Zolzer's cut
-// correction, split both ways), so each EQ_CENTER_* is the band's half-gain
-// point in dB and +n dB and -n dB mirror.  F is computed in direct form 1 and the stored
-// state is the band output scaled down (by 2, or by 8 for the high shelf),
-// so every multiply is one high-word product feeding an addx2/4/8.
-// Coefficients hold half their value: in fixed point that is Q31, and
-// EQ_MULH(s, EQ_COEF(f)) = s * f / 2 in either build.
+// Three sections in series, each y = x + (G - 1) F(x): a first-order low
+// shelf at EQ_CENTER_LOW, a Q 1 peak at EQ_CENTER_MED and a first-order high
+// shelf at EQ_CENTER_HIGH.  F = (1 + A)/2 or (1 - A)/2 for an allpass A, so
+// |y|^2 = 1 + cos^2(phi) (G^2 - 1): flat at 0 dB, no overshoot, and a band at
+// 0 dB is skipped.  The allpass corner moves by sqrt(G) (Zolzer's cut
+// correction, split both ways), so each EQ_CENTER_* is its band's half-gain
+// point in dB and +n dB and -n dB mirror.  F runs in direct form 1 and the
+// stored state is the band output scaled down (by 2, or by 8 for the high
+// shelf), so each multiply is one high-word product.
+// Coefficients hold half their value (Q31 in fixed point), so
+// EQ_MULH(x, EQ_COEF(f)) = x * f / 2 in either build.
 #ifdef AMY_USE_FIXEDPOINT
-#define EQ_MULH(s, k) ((SAMPLE)(((int64_t)(s) * (int64_t)(k)) >> 32))
+#define EQ_MULH(x, k) ((SAMPLE)(((int64_t)(x) * (int64_t)(k)) >> 32))
 static SAMPLE EQ_COEF(float f) {
     f = MAX(-1.0f, MIN(0.99999994f, f));
     return (SAMPLE)lrintf(f * 2147483648.0f);
 }
 #else
-#define EQ_MULH(s, k) ((s) * (k))
+#define EQ_MULH(x, k) ((x) * (k))
 static SAMPLE EQ_COEF(float f) { return 0.5f * f; }
 #endif
 
@@ -683,51 +682,60 @@ static SAMPLE EQ_COEF(float f) { return 0.5f * f; }
 #define EQ_GAIN_MIN 0.17782794f  // -15 dB
 #define EQ_GAIN_MAX 5.6234133f   // +15 dB
 
+// Each band's coef is {b0, fb1[, fb2]}: y0 = b0 (zeros) + fb1 y1 + fb2 y2, the
+// feedback terms added (the negated denominator), for the dsps_*shelf/peak
+// kernels below.
 void parametric_eq_update(uint16_t bus) {
     eq_state_t *eq = &amy_global.bus[bus]->eq;
-    float g, s, t, a;
+    float g, sqrt_g, t, a;
     // Low shelf: F = (1 + A1)/2 = (1 + a)/2 (1 + z^-1) / (1 + a z^-1).
     g = MAX(EQ_GAIN_MIN, MIN(EQ_GAIN_MAX, S2F(eq->eq[0])));
-    s = sqrtf(g);
-    t = tanf((float)M_PI * (float)EQ_CENTER_LOW / (float)AMY_SAMPLE_RATE) / s;
+    sqrt_g = sqrtf(g);
+    t = tanf((float)M_PI * (float)EQ_CENTER_LOW / (float)AMY_SAMPLE_RATE) / sqrt_g;
     a = (t - 1.0f) / (t + 1.0f);
     eq->eq_coeffs[0][0] = EQ_COEF((g - 1.0f) * (1.0f + a) / 2.0f);
     eq->eq_coeffs[0][1] = EQ_COEF(-a);
-    // Peak: F = (1 - A2)/2 = (1 + a)/2 (1 - z^-2) / (1 - cos w0 (1 - a) z^-1 - a z^-2).
-    // With t = sin(w0)/2 this is dsps_biquad_gen_bpf_f32's band-pass at Q 1.
-    float w0 = 2.0f * (float)M_PI * (float)EQ_CENTER_MED / (float)AMY_SAMPLE_RATE;
+    // Peak: F = (1 - A2)/2 = (1 + a)/2 (1 - z^-2) / (1 - c (1 - a) z^-1 - a z^-2).
+    // With t = s/2 this is dsps_biquad_gen_bpf_f32's band-pass at Q 1.  Exact
+    // cosf/sinf rather than cos2pi/sin2pi: this runs only on a gain change.
+    float omega = 2.0f * (float)M_PI * (float)EQ_CENTER_MED / (float)AMY_SAMPLE_RATE;
+    float c = cosf(omega);
+    float s = sinf(omega);
     g = MAX(EQ_GAIN_MIN, MIN(EQ_GAIN_MAX, S2F(eq->eq[1])));
-    s = sqrtf(g);
-    t = sinf(w0) / 2.0f / s;
+    sqrt_g = sqrtf(g);
+    t = s / 2.0f / sqrt_g;
     a = (t - 1.0f) / (t + 1.0f);
     eq->eq_coeffs[1][0] = EQ_COEF((g - 1.0f) * (1.0f + a) / 2.0f);
-    eq->eq_coeffs[1][1] = EQ_COEF(cosf(w0) * (1.0f - a) / 2.0f);  // a1/2, |a1| < 2
+    eq->eq_coeffs[1][1] = EQ_COEF(c * (1.0f - a) / 2.0f);  // fb1 / 2, |fb1| < 2
     eq->eq_coeffs[1][2] = EQ_COEF(a);
     // High shelf: F = (1 - A1)/2 = (1 - a)/2 (1 - z^-1) / (1 + a z^-1).
     g = MAX(EQ_GAIN_MIN, MIN(EQ_GAIN_MAX, S2F(eq->eq[2])));
-    s = sqrtf(g);
-    t = tanf((float)M_PI * (float)EQ_CENTER_HIGH / (float)AMY_SAMPLE_RATE) * s;
+    sqrt_g = sqrtf(g);
+    t = tanf((float)M_PI * (float)EQ_CENTER_HIGH / (float)AMY_SAMPLE_RATE) * sqrt_g;
     a = (t - 1.0f) / (t + 1.0f);
-    eq->eq_coeffs[2][0] = EQ_COEF((g - 1.0f) * (1.0f - a) / 8.0f);  // c up to 2.2 at +15 dB, stored /4
+    eq->eq_coeffs[2][0] = EQ_COEF((g - 1.0f) * (1.0f - a) / 8.0f);  // b0 up to 2.2 at +15 dB, stored /4
     eq->eq_coeffs[2][1] = EQ_COEF(-a);
+    // A band at 0 dB starts clean when it comes back, also after
+    // amy_fill_buffer has skipped the whole EQ.
     for (int b = 0; b < 3; ++b) {
         if (eq->eq[b] != F2S(1.0f)) continue;
-        for (int c = 0; c < AMY_NCHANS; ++c)
-            for (int d = 0; d < FILT_NUM_DELAYS; ++d) eq->eq_delay[c][b][d] = 0;
+        for (int ch = 0; ch < AMY_NCHANS; ++ch)
+            for (int d = 0; d < FILT_NUM_DELAYS; ++d) eq->eq_delay[ch][b][d] = 0;
     }
 }
 
-// The loops run two samples per pass so the state rotates by renaming
-// (AMY_BLOCK_SIZE is even).  y1, y2 hold the band output / 2.
-static __attribute__((noinline)) AMY_IRAM_ATTR void parametric_eq_low_shelf(SAMPLE *block, SAMPLE *w, const SAMPLE *k) {
-    SAMPLE c = k[0], a1 = k[1];
+// Two samples per pass, so the state rotates by renaming (len is even).
+// noinline - inlined into the band loop they lose the hardware loop.
+// y1, y2 hold the band output / 2.
+static __attribute__((noinline)) AMY_IRAM_ATTR void dsps_lowshelf_f32_ansi(SAMPLE *block, int len, const SAMPLE *coef, SAMPLE *w) {
+    SAMPLE b0 = coef[0], fb1 = coef[1];
     SAMPLE x1 = w[0], y1 = w[1];
-    for (int i = 0; i < AMY_BLOCK_SIZE; i += 2) {
+    for (int i = 0; i < len; i += 2) {
         SAMPLE xa = block[i];
-        SAMPLE ya = EQ_MULH(xa + x1, c) + 2 * EQ_MULH(y1, a1);
+        SAMPLE ya = EQ_MULH(xa + x1, b0) + 2 * EQ_MULH(y1, fb1);
         block[i] = xa + 2 * ya;
         SAMPLE xb = block[i + 1];
-        SAMPLE yb = EQ_MULH(xb + xa, c) + 2 * EQ_MULH(ya, a1);
+        SAMPLE yb = EQ_MULH(xb + xa, b0) + 2 * EQ_MULH(ya, fb1);
         block[i + 1] = xb + 2 * yb;
         x1 = xb;
         y1 = yb;
@@ -736,15 +744,15 @@ static __attribute__((noinline)) AMY_IRAM_ATTR void parametric_eq_low_shelf(SAMP
     w[1] = y1;
 }
 
-static __attribute__((noinline)) AMY_IRAM_ATTR void parametric_eq_peak(SAMPLE *block, SAMPLE *w, const SAMPLE *k) {
-    SAMPLE c = k[0], a1 = k[1], a2 = k[2];
+static __attribute__((noinline)) AMY_IRAM_ATTR void dsps_peak_f32_ansi(SAMPLE *block, int len, const SAMPLE *coef, SAMPLE *w) {
+    SAMPLE b0 = coef[0], fb1 = coef[1], fb2 = coef[2];
     SAMPLE x1 = w[0], x2 = w[1], y1 = w[2], y2 = w[3];
-    for (int i = 0; i < AMY_BLOCK_SIZE; i += 2) {
+    for (int i = 0; i < len; i += 2) {
         SAMPLE xa = block[i];
-        SAMPLE ya = EQ_MULH(xa - x2, c) + 4 * EQ_MULH(y1, a1) + 2 * EQ_MULH(y2, a2);
+        SAMPLE ya = EQ_MULH(xa - x2, b0) + 4 * EQ_MULH(y1, fb1) + 2 * EQ_MULH(y2, fb2);
         block[i] = xa + 2 * ya;
         SAMPLE xb = block[i + 1];
-        SAMPLE yb = EQ_MULH(xb - x1, c) + 4 * EQ_MULH(ya, a1) + 2 * EQ_MULH(y1, a2);
+        SAMPLE yb = EQ_MULH(xb - x1, b0) + 4 * EQ_MULH(ya, fb1) + 2 * EQ_MULH(y1, fb2);
         block[i + 1] = xb + 2 * yb;
         x2 = xa;
         x1 = xb;
@@ -758,15 +766,15 @@ static __attribute__((noinline)) AMY_IRAM_ATTR void parametric_eq_peak(SAMPLE *b
 }
 
 // y1 holds the band output / 8.
-static __attribute__((noinline)) AMY_IRAM_ATTR void parametric_eq_high_shelf(SAMPLE *block, SAMPLE *w, const SAMPLE *k) {
-    SAMPLE c = k[0], a1 = k[1];
+static __attribute__((noinline)) AMY_IRAM_ATTR void dsps_highshelf_f32_ansi(SAMPLE *block, int len, const SAMPLE *coef, SAMPLE *w) {
+    SAMPLE b0 = coef[0], fb1 = coef[1];
     SAMPLE x1 = w[0], y1 = w[1];
-    for (int i = 0; i < AMY_BLOCK_SIZE; i += 2) {
+    for (int i = 0; i < len; i += 2) {
         SAMPLE xa = block[i];
-        SAMPLE ya = EQ_MULH(xa - x1, c) + 2 * EQ_MULH(y1, a1);
+        SAMPLE ya = EQ_MULH(xa - x1, b0) + 2 * EQ_MULH(y1, fb1);
         block[i] = xa + 8 * ya;
         SAMPLE xb = block[i + 1];
-        SAMPLE yb = EQ_MULH(xb - xa, c) + 2 * EQ_MULH(ya, a1);
+        SAMPLE yb = EQ_MULH(xb - xa, b0) + 2 * EQ_MULH(ya, fb1);
         block[i + 1] = xb + 8 * yb;
         x1 = xb;
         y1 = yb;
@@ -781,11 +789,11 @@ AMY_IRAM_ATTR void parametric_eq_process(uint16_t bus, SAMPLE *block) {
     for (int c = 0; c < AMY_NCHANS; ++c) {
         SAMPLE *cblock = block + c * AMY_BLOCK_SIZE;
         for (int b = 0; b < 3; ++b) {
-            SAMPLE *w = eq->eq_delay[c][b];
             if (eq->eq[b] == F2S(1.0f)) continue;  // state cleared by parametric_eq_update
-            if (b == 0) parametric_eq_low_shelf(cblock, w, eq->eq_coeffs[0]);
-            else if (b == 1) parametric_eq_peak(cblock, w, eq->eq_coeffs[1]);
-            else parametric_eq_high_shelf(cblock, w, eq->eq_coeffs[2]);
+            SAMPLE *w = eq->eq_delay[c][b];
+            if (b == 0) dsps_lowshelf_f32_ansi(cblock, AMY_BLOCK_SIZE, eq->eq_coeffs[0], w);
+            else if (b == 1) dsps_peak_f32_ansi(cblock, AMY_BLOCK_SIZE, eq->eq_coeffs[1], w);
+            else dsps_highshelf_f32_ansi(cblock, AMY_BLOCK_SIZE, eq->eq_coeffs[2], w);
         }
     }
     AMY_PROFILE_STOP(PARAMETRIC_EQ_PROCESS)
