@@ -603,6 +603,39 @@ Re-vendor note: done on the v1.2.104 sync - `zero()`/`copy()`,
 `malloc_caps_block`, and the aligned FM scratch all arrived with upstream;
 only the rows above remain ours.
 
+### `filters.c` + `amy.c` + `amy.h` - shelving bus EQ (upstream PR candidate)
+
+Upstream's EQ sums a negated 800 Hz LPF, a 2500 Hz BPF and a 7000 Hz HPF
+(`parametric_eq_process`), and `amy_fill_buffer` runs it only when a band is
+off 0 dB. The bands are not complementary: any non-zero setting, even one
+band at -1 dB, engages a response with a 15-21 dB notch near 1 kHz and about
++/-1 dB of ripple above 2 kHz. Replaced by three sections in series, each
+`x + (G-1) F(x)` with F = (1 +/- A)/2 for an allpass A: a first-order low
+shelf, a Q 1 peak (F is the old RBJ band-pass) and a first-order high shelf.
+Flat at 0 dB, monotonic, and +n/-n dB mirror (the allpass corner moves by
+sqrt(G), so each `EQ_CENTER_*` is the half-gain point). `parametric_eq_update`
+derives the coefficients from `eq.eq[]`; `config_eq`, the `EQ_L/M/H` deltas and
+`filters_init` call it. Gains are clamped to the documented -15..+15 dB, which
+keeps every coefficient inside Q31. A band at exactly 0 dB is skipped and its
+state cleared. Each band is its own noinline IRAM kernel, two samples per
+iteration; multiplies are `int64 >> 32` high words feeding `addx2/4/8`, with
+the band state stored as output / 2 (high shelf / 8). One implementation
+serves both `AMY_HAS_MUL64` and float builds (`EQ_MULH`, `EQ_COEF`); the
+block-floating-point variant for 32x32->32 targets is gone, so an RP2040
+build would pay a 64-bit multiply libcall per product - the open question for
+the upstream PR. Host render through the real event path (fixed point, 48 kHz)
+matches the analytic response to 0.03 dB except a DC tail from truncating
+multiplies (0-140 LSB of s8.23 after an impulse; the old EQ leaves 86-116).
+Per sample per channel on esp-15.2.0 -O2 (shipped LTO ELF): 7.5 / 10.5 / 7.5
+insns for low / mid / high, all zero-overhead loops, vs 90 insns (18 mul, 25
+loads, 10 stores, no ZOL) for the old fused loop. Cycles not measured on
+target. Shelves are 6 dB/oct: +15 dB low still adds +1.9 dB at 2.5 kHz. Not
+posted upstream.
+
+**Rollback:** restore upstream `parametric_eq_process` (both variants) and the
+three `dsps_biquad_gen_*` calls in `filters_init`; drop `parametric_eq_update`
+and its calls.
+
 ### `src/amy.c` — skip the dead dual-core bus sum
 
 `AMY_DUALCORE` is defined unconditionally for `ESP_PLATFORM`, but this build
