@@ -628,8 +628,10 @@ matches the analytic response to 0.03 dB except a DC tail from truncating
 multiplies (0-140 LSB of s8.23 after an impulse; the old EQ leaves 86-116).
 Per sample per channel on esp-15.2.0 -O2 (shipped LTO ELF): 7.5 / 10.5 / 7.5
 insns for low / mid / high, all zero-overhead loops, vs 90 insns (18 mul, 25
-loads, 10 stores, no ZOL) for the old fused loop. Cycles not measured on
-target. Shelves are 6 dB/oct: +15 dB low still adds +1.9 dB at 2.5 kHz. Not
+loads, 10 stores, no ZOL) for the old fused loop. On target (amy-bench EQ
+variant family, LTO, stereo block): 13,559 cycles with three bands active and
+4,265 with one, vs 48,560 for the old EQ at any setting; seven candidate
+shapes were priced in the same run and none was cheaper. Shelves are 6 dB/oct: +15 dB low still adds +1.9 dB at 2.5 kHz. Not
 posted upstream.
 
 **Rollback:** restore upstream `parametric_eq_process` (both variants) and the
