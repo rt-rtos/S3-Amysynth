@@ -698,9 +698,9 @@ void parametric_eq_update(uint16_t bus) {
     // Peak: F = (1 - A2)/2 = (1 + a)/2 (1 - z^-2) / (1 - c (1 - a) z^-1 - a z^-2).
     // With t = s/2 this is dsps_biquad_gen_bpf_f32's band-pass at Q 1.  Exact
     // cosf/sinf rather than cos2pi/sin2pi: this runs only on a gain change.
-    float omega = 2.0f * (float)M_PI * (float)EQ_CENTER_MED / (float)AMY_SAMPLE_RATE;
-    float c = cosf(omega);
-    float s = sinf(omega);
+    float w0 = (float)EQ_CENTER_MED / (float)AMY_SAMPLE_RATE;
+    float c = cosf(2.0f * (float)M_PI * w0);
+    float s = sinf(2.0f * (float)M_PI * w0);
     g = MAX(EQ_GAIN_MIN, MIN(EQ_GAIN_MAX, S2F(eq->eq[1])));
     sqrt_g = sqrtf(g);
     t = s / 2.0f / sqrt_g;
