@@ -168,33 +168,38 @@ static const char *hint_wt_bs(void)
 
 /* ─── The table: one row per view, indexed by ui_view_id_t ─────────────── */
 /* Preferred x of the BLE badge per view; 0 lets display_badge_draw() choose.
- * The badge never draws over lit pixels, so these only need to be close. */
+ * The badge never draws over lit pixels, so these only need to be close.
+ * Rows name only the label callbacks they set; the rest stay NULL. */
 const ui_view_desc_t ui_view_table[UI_VIEW_COUNT] = {
-    [UI_VIEW_FILTER]    = { "FILTER", sig_filter,    draw_filter,    "On/Off", "-",     "Next",  NULL,               NULL,                   52 },
-    [UI_VIEW_LFO]       = { "LFO",    sig_lfo,       draw_lfo,       "-",      "-",     "Next",  NULL,               NULL,                   68 },
-    [UI_VIEW_DIST]      = { "DIST",   sig_dist,      draw_dist,      "-",      "-",     "Next",  NULL,               NULL,                    0 },
-    [UI_VIEW_STEPEDIT]  = { "STEP",   sig_stepedit,  draw_stepedit,  "-",      "-",     "Close", NULL,               NULL,                    0 },
-    [UI_VIEW_GRAPH]     = { "GRAPH",  sig_graph,     draw_graph,     "Type",   NULL,    "Next",  NULL,               synth_ui_graph_hint_b2, 52 },
-    [UI_VIEW_MENU]      = { "MENU",   sig_menu,      draw_menu,      NULL,     NULL,    "Menu",  hint_menu_b1,       hint_menu_b2,           52, hint_menu_bs },
-    [UI_VIEW_ARP]       = { "ARP",    sig_arp,       draw_arp,       "Patch",  "-",     "Menu",  NULL,               NULL,                   52 },
-    [UI_VIEW_DRONE_VIS] = { "DRONEV", sig_drone,     draw_drone_vis, "Patch",  "-",     "Menu",  NULL,               NULL,                   58 },
-    [UI_VIEW_DRONE]     = { "DRONE",  sig_drone,     draw_drone,     "Patch",  "-",     "Menu",  NULL,               NULL,                   52 },
-    [UI_VIEW_DRONE_STD] = { "DRONST", sig_drone_std, draw_drone_std, "Patch",  "-",     "Menu",  NULL,               NULL,                   52 },
-    [UI_VIEW_PROG]      = { "PROG",   sig_prog,      draw_prog,      "Del",    "+Add",  "Menu",  NULL,               NULL,                   30 },
+    [UI_VIEW_FILTER]    = { "FILTER", sig_filter,    draw_filter,    "On/Off", "-",     "Next",  .badge_x =  52 },
+    [UI_VIEW_LFO]       = { "LFO",    sig_lfo,       draw_lfo,       "-",      "-",     "Next",  .badge_x =  68 },
+    [UI_VIEW_DIST]      = { "DIST",   sig_dist,      draw_dist,      "-",      "-",     "Next",  .badge_x =   0 },
+    [UI_VIEW_STEPEDIT]  = { "STEP",   sig_stepedit,  draw_stepedit,  "-",      "-",     "Close", .badge_x =   0 },
+    [UI_VIEW_GRAPH]     = { "GRAPH",  sig_graph,     draw_graph,     "Type",   NULL,    "Next",  .badge_x =  52,
+                            .b2_fn = synth_ui_graph_hint_b2 },
+    [UI_VIEW_MENU]      = { "MENU",   sig_menu,      draw_menu,      NULL,     NULL,    "Menu",  .badge_x =  52,
+                            .b1_fn = hint_menu_b1, .b2_fn = hint_menu_b2, .bs_fn = hint_menu_bs },
+    [UI_VIEW_ARP]       = { "ARP",    sig_arp,       draw_arp,       "Patch",  "-",     "Menu",  .badge_x =  52 },
+    [UI_VIEW_DRONE_VIS] = { "DRONEV", sig_drone,     draw_drone_vis, "Patch",  "-",     "Menu",  .badge_x =  58 },
+    [UI_VIEW_DRONE]     = { "DRONE",  sig_drone,     draw_drone,     "Patch",  "-",     "Menu",  .badge_x =  52 },
+    [UI_VIEW_DRONE_STD] = { "DRONST", sig_drone_std, draw_drone_std, "Patch",  "-",     "Menu",  .badge_x =  52 },
+    [UI_VIEW_PROG]      = { "PROG",   sig_prog,      draw_prog,      "Del",    "+Add",  "Menu",  .badge_x =  30 },
 #if CONFIG_SYNTH_CUSTOM_FM
-    [UI_VIEW_FM]        = { "FM",     sig_fm,        draw_fm,        NULL,     "Mute",  NULL,    hint_fm_b1,         NULL,                   64, hint_fm_bs, hint_fm_b3 },
+    [UI_VIEW_FM]        = { "FM",     sig_fm,        draw_fm,        NULL,     "Mute",  NULL,    .badge_x =  64,
+                            .b1_fn = hint_fm_b1, .b3_fn = hint_fm_b3, .bs_fn = hint_fm_bs },
 #else
-    [UI_VIEW_FM]        = { "FM",     NULL,          NULL,           "Patch",  "-",     "Menu",  NULL,               NULL,                   64 },
+    [UI_VIEW_FM]        = { "FM",     NULL,          NULL,           "Patch",  "-",     "Menu",  .badge_x =  64 },
 #endif
 #if CONFIG_SYNTH_DEV_MENU
-    [UI_VIEW_DEV]       = { "DEV",    sig_dev,       draw_dev,       "-",      "-",     "Menu",  NULL,               NULL,                   30 },
+    [UI_VIEW_DEV]       = { "DEV",    sig_dev,       draw_dev,       "-",      "-",     "Menu",  .badge_x =  30 },
 #else
-    [UI_VIEW_DEV]       = { "DEV",    NULL,          NULL,           "-",      "-",     "Menu",  NULL,               NULL,                   30 },
+    [UI_VIEW_DEV]       = { "DEV",    NULL,          NULL,           "-",      "-",     "Menu",  .badge_x =  30 },
 #endif
 #if CONFIG_SYNTH_CUSTOM_WT
-    [UI_VIEW_WT]        = { "WT",     sig_wt,        draw_wt,        NULL,     NULL,    "Menu",  hint_wt_b1,         hint_wt_b2,            110, hint_wt_bs },
+    [UI_VIEW_WT]        = { "WT",     sig_wt,        draw_wt,        NULL,     NULL,    "Menu",  .badge_x = 110,
+                            .b1_fn = hint_wt_b1, .b2_fn = hint_wt_b2, .bs_fn = hint_wt_bs },
 #else
-    [UI_VIEW_WT]        = { "WT",     NULL,          NULL,           "-",      "-",     "Menu",  NULL,               NULL,                    0 },
+    [UI_VIEW_WT]        = { "WT",     NULL,          NULL,           "-",      "-",     "Menu",  .badge_x =   0 },
 #endif
-    [UI_VIEW_SEQ]       = { "SEQ",    sig_seq,       draw_seq,       "Patch",  "Pitch", "Menu",  NULL,               NULL,                   44 },
+    [UI_VIEW_SEQ]       = { "SEQ",    sig_seq,       draw_seq,       "Patch",  "Pitch", "Menu",  .badge_x =  44 },
 };
