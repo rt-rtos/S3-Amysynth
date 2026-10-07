@@ -660,7 +660,8 @@ void filters_init(uint16_t bus) {
 // a Q 1 peak at EQ_CENTER_MED and a first-order high shelf at EQ_CENTER_HIGH,
 // in series.  F = (1 + A)/2 or (1 - A)/2 for an allpass A, so |y|^2 =
 // 1 + cos^2(phi) (G^2 - 1): exactly flat at 0 dB, no overshoot, and a band at
-// 0 dB is skipped.  The allpass corner moves by sqrt(G) (Zolzer's cut
+// 0 dB is skipped with its state cleared, so it comes back clean even after
+// amy_fill_buffer has skipped the whole EQ.  The allpass corner moves by sqrt(G) (Zolzer's cut
 // correction, split both ways), so each EQ_CENTER_* is the band's half-gain
 // point in dB and +n dB and -n dB mirror.  F is computed in direct form 1 and the stored
 // state is the band output scaled down (by 2, or by 8 for the high shelf),
@@ -684,7 +685,7 @@ static SAMPLE EQ_COEF(float f) { return 0.5f * f; }
 
 void parametric_eq_update(uint16_t bus) {
     eq_state_t *eq = &amy_global.bus[bus]->eq;
-    if (eq->eq_coeffs == NULL) return;
+    if (eq->eq_coeffs == NULL || eq->eq_delay == NULL) return;
     float g, s, t, a;
     // Low shelf: F = (1 + A1)/2 = (1 + a)/2 (1 + z^-1) / (1 + a z^-1).
     g = MAX(EQ_GAIN_MIN, MIN(EQ_GAIN_MAX, S2F(eq->eq[0])));
@@ -710,6 +711,11 @@ void parametric_eq_update(uint16_t bus) {
     a = (t - 1.0f) / (t + 1.0f);
     eq->eq_coeffs[2][0] = EQ_COEF((g - 1.0f) * (1.0f - a) / 8.0f);  // up to 2.2, stored /4
     eq->eq_coeffs[2][1] = EQ_COEF(-a);
+    for (int b = 0; b < 3; ++b) {
+        if (eq->eq[b] != F2S(1.0f)) continue;
+        for (int c = 0; c < AMY_NCHANS; ++c)
+            for (int d = 0; d < FILT_NUM_DELAYS; ++d) eq->eq_delay[c][b][d] = 0;
+    }
 }
 
 // The loops run two samples per pass so the state rotates by renaming
@@ -777,11 +783,7 @@ AMY_IRAM_ATTR void parametric_eq_process(uint16_t bus, SAMPLE *block) {
         SAMPLE *cblock = block + c * AMY_BLOCK_SIZE;
         for (int b = 0; b < 3; ++b) {
             SAMPLE *w = eq->eq_delay[c][b];
-            if (eq->eq[b] == F2S(1.0f)) {
-                // Skipped band: start clean when it comes back.
-                for (int d = 0; d < FILT_NUM_DELAYS; ++d) w[d] = 0;
-                continue;
-            }
+            if (eq->eq[b] == F2S(1.0f)) continue;  // state cleared by parametric_eq_update
             if (b == 0) parametric_eq_low_shelf(cblock, w, eq->eq_coeffs[0]);
             else if (b == 1) parametric_eq_peak(cblock, w, eq->eq_coeffs[1]);
             else parametric_eq_high_shelf(cblock, w, eq->eq_coeffs[2]);

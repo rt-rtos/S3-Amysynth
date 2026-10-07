@@ -616,8 +616,11 @@ Flat at 0 dB, monotonic, and +n/-n dB mirror (the allpass corner moves by
 sqrt(G), so each `EQ_CENTER_*` is the half-gain point). `parametric_eq_update`
 derives the coefficients from `eq.eq[]`; `config_eq`, the `EQ_L/M/H` deltas and
 `filters_init` call it. Gains are clamped to the documented -15..+15 dB, which
-keeps every coefficient inside Q31. A band at exactly 0 dB is skipped and its
-state cleared. Each band is its own noinline IRAM kernel, two samples per
+keeps every coefficient inside Q31. A band at exactly 0 dB is skipped, and
+`parametric_eq_update` clears its state when its gain returns to 0 dB, so it
+starts clean when it comes back even if `amy_fill_buffer` skipped the whole EQ
+meanwhile (a band clearing itself inside `parametric_eq_process` missed that
+case and restarted from stale state: up to 10 dB louder clicks on re-entry). Each band is its own noinline IRAM kernel, two samples per
 iteration; multiplies are `int64 >> 32` high words feeding `addx2/4/8`, with
 the band state stored as output / 2 (high shelf / 8). One implementation
 serves both `AMY_HAS_MUL64` and float builds (`EQ_MULH`, `EQ_COEF`); the
