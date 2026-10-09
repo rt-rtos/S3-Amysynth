@@ -86,15 +86,15 @@ void lfo_push_target_neutral(uint8_t synth_id, uint16_t patch,
     amy_event *e = amy_helpers_event_begin();
     e->synth = synth_id;
     switch (target) {
-        case LFO_TARGET_FILTER: e->filter_freq_coefs[COEF_CONST] = 8000.0f; break;
         /* Absolute Hz: SEQ_LFO_PITCH_BASE_HZ is the note-neutral reset
          * default. Osc 0 only, mirroring the service push. */
         case LFO_TARGET_PITCH:  e->osc = 0;
                                 e->freq_coefs[COEF_CONST] = SEQ_LFO_PITCH_BASE_HZ; break;
         case LFO_TARGET_PAN:    e->pan_coefs[COEF_CONST]  = 0.5f;           break;
-        /* DIST has no context-free neutral - resting state is the caller's
-         * committed seq_dist_t, so every restore path pushes it directly
-         * via voice_apply_dist (same shape as the FILTER special case). */
+        /* FILTER and DIST have no context-free neutral - the resting state
+         * is the caller's committed seq_filter_t / seq_dist_t, so every
+         * restore path pushes those directly. */
+        case LFO_TARGET_FILTER:
         case LFO_TARGET_DIST_DRIVE:
         case LFO_TARGET_DIST_MIX:
         default: break;

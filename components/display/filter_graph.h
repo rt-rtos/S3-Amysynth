@@ -19,10 +19,10 @@ extern "C" {
 
 /* Frequency + resonance mapping constants (used by synth_ui for en/de-normalise). */
 #define FGRAPH_CUTOFF_HZ_MIN   20.0f
-#define FGRAPH_CUTOFF_HZ_MAX 8000.0f
+#define FGRAPH_CUTOFF_HZ_MAX 16000.0f
 /* Octave span of the log2-mapped cutoff axis = log2(MAX/MIN). Keep in sync
  * with the two values above; the editor derives its semitone step from it. */
-#define FGRAPH_CUTOFF_OCTAVES 8.6438562f
+#define FGRAPH_CUTOFF_OCTAVES 9.6438562f
 #define FGRAPH_RES_MIN  0.51f
 #define FGRAPH_RES_MAX  8.0f
 

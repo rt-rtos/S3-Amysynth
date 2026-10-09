@@ -10,9 +10,6 @@
 #define FG_PLOT_H   (64 - FG_TOPBAR_H)   /* 48 rows */
 #define FG_PLOT_Y0  FG_TOPBAR_H
 
-/* log2(MAX/MIN) = log2(8000/20) ≈ 8.644, precomputed — unused but kept for reference. */
-#define FG_LOG_SPAN  8.644f
-
 /* Passband is displayed at 75% of plot height, leaving 25% headroom for
  * resonance spikes (which can reach up to 100% for Q > ~1.33). */
 #define FG_PASSBAND_NORM  0.75f

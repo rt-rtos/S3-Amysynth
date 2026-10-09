@@ -154,7 +154,7 @@ This keeps the renderer free of any runtime AMY dependency.
 | Symbol | Value | Meaning |
 |--------|-------|---------|
 | `FGRAPH_CUTOFF_HZ_MIN` | 20 Hz | Left edge of X axis / minimum cutoff |
-| `FGRAPH_CUTOFF_HZ_MAX` | 8000 Hz | Right edge of X axis / maximum cutoff |
+| `FGRAPH_CUTOFF_HZ_MAX` | 16000 Hz | Right edge of X axis / maximum cutoff |
 | `FGRAPH_RES_MIN` | 0.51 | Minimum Q (AMY biquad hard floor) |
 | `FGRAPH_RES_MAX` | 8.0 | Maximum Q (project cap) |
 | `FG_PASSBAND_NORM` | 0.75 | Passband fraction of plot height |

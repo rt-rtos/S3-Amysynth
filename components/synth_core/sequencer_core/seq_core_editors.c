@@ -528,7 +528,7 @@ void sequencer_core_set_melodic_filter(uint8_t layer_idx, uint8_t track,
 
     seq_filter_t *dst = &vp->filter;
     dst->filter_type = (f->filter_type < SEQ_FILTER_COUNT) ? f->filter_type : FILTER_NONE;
-    dst->cutoff_hz   = SEQ_CLAMP_F32(f->cutoff_hz,  65.0f, 8000.0f);
+    dst->cutoff_hz   = SEQ_CLAMP_F32(f->cutoff_hz,  65.0f, 16000.0f);
     dst->resonance   = SEQ_CLAMP_F32(f->resonance,  0.51f, 8.0f);
     dst->enabled     = f->enabled;
     dst->feedback    = SEQ_CLAMP_F32(f->feedback, 0.0f, 1.0f);
@@ -998,7 +998,7 @@ void sequencer_core_preview_melodic_filter(uint8_t layer_idx, uint8_t track,
      * confirm would store. */
     seq_filter_t tmp = *f;
     tmp.filter_type       = (f->filter_type < SEQ_FILTER_COUNT) ? f->filter_type : FILTER_NONE;
-    tmp.cutoff_hz         = SEQ_CLAMP_F32(f->cutoff_hz,  65.0f, 8000.0f);
+    tmp.cutoff_hz         = SEQ_CLAMP_F32(f->cutoff_hz,  65.0f, 16000.0f);
     tmp.resonance         = SEQ_CLAMP_F32(f->resonance,  0.51f, 8.0f);
     tmp.feedback          = SEQ_CLAMP_F32(f->feedback, 0.0f, 1.0f);
     tmp.ks_duty_ofs       = SEQ_CLAMP_F32(f->ks_duty_ofs, -0.5f, 0.5f);

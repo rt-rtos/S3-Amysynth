@@ -120,7 +120,7 @@ static inline float seq_eg_depth_max(seq_eg_target_t t)
  * as amy_event.filter_freq_coefs; AMY converts to log-freq internally. */
 typedef struct {
     uint8_t filter_type;   /* SEQ_FILTER_* */
-    float   cutoff_hz;     /* 65..8000 Hz */
+    float   cutoff_hz;     /* 65..16000 Hz */
     float   resonance;     /* 0.51..8.0 (Q factor) */
     bool    enabled;       /* false = bypass (FILTER_NONE sent) */
     float   feedback;      /* KS string decay, 0..1 (1.0 = lossless infinite
