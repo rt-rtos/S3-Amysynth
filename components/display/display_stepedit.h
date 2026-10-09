@@ -26,8 +26,8 @@ typedef enum {
     SE_FIELD_COUNT,
 } stepedit_field_t;
 
-/* Rows the blue region fits below the yellow header. */
-#define SE_VISIBLE_ROWS 5
+/* Rows that fit between the yellow header and the hint strip. */
+#define SE_VISIBLE_ROWS 4
 
 typedef struct {
     uint8_t layer_idx;    /* 0-based; rendered as 1-based */

@@ -2,9 +2,10 @@
 #include <stdio.h>
 
 /* Yellow header (rows 0..15) carries the STEP title; the visible field window
- * fills the blue region starting at y=24 so no row crosses the 16px seam. 9 px
- * row pitch fits SE_VISIBLE_ROWS baselines (24..60) with descent room inside
- * 64 - which is what caps the window at five of the eight (or nine) fields. */
+ * starts at y=24 so no row crosses the 16px seam, and ends above the hint strip
+ * (display_hint.c, y 57..63). 9 px row pitch fits SE_VISIBLE_ROWS baselines
+ * (24..51) with descent room above the strip - which is what caps the window
+ * at four of the eight (or nine) fields. */
 #define SE_TITLE_Y   8
 #define SE_ROW_H     9
 #define SE_FIRST_ROW 24
