@@ -73,14 +73,14 @@ def choir():
 
 
 def bell():
-    return arp(True, P_SINE, ARP_SLOT, ARP_RATE_1_4, [77, 80, 84, ARP_REST, 82, 80, 79, ARP_REST],
+    return arp(True, P_SINE, ARP_SLOT, NOTE_DIV_1_4, [77, 80, 84, ARP_REST, 82, 80, 79, ARP_REST],
                gate=30, quant=ARP_QUANT_CHORD, root=53, scale=SCALE,
                amp_env=env(2, 900, 0, 900), flt=filt(FILTER_LPF, 4000, 0.7), amp=1.0)
 
 
 def haze():
     return drone(True, CHORD_MIN, 41, wave=WAVE_SAW_DOWN, peak=0.22, duck=0.0,
-                 rate=DRONE_RATE_1_1, sweep=(220.0, 900.0), sweep_bars=16, res=1.4,
+                 rate=NOTE_DIV_1_1, sweep=(220.0, 900.0), sweep_bars=16, res=1.4,
                  amp_env=env(1500, 300, 100, 2500), follow=DRONE_FOLLOW_CHORD)
 
 

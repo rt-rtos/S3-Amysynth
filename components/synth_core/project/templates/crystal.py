@@ -56,7 +56,7 @@ def bass():
 
 
 def arpeggio():
-    a = arp(True, P_PULSE, ARP_UP, ARP_RATE_1_16, [66, 69, 73], octaves=2, gate=35,
+    a = arp(True, P_PULSE, ARP_UP, NOTE_DIV_1_16, [66, 69, 73], octaves=2, gate=35,
             quant=ARP_QUANT_CHORD, root=54, scale=SCALE,
             amp_env=env(1, 120, 0, 80), flt=filt(FILTER_LPF, 5000, 1.0), amp=0.5)
     a['dist'] = dist(DIST_CRUSH, 2, 80, bits=5, rate=4)
@@ -65,7 +65,7 @@ def arpeggio():
 
 def wash():
     return drone(True, CHORD_MIN, 54, wave=WAVE_SAW_DOWN, peak=0.3, duck=0.45,
-                 rate=DRONE_RATE_1_16, sweep=(900.0, 3500.0), sweep_bars=8, res=1.0,
+                 rate=NOTE_DIV_1_16, sweep=(900.0, 3500.0), sweep_bars=8, res=1.0,
                  amp_env=env(400, 300, 100, 900), follow=DRONE_FOLLOW_CHORD)
 
 

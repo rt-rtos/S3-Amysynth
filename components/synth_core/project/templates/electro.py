@@ -44,7 +44,7 @@ def bass():
 
 
 def arpeggio():
-    return arp(True, P_PULSE, ARP_UP, ARP_RATE_1_16, [64, 67, 71], octaves=2, gate=40,
+    return arp(True, P_PULSE, ARP_UP, NOTE_DIV_1_16, [64, 67, 71], octaves=2, gate=40,
                quant=ARP_QUANT_GLOBAL, root=52, scale=SCALE,
                amp_env=env(2, 120, 0, 90), flt=filt(FILTER_LPF, 2500, 1.5, eg1_cutoff=1.0),
                amp=1.0)

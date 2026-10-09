@@ -188,16 +188,16 @@ re-voice.
 `drone_core_service()` runs once per UI frame (20 Hz), like `arp_core_service()`.
 Everything it derives comes from the global BPM and AMY's 48-PPQ tick counter:
 
-1. **Stutter LFO** — `LFO_Hz = (BPM/60) · mult`, re-sent to osc1 when the BPM
-   changes. Multipliers: `1/4 = ×1, 1/8 = ×2, 1/16 = ×4, 1/32 = ×8`. This matches
-   the **arp's** convention (arp `1/16` = 12 ticks @ 48 PPQ = one event per
-   sixteenth note), so a drone "1/16" stutter pulse lands on the same grid as an
+1. **Stutter LFO** — one cycle per note division (`note_div_hz()`,
+   `include/note_div.h`, the table the arp also reads), re-sent to osc1 when the
+   BPM changes, so a drone "1/16" stutter pulse lands on the same grid as an
    arp "1/16" note onset. One square cycle (on+off) spans one named note.
    On top of the raw LFO sit the rhythm controls:
    - **GATE** (0.05–0.95) sets the pulse duty cycle — how much of each
      subdivision the gate stays open.
    - **SWING** (0–66 %) delays alternate gate openings.
-   - **PATTERN** masks the stutter against an 8-step rhythm: FULL (all on),
+   - **PATTERN** masks the stutter against an 8-step rhythm, one step per
+     subdivision (so at 1/4 it spans two bars): FULL (all on),
      FOUR (four-on-the-floor), OFFBT (upbeats), GALOP (short-short-long),
      DUB (dub push).
    - **BLIP** (0–1) fires a short downward filter zap on gate edges for a
@@ -327,7 +327,7 @@ RES       : 1.50          (0.1..3.0)
 PEAK      : 0.5           (WAVE only: always-on level, keep > 0)
 DUCK      : 0.5           (WAVE only: stutter depth)
 VISUALISE : OFF           (switch to the drone visualizer view)
-STUTTER   : 1/16          (WAVE only: 1/4..1/32, tempo-locked)
+STUTTER   : 1/16          (WAVE only: any note division, tempo-locked)
 GATE      : 0.50          (WAVE only: duty cycle 0.05..0.95)
 SWING     : 0             (0..66 %)
 PATTERN   : FULL          (FULL/FOUR/OFFBT/GALOP/DUB)

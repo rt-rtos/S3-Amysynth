@@ -43,14 +43,14 @@ def bass():
 
 
 def sparkle():
-    return arp(True, P_TRIANGLE, ARP_UP, ARP_RATE_1_8, [70, 73, 77], octaves=2, gate=40,
+    return arp(True, P_TRIANGLE, ARP_UP, NOTE_DIV_1_8, [70, 73, 77], octaves=2, gate=40,
                quant=ARP_QUANT_CHORD, root=58, scale=SCALE,
                amp_env=env(2, 220, 20, 300), flt=filt(FILTER_LPF, 4500, 0.8), amp=0.5)
 
 
 def pump():
     return drone(True, CHORD_MIN, 58, wave=WAVE_SAW_DOWN, peak=0.4, duck=0.65,
-                 rate=DRONE_RATE_1_8, sweep=(700.0, 2600.0), sweep_bars=4, res=1.0,
+                 rate=NOTE_DIV_1_8, sweep=(700.0, 2600.0), sweep_bars=4, res=1.0,
                  amp_env=env(150, 300, 100, 800), follow=DRONE_FOLLOW_CHORD)
 
 

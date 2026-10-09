@@ -2040,16 +2040,13 @@ uint32_t lfo_view_signature(void)
     s_lfo_view.dist_inert = false;
 
     const seq_lfo_t *l = &s_lfo_view.lfo;
-    return (uint32_t)l->enabled
-         | ((uint32_t)l->wave    <<  1)   /* 3 bits */
-         | ((uint32_t)l->rate    <<  4)   /* 4 bits (0..11) */
-         | ((uint32_t)l->depth   <<  8)   /* 7 bits (0..100) */
-         | ((uint32_t)l->targets << 15)   /* 7 bits */
-         | ((uint32_t)s_lfo_view.cursor  << 22)   /* 4 bits (0..14) */
-         | ((uint32_t)s_lfo_view.editing << 26)
-         | ((uint32_t)(native ? 1u : 0u) << 27)
-         /* bit 28 unused */
-         | ((uint32_t)s_lfo_view.tgt_tab << 29);
+    const uint8_t fields[] = {
+        l->enabled, (uint8_t)l->mode, (uint8_t)l->wave, (uint8_t)l->rate,
+        l->depth, l->targets, l->wob_rate, l->wob_depth, l->wob_reach,
+        l->flt_oct_q, s_lfo_view.cursor, s_lfo_view.editing, native,
+        s_lfo_view.tgt_tab,
+    };
+    return fnv1a_bytes(FNV1A_OFFSET, fields, sizeof(fields));
 }
 
 bool synth_ui_lfo_is_active(void) { return s_lfo_active; }
@@ -2072,9 +2069,10 @@ void synth_ui_lfo_open(void)
         .enabled = false,
         .mode    = LFO_MODE_FREE,
         .wave    = LFO_WAVE_SINE,
-        .rate    = LFO_RATE_1BAR,
+        .rate    = NOTE_DIV_1_1,
         .depth   = 50,
         .targets = LFO_TGT_BIT(LFO_TARGET_FILTER),
+        .wob_rate = NOTE_DIV_1_8,
     };
 #if CONFIG_SYNTH_WIRELESS
     if (s_lfo_live_target)
@@ -2186,7 +2184,7 @@ bool synth_ui_lfo_handle_encoder(long delta)
             l->wave = (lfo_wave_t)((l->wave + LFO_WAVE_COUNT + d) % LFO_WAVE_COUNT);
             break;
         case LFO_FLD_RATE:
-            l->rate = (lfo_rate_t)((l->rate + LFO_RATE_COUNT + d) % LFO_RATE_COUNT);
+            l->rate = (note_div_t)((l->rate + NOTE_DIV_COUNT + d) % NOTE_DIV_COUNT);
             break;
         case LFO_FLD_DEPTH: {
             /* Fine 1% steps in 0..10 (on sensitive targets like pitch even
@@ -2212,7 +2210,7 @@ bool synth_ui_lfo_handle_encoder(long delta)
             break;
         }
         case LFO_FLD_WOB_RATE:
-            l->wob_rate = (uint8_t)((l->wob_rate + LFO_RATE_COUNT + d) % LFO_RATE_COUNT);
+            l->wob_rate = (uint8_t)((l->wob_rate + NOTE_DIV_COUNT + d) % NOTE_DIV_COUNT);
             break;
         case LFO_FLD_WOB_DEPTH: {
             /* Authored in whole dB of carrier swing (see voice_config.h);

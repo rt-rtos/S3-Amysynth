@@ -368,7 +368,7 @@ void drone_std_core_init(void)
     /* LFO defaults for the editor seed; inert until authored + enabled. */
     s_ds.vp.lfo.mode    = LFO_MODE_FREE;
     s_ds.vp.lfo.wave    = LFO_WAVE_SINE;
-    s_ds.vp.lfo.rate    = LFO_RATE_1BAR;
+    s_ds.vp.lfo.rate    = NOTE_DIV_1_1;
     s_ds.vp.lfo.depth   = 50;
     s_ds.vp.lfo.targets = LFO_TGT_BIT(LFO_TARGET_FILTER);
 

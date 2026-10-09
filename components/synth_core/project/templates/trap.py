@@ -48,7 +48,7 @@ def bass808():
 
 
 def melody():
-    return arp(True, P_TRIANGLE, ARP_SLOT, ARP_RATE_1_8, MOTIF, gate=60,
+    return arp(True, P_TRIANGLE, ARP_SLOT, NOTE_DIV_1_8, MOTIF, gate=60,
                quant=ARP_QUANT_GLOBAL, root=57, scale=SCALE,
                amp_env=env(8, 300, 40, 250), flt=filt(FILTER_LPF, 3000, 0.8), amp=0.8)
 

@@ -1,7 +1,7 @@
 """Reader/writer for S3-Amysynth project files (Pnn.amp).
 
 Mirrors components/synth_core/project/project_snapshot.c field for field:
-GLOB v5, LAYR v24, ARP v13, DRON v3, DSTD v1, PROG v1, CHRD v1, CLIP v2, PGEN v1, WTCU v2,
+GLOB v6, LAYR v25, ARP v14, DRON v4, DSTD v2, PROG v1, CHRD v1, CLIP v2, PGEN v1, WTCU v2,
 inside project_store.c's 32-byte header (magic "AMYP", fmt 1, name, len, CRC32).
 Field order IS the format; when the firmware bumps a section version, update
 the matching read_/write_ pair and VER here (gen_templates.py fails the build
@@ -19,7 +19,7 @@ NAME_LEN = 16
 
 TAG = {k: struct.unpack('<I', k.encode())[0] for k in ('GLOB', 'LAYR', 'ARP ', 'DRON', 'DSTD', 'PROG', 'CHRD', 'CLIP',
                                                        'PGEN', 'WTCU')}
-VER = {'GLOB': 5, 'LAYR': 24, 'ARP ': 13, 'DRON': 3, 'DSTD': 1, 'PROG': 1, 'CHRD': 1, 'CLIP': 2,
+VER = {'GLOB': 6, 'LAYR': 25, 'ARP ': 14, 'DRON': 4, 'DSTD': 2, 'PROG': 1, 'CHRD': 1, 'CLIP': 2,
        'PGEN': 1, 'WTCU': 2}
 
 SEQ_TRACKS = 5
@@ -76,6 +76,13 @@ class R:
     def done(self): return self.p >= len(self.b)
 
 
+# note_div_t order (note_div.h), by label; the index is what the file stores for
+# every rate and the echo note.
+ECHO_DIV = {k: i for i, k in enumerate(('4BAR', '2BAR', '1/1', '1/2', '1/4', '1/8', '1/16', '1/32',
+                                        '1/2T', '1/4T', '1/8T', '1/16T', '1/32T',
+                                        '1/2D', '1/4D', '1/8D', '1/16D', '1/32D'))}
+
+
 # ── defaults ────────────────────────────────────────────────────────────────
 
 def default_env():
@@ -88,8 +95,8 @@ def default_filter():
 
 
 def default_lfo():
-    return dict(enabled=False, mode=0, wave=0, rate=0, depth=0, targets=0,
-                wob_rate=0, wob_depth=0, wob_reach=0, flt_oct_q=0)
+    return dict(enabled=False, mode=0, wave=0, rate=ECHO_DIV['1/8'], depth=0, targets=0,
+                wob_rate=ECHO_DIV['1/8'], wob_depth=0, wob_reach=0, flt_oct_q=0)
 
 
 def default_dist():
@@ -97,7 +104,7 @@ def default_dist():
 
 
 def default_vp():
-    """voice_params_init_defaults(): zeroed, unity amp_trim, audible dist spare."""
+    """voice_params_init_defaults(): zeroed, unity amp_trim, LFO rates 1/8, audible dist spare."""
     return dict(env=default_env(), env1=default_env(), filter=default_filter(), lfo=default_lfo(),
                 env_authored=False, env1_authored=False, filter_authored=False, lfo_authored=False,
                 amp_trim=1.0, dist=default_dist(), dist_authored=False)
@@ -121,11 +128,6 @@ def default_layer(kind):
                 step_ratchet_taper=grid(0),
                 gate_pct=92, portamento_ms=0, groove_pct=100, fm_algo_override=0xFF,
                 vp_src=[0] * SEQ_TRACKS, vp_layer=default_vp(), patch_scope=0, num_tracks=4)
-
-
-# fx_echo_div_t order (amy_fx.h); the index is what the file stores.
-ECHO_DIV = {k: i for i, k in enumerate(('1/32', '1/16T', '1/16', '1/8T', '1/8', '1/4T', '1/8D',
-                                        '1/4', '1/2T', '1/4D', '1/2'))}
 
 
 def default_fx():

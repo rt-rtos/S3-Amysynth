@@ -36,7 +36,7 @@ def chords():
     claim(L, 0, P_SAW_DOWN, SLOT_CHORD,
           vp(amp_env=env(2, 250, 0, 300), eg1=env(2, 180, 0, 150),
              flt=filt(FILTER_LPF, 700, 2.0, eg1_cutoff=1.5),
-             mod=lfo(LFO_SINE, LFO_4BAR, LFO_TGT_FILTER, depth=70, flt_oct_q=6), trim=0.8),
+             mod=lfo(LFO_SINE, NOTE_DIV_4BAR, LFO_TGT_FILTER, depth=70, flt_oct_q=6), trim=0.8),
           CHORD)
     claim(L, 1, P_SINE, 36,                   # C2
           vp(amp_env=env(4, 150, 70, 80), trim=0.5), SUB)

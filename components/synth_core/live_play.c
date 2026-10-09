@@ -75,7 +75,7 @@ static void live_seed_defaults(void)
     s_vp.filter.cutoff_hz   = 800.0f;
     s_vp.filter.resonance   = 1.0f;
     s_vp.lfo.wave    = LFO_WAVE_SINE;
-    s_vp.lfo.rate    = LFO_RATE_1BAR;
+    s_vp.lfo.rate    = NOTE_DIV_1_1;
     s_vp.lfo.depth   = 50;
     s_vp.lfo.targets = LFO_TGT_BIT(LFO_TARGET_FILTER);
 }
@@ -317,7 +317,7 @@ void  lfo_push_amp(uint8_t synth_id, uint16_t patch, float amp);
 void  lfo_push_target_neutral(uint8_t synth_id, uint16_t patch,
                               lfo_target_t target);
 
-static inline float live_swlfo_hz(lfo_rate_t rate, uint16_t bpm)
+static inline float live_swlfo_hz(note_div_t rate, uint16_t bpm)
 {
     float hz = lfo_rate_to_hz(rate, bpm);
     return (hz > SEQ_LFO_SW_MAX_HZ) ? SEQ_LFO_SW_MAX_HZ : hz;

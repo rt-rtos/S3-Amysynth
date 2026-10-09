@@ -49,7 +49,7 @@ def stab():
     claim(L, 0, P_SAW_DOWN, SLOT_STAB,
           vp(amp_env=env(2, 200, 0, 150), eg1=env(2, 150, 0, 100),
              flt=filt(FILTER_LPF, 900, 2.5, eg1_cutoff=2.0),
-             mod=lfo(LFO_SINE, LFO_4BAR, LFO_TGT_FILTER, depth=60, flt_oct_q=5), trim=0.6),
+             mod=lfo(LFO_SINE, NOTE_DIV_4BAR, LFO_TGT_FILTER, depth=60, flt_oct_q=5), trim=0.6),
           STAB)
     L['patch'] = P_SAW_DOWN
     return L

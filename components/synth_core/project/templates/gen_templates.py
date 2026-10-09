@@ -41,6 +41,7 @@ SEQUENCER_H = 'synth_core/include/sequencer_core.h'
 FX_BUS_H = 'synth_core/include/fx_bus.h'
 AMY_FX_H = 'synth_core/include/amy_fx.h'
 ARP_H = 'synth_core/include/arp_core.h'
+NOTE_DIV_H = 'synth_core/include/note_div.h'
 CHORDS_H = 'synth_core/include/seq_chords.h'
 SLOTS_H = 'synth_core/include/synth_slots.h'
 DRONE_H = 'synth_core/include/custompatches/drone_core.h'
@@ -170,8 +171,11 @@ def constant_checks(fw):
         ('GATE_HOLD', S.GATE_HOLD, SEQ_CONFIG_H, d, 'SEQ_GATE_HOLD'),
         ('ARP_REST', S.ARP_REST, ARP_H, d, 'ARP_REST'),
     ]
-    for k, v in C.ECHO_DIV.items():                 # '1/8D' -> FX_ECHO_DIV_8D
-        checks.append(("ECHO_DIV['%s']" % k, v, AMY_FX_H, e, 'FX_ECHO_DIV_' + k[2:]))
+    for k, v in C.ECHO_DIV.items():                 # '1/8D' -> NOTE_DIV_1_8D
+        sym = 'NOTE_DIV_' + k.replace('/', '_')
+        checks.append(("ECHO_DIV['%s']" % k, v, NOTE_DIV_H, e, sym))
+        checks.append((sym, getattr(S, sym), NOTE_DIV_H, e, sym))
+    checks.append(('len(ECHO_DIV)', len(C.ECHO_DIV), NOTE_DIV_H, n, 'NOTE_DIV_COUNT'))
     for sym in ('MAJ', 'MIN', 'MAJ7', 'MIN7', 'DOM7', 'SUS2', 'SUS4', 'DIM', 'AUG', 'MIN9',
                 'MAJ9', 'MAJ6', 'MIN6', 'DOM9', 'OFF'):
         checks.append(('CHORD_' + sym, getattr(S, 'CHORD_' + sym), CHORD_TYPES_H, e, 'CHORD_' + sym))
@@ -189,8 +193,6 @@ def constant_checks(fw):
     for sym in ('FILTER', 'AMP', 'PITCH', 'PAN', 'SCAN'):
         checks.append(('LFO_TGT_' + sym, getattr(S, 'LFO_TGT_' + sym), SEQ_MODEL_H, b,
                        'LFO_TARGET_' + sym))
-    for sym in ('1_8', '1_4', '1_2', '1BAR', '2BAR', '4BAR', '1_16'):
-        checks.append(('LFO_' + sym, getattr(S, 'LFO_' + sym), SEQ_MODEL_H, e, 'LFO_RATE_' + sym))
     for sym in ('CLIP', 'FOLD', 'CRUSH'):
         checks.append(('DIST_' + sym, getattr(S, 'DIST_' + sym), AMY_H, d, 'DIST_' + sym))
     for sym in ('DRUM', 'MELODIC'):
@@ -202,8 +204,6 @@ def constant_checks(fw):
     for sym in ('CHORD', 'ROOT', 'OFF'):
         checks.append(('FOLLOW_' + sym, getattr(S, 'FOLLOW_' + sym), SEQ_MODEL_H, e,
                        'SEQ_FOLLOW_' + sym))
-    for sym in ('1_1', '1_4', '1_8', '1_16', '1_32'):
-        checks.append(('ARP_RATE_' + sym, getattr(S, 'ARP_RATE_' + sym), ARP_H, e, 'ARP_RATE_' + sym))
     for sym in ('UP', 'DOWN', 'SLOT'):
         checks.append(('ARP_' + sym, getattr(S, 'ARP_' + sym), ARP_H, e, 'ARP_' + sym))
     for sym in ('OWN', 'GLOBAL', 'CHORD'):
@@ -212,9 +212,6 @@ def constant_checks(fw):
     for sym in ('WAVE', 'PATCH'):
         checks.append(('DRONE_SRC_' + sym, getattr(S, 'DRONE_SRC_' + sym), DRONE_H, e,
                        'DRONE_SRC_' + sym))
-    for sym in ('1_4', '1_8', '1_16', '1_32', '1_1'):
-        checks.append(('DRONE_RATE_' + sym, getattr(S, 'DRONE_RATE_' + sym), DRONE_H, e,
-                       'DRONE_RATE_' + sym))
     for sym in ('FULL', 'FOUR', 'OFFBEAT', 'GALLOP', 'DUB'):
         checks.append(('DRONE_PAT_' + sym, getattr(S, 'DRONE_PAT_' + sym), DRONE_H, e,
                        'DRONE_PAT_' + sym))

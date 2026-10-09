@@ -121,8 +121,8 @@ uint8_t voice_wob_db_to_depth(uint8_t db);
 #define VOICE_ENV_SUSTAIN_MAX_PCT 100u
 
 /* Reset a voice_params_t (seq_model.h) to defaults: zeroed/unauthored, with
- * amp_trim at unity. The single place the trim gets its non-zero default -
- * use it instead of re-setting 1.0 after a memset. */
+ * amp_trim at unity and both LFO rates at 1/8. The single place those get
+ * their non-zero defaults - use it instead of re-setting them after a memset. */
 void voice_params_init_defaults(voice_params_t *vp);
 
 /* lfo_wave_t -> AMY wave constant. RANDOM maps to NOISE: compute_mod_noise

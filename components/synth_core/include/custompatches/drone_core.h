@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "seq_model.h"     /* seq_env_t */
+#include "note_div.h"
 #include "chord_types.h"   /* chord_type_t, chord_type_name() */
 #include "quantizer.h"     /* quantizer_chord_intervals() */
 
@@ -37,26 +38,11 @@ typedef enum {
     DRONE_SRC_PATCH = 1,
 } drone_source_t;
 
-/* Stutter LFO note divisions (tempo-locked). Append-only: values persist in
- * project snapshots. Widened to the arp's range (whole note + triplets). */
-typedef enum {
-    DRONE_RATE_1_4   = 0,
-    DRONE_RATE_1_8   = 1,
-    DRONE_RATE_1_16  = 2,
-    DRONE_RATE_1_32  = 3,
-    DRONE_RATE_1_1   = 4,
-    DRONE_RATE_1_4T  = 5,
-    DRONE_RATE_1_8T  = 6,
-    DRONE_RATE_1_16T = 7,
-    DRONE_RATE_1_32T = 8,
-    DRONE_RATE_COUNT
-} drone_rate_t;
-
 /* Chord shapes come from the shared quantizer_chord_intervals() table; the
  * drone caps voice count here regardless of how long the shared row is. */
 #define DRONE_CHORD_MAX_NOTES 5
 
-/* Stutter step patterns: 8-step per-bar on/off masks read by the filter-blip
+/* Stutter step patterns: 8-step on/off masks read by the filter-blip
  * service path. A 0 bit closes the filter for that step, turning the even
  * stutter grid into a rhythm. */
 typedef enum {
@@ -135,7 +121,7 @@ void drone_set_resonance(float r);        /* filter resonance                   
  * helpers in drone_core.c; do not compute them at call sites. */
 void drone_set_amp_peak(float c);         /* 0.0..1.0 on-beat level (linear)      */
 void drone_set_amp_duck(float m);         /* 0.0..1.0 duck depth (0=flat,1=-40dB) */
-void drone_set_rate(drone_rate_t rate);   /* stutter LFO note division            */
+void drone_set_rate(note_div_t rate);     /* stutter LFO note division            */
 void drone_set_patch(uint16_t patch);     /* PATCH-mode preset                    */
 
 /* The drone's opt-out from the shared patch catalog (patch_cycle.h): true for
@@ -151,7 +137,7 @@ void drone_set_sweep_bars(uint8_t bars);  /* sweep period in bars (tempo-locked)
 void drone_set_gate_len(float frac);      /* 0.05..0.95 chop length (osc1 duty)   */
 void drone_set_swing(uint8_t pct);        /* 0..66 swing on the stutter grid      */
 void drone_set_blip(float depth);         /* 0..1 per-step filter-zap depth       */
-void drone_set_pattern(drone_pattern_t p);/* per-bar step on/off mask             */
+void drone_set_pattern(drone_pattern_t p);/* 8-step on/off mask                   */
 
 /* ── Runtime-editable ADSR envelope (shared graph editor) ── */
 void drone_get_envelope(seq_env_t *out);
@@ -193,7 +179,7 @@ float          drone_get_amp_trim(void);   /* 0..1 per-target trim value        
 /* Visualiser helper: ON-beat (ceil) and OFF-beat (floor) amplitudes as 0..1
  * linear values, from the same dB math the engine uses. Either may be NULL. */
 void           drone_get_amp_levels_norm(float *floor_norm, float *ceil_norm);
-drone_rate_t   drone_get_rate(void);
+note_div_t     drone_get_rate(void);
 uint16_t       drone_get_patch(void);
 bool           drone_get_sub_enabled(void);
 int8_t         drone_get_sub_interval(void);
@@ -206,7 +192,6 @@ float          drone_get_blip(void);
 drone_pattern_t drone_get_pattern(void);
 
 /* Human-readable names for the enum values (for display). */
-const char *drone_rate_name(drone_rate_t rate);
 const char *drone_wave_name(uint16_t amy_wave);
 const char *drone_chord_name(chord_type_t chord);   /* wraps chord_type_name() */
 const char *drone_pattern_name(drone_pattern_t p);

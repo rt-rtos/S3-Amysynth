@@ -241,10 +241,16 @@ const menu_item_view_t *fx_menu_build_items(void)
     snprintf(s_fx_items[FXI_ECHO_MODE].value, MENU_VALUE_LEN, "%s",
              f->echo_sync ? "Sync" : "Free");
     /* The row the mode does not use stays visible in parentheses, read-only:
-     * in Sync, Echo Time shows the ms the note works out to. */
+     * in Sync, Echo Time shows the ms the note works out to, and a note longer
+     * than the echo line is marked "*" (amy_fx_echo_time_ms clamps it). */
+    const char *note = note_div_label((note_div_t)f->echo_div);
     snprintf(s_fx_items[FXI_ECHO_NOTE].label, MENU_LABEL_LEN, "Echo Note");
-    snprintf(s_fx_items[FXI_ECHO_NOTE].value, MENU_VALUE_LEN,
-             f->echo_sync ? "%s" : "(%s)", amy_fx_echo_div_label(f->echo_div));
+    if (!f->echo_sync)
+        snprintf(s_fx_items[FXI_ECHO_NOTE].value, MENU_VALUE_LEN, "(%s)", note);
+    else
+        snprintf(s_fx_items[FXI_ECHO_NOTE].value, MENU_VALUE_LEN, "%s%s", note,
+                 note_div_ms((note_div_t)f->echo_div, (float)seq_get_bpm())
+                     > (float)FX_ECHO_MAX_MS ? "*" : "");
     snprintf(s_fx_items[FXI_ECHO_TIME].label, MENU_LABEL_LEN, "Echo Time");
     snprintf(s_fx_items[FXI_ECHO_TIME].value, MENU_VALUE_LEN,
              f->echo_sync ? "(%dms)" : "%dms",
@@ -392,7 +398,7 @@ void fx_menu_edit_value(uint8_t idx, int delta)
             break;
         case FXI_ECHO_NOTE:
             f->echo_div = (uint8_t)SEQ_CLAMP_INT((int)f->echo_div + dir,
-                                                 0, FX_ECHO_DIV_COUNT - 1);
+                                                 0, NOTE_DIV_COUNT - 1);
             fx_push_echo(bus);
             break;
         case FXI_ECHO_TIME:

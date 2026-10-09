@@ -92,13 +92,6 @@ static inline float vis_clamp01(float v)
     return SEQ_CLAMP_F32(v, 0.0f, 1.0f);
 }
 
-/* Rate names mirroring drone_core.c s_rate_names (display-only copy; order
- * must match drone_rate_t, which is append-only for snapshot stability). */
-static const char * const s_vis_rate_names[] = {
-    "1/4", "1/8", "1/16", "1/32", "1/1", "1/4T", "1/8T", "1/16T", "1/32T"
-};
-#define VIS_RATE_COUNT 9
-
 void display_drone_vis_draw(u8g2_t *u8g2, const drone_vis_t *vis)
 {
     if (!u8g2 || !vis) return;
@@ -113,8 +106,7 @@ void display_drone_vis_draw(u8g2_t *u8g2, const drone_vis_t *vis)
     /* Rate + sweep-speed label, right-aligned in the title bar. */
     {
         char info[12];
-        const char *rn = (vis->rate_idx < VIS_RATE_COUNT)
-                         ? s_vis_rate_names[vis->rate_idx] : "?";
+        const char *rn = vis->rate_name ? vis->rate_name : "?";
         snprintf(info, sizeof(info), "%s %ub", rn, (unsigned)vis->sweep_bars);
         u8g2_SetFont(u8g2, u8g2_font_5x7_tr);
         uint8_t iw = (uint8_t)u8g2_GetStrWidth(u8g2, info);

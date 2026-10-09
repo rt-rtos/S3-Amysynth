@@ -8,6 +8,7 @@
  * notes below). */
 
 #include "chord_types.h"
+#include "note_div.h"
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -191,17 +192,6 @@ typedef enum {
     LFO_TARGET_COUNT,
 } lfo_target_t;
 typedef enum {
-    LFO_RATE_1_8 = 0, LFO_RATE_1_4,  LFO_RATE_1_2,
-    LFO_RATE_1BAR,    LFO_RATE_2BAR, LFO_RATE_4BAR,
-    /* APPEND-ONLY past this point: values are persisted in project snapshots.
-     * Mirrors the arp's rate range; the fast end is frequency-capped in
-     * lfo_rate_to_hz / the software stepper so a tempo-synced LFO can never
-     * reach an audible rate. */
-    LFO_RATE_1_16,    LFO_RATE_1_32,
-    LFO_RATE_1_4T,    LFO_RATE_1_8T, LFO_RATE_1_16T, LFO_RATE_1_32T,
-    LFO_RATE_COUNT,
-} lfo_rate_t;
-typedef enum {
     /* WOBBLE reach: which carrier rails the second-order LFO drives. One
      * persisted byte; 0 keeps the historic depth+rate meaning so zero-init
      * structs and pre-reach snapshot files keep their sound. APPEND-ONLY. */
@@ -214,13 +204,13 @@ typedef struct {
     bool         enabled;
     lfo_mode_t   mode;
     lfo_wave_t   wave;
-    lfo_rate_t   rate;
+    note_div_t   rate;
     uint8_t      depth;    /* 0..100 %, shared across all active targets      */
     uint8_t      targets;  /* bitmask of (1 << lfo_target_t): one AMY mod
                               carrier drives every checked target - osc1's
                               amplitude is the shared depth, each target's
                               COEF_MOD scaled by its own constant.            */
-    uint8_t      wob_rate; /* lfo_rate_t of the WOBBLE (second-order) LFO:
+    uint8_t      wob_rate; /* note_div_t of the WOBBLE (second-order) LFO:
                               osc2 modulating the osc1 carrier's depth AND
                               rate via chained mod_source.                    */
     uint8_t      wob_depth;/* 0..100 % of VOICE_WOB_DEPTH_AMP; 0 (zero-init) =

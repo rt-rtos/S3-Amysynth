@@ -56,7 +56,7 @@ static const char *TAG = "project_snapshot";
 
 /* LAYR section version: the writer's tag and the loader's only accepted
  * value. */
-#define LAYR_VERSION 24
+#define LAYR_VERSION 25
 
 _Static_assert(SEQ_TRACKS == 5 && SEQ_MAX_STEPS == 32,
                "LAYR format assumes 5x32; bump LAYR_VERSION");
@@ -194,18 +194,17 @@ static bool de_lfo(tlv_reader_t *r, seq_lfo_t *l)
     if (!tlv_get_u8(r, &wdeponly)) return false;
     if (!tlv_get_u8(r, &foct))     return false;
 
-    if (mode > LFO_MODE_RETRIG || wave >= LFO_WAVE_COUNT ||
-        rate >= LFO_RATE_COUNT) {
-        *l = (seq_lfo_t){0};
+    if (mode > LFO_MODE_RETRIG || wave >= LFO_WAVE_COUNT) {
+        *l = (seq_lfo_t){ .rate = NOTE_DIV_1_8, .wob_rate = NOTE_DIV_1_8 };
         return true;
     }
     l->enabled = en != 0;
     l->mode    = (lfo_mode_t)mode;
     l->wave    = (lfo_wave_t)wave;
-    l->rate    = (lfo_rate_t)rate;
+    l->rate    = (rate < NOTE_DIV_COUNT) ? (note_div_t)rate : NOTE_DIV_1_8;
     l->depth   = (depth > 100) ? 100 : depth;
     l->targets = (uint8_t)(tgt & LFO_TGT_ALL);
-    l->wob_rate  = (wrate < LFO_RATE_COUNT) ? wrate : 0;
+    l->wob_rate  = (wrate < NOTE_DIV_COUNT) ? wrate : (uint8_t)NOTE_DIV_1_8;
     /* Snap to a whole-dB authoring step (voice_config.h), so an off-grid byte
      * cannot read as OFF while the modulator still runs. */
     l->wob_depth = voice_wob_db_to_depth(voice_wob_depth_to_db(wdepth));
@@ -279,7 +278,7 @@ typedef struct {
 
 static void ser_glob(tlv_writer_t *w)
 {
-    size_t h = tlv_begin_section(w, TAG_GLOB, 5);  /* v5: per-bus echo sync + note */
+    size_t h = tlv_begin_section(w, TAG_GLOB, 6);  /* v6: echo note is a note_div_t */
     tlv_put_u16(w, sequencer_core_get_bpm());
     tlv_put_f32(w, amy_fx_get_master_volume());
     tlv_put_u8(w, sequencer_core_get_quantizer_enabled() ? 1 : 0);
@@ -365,7 +364,7 @@ static bool parse_glob(tlv_reader_t *b, staged_glob_t *g)
         if (!tlv_get_u8(b, &v))                   return true;
         f->echo_sync = v != 0;
         if (!tlv_get_u8(b, &f->echo_div))         return true;
-        if (f->echo_div >= FX_ECHO_DIV_COUNT) f->echo_div = FX_ECHO_DIV_8D;
+        if (f->echo_div >= NOTE_DIV_COUNT) f->echo_div = NOTE_DIV_1_8D;
         if (!tlv_get_i16(b, &f->reverb_liveness)) return true;
         if (!tlv_get_i16(b, &f->reverb_damping))  return true;
         if (!tlv_get_i16(b, &f->reverb_xover_hz)) return true;
@@ -636,7 +635,7 @@ typedef struct {
     uint16_t     patch;
     arp_dir_t    dir;
     uint8_t      octaves;
-    arp_rate_t   rate;
+    note_div_t   rate;
     uint8_t      gate_pct;
     uint8_t      scale;
     uint8_t      root;
@@ -653,7 +652,7 @@ typedef struct {
 static void ser_arp(tlv_writer_t *w)
 {
     /* One fixed shape per version, as for LAYR. Field history: git log. */
-    size_t h = tlv_begin_section(w, TAG_ARP, 13);
+    size_t h = tlv_begin_section(w, TAG_ARP, 14);
     tlv_put_u8(w, arp_get_enabled() ? 1 : 0);
     tlv_put_u16(w, arp_get_patch());
     tlv_put_u8(w, (uint8_t)arp_get_direction());
@@ -686,7 +685,7 @@ static bool parse_arp(tlv_reader_t *b, staged_arp_t *a)
     if (!tlv_get_u8(b, &a->octaves)) return false;
     a->octaves = SEQ_CLAMP_U8(a->octaves, 1, ARP_OCT_MAX);
     if (!tlv_get_u8(b, &v)) return false;
-    a->rate = (v >= ARP_RATE_COUNT) ? ARP_RATE_1_4 : (arp_rate_t)v;
+    a->rate = (v >= NOTE_DIV_COUNT) ? NOTE_DIV_1_4 : (note_div_t)v;
     if (!tlv_get_u8(b, &a->gate_pct)) return false;
     a->gate_pct = SEQ_CLAMP_U8(a->gate_pct, 10, 100);
     if (!tlv_get_u8(b, &a->scale)) return false;
@@ -745,7 +744,7 @@ typedef struct {
     float           resonance;
     float           amp_peak;
     float           amp_duck;
-    drone_rate_t    rate;
+    note_div_t      rate;
     bool            sub_enabled;
     int8_t          sub_interval;
     float           sweep_lo, sweep_hi;
@@ -760,7 +759,7 @@ typedef struct {
 
 static void ser_drone(tlv_writer_t *w)
 {
-    size_t h = tlv_begin_section(w, TAG_DRON, 3);
+    size_t h = tlv_begin_section(w, TAG_DRON, 4);
     tlv_put_u8(w, drone_get_enabled() ? 1 : 0);
     tlv_put_u8(w, (uint8_t)drone_get_source());
     tlv_put_u16(w, drone_get_wave());
@@ -804,7 +803,7 @@ static bool parse_drone(tlv_reader_t *b, staged_drone_t *d)
     if (!tlv_get_f32(b, &d->amp_duck))  return false;
     d->amp_duck = SEQ_CLAMP_F32(d->amp_duck, 0.0f, 1.0f);
     if (!tlv_get_u8(b, &v)) return false;
-    d->rate = (v >= DRONE_RATE_COUNT) ? DRONE_RATE_1_4 : (drone_rate_t)v;
+    d->rate = (v >= NOTE_DIV_COUNT) ? NOTE_DIV_1_4 : (note_div_t)v;
     { uint8_t se; if (!tlv_get_u8(b, &se)) return false; d->sub_enabled = se != 0; }
     if (!tlv_get_i8(b, &d->sub_interval)) return false;
     if (!tlv_get_f32(b, &d->sweep_lo)) return false;
@@ -869,7 +868,7 @@ typedef struct {
 
 static void ser_drone_std(tlv_writer_t *w)
 {
-    size_t h = tlv_begin_section(w, TAG_DSTD, 1);
+    size_t h = tlv_begin_section(w, TAG_DSTD, 2);
     tlv_put_u8(w, drone_std_get_enabled() ? 1 : 0);
     tlv_put_u8(w, (uint8_t)drone_std_get_source());
     tlv_put_u16(w, drone_std_get_wave());
@@ -1256,7 +1255,7 @@ bool project_snapshot_load_buffer(const uint8_t *payload, size_t len, const char
     while (ok && tlv_next_section(&r, &tag, &ver, &body)) {
         switch (tag) {
         case TAG_GLOB:
-            if (got_glob || ver != 5) { ok = false; break; }
+            if (got_glob || ver != 6) { ok = false; break; }
             ok = parse_glob(&body, &staged_glob);
             got_glob = ok;
             break;
@@ -1270,17 +1269,17 @@ bool project_snapshot_load_buffer(const uint8_t *payload, size_t len, const char
             break;
         case TAG_ARP:
             /* Exactly ser_arp()'s version (see TAG_LAYR). */
-            if (got_arp || ver != 13) { ok = false; break; }
+            if (got_arp || ver != 14) { ok = false; break; }
             ok = parse_arp(&body, &staged_arp);
             got_arp = ok;
             break;
         case TAG_DRON:
-            if (got_drone || ver != 3) { ok = false; break; }
+            if (got_drone || ver != 4) { ok = false; break; }
             ok = parse_drone(&body, &sd->drone);
             got_drone = ok;
             break;
         case TAG_DSTD:
-            if (got_dstd || ver != 1) { ok = false; break; }
+            if (got_dstd || ver != 2) { ok = false; break; }
             ok = parse_drone_std(&body, &sd->dstd);
             got_dstd = ok;
             break;

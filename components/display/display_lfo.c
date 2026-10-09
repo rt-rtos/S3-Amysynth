@@ -1,5 +1,6 @@
 #include "display_lfo.h"
 #include "voice_config.h"   /* WOBBLE dB authoring unit (shared with the editor) */
+#include "note_div.h"
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -48,25 +49,6 @@ static const char *target_name(int t)
         case LFO_TARGET_DIST_DRIVE: return "Drive";
         case LFO_TARGET_DIST_MIX:   return "Mix";
         default:                return "?";
-    }
-}
-
-static const char *rate_label(lfo_rate_t r)
-{
-    switch (r) {
-        case LFO_RATE_1_8:   return "1/8";
-        case LFO_RATE_1_4:   return "1/4";
-        case LFO_RATE_1_2:   return "1/2";
-        case LFO_RATE_1BAR:  return "1BR";
-        case LFO_RATE_2BAR:  return "2BR";
-        case LFO_RATE_4BAR:  return "4BR";
-        case LFO_RATE_1_16:  return "1/16";
-        case LFO_RATE_1_32:  return "1/32";
-        case LFO_RATE_1_4T:  return "1/4T";
-        case LFO_RATE_1_8T:  return "1/8T";
-        case LFO_RATE_1_16T: return "1/16T";
-        case LFO_RATE_1_32T: return "1/32T";
-        default:             return "???";
     }
 }
 
@@ -223,7 +205,7 @@ void lfo_view_draw(u8g2_t *u8g2, const lfo_view_t *v)
 
         switch (fld) {
             case LFO_FLD_RATE:
-                snprintf(buf, sizeof(buf), "Rte %s", rate_label(l->rate));
+                snprintf(buf, sizeof(buf), "Rte %s", note_div_label(l->rate));
                 break;
             case LFO_FLD_DEPTH:
                 snprintf(buf, sizeof(buf), "Dep %u%%", (unsigned)l->depth);
@@ -236,7 +218,7 @@ void lfo_view_draw(u8g2_t *u8g2, const lfo_view_t *v)
                          (double)voice_lfo_filter_octaves(l));
                 break;
             case LFO_FLD_WOB_RATE:
-                snprintf(buf, sizeof(buf), "WRt %s", rate_label((lfo_rate_t)l->wob_rate));
+                snprintf(buf, sizeof(buf), "WRt %s", note_div_label((note_div_t)l->wob_rate));
                 break;
             case LFO_FLD_WOB_DEPTH: {
                 /* Depth reaches speak dB of dip below the authored depth

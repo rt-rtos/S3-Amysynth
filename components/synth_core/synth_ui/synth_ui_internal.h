@@ -34,8 +34,8 @@ extern bool              s_drone_vis_open; /* owner: ui_screen_drone.c; task rea
 /* ─── FNV-1a render-on-change (all view signature functions use this) ── */
 #define FNV1A_OFFSET 2166136261u
 #define FNV1A_PRIME  16777619u
-[[gnu::const]] static inline uint32_t fnv1a_bytes(uint32_t h,
-                                                    const void *data, size_t len)
+[[gnu::pure]] static inline uint32_t fnv1a_bytes(uint32_t h,
+                                                   const void *data, size_t len)
 {
     const uint8_t *b = (const uint8_t *)data;
     for (size_t i = 0; i < len; ++i) { h ^= b[i]; h *= FNV1A_PRIME; }

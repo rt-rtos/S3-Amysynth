@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "seq_model.h"     /* seq_env_t */
+#include "note_div.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -29,21 +30,6 @@ typedef enum {
     ARP_SLOT = 2,   /* slot-order: position preserved, ARP_REST honoured */
     ARP_DIR_COUNT
 } arp_dir_t;
-
-/* RATE table: musical subdivision -> ticks per arp note.
- * AMY_SEQUENCER_PPQ = 48, so a 1/16 = 12 ticks (matches SEQ_TICKS_PER_STEP). */
-typedef enum {
-    ARP_RATE_1_1  = 0,
-    ARP_RATE_1_4  = 1,   /* quarter note   */
-    ARP_RATE_1_8  = 2,   /* eighth note    */
-    ARP_RATE_1_16 = 3,  /* sixteenth note */
-    ARP_RATE_1_32 = 4, /* thirty-second  */
-    ARP_RATE_1_4T = 5,
-    ARP_RATE_1_8T = 6,
-    ARP_RATE_1_16T = 7,
-    ARP_RATE_1_32T = 8,  
-    ARP_RATE_COUNT
-} arp_rate_t;
 
 /* What arp_snap() snaps slot notes to. Persisted as a u8 in the project. */
 typedef enum {
@@ -84,7 +70,7 @@ void arp_set_enabled(bool enabled);
 void arp_set_solo_muted(bool muted);
 void arp_set_direction(arp_dir_t dir);
 void arp_set_octaves(uint8_t octaves);        /* clamped 1..ARP_OCT_MAX */
-void arp_set_rate(arp_rate_t rate);
+void arp_set_rate(note_div_t rate);           /* ids >= NOTE_DIV_COUNT ignored */
 void arp_set_gate_pct(uint8_t gate_pct);      /* clamped 10..100        */
 void arp_set_scale(uint8_t scale_index);
 void arp_set_root_note(uint8_t root_note);
@@ -161,8 +147,7 @@ void arp_core_refresh_lfo_freq(void);
 bool      arp_get_enabled(void);
 arp_dir_t arp_get_direction(void);
 uint8_t   arp_get_octaves(void);
-arp_rate_t arp_get_rate(void);
-const char *arp_rate_name(arp_rate_t rate);
+note_div_t arp_get_rate(void);
 uint8_t   arp_get_gate_pct(void);
 uint8_t   arp_get_scale(void);
 uint8_t   arp_get_root_note(void);

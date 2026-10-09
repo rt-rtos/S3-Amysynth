@@ -193,9 +193,10 @@ static inline bool sequencer_core_patch_compiled_out(uint16_t patch)
 #define SEQ_DEFAULT_BPM  108
 
 /* ── Shared LFO helper ────────────────────────────────────────────────────
- * Convert a tempo-synced lfo_rate_t to a frequency in Hz for the given BPM.
- * Defined in sequencer_core.c; also used by arp_core.c (avoids duplication). */
-float lfo_rate_to_hz(lfo_rate_t rate, uint16_t bpm);
+ * LFO frequency in Hz for a note division (note_div.h) at the given BPM,
+ * capped at SEQ_LFO_NATIVE_MAX_HZ. Defined in seq_core_tempo.c; shared by
+ * every voice block's LFO. */
+float lfo_rate_to_hz(note_div_t rate, uint16_t bpm);
 
 /* ── Core lifecycle ── */
 void sequencer_core_init(void);

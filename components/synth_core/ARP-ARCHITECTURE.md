@@ -65,7 +65,7 @@ From rate/tick input through `arp_core_refresh` to the AMY synth slot:
 
 ```mermaid
 flowchart TD
-    RATE["arp_rate_t (1/1 .. 1/32 + triplets)"] --> TICKS["rate_ticks via AMY_SEQUENCER_PPQ=48\n(192 / 48 / 24 / 12 / 6 / 32 / 16 / 8 / 4)"]
+    RATE["note_div_t rate\n(note_div.h: straight, triplet, dotted)"] --> TICKS["rate_ticks = note_div_ticks(rate)\nat AMY_SEQUENCER_PPQ=48"]
     SLOTS["slots[] raw chromatic notes"] --> SORT["arp_collect_up / arp_collect_down\nsorted, n <= 8\n(SLOT mode keeps written order)"]
     OCT["octaves"] --> STEPS
     SORT --> STEPS["steps = count x octaves\nperiod = steps x rate_ticks"]
@@ -91,7 +91,7 @@ typedef struct {
     bool       enabled;
     arp_dir_t  dir;                   // ARP_UP | ARP_DOWN | ARP_SLOT
     uint8_t    octaves;               // 1..ARP_OCT_MAX (4)
-    arp_rate_t rate;                  // 1/1, 1/4, 1/8, 1/16, 1/32 + triplets
+    note_div_t rate;                  // note division (note_div.h)
     uint8_t    gate_pct;              // 10..100
     int16_t    slots[ARP_MAX_SLOTS];  // raw chromatic MIDI, -1 = empty,
                                       // ARP_REST (-2) = rest (SLOT mode)
@@ -134,7 +134,6 @@ never calls back into `arp_core`. Cursor index space:
 | `ARP_MAX_STEPS` | `ARP_MAX_SLOTS × ARP_OCT_MAX` = 32 | `arp_core.c` | Max distinct scheduled arp notes |
 | `ARP_REST` | −2 | `arp_core.h` | Rest sentinel in `slots[]` |
 | `ARP_PORTAMENTO_MAX_MS` | 100 | `arp_core.h` | Glide ceiling |
-| `ARP_RATE_COUNT` | 9 | `arp_core.h` | Rate subdivisions |
 
 ---
 
@@ -181,20 +180,10 @@ flowchart LR
 
 ### Rate → ticks
 
+The rate is a `note_div_t`; its ticks per note come from `note_div_ticks()`
+(`include/note_div.h`, the division table every tempo-synced picker shares).
 `AMY_SEQUENCER_PPQ = 48`, so a 1/16 note = 12 ticks (matches the sequencer's
-`SEQ_TICKS_PER_STEP`). Triplet rates fit three notes in the space of two.
-
-| Rate | Ticks/note |
-|---|---|
-| `1/1` | 192 |
-| `1/4` | 48 |
-| `1/8` | 24 |
-| `1/16` | 12 |
-| `1/32` | 6 |
-| `1/4T` | 32 |
-| `1/8T` | 16 |
-| `1/16T` | 8 |
-| `1/32T` | 4 |
+`SEQ_TICKS_PER_STEP`).
 
 ### Sequence computation (`arp_core_refresh`)
 
@@ -288,7 +277,7 @@ void arp_core_service(void);   // coalesced re-emit if dirty (call per frame)
 void arp_set_enabled(bool);
 void arp_set_direction(arp_dir_t);       // UP / DOWN / SLOT
 void arp_set_octaves(uint8_t);           // 1..ARP_OCT_MAX
-void arp_set_rate(arp_rate_t);           // 9 subdivisions incl. triplets
+void arp_set_rate(note_div_t);           // any note_div.h division
 void arp_set_gate_pct(uint8_t);          // 10..100
 void arp_set_scale(uint8_t);
 void arp_set_root_note(uint8_t);

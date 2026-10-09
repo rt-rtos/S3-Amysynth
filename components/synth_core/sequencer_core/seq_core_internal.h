@@ -326,7 +326,7 @@ void     sequencer_push_tempo(uint16_t b);
 /* LFO Hz for the 20 Hz software fallback stepper: lfo_rate_to_hz capped to
  * SEQ_LFO_SW_MAX_HZ, since the fast end of the rate range needs >= 4 stepper
  * samples per LFO cycle. */
-static inline float seq_lfo_sw_hz(lfo_rate_t rate, uint16_t bpm)
+static inline float seq_lfo_sw_hz(note_div_t rate, uint16_t bpm)
 {
     float hz = lfo_rate_to_hz(rate, bpm);
     return (hz > SEQ_LFO_SW_MAX_HZ) ? SEQ_LFO_SW_MAX_HZ : hz;

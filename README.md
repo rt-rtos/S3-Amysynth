@@ -59,9 +59,9 @@ melodic layer, running at 108 BPM. From there:
 - **Per-row voices** - every melodic row owns its own AMY synth slot, so
   stacked same-pitch notes on different rows don't collapse into one voice.
 - **Arpeggiator** - a standalone instrument on its own screen: 8 note slots
-  (with rests), UP/DOWN/SLOT-order directions, 1-4 octaves, nine
-  tempo-locked rates including triplets, gate length, portamento glide, and
-  its own scale/root quantizer (or the global one). See
+  (with rests), UP/DOWN/SLOT-order directions, 1-4 octaves, eighteen
+  tempo-locked rates including triplets and dotted, gate length, portamento
+  glide, and its own scale/root quantizer (or the global one). See
   [ARP-ARCHITECTURE.md](components/synth_core/ARP-ARCHITECTURE.md).
 - **Two drones** - a free-running drone (chord carrier plus mono sub, raw
   wave or any patch, with the full filter / LFO / distortion editor set) and
@@ -640,7 +640,7 @@ edited.
 | Item | Range |
 |---|---|
 | EQ Low / Mid / High | -15 to +15 dB (1 dB steps) |
-| Echo | 0-100 % level, plus Fbk 0-99 %, Mode Sync/Free, Note 1/32 to 1/2 incl. triplets (T) and dotted (D) in Sync, Time 0-1365 ms in Free, Tone -99 to +99 |
+| Echo | 0-100 % level, plus Fbk 0-99 %, Mode Sync/Free, Note 4BAR to 1/32 incl. triplets (T) and dotted (D) in Sync (a note longer than 1365 ms shows `*` and plays at 1365 ms), Time 0-1365 ms in Free, Tone -99 to +99 |
 | Chorus | 0-100 % level, plus Rate 0.05-10 Hz, Depth 0-100 % |
 | Reverb | 0-100 % level, plus Live 0-100 %, Damp 0-100 %, Xover 500-8000 Hz |
 | Dist | stage set: OFF / CLIP / FOLD / C+F / CRSH / C+H / F+H / ALL (clip, fold, bitcrush and their combinations) |
@@ -719,8 +719,8 @@ per the menu's **ArpQ** row).
 Controls: [CONTROLS.md](CONTROLS.md#arp-screen).
 
 **Fields (cursor order):** Enable → Mode (UP / DOWN / SLOT) → Oct (1-4) →
-Rate (1/1 · 1/4 · 1/8 · 1/16 · 1/32 plus triplet variants 1/4T · 1/8T ·
-1/16T · 1/32T, all tempo-locked) → Gate % (10-100 %) → Porta (0-100 ms
+Rate (4BAR · 2BAR · 1/1 · 1/2 · 1/4 · 1/8 · 1/16 · 1/32, triplets 1/2T to
+1/32T, dotted 1/2D to 1/32D, all tempo-locked) → Gate % (10-100 %) → Porta (0-100 ms
 glide) → Note slots 0-7.
 
 Note slots store raw chromatic MIDI pitches; turning below the range clears
@@ -790,7 +790,7 @@ Controls: [CONTROLS.md](CONTROLS.md#drone-screens); `MY_BUTTON_SHIFT` +
 | PEAK | 0.0-1.0 - always-on carrier level (WAVE mode only; keep it above 0) |
 | DUCK | 0.0-1.0 - stutter depth; 1.0 = full hard gate (WAVE mode only) |
 | VISUALISE | ON / OFF - switch the screen to the drone visualizer |
-| STUTTER rate | 1/4 · 1/8 · 1/16 · 1/32 · 1/1 · 1/4T · 1/8T · 1/16T · 1/32T, tempo-locked (WAVE mode only) |
+| STUTTER rate | the arp's Rate divisions, tempo-locked (WAVE mode only) |
 | GATE | 0.05-0.95 - gate duty cycle (WAVE mode only) |
 | SWING | 0-66 % |
 | PATTERN | FULL (all 8), FOUR (4-on-the-floor), OFFBT (upbeats), GALOP (short-short-long), DUB (dub push); 8-step masks against stutter subdivisions |
@@ -968,8 +968,8 @@ staircase - same numbers and law, coarser stepping
 Square / Random sample-and-hold), rate, depth (0-100 %), filter octave
 range, the three WOBBLE rows, enable.
 
-**Rates**, all tempo-locked: 1/8 · 1/4 · 1/2 · 1 bar · 2 bars · 4 bars ·
-1/16 · 1/32 · 1/4T · 1/8T · 1/16T · 1/32T.
+**Rates**, all tempo-locked: the arp's Rate divisions (4BAR to 1/32,
+triplets, dotted).
 
 **Targets** live on two tabs, switched with `MY_BUTTON_SHOULDER`: tab 1 is
 **Filter / Amp / Pitch / Pan / Scan**, tab 2 is **Drive / Mix** (distortion

@@ -45,7 +45,7 @@ typedef struct {
     float   amp_floor_norm;  /* off-beat amplitude from drone_get_amp_levels_norm() */
     float   amp_ceil_norm;   /* on-beat amplitude from drone_get_amp_levels_norm()  */
     float   resonance;       /* raw Q value 0.1..8.0 for needle + label          */
-    uint8_t rate_idx;        /* drone_rate_t enum (0=1/4, 1=1/8, 2=1/16, 3=1/32) */
+    const char *rate_name;   /* stutter rate label (note_div_label)              */
     uint8_t sweep_bars;      /* sweep period in bars 1..16                        */
     uint8_t pattern_mask;    /* 8-bit step on/off mask (LSB = step 0) */
     float   gate_len;        /* 0..1 chop length (PULSE duty) */

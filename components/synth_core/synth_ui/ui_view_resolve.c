@@ -82,7 +82,7 @@ static void draw_drone_vis(u8g2_t *g, ui_view_vw_t *vw)
         .amp_floor_norm = fl,
         .amp_ceil_norm  = cl,
         .resonance      = drone_get_resonance(),
-        .rate_idx       = (uint8_t)drone_get_rate(),
+        .rate_name      = note_div_label(drone_get_rate()),
         .sweep_bars     = drone_get_sweep_bars(),
         .pattern_mask   = (uint8_t)0xFF, /* filled below */
         .gate_len       = drone_get_gate_len(),

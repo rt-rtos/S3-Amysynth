@@ -35,7 +35,7 @@ def melody():
     # KS excites quietly; the clip stage is makeup gain.
     claim(L, 0, P_KS, 72,                     # C5
           vp(amp_env=env(2, 0, 100, 2500), flt=ks, dst=dist(DIST_CLIP, 4, 100),
-             mod=lfo(LFO_TRI, LFO_2BAR, LFO_TGT_PAN, depth=80), trim=1.0),
+             mod=lfo(LFO_TRI, NOTE_DIV_2BAR, LFO_TGT_PAN, depth=80), trim=1.0),
           PLUCK)
     claim(L, 1, P_SINE, 79,                   # G5
           vp(amp_env=env(400, 0, 100, 4000), trim=0.25), BELL)
@@ -45,7 +45,7 @@ def melody():
 
 def bed():
     return drone(True, CHORD_SUS2, 48, wave=WAVE_SAW_DOWN, peak=0.35, duck=0.0,
-                 rate=DRONE_RATE_1_1, sweep=(250.0, 900.0), sweep_bars=16, res=0.8,
+                 rate=NOTE_DIV_1_1, sweep=(250.0, 900.0), sweep_bars=16, res=0.8,
                  amp_env=env(2000, 300, 100, 3000))
 
 

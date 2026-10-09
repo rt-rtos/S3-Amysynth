@@ -115,7 +115,7 @@ static void drone_row_label_value(drone_logical_row_t r,
             break;
         case DROW_RATE:
             snprintf(label, DRONE_LABEL_LEN, "STUTTER");
-            snprintf(value, DRONE_VALUE_LEN, "%s", drone_rate_name(drone_get_rate()));
+            snprintf(value, DRONE_VALUE_LEN, "%s", note_div_label(drone_get_rate()));
             break;
         case DROW_GATE_LEN:
             snprintf(label, DRONE_LABEL_LEN, "GATE");
@@ -239,8 +239,8 @@ static void drone_edit_row(drone_logical_row_t r, int delta)
         case DROW_VIS_POPUP:
             break; /* encoder turns consumed; popup opened/closed via button */
         case DROW_RATE: {
-            int v = SEQ_CLAMP((int)drone_get_rate() + dir, 0, DRONE_RATE_COUNT - 1);
-            drone_set_rate((drone_rate_t)v);
+            int v = SEQ_CLAMP((int)drone_get_rate() + dir, 0, NOTE_DIV_COUNT - 1);
+            drone_set_rate((note_div_t)v);
             break;
         }
         case DROW_GATE_LEN:

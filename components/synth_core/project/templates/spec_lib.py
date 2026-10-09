@@ -26,18 +26,20 @@ ENV_NORMAL, ENV_LINEAR, ENV_DX7, ENV_TRUE_EXP = 0, 1, 2, 3
 EGT_PITCH, EGT_CUTOFF, EGT_DRIVE, EGT_MIX = 0, 1, 2, 3
 LFO_SINE, LFO_TRI, LFO_SAW_UP, LFO_SAW_DOWN, LFO_SQUARE, LFO_RANDOM = range(6)
 LFO_TGT_FILTER, LFO_TGT_AMP, LFO_TGT_PITCH, LFO_TGT_PAN, LFO_TGT_SCAN = 1, 2, 4, 8, 16
-LFO_1_8, LFO_1_4, LFO_1_2, LFO_1BAR, LFO_2BAR, LFO_4BAR, LFO_1_16 = range(7)
+# note_div_t (note_div.h): every tempo-synced rate - arp, LFO, wobble, stutter drone, echo
+NOTE_DIV_4BAR, NOTE_DIV_2BAR, NOTE_DIV_1_1, NOTE_DIV_1_2, NOTE_DIV_1_4, NOTE_DIV_1_8 = range(6)
+NOTE_DIV_1_16, NOTE_DIV_1_32 = range(6, 8)
+NOTE_DIV_1_2T, NOTE_DIV_1_4T, NOTE_DIV_1_8T, NOTE_DIV_1_16T, NOTE_DIV_1_32T = range(8, 13)
+NOTE_DIV_1_2D, NOTE_DIV_1_4D, NOTE_DIV_1_8D, NOTE_DIV_1_16D, NOTE_DIV_1_32D = range(13, 18)
 DIST_CLIP, DIST_FOLD, DIST_CRUSH = 1, 2, 4
 SEQ_LAYER_DRUM, SEQ_LAYER_MELODIC = 0, 1
 SCOPE_LAYER, SCOPE_TRACK = 0, 1
 FOLLOW_CHORD, FOLLOW_ROOT, FOLLOW_OFF = 0, 1, 2
-ARP_RATE_1_1, ARP_RATE_1_4, ARP_RATE_1_8, ARP_RATE_1_16, ARP_RATE_1_32 = range(5)
 ARP_UP, ARP_DOWN, ARP_SLOT = 0, 1, 2
 ARP_QUANT_OWN, ARP_QUANT_GLOBAL, ARP_QUANT_CHORD = 0, 1, 2
 ARP_REST = -2
 ARP_EMPTY = -1
 DRONE_SRC_WAVE, DRONE_SRC_PATCH = 0, 1
-DRONE_RATE_1_4, DRONE_RATE_1_8, DRONE_RATE_1_16, DRONE_RATE_1_32, DRONE_RATE_1_1 = range(5)
 DRONE_PAT_FULL, DRONE_PAT_FOUR, DRONE_PAT_OFFBEAT, DRONE_PAT_GALLOP, DRONE_PAT_DUB = range(5)
 DRONE_FOLLOW_OFF, DRONE_FOLLOW_ROOT, DRONE_FOLLOW_CHORD = 0, 1, 2
 WAVE_SINE, WAVE_PULSE, WAVE_SAW_DOWN, WAVE_SAW_UP, WAVE_TRIANGLE = range(5)   # AMY wave, drone WAVE source
@@ -239,7 +241,7 @@ def glob(bpm, key_root, scale, bus0=None, bus1=None, split=SPLIT_DRUMS | SPLIT_C
 
 
 def arp_off():
-    return arp(False, P_PULSE, ARP_UP, ARP_RATE_1_16, [ARP_EMPTY] * C.ARP_MAX_SLOTS)
+    return arp(False, P_PULSE, ARP_UP, NOTE_DIV_1_16, [ARP_EMPTY] * C.ARP_MAX_SLOTS)
 
 
 def arp(enabled, patch, direction, rate, slots, octaves=1, gate=50, quant=ARP_QUANT_GLOBAL,
@@ -256,7 +258,7 @@ def drone_off():
     return drone(False, CHORD_SUS4, 57)
 
 
-def drone(enabled, chord, root, wave=WAVE_SAW_DOWN, peak=0.6, duck=0.0, rate=DRONE_RATE_1_4,
+def drone(enabled, chord, root, wave=WAVE_SAW_DOWN, peak=0.6, duck=0.0, rate=NOTE_DIV_1_4,
           sweep=(400.0, 1600.0), sweep_bars=8, res=1.2, pattern=DRONE_PAT_FULL,
           amp_env=None, sub=False, follow=DRONE_FOLLOW_OFF):
     return dict(enabled=enabled, source=DRONE_SRC_WAVE, wave=wave, chord=chord, root=root,
@@ -273,7 +275,7 @@ def drone_std_off():
     v = vp(melodic=False)
     v['env'] = env(200, 300, 100, 600); v['env1'] = env(15, 400, 25, 400)
     v['filter'].update(filter_type=FILTER_LPF, cutoff_hz=1200.0, resonance=1.0)
-    v['lfo'].update(wave=LFO_SINE, rate=LFO_1BAR, depth=50, targets=LFO_TGT_FILTER)
+    v['lfo'].update(wave=LFO_SINE, rate=NOTE_DIV_1_1, depth=50, targets=LFO_TGT_FILTER)
     return dict(enabled=False, source=DRONE_SRC_WAVE, wave=WAVE_SAW_DOWN, chord=CHORD_OFF,
                 root=45, follow=DRONE_FOLLOW_OFF, level=0.5, patch=25, sub_enabled=True,
                 sub_interval=-12, vp=v)

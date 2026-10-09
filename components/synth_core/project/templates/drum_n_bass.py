@@ -36,7 +36,7 @@ def bass():
     L = melodic_layer(0, gate=100, groove=30, voices=1, porta=20, chord=PROGRESSION[0][:2])
     claim(L, 0, P_BASS_SUB_DETUNE, 41,  # F2
           vp(amp_env=env(5, 0, 100, 350), flt=filt(FILTER_LPF24, 500, 1.2),
-             mod=lfo(LFO_TRI, LFO_1BAR, LFO_TGT_FILTER, depth=40, flt_oct_q=4), trim=0.4),
+             mod=lfo(LFO_TRI, NOTE_DIV_1_1, LFO_TGT_FILTER, depth=40, flt_oct_q=4), trim=0.4),
           BASS, follow=FOLLOW_ROOT)
     L['patch'] = P_BASS_SUB_DETUNE
     return L
@@ -46,7 +46,7 @@ def pad():
     L = melodic_layer(0, gate=100, groove=0, voices=2, chord=PROGRESSION[0][:2])
     chord_rows(L, P_SAW_DOWN, [56, 60, 63, 67],   # Ab3 C4 Eb4 G4 anchors
                vp(amp_env=env(250, 0, 100, 1800), flt=filt(FILTER_LPF, 1800, 0.8),
-                  mod=lfo(LFO_SINE, LFO_4BAR, LFO_TGT_FILTER, depth=40, flt_oct_q=3),
+                  mod=lfo(LFO_SINE, NOTE_DIV_4BAR, LFO_TGT_FILTER, depth=40, flt_oct_q=3),
                   trim=0.3),
                PAD)
     L['patch'] = P_SAW_DOWN

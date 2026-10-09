@@ -45,7 +45,7 @@ def keys():
     L = melodic_layer(SWING, gate=100, groove=60, voices=2, chord=PROGRESSION[0][:2])
     chord_rows(L, P_SINE, [53, 57, 60, 64],   # F3 A3 C4 E4 anchors
                vp(amp_env=env(3, 1400, 0, 900), dst=dist(DIST_CLIP, 3, 40),
-                  mod=lfo(LFO_SINE, LFO_1_4, LFO_TGT_AMP, depth=25), trim=0.25),
+                  mod=lfo(LFO_SINE, NOTE_DIV_1_4, LFO_TGT_AMP, depth=25), trim=0.25),
                KEYS)
     L['patch'] = P_SINE
     return L

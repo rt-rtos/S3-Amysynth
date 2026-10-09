@@ -38,30 +38,7 @@
 
 static const char *TAG = "arp_core";
 
-/* AMY_SEQUENCER_PPQ = 48 → 1/16 = 12 ticks. */
-static const uint32_t s_rate_ticks[ARP_RATE_COUNT] = {
-    [ARP_RATE_1_1]  = 192,
-    [ARP_RATE_1_4]  = 48,
-    [ARP_RATE_1_8]  = 24,
-    [ARP_RATE_1_16] = 12,
-    [ARP_RATE_1_32] = 6,
-    [ARP_RATE_1_4T]   = 32,
-    [ARP_RATE_1_8T]   = 16,
-    [ARP_RATE_1_16T]  = 8,
-    [ARP_RATE_1_32T]  = 4,
-};
-
-static const char *s_rate_names[ARP_RATE_COUNT] = {
-    [ARP_RATE_1_1]  = "1/1",
-    [ARP_RATE_1_4]  = "1/4",
-    [ARP_RATE_1_8]  = "1/8",
-    [ARP_RATE_1_16] = "1/16",
-    [ARP_RATE_1_32] = "1/32",
-    [ARP_RATE_1_4T]   = "1/4T",
-    [ARP_RATE_1_8T]   = "1/8T",
-    [ARP_RATE_1_16T]  = "1/16T",
-    [ARP_RATE_1_32T]  = "1/32T",
-};
+_Static_assert(NOTE_DIV_PPQ == AMY_SEQUENCER_PPQ, "note_div ticks are AMY sequencer ticks");
 
 typedef struct {
     bool       enabled;
@@ -70,7 +47,7 @@ typedef struct {
                                  survives a solo round-trip                 */
     arp_dir_t  dir;
     uint8_t    octaves;       /* 1..ARP_OCT_MAX */
-    arp_rate_t rate;
+    note_div_t rate;
     uint8_t    gate_pct;      /* 10..100 */
     int16_t    slots[ARP_MAX_SLOTS];  /* raw chromatic MIDI, -1 = empty */
     uint8_t    scale_index;
@@ -243,7 +220,7 @@ void arp_core_refresh_lfo_freq(void)
     e = amy_helpers_event_begin();
     e->synth                  = sequencer_core_arp_synth();
     e->osc                    = (uint8_t)(carrier + 1u);
-    e->freq_coefs[COEF_CONST] = lfo_rate_to_hz((lfo_rate_t)s_arp.vp.lfo.wob_rate,
+    e->freq_coefs[COEF_CONST] = lfo_rate_to_hz((note_div_t)s_arp.vp.lfo.wob_rate,
                                                      sequencer_core_get_bpm());
     amy_helpers_event_send(e);
 }
@@ -325,7 +302,7 @@ void arp_core_init(void)
     s_arp.enabled     = CONFIG_SEQ_ARP_DEFAULT_ENABLED;
     s_arp.dir         = ARP_UP;
     s_arp.octaves     = CONFIG_SEQ_ARP_DEFAULT_OCTAVES;
-    s_arp.rate        = ARP_RATE_1_16;
+    s_arp.rate        = NOTE_DIV_1_16;
     s_arp.gate_pct    = CONFIG_SEQ_ARP_DEFAULT_GATE_PCT;
     s_arp.scale_index = CONFIG_SEQ_ARP_DEFAULT_SCALE;
     s_arp.root_note   = CONFIG_SEQ_ARP_DEFAULT_ROOT_NOTE;
@@ -351,7 +328,7 @@ void arp_core_init(void)
     s_arp.vp.filter.resonance   = 1.0f;
     /* Default LFO: disabled (bypass until the user commits). */
     s_arp.vp.lfo.wave   = LFO_WAVE_SINE;
-    s_arp.vp.lfo.rate   = LFO_RATE_1BAR;
+    s_arp.vp.lfo.rate   = NOTE_DIV_1_1;
     s_arp.vp.lfo.depth  = 50;
     s_arp.vp.lfo.targets = LFO_TGT_BIT(LFO_TARGET_FILTER);
     s_arp.octaves = SEQ_CLAMP_U8(s_arp.octaves, 1, ARP_OCT_MAX);
@@ -386,7 +363,7 @@ void arp_core_refresh(void)
             if (s_arp.slots[i] != -1) active++;
         if (active == 0) return;
 
-        uint32_t rate    = s_rate_ticks[s_arp.rate];
+        uint32_t rate    = note_div_ticks(s_arp.rate);
         uint8_t  steps   = (uint8_t)(active * s_arp.octaves);
         uint32_t period  = (uint32_t)steps * rate;
         uint32_t gate    = (rate * s_arp.gate_pct) / 100u;
@@ -428,7 +405,7 @@ void arp_core_refresh(void)
         return;  /* nothing to play */
     }
 
-    uint32_t rate    = s_rate_ticks[s_arp.rate];
+    uint32_t rate    = note_div_ticks(s_arp.rate);
     uint8_t  steps   = (uint8_t)(count * s_arp.octaves);
     uint32_t period  = (uint32_t)steps * rate;
     uint32_t gate    = (rate * s_arp.gate_pct) / 100u;
@@ -490,9 +467,9 @@ void arp_set_octaves(uint8_t octaves)
     arp_mark_dirty();
 }
 
-void arp_set_rate(arp_rate_t rate)
+void arp_set_rate(note_div_t rate)
 {
-    if (rate >= ARP_RATE_COUNT) return;
+    if (rate >= NOTE_DIV_COUNT) return;
     if (s_arp.rate == rate) return;
     s_arp.rate = rate;
     arp_mark_dirty();
@@ -736,7 +713,7 @@ void  lfo_push_target_neutral(uint8_t synth_id, uint16_t patch,
 
 /* lfo_rate_to_hz capped to the stepper's usable band - mirrors seq_lfo_sw_hz
  * (seq_core_internal.h); needs >= 4 stepper samples per LFO cycle. */
-static inline float arp_swlfo_hz(lfo_rate_t rate, uint16_t bpm)
+static inline float arp_swlfo_hz(note_div_t rate, uint16_t bpm)
 {
     float hz = lfo_rate_to_hz(rate, bpm);
     return (hz > SEQ_LFO_SW_MAX_HZ) ? SEQ_LFO_SW_MAX_HZ : hz;
@@ -856,18 +833,12 @@ void arp_core_service(void)
 bool         arp_get_enabled(void)    { return s_arp.enabled; }
 arp_dir_t    arp_get_direction(void)  { return s_arp.dir; }
 uint8_t      arp_get_octaves(void)    { return s_arp.octaves; }
-arp_rate_t   arp_get_rate(void)       { return s_arp.rate; }
+note_div_t   arp_get_rate(void)       { return s_arp.rate; }
 uint8_t      arp_get_gate_pct(void)   { return s_arp.gate_pct; }
 uint8_t      arp_get_scale(void)      { return s_arp.scale_index; }
 uint8_t      arp_get_root_note(void)  { return s_arp.root_note; }
 arp_quant_mode_t arp_get_quant_mode(void) { return s_arp.quant_mode; }
 uint16_t     arp_get_patch(void)      { return s_arp.patch; }
-
-const char *arp_rate_name(arp_rate_t rate)
-{
-    if (rate >= ARP_RATE_COUNT) return "?";
-    return s_rate_names[rate];
-}
 
 int16_t arp_get_slot(uint8_t idx)
 {

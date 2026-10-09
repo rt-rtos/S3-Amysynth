@@ -2,6 +2,7 @@
 #include "amy.h"            /* wave constants, COEF_* indices */
 #include "amy_helpers.h"    /* shared scratch-event begin/send */
 #include "sequencer_core.h" /* lfo_rate_to_hz */
+#include "note_div.h"
 #include "seq_clamp.h"
 #include <math.h>           /* powf: wobble downward-only center offset */
 #include <string.h>
@@ -10,7 +11,9 @@ void voice_params_init_defaults(voice_params_t *vp)
 {
     if (!vp) return;
     memset(vp, 0, sizeof(*vp));
-    vp->amp_trim = 1.0f;   /* unity — the one non-zero default */
+    vp->amp_trim = 1.0f;   /* unity */
+    vp->lfo.rate     = NOTE_DIV_1_8;
+    vp->lfo.wob_rate = NOTE_DIV_1_8;
     /* Distortion off, but with the secondary parameters already in audible
      * territory: the first TYPE flip should be heard, not land on a no-op. */
     vp->dist = (seq_dist_t){ .type = 0, .drive = 2, .bits = 8, .rate = 8, .mix = 100 };
@@ -602,7 +605,7 @@ void voice_apply_native_lfo_topo(uint8_t synth, const seq_lfo_t *lfo,
         e->synth                  = synth;
         e->osc                    = wobble_osc;
         e->wave                   = TRIANGLE;
-        e->freq_coefs[COEF_CONST] = lfo_rate_to_hz((lfo_rate_t)lfo->wob_rate, bpm);
+        e->freq_coefs[COEF_CONST] = lfo_rate_to_hz((note_div_t)lfo->wob_rate, bpm);
         e->freq_coefs[COEF_NOTE]  = 0.0f;
         e->freq_coefs[COEF_BEND]  = 0.0f;
         e->amp_coefs[COEF_CONST]  = (lfo->wob_depth > 0) ? 1.0f : 0.0f;

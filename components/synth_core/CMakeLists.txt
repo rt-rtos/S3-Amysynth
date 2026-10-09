@@ -41,7 +41,7 @@ if(CONFIG_SYNTH_DEV_MENU)
         "sequencer_core/seq_core_dump.c")
 endif()
 
-idf_component_register(SRCS "live_play.c" "amy_helpers.c" "amy_fx.c" "fx_bus.c" "arp_core.c" "quantizer.c" "prog_gen.c" "voice_config.c"
+idf_component_register(SRCS "live_play.c" "amy_helpers.c" "amy_fx.c" "fx_bus.c" "arp_core.c" "note_div.c" "quantizer.c" "prog_gen.c" "voice_config.c"
                             "filter_scope.c"
                             "synth_ui/synth_ui_state.c"
                             "synth_ui/synth_ui_task.c"
@@ -113,6 +113,7 @@ if(CONFIG_SYNTH_PROJECT_STORE)
                 "${CMAKE_CURRENT_LIST_DIR}/include/fx_bus.h"
                 "${CMAKE_CURRENT_LIST_DIR}/include/amy_fx.h"
                 "${CMAKE_CURRENT_LIST_DIR}/include/arp_core.h"
+                "${CMAKE_CURRENT_LIST_DIR}/include/note_div.h"
                 "${CMAKE_CURRENT_LIST_DIR}/include/seq_chords.h"
                 "${CMAKE_CURRENT_LIST_DIR}/include/synth_slots.h"
                 "${CMAKE_CURRENT_LIST_DIR}/include/custompatches/drone_core.h"

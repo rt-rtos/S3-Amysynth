@@ -41,7 +41,7 @@
     .echo_feedback   = FX_PARAM_UNSET, \
     .echo_tone       = FX_PARAM_UNSET, \
     .echo_sync       = true, \
-    .echo_div        = FX_ECHO_DIV_8D, \
+    .echo_div        = NOTE_DIV_1_8D, \
     .reverb_liveness = FX_PARAM_UNSET, \
     .reverb_damping  = FX_PARAM_UNSET, \
     .reverb_xover_hz = FX_PARAM_UNSET, \
@@ -74,7 +74,7 @@ fx_state_t s_fx[FX_BUS_COUNT] = {
         .echo_tone       = FX_PARAM_UNSET,
         /* Echo starts in time with the pattern, on a dotted 8th. */
         .echo_sync       = true,
-        .echo_div        = FX_ECHO_DIV_8D,
+        .echo_div        = NOTE_DIV_1_8D,
         .reverb_liveness = FX_PARAM_UNSET,
         .reverb_damping  = FX_PARAM_UNSET,
         .reverb_xover_hz = FX_PARAM_UNSET,
@@ -135,35 +135,14 @@ void fx_push_eq(uint8_t bus)
     amy_helpers_event_send(e);
 }
 
-/* Synced echo lengths in 24ths of a quarter note, indexed by fx_echo_div_t:
- * ms = 60000 * ticks / (24 * bpm) = 2500 * ticks / bpm. */
-static const struct { uint8_t ticks; char label[6]; } s_echo_divs[FX_ECHO_DIV_COUNT] = {
-    [FX_ECHO_DIV_32]  = {  3, "1/32"  },
-    [FX_ECHO_DIV_16T] = {  4, "1/16T" },
-    [FX_ECHO_DIV_16]  = {  6, "1/16"  },
-    [FX_ECHO_DIV_8T]  = {  8, "1/8T"  },
-    [FX_ECHO_DIV_8]   = { 12, "1/8"   },
-    [FX_ECHO_DIV_4T]  = { 16, "1/4T"  },
-    [FX_ECHO_DIV_8D]  = { 18, "1/8D"  },
-    [FX_ECHO_DIV_4]   = { 24, "1/4"   },
-    [FX_ECHO_DIV_2T]  = { 32, "1/2T"  },
-    [FX_ECHO_DIV_4D]  = { 36, "1/4D"  },
-    [FX_ECHO_DIV_2]   = { 48, "1/2"   },
-};
-
-const char *amy_fx_echo_div_label(uint8_t div)
-{
-    return (div < FX_ECHO_DIV_COUNT) ? s_echo_divs[div].label : "?";
-}
-
 float amy_fx_echo_time_ms(uint8_t bus)
 {
     if (bus >= FX_BUS_COUNT) return ECHO_DEFAULT_DELAY_MS;
     const fx_state_t *f = &s_fx[bus];
     float ms;
-    if (f->echo_sync && f->echo_div < FX_ECHO_DIV_COUNT) {
+    if (f->echo_sync && f->echo_div < NOTE_DIV_COUNT) {
         uint16_t bpm = sequencer_core_get_bpm();
-        ms = (bpm > 0) ? 2500.0f * (float)s_echo_divs[f->echo_div].ticks / (float)bpm
+        ms = (bpm > 0) ? note_div_ms((note_div_t)f->echo_div, (float)bpm)
                        : (float)FX_ECHO_MAX_MS;
     } else {
         ms = (f->echo_delay_ms == FX_PARAM_UNSET) ? ECHO_DEFAULT_DELAY_MS

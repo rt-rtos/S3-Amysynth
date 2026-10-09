@@ -29,7 +29,7 @@ void arp_build_view(arp_view_t *out)
     out->enabled  = arp_get_enabled();
     out->mode_str = s_dir_names[arp_get_direction()];
     out->octaves  = arp_get_octaves();
-    out->rate_str = arp_rate_name(arp_get_rate());
+    out->rate_str = note_div_label(arp_get_rate());
     out->gate_pct = arp_get_gate_pct();
     for (uint8_t i = 0; i < ARP_VIEW_SLOTS; i++) {
         int16_t raw     = arp_get_slot(i);
@@ -69,7 +69,8 @@ uint32_t arp_view_signature(arp_view_t *out)
     h = fnv1a_bytes(h, &out->patch_select, sizeof(out->patch_select));
     h = fnv1a_bytes(h, &out->portamento_ms, sizeof(out->portamento_ms));
     h = fnv1a_bytes(h, &out->quant_mode, sizeof(out->quant_mode));
-    h = fnv1a_bytes(h, out->rate_str, 4);
+    uint8_t rate = (uint8_t)arp_get_rate();
+    h = fnv1a_bytes(h, &rate, sizeof(rate));
     h = fnv1a_bytes(h, out->mode_str, 4);
     for (uint8_t i = 0; i < ARP_VIEW_SLOTS; i++) {
         h = fnv1a_bytes(h, &out->slot_active[i], sizeof(out->slot_active[i]));
@@ -98,8 +99,8 @@ static void arp_edit_value(uint8_t cursor, int delta)
             break;
         case ARP_CUR_RATE: {
             int r = (int)arp_get_rate() + dir;
-            r = SEQ_CLAMP_INT(r, 0, ARP_RATE_COUNT - 1);
-            arp_set_rate((arp_rate_t)r);
+            r = SEQ_CLAMP_INT(r, 0, NOTE_DIV_COUNT - 1);
+            arp_set_rate((note_div_t)r);
             break;
         }
         case ARP_CUR_GATE:

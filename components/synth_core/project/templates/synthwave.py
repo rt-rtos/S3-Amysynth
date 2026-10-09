@@ -51,7 +51,7 @@ def pad():
 
 
 def arpeggio():
-    return arp(True, P_PULSE, ARP_UP, ARP_RATE_1_16, [57, 60, 64], octaves=2, gate=40,
+    return arp(True, P_PULSE, ARP_UP, NOTE_DIV_1_16, [57, 60, 64], octaves=2, gate=40,
                quant=ARP_QUANT_CHORD, root=57, scale=SCALE,
                amp_env=env(2, 140, 0, 100), flt=filt(FILTER_LPF, 3000, 1.2, eg1_cutoff=1.0),
                amp=0.6)

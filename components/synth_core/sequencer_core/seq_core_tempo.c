@@ -33,29 +33,11 @@ void sequencer_push_tempo(uint16_t b)
 
 /* ── LFO helpers ─────────────────────────────────────────────────────── */
 
-float lfo_rate_to_hz(lfo_rate_t rate, uint16_t bpm)
+float lfo_rate_to_hz(note_div_t rate, uint16_t bpm)
 {
-    float b = (float)bpm;
-    float hz;
-    switch (rate) {
-        case LFO_RATE_1_8:   hz = b / 30.0f;  break; /* 1/8 note */
-        case LFO_RATE_1_4:   hz = b / 60.0f;  break; /* 1/4 note */
-        case LFO_RATE_1_2:   hz = b / 120.0f; break; /* 1/2 note */
-        case LFO_RATE_1BAR:  hz = b / 240.0f; break; /* 1 bar (4/4) */
-        case LFO_RATE_2BAR:  hz = b / 480.0f; break;
-        case LFO_RATE_4BAR:  hz = b / 960.0f; break;
-        case LFO_RATE_1_16:  hz = b / 15.0f;  break;
-        case LFO_RATE_1_32:  hz = b / 7.5f;   break;
-        case LFO_RATE_1_4T:  hz = b / 40.0f;  break; /* triplet = 1.5x straight */
-        case LFO_RATE_1_8T:  hz = b / 20.0f;  break;
-        case LFO_RATE_1_16T: hz = b / 10.0f;  break;
-        case LFO_RATE_1_32T: hz = b / 5.0f;   break;
-        default:             hz = b / 240.0f; break;
-    }
     /* Sub-audible ceiling: at high BPM the fastest divisions cross into
      * audio-rate AM. Cap rather than hide rates from the pickers. */
-    if (hz > SEQ_LFO_NATIVE_MAX_HZ) hz = SEQ_LFO_NATIVE_MAX_HZ;
-    return hz;
+    return fminf(note_div_hz(rate, (float)bpm), SEQ_LFO_NATIVE_MAX_HZ);
 }
 
 float lfo_next_rand(void)
