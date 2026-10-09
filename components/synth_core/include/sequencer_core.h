@@ -488,8 +488,8 @@ void sequencer_core_set_melodic_envelope2(uint8_t layer_idx, uint8_t track,
 
 /* ── Per-track amplitude trim (graph editor amp mode) ──
  * 0..1 multiplier on note velocity, default 1.0 (initialised in add_layer).
- * get returns 1.0 for invalid layer/track. set is store-only: the value applies
- * on that track's next sequencer_emit_step(). */
+ * get returns 1.0 for invalid layer/track. set re-emits the track's scheduled
+ * steps so the new level is heard from the next trig. */
 float sequencer_core_get_melodic_amp_scale(uint8_t layer_idx, uint8_t track);
 void  sequencer_core_set_melodic_amp_scale(uint8_t layer_idx, uint8_t track,
                                            float v);

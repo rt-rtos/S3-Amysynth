@@ -150,7 +150,7 @@ typedef struct {
                               every row type (same convention as bass_presets.c
                               and arp_core.c). A row that owns the matrix - a
                               drum row, or any row whose filter block has been
-                              authored - writes all eight slots, so a 0 clears
+                              authored - writes every slot, so a 0 clears
                               the rail (skip-on-zero would leave the last value
                               in AMY until the next patch load); every other
                               row writes the nonzero ones only, leaving its

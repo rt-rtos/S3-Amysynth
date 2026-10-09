@@ -134,10 +134,8 @@ static bool  s_graph_env_dirty = false; /* set only when user moves an ADSR poin
 
 /* Envelope routing depths: scratch matrix seeded on open from the row's
  * seq_filter_t.eg_depth, committed ONLY when dirty so an untouched editor
- * session never authors the row's filter. [1][SEQ_EGT_CUTOFF] is the
- * EG1->cutoff sweep every row type carries and the one the AMP stop edits on a
- * non-drum EG1 page; the other seven slots are drum-row routing, each reached
- * through its own MY_BUTTON_2 stop on either envelope page. */
+ * session never authors the row's filter. Each slot is reached through its own
+ * MY_BUTTON_2 target stop on its envelope's page. */
 static float  s_graph_eg_edit[2][SEQ_EGT_COUNT]; /* scratch, seeded on open */
 static bool   s_graph_eg_dirty = false;          /* any slot edited        */
 static int8_t s_graph_eg_tgt = -1;               /* -1: no target stop up  */
@@ -1195,10 +1193,8 @@ void synth_ui_graph_cycle_eg_type(void)
              (unsigned)s_graph_eg_type_disp);
 }
 
-/* Hint-strip b2 label: MY_BUTTON_2's trim mode edits amplitude on the EG0 page
- * but the EG1->cutoff sweep depth on the melodic EG1 page. A row carrying the
- * depth matrix names the stop the next press enters, following the same cycle
- * as synth_ui_graph_toggle_amp_mode(). */
+/* Hint-strip b2 label: the stop the next MY_BUTTON_2 press enters, following
+ * the cycle in synth_ui_graph_toggle_amp_mode(). */
 const char *synth_ui_graph_hint_b2(void)
 {
     if (graph_eg_targets_available()) {
