@@ -21,7 +21,9 @@
  * so there is no layer selector to keep in sync. The Track row is page state:
  * it picks which row Level/Follow/Repeat/Mute/Solo and the two sub-pages edit,
  * seeded from the sequencer cursor when the page opens. Level is that row's
- * amp trim (sequencer_core_set_melodic_amp_scale), on every layer type.
+ * amp trim (sequencer_core_set_melodic_amp_scale), on every layer type. Key,
+ * melodic layers only, is its filter key tracking (seq_filter_t.key_track),
+ * written back through sequencer_core_set_melodic_filter.
  *
  * Two dive rows sit above Back: `Unison >` on a melodic layer and `PCM >` on
  * the drum layer while the drum engine is PCM (sub-pages in
@@ -97,7 +99,7 @@ static uint8_t lm_row_list(uint8_t *rows)
     for (uint8_t id = 0; id < LM_COUNT; id++) {
         if (id == LM_CLRSOLO && !sequencer_core_any_solo()) continue;
         if (id == LM_FRAME && !wt) continue;
-        if (id == LM_UNISON && !mel) continue;
+        if ((id == LM_UNISON || id == LM_KEYTRACK) && !mel) continue;
         if (id == LM_PCM && !pcm) continue;
         rows[n++] = id;
     }
@@ -239,6 +241,14 @@ const menu_item_view_t *layermenu_menu_build_items(void)
             snprintf(it->value, MENU_VALUE_LEN, "%u%%",
                      (unsigned)lroundf(sequencer_core_get_melodic_amp_scale(li, tr) * 100.0f));
             break;
+        case LM_KEYTRACK: {
+            seq_filter_t f = {0};
+            sequencer_core_get_melodic_filter(mel, tr, &f);
+            snprintf(it->label, MENU_LABEL_LEN, "Key");
+            snprintf(it->value, MENU_VALUE_LEN, "%u%%",
+                     (unsigned)lroundf(f.key_track * 100.0f));
+            break;
+        }
         case LM_FOLLOW: {
             static const char *const follow_names[SEQ_FOLLOW_COUNT] = {
                 "CHORD", "ROOT", "OFF"
@@ -306,6 +316,7 @@ static bool lm_row_is_editable(uint8_t row)
     case LM_GROOVE:
     case LM_FOLLOW:
     case LM_FRAME:
+    case LM_KEYTRACK:
         return mel;
     case LM_CHORD:
     case LM_ROOT:
@@ -458,6 +469,17 @@ void layermenu_menu_edit_value(uint8_t idx, int delta)
             (int)lroundf(sequencer_core_get_melodic_amp_scale(li, tr) * 100.0f) + dir * 5,
             0, 100);
         sequencer_core_set_melodic_amp_scale(li, tr, (float)v / 100.0f);
+        break;
+    }
+    case LM_KEYTRACK: {
+        /* 5%/detent. The setter authors the filter and fans out to the rows
+         * sharing the voice block. */
+        seq_filter_t f;
+        if (!sequencer_core_get_melodic_filter(mel, tr, &f)) break;
+        sequencer_core_filter_seed_default(&f);
+        int v = SEQ_CLAMP_INT((int)lroundf(f.key_track * 100.0f) + dir * 5, 0, 100);
+        f.key_track = (float)v / 100.0f;
+        sequencer_core_set_melodic_filter(mel, tr, &f);
         break;
     }
     case LM_FOLLOW: {

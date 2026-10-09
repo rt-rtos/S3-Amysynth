@@ -524,6 +524,23 @@ void sequencer_core_reapply_melodic_dist(uint8_t layer_idx, uint8_t track);
  * post-render filter. */
 void sequencer_core_push_filter(uint8_t synth, const seq_filter_t *f, bool is_ks);
 
+/* The filter's COEF_CONST for f->cutoff_hz under key tracking: AMY adds
+ * key_track x (note - 69) / 12 octaves (COEF_NOTE, referenced to A4), so CONST
+ * is cutoff_hz x 2^(key_track x (69 - pivot) / 12) and cutoff_hz is the cutoff
+ * at the pivot note, the quantizer root in octave 4 (60 + root % 12). Returns
+ * cutoff_hz unchanged when key_track is 0. Every app site that writes a
+ * seq_filter_t's cutoff as COEF_CONST goes through this.
+ * Obligations: f non-NULL. Reads the quantizer root and nothing else; pure
+ * otherwise, callable from any task. */
+float sequencer_core_filter_const_hz(const seq_filter_t *f);
+
+/* Seed a never-authored filter (cutoff_hz <= 0, the zero-init sentinel) with
+ * the editors' starting values: LPF24, 800 Hz, Q 1.0, disabled. Every other
+ * field, key_track included, is left untouched; an authored filter is not
+ * changed at all. Obligations: f non-NULL. Pure apart from writing *f; any
+ * task. */
+void sequencer_core_filter_seed_default(seq_filter_t *f);
+
 /* ── Editor live-preview (AMY only; store and authored flags untouched) ──
  * Audition scratch editor values against the running engine. The full
  * preview/cancel/commit contract: ENGINE-SEMANTICS.md, "Editor preview and

@@ -86,10 +86,14 @@ static void melodic_filter_apply(uint8_t layer_idx, uint8_t track,
  * rails go out only on an osc-addressed event: AMY reads dist fields on an
  * event that names no osc at bus scope (CONST only) and drops them before the
  * voice fan-out, so those rows get dist_push_eg_depths() instead. The SCAN
- * rails never ride this event and go out through scan_push_eg_depths(). */
+ * rails never ride this event and go out through scan_push_eg_depths(). Key
+ * tracking (COEF_NOTE) rides the cutoff with the same ownership: an owning row
+ * writes it, 0 included, so a patch's own tracking yields to the row. */
 static void filter_push_eg_depths(amy_event *e, bool own, const seq_filter_t *f)
 {
     bool dist_ok = AMY_IS_SET(e->osc);
+    if (f->enabled && (own || f->key_track != 0.0f))
+        e->filter_freq_coefs[COEF_NOTE] = f->key_track;
     for (uint8_t eg = 0; eg < 2u; eg++) {
         uint8_t slot = (eg == 0u) ? COEF_EG0 : COEF_EG1;
         for (uint8_t t = 0; t < SEQ_EGT_COUNT; t++) {
@@ -444,7 +448,7 @@ static void melodic_filter_push_osc(uint8_t layer_idx, uint8_t track,
     if (osc >= 0) e->osc = (uint8_t)osc;
     if (f->enabled) {
         e->filter_type = f->filter_type;
-        e->filter_freq_coefs[COEF_CONST] = f->cutoff_hz;
+        e->filter_freq_coefs[COEF_CONST] = sequencer_core_filter_const_hz(f);
         e->resonance = f->resonance;
     } else {
         e->filter_type = FILTER_NONE;
@@ -533,6 +537,7 @@ void sequencer_core_set_melodic_filter(uint8_t layer_idx, uint8_t track,
     dst->enabled     = f->enabled;
     dst->feedback    = SEQ_CLAMP_F32(f->feedback, 0.0f, 1.0f);
     dst->ks_duty_ofs = SEQ_CLAMP_F32(f->ks_duty_ofs, -0.5f, 0.5f);
+    dst->key_track   = SEQ_CLAMP_F32(f->key_track, 0.0f, 1.0f);
     for (uint8_t eg = 0; eg < 2u; eg++)
         for (uint8_t t = 0; t < SEQ_EGT_COUNT; t++)
             dst->eg_depth[eg][t] = SEQ_CLAMP_F32(f->eg_depth[eg][t],
@@ -597,6 +602,22 @@ void sequencer_configure_melodic_dist_track(uint8_t layer_idx, uint8_t track)
     sequencer_core_reapply_melodic_dist(layer_idx, track);
 }
 
+float sequencer_core_filter_const_hz(const seq_filter_t *f)
+{
+    if (f->key_track == 0.0f) return f->cutoff_hz;
+    int pivot = 60 + (int)(sequencer_core_get_quantizer_root_note() % 12u);
+    return f->cutoff_hz * exp2f(f->key_track * (float)(69 - pivot) / 12.0f);
+}
+
+void sequencer_core_filter_seed_default(seq_filter_t *f)
+{
+    if (f->cutoff_hz > 0.0f) return;
+    f->filter_type = SEQ_FILTER_LPF24;
+    f->cutoff_hz   = 800.0f;
+    f->resonance   = 1.0f;
+    f->enabled     = false;
+}
+
 /* Generic filter push: shared by arp, drone (via synth_ui). */
 void sequencer_core_push_filter(uint8_t synth, const seq_filter_t *f, bool is_ks)
 {
@@ -605,7 +626,7 @@ void sequencer_core_push_filter(uint8_t synth, const seq_filter_t *f, bool is_ks
     e->synth = synth;
     if (f->enabled) {
         e->filter_type = f->filter_type;
-        e->filter_freq_coefs[COEF_CONST] = f->cutoff_hz;
+        e->filter_freq_coefs[COEF_CONST] = sequencer_core_filter_const_hz(f);
         e->resonance = f->resonance;
     } else {
         e->filter_type = FILTER_NONE;
@@ -826,7 +847,7 @@ void __attribute__((optimize("O3", "unroll-loops", "fast-math"))) sequencer_core
                                          ? &prev.filter
                                          : &vp->filter;
                 float base = (fb->enabled && fb->cutoff_hz > 0.0f)
-                             ? fb->cutoff_hz : 1000.0f;
+                             ? sequencer_core_filter_const_hz(fb) : 1000.0f;
                 e->filter_freq_coefs[COEF_CONST] =
                     base * powf(2.0f, voice_lfo_filter_octaves(lfo) * val);
             }
@@ -1002,6 +1023,7 @@ void sequencer_core_preview_melodic_filter(uint8_t layer_idx, uint8_t track,
     tmp.resonance         = SEQ_CLAMP_F32(f->resonance,  0.51f, 8.0f);
     tmp.feedback          = SEQ_CLAMP_F32(f->feedback, 0.0f, 1.0f);
     tmp.ks_duty_ofs       = SEQ_CLAMP_F32(f->ks_duty_ofs, -0.5f, 0.5f);
+    tmp.key_track         = SEQ_CLAMP_F32(f->key_track, 0.0f, 1.0f);
     for (uint8_t eg = 0; eg < 2u; eg++)
         for (uint8_t t = 0; t < SEQ_EGT_COUNT; t++)
             tmp.eg_depth[eg][t] = SEQ_CLAMP_F32(f->eg_depth[eg][t],

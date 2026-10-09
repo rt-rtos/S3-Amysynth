@@ -123,7 +123,7 @@ static void live_apply_filter(const seq_filter_t *f)
     e->synth = LIVE_SYNTH;
     if (f->enabled) {
         e->filter_type = f->filter_type;
-        e->filter_freq_coefs[COEF_CONST] = f->cutoff_hz;
+        e->filter_freq_coefs[COEF_CONST] = sequencer_core_filter_const_hz(f);
         e->resonance = f->resonance;
     } else {
         e->filter_type = FILTER_NONE;
@@ -393,7 +393,7 @@ void live_play_lfo_service(void)
     e->synth = LIVE_SYNTH;
     if (LFO_HAS_TGT(lfo, LFO_TARGET_FILTER)) {
         float base = (s_vp.filter.enabled && s_vp.filter.cutoff_hz > 0.0f)
-                     ? s_vp.filter.cutoff_hz : 1000.0f;
+                     ? sequencer_core_filter_const_hz(&s_vp.filter) : 1000.0f;
         e->filter_freq_coefs[COEF_CONST] =
             base * powf(2.0f, voice_lfo_filter_octaves(lfo) * val);
     }

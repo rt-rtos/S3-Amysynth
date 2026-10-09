@@ -97,6 +97,7 @@ static void ser_filter(tlv_writer_t *w, const seq_filter_t *f)
         for (int t = 0; t < SEQ_EGT_COUNT; t++)
             tlv_put_f32(w, f->eg_depth[eg][t]);
     tlv_put_f32(w, f->ks_duty_ofs);   /* KS pluck duty - 0.5 */
+    tlv_put_f32(w, f->key_track);     /* filter key tracking, oct/oct */
 }
 
 /* Reads every field first (keeps the reader position correct), then bypasses
@@ -106,7 +107,7 @@ static void ser_filter(tlv_writer_t *w, const seq_filter_t *f)
 static bool de_filter(tlv_reader_t *r, seq_filter_t *f)
 {
     uint8_t ft, en;
-    float cutoff, resonance, feedback, duty_ofs;
+    float cutoff, resonance, feedback, duty_ofs, key_track;
     float depth[2][SEQ_EGT_COUNT];
     if (!tlv_get_u8(r, &ft))          return false;
     if (!tlv_get_f32(r, &cutoff))     return false;
@@ -124,6 +125,8 @@ static bool de_filter(tlv_reader_t *r, seq_filter_t *f)
     }
     if (!tlv_get_f32(r, &duty_ofs))   return false;
     duty_ofs = SEQ_CLAMP_F32(duty_ofs, -0.5f, 0.5f);
+    if (!tlv_get_f32(r, &key_track))  return false;
+    key_track = SEQ_CLAMP_F32(key_track, 0.0f, 1.0f);
 
     if (ft >= SEQ_FILTER_COUNT) {
         *f = (seq_filter_t){0};
@@ -136,6 +139,7 @@ static bool de_filter(tlv_reader_t *r, seq_filter_t *f)
     f->feedback          = feedback;
     memcpy(f->eg_depth, depth, sizeof(f->eg_depth));
     f->ks_duty_ofs       = duty_ofs;
+    f->key_track         = key_track;
     return true;
 }
 

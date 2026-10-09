@@ -163,7 +163,7 @@ static void arp_apply_filter(const seq_filter_t *f)
     e->synth = sequencer_core_arp_synth();
     if (f->enabled) {
         e->filter_type = f->filter_type;
-        e->filter_freq_coefs[COEF_CONST] = f->cutoff_hz;
+        e->filter_freq_coefs[COEF_CONST] = sequencer_core_filter_const_hz(f);
         e->resonance = f->resonance;
     } else {
         e->filter_type = FILTER_NONE;
@@ -789,7 +789,7 @@ static void arp_swlfo_service(void)
     e->synth = sequencer_core_arp_synth();
     if (LFO_HAS_TGT(lfo, LFO_TARGET_FILTER)) {
         float base = (s_arp.vp.filter.enabled && s_arp.vp.filter.cutoff_hz > 0.0f)
-                     ? s_arp.vp.filter.cutoff_hz : 1000.0f;
+                     ? sequencer_core_filter_const_hz(&s_arp.vp.filter) : 1000.0f;
         e->filter_freq_coefs[COEF_CONST] =
             base * powf(2.0f, voice_lfo_filter_octaves(lfo) * val);
     }

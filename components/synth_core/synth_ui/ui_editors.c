@@ -1622,12 +1622,7 @@ static void filter_load_from_target(void)
     if (synth_ui_wireless_page_is_open()) {
         /* Same never-authored sentinel as the arp/melodic rows. */
         live_play_get_filter(&f);
-        if (f.cutoff_hz <= 0.0f) {
-            f.filter_type = SEQ_FILTER_LPF24;
-            f.cutoff_hz   = 800.0f;
-            f.resonance   = 1.0f;
-            f.enabled     = false;
-        }
+        sequencer_core_filter_seed_default(&f);
         snprintf(s_fgraph.label, sizeof(s_fgraph.label), "LIVE");
     } else
 #endif
@@ -1654,27 +1649,15 @@ static void filter_load_from_target(void)
         snprintf(s_fgraph.label, sizeof(s_fgraph.label), "DRONE");
     } else if (filter_tgt_is_arp()) {
         arp_get_filter(&f);
-        /* cutoff_hz == 0 (zero-init) means never authored; only then apply
-         * display defaults, so an authored-but-disabled filter round-trips.
-         * Defaults open disabled - they are just a starting point. */
-        if (f.cutoff_hz <= 0.0f) {
-            f.filter_type = SEQ_FILTER_LPF24;
-            f.cutoff_hz   = 800.0f;
-            f.resonance   = 1.0f;
-            f.enabled     = false;
-        }
+        /* Seeds only a never-authored filter, so an authored-but-disabled
+         * one round-trips. */
+        sequencer_core_filter_seed_default(&f);
         snprintf(s_fgraph.label, sizeof(s_fgraph.label), "ARP");
     } else {
         uint8_t li = seq_state.active_layer_idx;
         uint8_t tr = seq_state.selected_track;
         sequencer_core_get_melodic_filter(li, tr, &f);
-        /* Same sentinel: zero cutoff = never authored. */
-        if (f.cutoff_hz <= 0.0f) {
-            f.filter_type = SEQ_FILTER_LPF24;
-            f.cutoff_hz   = 800.0f;
-            f.resonance   = 1.0f;
-            f.enabled     = false;
-        }
+        sequencer_core_filter_seed_default(&f);
         char badge[4];
         editor_src_badge(li, tr, SEQ_VP_GROUP_FILTER, badge);
         snprintf(s_fgraph.label, sizeof(s_fgraph.label), "L%u T%u%s",

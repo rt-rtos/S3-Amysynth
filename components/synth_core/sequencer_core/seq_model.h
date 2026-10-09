@@ -157,6 +157,11 @@ typedef struct {
                               row writes the nonzero ones only, leaving its
                               patch string's own routing intact (see
                               filter_push_eg_depths). */
+    float   key_track;     /* filter key tracking, 0..1 octave of cutoff per
+                              octave of note (AMY COEF_NOTE). 0.0 (memset
+                              default) = none. cutoff_hz is then the cutoff at
+                              the pivot note (sequencer_core_filter_const_hz);
+                              COEF_NOTE follows the eg_depth ownership rule. */
 } seq_filter_t;
 
 /* Is any EG1 rail live? The cutoff slot counts only while the filter is on,

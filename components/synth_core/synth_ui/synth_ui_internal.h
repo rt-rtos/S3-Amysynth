@@ -219,6 +219,7 @@ typedef enum {
     LM_TYPE,
     LM_TRACK,
     LM_LEVEL,       /* the Track row's amp trim, 0..100 % */
+    LM_KEYTRACK,    /* the Track row's filter key tracking, melodic layers */
     LM_FOLLOW,
     LM_REPEAT,
     LM_MUTE,

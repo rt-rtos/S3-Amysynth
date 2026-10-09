@@ -146,6 +146,15 @@ void sequencer_core_set_quantizer_root_note(uint8_t root_note)
     s_quantizer.root_note = root_note;
     sequencer_refresh_melodic_layers(false);
     quantizer_changed_refresh_arp();
+    /* The root is the key-tracking pivot (sequencer_core_filter_const_hz):
+     * re-push every tracked row's filter. Each row is pushed once from the
+     * block it reads, so a shared block is not fanned out per peer. */
+    for (uint8_t li = 0; li < s_num_layers; li++) {
+        for (uint8_t t = 0; t < s_layers[li].num_tracks; t++) {
+            if (seq_track_vp(li, t)->filter.key_track != 0.0f)
+                sequencer_configure_melodic_filter_track(li, t);
+        }
+    }
     ESP_LOGI(TAG, "quantizer root -> %u", root_note);
 }
 

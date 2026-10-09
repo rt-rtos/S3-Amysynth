@@ -91,7 +91,7 @@ def default_env():
 
 def default_filter():
     return dict(filter_type=0, cutoff_hz=0.0, resonance=0.0, enabled=False, feedback=0.0,
-                eg_depth=[[0.0] * SEQ_EGT_COUNT for _ in range(2)], ks_duty_ofs=0.0)
+                eg_depth=[[0.0] * SEQ_EGT_COUNT for _ in range(2)], ks_duty_ofs=0.0, key_track=0.0)
 
 
 def default_lfo():
@@ -159,6 +159,7 @@ def w_filter(w, f):
         for t in range(SEQ_EGT_COUNT):
             w.f32(f['eg_depth'][eg][t])
     w.f32(f['ks_duty_ofs'])
+    w.f32(f['key_track'])
 
 
 def r_filter(r):
@@ -166,6 +167,7 @@ def r_filter(r):
              feedback=r.f32())
     f['eg_depth'] = [[r.f32() for _ in range(SEQ_EGT_COUNT)] for _ in range(2)]
     f['ks_duty_ofs'] = r.f32()
+    f['key_track'] = r.f32()
     return f
 
 
