@@ -926,7 +926,7 @@ void melodic_lfo_refresh_native_freq(void)
 #endif
 }
 
-/* ── Per-track amplitude trim (graph editor amp mode) ────────────────────────
+/* ── Per-track amplitude trim (Layer menu Level row) ─────────────────────────
  * A per-track multiplier on note velocity at emit time. Default 1.0, which
  * add_layer must set explicitly since memset zeroes the struct.
  *

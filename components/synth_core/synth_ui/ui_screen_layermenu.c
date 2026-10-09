@@ -4,6 +4,7 @@
 #include "amy.h"               /* AMY_SEQUENCER_PPQ behind SEQ_TICKS_PER_STEP */
 #include "seq_core_config.h"   /* SEQ_MELODIC_PORTAMENTO_MAX_MS, SEQ_SWING_* */
 #include "seq_clamp.h"
+#include <math.h>
 #include <stdio.h>
 
 /* ════════════════════════════════════════════════════════════════════════
@@ -11,15 +12,16 @@
  * ════════════════════════════════════════════════════════════════════════
  * Everything that belongs to ONE layer, on one page: step count, swing, the
  * melodic patch scope, the note controls (gate/glide/groove), the manual chord, and
- * the per-track follow/repeat/mute/solo block (Follow: the row's progression
+ * the per-track level/follow/repeat/mute/solo block (Follow: the row's progression
  * follow mode, sequencer_core_set_track_follow). Reached from the `Layer >` dive
  * row on the main menu; page state and input routing live in ui_screen_menu.c,
  * this file only builds the rows and applies clicks and encoder edits.
  *
  * The layer is always seq_state.active_layer_idx - the one the grid shows -
  * so there is no layer selector to keep in sync. The Track row is page state:
- * it picks which row Follow/Repeat/Mute/Solo and the two sub-pages edit,
- * seeded from the sequencer cursor when the page opens.
+ * it picks which row Level/Follow/Repeat/Mute/Solo and the two sub-pages edit,
+ * seeded from the sequencer cursor when the page opens. Level is that row's
+ * amp trim (sequencer_core_set_melodic_amp_scale), on every layer type.
  *
  * Two dive rows sit above Back: `Unison >` on a melodic layer and `PCM >` on
  * the drum layer while the drum engine is PCM (sub-pages in
@@ -37,8 +39,8 @@
 
 static menu_item_view_t s_lm_items[LM_COUNT];
 
-/* The track Follow/Repeat/Mute/Solo and the sub-pages edit; page state, not
- * engine state. */
+/* The track Level/Follow/Repeat/Mute/Solo and the sub-pages edit; page state,
+ * not engine state. */
 static uint8_t s_lm_track = 0;
 
 /* Swing detents are engine ticks, not swing_pct points: pct values that floor
@@ -232,6 +234,11 @@ const menu_item_view_t *layermenu_menu_build_items(void)
             snprintf(it->label, MENU_LABEL_LEN, "Track");
             snprintf(it->value, MENU_VALUE_LEN, "%u", (unsigned)(tr + 1u));
             break;
+        case LM_LEVEL:
+            snprintf(it->label, MENU_LABEL_LEN, "Level");
+            snprintf(it->value, MENU_VALUE_LEN, "%u%%",
+                     (unsigned)lroundf(sequencer_core_get_melodic_amp_scale(li, tr) * 100.0f));
+            break;
         case LM_FOLLOW: {
             static const char *const follow_names[SEQ_FOLLOW_COUNT] = {
                 "CHORD", "ROOT", "OFF"
@@ -308,6 +315,7 @@ static bool lm_row_is_editable(uint8_t row)
     case LM_SWING:
     case LM_GATE:
     case LM_TRACK:
+    case LM_LEVEL:
     case LM_REPEAT:
     case LM_MUTE:
     case LM_SOLO:
@@ -442,6 +450,14 @@ void layermenu_menu_edit_value(uint8_t idx, int delta)
         int nt = (int)s_lm_track + dir;
         if (nt < 0) nt += n; else if (nt >= n) nt -= n;
         s_lm_track = (uint8_t)nt;
+        break;
+    }
+    case LM_LEVEL: {
+        /* 5%/detent, matching GATE; the setter re-emits the track. */
+        int v = SEQ_CLAMP_INT(
+            (int)lroundf(sequencer_core_get_melodic_amp_scale(li, tr) * 100.0f) + dir * 5,
+            0, 100);
+        sequencer_core_set_melodic_amp_scale(li, tr, (float)v / 100.0f);
         break;
     }
     case LM_FOLLOW: {

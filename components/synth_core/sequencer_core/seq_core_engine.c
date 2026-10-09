@@ -476,7 +476,7 @@ void sequencer_emit_step(uint8_t layer_idx, uint8_t track, uint8_t step)
      * gate spills past bar_ticks still fires correctly. */
     uint32_t tick_off   = (tick_on + hold) % period;
     float note_velocity = sequencer_step_velocity(layer, track, step);
-    /* Per-track amplitude trim (default 1.0, set by graph editor amp mode). */
+    /* Per-track amplitude trim (default 1.0, set on the Layer menu Level row). */
     note_velocity *= layer->vp[track].amp_trim;
     /* Per-step velocity offset in signed percentage points. */
     note_velocity += (float)layer->step_velocity_adj[track][step] * 0.01f;

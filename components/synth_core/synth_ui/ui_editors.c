@@ -120,14 +120,16 @@ static float graph_env_shape(float v0, float v1, float t)
 
 static bool s_graph_long_range = false;   /* false = SHORT, true = LONG (auto-switched) */
 
-/* Amp-mode state (MY_BUTTON_2 while the ADSR editor is open). The scratch trim
- * is committed to the target on close and shown in the topbar right slot. */
+/* Amp-mode state (MY_BUTTON_2 while the ADSR editor is open), offered on the
+ * arp, live voice and drones only (graph_amp_available(); a sequencer row's
+ * trim is the Layer menu Level row). The scratch trim is committed to the
+ * target on close and shown in the topbar right slot. */
 static bool  s_graph_amp_mode = false;
 static float s_graph_amp_edit = 1.0f;   /* scratch 0..1, seeds from target on open */
-/* Swing sub-mode, the second stop on MY_BUTTON_2's cycle (offered per
- * graph_swing_available()). Unlike the amp trim it has no separate store: the
- * setter is the model, so the scratch exists purely to throttle and to cancel
- * back to the open-time value. */
+/* Swing sub-mode on MY_BUTTON_2's cycle, the first stop on a sequencer row's
+ * EG0 page (offered per graph_swing_available()). Unlike the amp trim it has
+ * no separate store: the setter is the model, so the scratch exists purely to
+ * throttle and to cancel back to the open-time value. */
 static bool    s_graph_swing_mode = false;
 static uint8_t s_graph_swing_edit = 0;
 static bool  s_graph_env_dirty = false; /* set only when user moves an ADSR point */
@@ -553,10 +555,9 @@ void synth_ui_graph_open_envelope(void)
             s_graph_amp_edit = live_play_get_amp_scale();
             break;
 #endif
-        case GRAPH_TGT_MELODIC:
         default:
-            s_graph_amp_edit = sequencer_core_get_melodic_amp_scale(
-                s_graph_layer, s_graph_track);
+            /* GRAPH_TGT_MELODIC: no AMP stop (graph_amp_available()). */
+            s_graph_amp_edit = 1.0f;
             break;
     }
     s_graph_amp_open = s_graph_amp_edit;   /* cancel restores this value */
@@ -636,9 +637,9 @@ static void graph_write_points_to_env(uint8_t eg_index)
 /* ── Live preview while editing ──────────────────────────────────────────────
  * Edits are auditioned by pushing scratch values to AMY only (the preview
  * contract is in sequencer_core.h); the store does not change until confirm.
- * Amp trim is the exception: it lives in the step-emit path, so its live apply
- * goes through the real setter (throttled, since each melodic apply re-emits
- * the track's steps) and cancel restores the open-time value. */
+ * Amp trim is the exception: it lives in the note-emit path, so its live apply
+ * goes through the real setter (throttled, since an arp apply re-emits its
+ * sequence) and cancel restores the open-time value. */
 #define GRAPH_AMP_LIVE_MS 200u               /* min spacing of amp re-emits   */
 
 static void graph_live_push_env(void)
@@ -725,11 +726,7 @@ static void graph_amp_live_set(float v)
 #if CONFIG_SYNTH_WIRELESS
         case GRAPH_TGT_LIVE:      live_play_set_amp_scale(v); break;
 #endif
-        case GRAPH_TGT_MELODIC:
-        default:
-            /* Trim is per row regardless of which voice block the row reads. */
-            sequencer_core_set_melodic_amp_scale(s_graph_layer, s_graph_track, v);
-            break;
+        default:                  break;   /* GRAPH_TGT_MELODIC: no AMP stop */
     }
 }
 
@@ -762,6 +759,14 @@ static bool graph_swing_available(void)
 {
     return s_graph_target == GRAPH_TGT_MELODIC && s_graph_eg_index == 0 &&
            editor_src_is_layer(s_graph_layer, s_graph_track);
+}
+
+/* Does MY_BUTTON_2's cycle offer the AMP stop here? Not on sequencer rows
+ * (melodic and drum open as GRAPH_TGT_MELODIC): their trim is the Layer menu
+ * Level row. The arp, live voice and drones keep it. */
+static bool graph_amp_available(void)
+{
+    return s_graph_target != GRAPH_TGT_MELODIC;
 }
 
 /* Rows carrying the envelope routing matrix: melodic and drum layer rows, the
@@ -941,11 +946,8 @@ static void graph_commit_to_env(void)
             live_play_set_amp_scale(s_graph_amp_edit);
             break;
 #endif
-        case GRAPH_TGT_MELODIC:
         default:
-            sequencer_core_set_melodic_amp_scale(s_graph_layer, s_graph_track,
-                                                 s_graph_amp_edit);
-            break;
+            break;   /* GRAPH_TGT_MELODIC: no AMP stop, nothing to commit */
     }
     s_graph_amp_mode = false;   /* clear mode so topbar reverts on next open */
     s_graph_eg_tgt   = -1;
@@ -1035,11 +1037,13 @@ static void graph_auto_range_check(void)
     }
 }
 
-/* Cycle MY_BUTTON_2's topbar sub-modes: OFF -> AMP -> SWG -> OFF, with the SWG
- * stop skipped where graph_swing_available() says swing is not this editor's to
- * touch. A row carrying the depth matrix appends one stop per routing target
- * (PIT/CUT/DRV/MIX, plus SCN on a wavetable patch), editing the shown envelope's row of the matrix; its EG1
- * page starts straight on them, having no amp trim of its own to edit there.
+/* Cycle MY_BUTTON_2's topbar sub-modes: OFF -> AMP -> SWG -> OFF. AMP is
+ * offered per graph_amp_available() (not on sequencer rows, whose trim is the
+ * Layer menu Level row), SWG per graph_swing_available(). A row carrying the
+ * depth matrix appends one stop per routing target (PIT/CUT/DRV/MIX, plus SCN
+ * on a wavetable patch), editing the shown envelope's row of the matrix; its
+ * EG1 page starts straight on them, having no amp trim of its own to edit
+ * there. So a sequencer row's EG0 page runs OFF -> SWG -> targets -> OFF.
  * In a sub-mode the encoder edits that value instead of moving ADSR points.
  * Reset on editor open/close. */
 void synth_ui_graph_toggle_amp_mode(void)
@@ -1058,6 +1062,9 @@ void synth_ui_graph_toggle_amp_mode(void)
         if (targets) s_graph_eg_tgt = SEQ_EGT_PITCH;
     } else if (targets && s_graph_eg_index == 1) {
         s_graph_eg_tgt = SEQ_EGT_PITCH;
+    } else if (!graph_amp_available()) {
+        s_graph_swing_mode = graph_swing_available();
+        if (!s_graph_swing_mode && targets) s_graph_eg_tgt = SEQ_EGT_PITCH;
     } else {
         s_graph_amp_mode = true;
     }
@@ -1205,7 +1212,10 @@ const char *synth_ui_graph_hint_b2(void)
             return (next >= 0) ? s_eg_tgt_hint[next] : "Off";
         }
         if (s_graph_swing_mode) return s_eg_tgt_hint[SEQ_EGT_PITCH];
-        return (s_graph_eg_index == 1) ? s_eg_tgt_hint[SEQ_EGT_PITCH] : "Amp";
+        if (s_graph_eg_index == 1) return s_eg_tgt_hint[SEQ_EGT_PITCH];
+        if (!graph_amp_available())
+            return graph_swing_available() ? "Swg" : s_eg_tgt_hint[SEQ_EGT_PITCH];
+        return "Amp";
     }
     /* What is left carries no depth matrix at all: the drones. */
     return "Amp";
@@ -1260,8 +1270,8 @@ bool synth_ui_graph_handle_encoder(long delta)
     }
 
     if (s_graph_amp_mode) {
-        /* Amp trim in 5% steps, applied live but throttled (melodic applies
-         * re-emit the track). */
+        /* Amp trim in 5% steps, applied live but throttled (arp applies
+         * re-emit its sequence). */
         float v = s_graph_amp_edit + (float)delta * 0.05f;
         v = SEQ_CLAMP_F32(v, 0.0f, 1.0f);
         s_graph_amp_edit = v;

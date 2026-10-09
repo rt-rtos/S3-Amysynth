@@ -154,7 +154,7 @@ FRM between 1 and 62 also narrows the LFO square into a pulse of that width
 
 | Page | Rows |
 |---|---|
-| Layer | Steps, Swing, Patch scope, Gate, Glide, Groove, Chord, Root, Type, Track, Follow, Repeat, Mute, Solo, ClrSolo (action, present only while something is soloed), Frame (wavetable tracks, see above), Unison (dive, melodic), PCM (dive, drum layer on the PCM engine). Drum layers show `--` for melodic-only rows |
+| Layer | Steps, Swing, Patch scope, Gate, Glide, Groove, Chord, Root, Type, Track, Level (the Track row's volume, 0-100 % in 5 % steps), Follow, Repeat, Mute, Solo, ClrSolo (action, present only while something is soloed), Frame (wavetable tracks, see above), Unison (dive, melodic), PCM (dive, drum layer on the PCM engine). Drum layers show `--` for melodic-only rows |
 | Chords | Slot list CH1..CH8; a slot opens Root, Type, Clear. Every edit commits at once and auditions |
 | Bounce | Shape rows (slot, bars, format, tail, after), Rec, Cancel, Undo, four rows per clip slot (play/mute, level, tempo, clear), Sample and its cancel |
 | Prog Gen | Root, Scale, Arp Q, Style, Length, Bars, Ext, Var, Seed, Generate, Undo |
@@ -188,7 +188,7 @@ selected and adjusted with the encoder.
 | Encoder click | Enter / leave adjusting the selected point. The sustain point cycles level, then time (when explicit decay is on), then back to selecting. In a sub-mode (below): leave the sub-mode |
 | Encoder turn, adjusting | Change the point's value. Time steps scale with the segment length. The axis switches between a 2 s and a 15 s range on its own |
 | Button 1 (press) | Cycle the shown envelope's curve type: Normal, Linear, DX7, TrueExp |
-| Button 2 (press) | Cycle the sub-mode: off, AMP (amplitude trim, 5 % steps), SWG (layer swing; melodic rows reading the layer block, EG0 page only), then one stop per routing target PIT / CUT / DRV / MIX on rows carrying the depth matrix. The EG1 page starts straight on the target stops |
+| Button 2 (press) | Cycle the sub-mode: off, AMP (amplitude trim, 5 % steps; arp, live voice and drones only - a sequencer row sets its level on the Layer page's Level row), SWG (layer swing; melodic rows reading the layer block, EG0 page only), then one stop per routing target PIT / CUT / DRV / MIX on rows carrying the depth matrix. The EG1 page starts straight on the target stops |
 | SHOULDER (press) | Target stop up: flip the sign of that depth |
 | Button 3 (tap) | Next editor: EG0, EG1, Filter, LFO, DIST, back to EG0. Targets without an EG1 page skip it |
 | Button 0 (tap) | Commit and close |

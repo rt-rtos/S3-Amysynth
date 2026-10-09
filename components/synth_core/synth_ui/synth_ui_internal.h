@@ -160,7 +160,8 @@ typedef struct {
 
 extern const ui_view_desc_t ui_view_table[UI_VIEW_COUNT];
 
-/* GRAPH b2 hint (owner: ui_editors.c): "Amp" on EG0, "Env" on EG1. */
+/* GRAPH b2 hint (owner: ui_editors.c): the stop the next MY_BUTTON_2 press
+ * enters. */
 const char *synth_ui_graph_hint_b2(void);
 
 /* ─── Build-view helpers called from synth_ui_task draw switch ────────── */
@@ -199,7 +200,7 @@ bool     menu_shoulder_goes_main(void);
 
 /* ─── Layer page: everything scoped to the active layer - steps, swing, melodic
  *     patch scope, gate/glide/groove, the manual chord, and the per-track
- *     repeat/mute/solo block (item model in ui_screen_layermenu.c; page state
+ *     level/repeat/mute/solo block (item model in ui_screen_layermenu.c; page state
  *     and input routing live in ui_screen_menu.c). Reached from the `Layer >`
  *     dive row on the main list. The visible row list is dynamic (ClrSolo
  *     comes and goes with the global solo state, Frame with the target
@@ -217,6 +218,7 @@ typedef enum {
     LM_ROOT,
     LM_TYPE,
     LM_TRACK,
+    LM_LEVEL,       /* the Track row's amp trim, 0..100 % */
     LM_FOLLOW,
     LM_REPEAT,
     LM_MUTE,
@@ -340,7 +342,7 @@ void     proggen_menu_reset(void);
 const char *proggen_menu_title(void);
 
 /* Editor live-preview service: flushes any pending throttled apply (the graph
- * editor's amp trim, whose melodic apply re-emits the track's steps). Called
+ * editor's amp trim and layer swing, whose applies re-emit notes). Called
  * from synth_ui_task's 50 ms loop; no-op when nothing is pending. */
 void     synth_ui_editors_live_service(void);
 
