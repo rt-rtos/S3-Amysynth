@@ -10,17 +10,20 @@
 /* ════════════════════════════════════════════════════════════════════════
  *  LAYER SUBMENU PAGE
  * ════════════════════════════════════════════════════════════════════════
- * Everything that belongs to ONE layer, on one page: step count, swing, the
- * melodic patch scope, the note controls (gate/glide/groove), the manual chord, and
- * the per-track level/follow/repeat/mute/solo block (Follow: the row's progression
- * follow mode, sequencer_core_set_track_follow). Reached from the `Layer >` dive
+ * Everything that belongs to ONE layer, on one page. First the Track selector
+ * and the per-track block it drives (level/key/follow/repeat/mute/solo, frame,
+ * the Unison/PCM dives; Follow: the row's progression follow mode,
+ * sequencer_core_set_track_follow), then the layer-wide rows: step count,
+ * swing, the melodic patch scope, the note controls (gate/glide/groove), the
+ * manual chord. Reached from the `Layer >` dive
  * row on the main menu; page state and input routing live in ui_screen_menu.c,
  * this file only builds the rows and applies clicks and encoder edits.
  *
  * The layer is always seq_state.active_layer_idx - the one the grid shows -
- * so there is no layer selector to keep in sync. The Track row is page state:
- * it picks which row Level/Follow/Repeat/Mute/Solo and the two sub-pages edit,
- * seeded from the sequencer cursor when the page opens. Level is that row's
+ * so there is no layer selector to keep in sync. The Track row is the grid's
+ * own selected track (seq_state.selected_track): it picks which row
+ * Level/Key/Follow/Repeat/Mute/Solo/Frame and the two sub-pages edit, and
+ * leaving the menu lands the grid cursor on that row. Level is that row's
  * amp trim (sequencer_core_set_melodic_amp_scale), on every layer type. Key,
  * melodic layers only, is its filter key tracking (seq_filter_t.key_track),
  * written back through sequencer_core_set_melodic_filter.
@@ -40,10 +43,6 @@
  * on a row by id. */
 
 static menu_item_view_t s_lm_items[LM_COUNT];
-
-/* The track Level/Follow/Repeat/Mute/Solo and the sub-pages edit; page state,
- * not engine state. */
-static uint8_t s_lm_track = 0;
 
 /* Swing detents are engine ticks, not swing_pct points: pct values that floor
  * to the same tick play identically, so each detent lands on its tick's
@@ -94,7 +93,7 @@ static uint8_t lm_row_list(uint8_t *rows)
                   seq_state.layers[li].type == SEQ_LAYER_DRUM &&
                   sequencer_core_get_drum_engine() == SEQ_DRUM_PCM;
     bool    wt  = mel && sequencer_core_is_wavetable_patch(
-                         sequencer_core_get_melodic_track_patch(li, s_lm_track));
+                         sequencer_core_get_melodic_track_patch(li, seq_state.selected_track));
     uint8_t n = 0;
     for (uint8_t id = 0; id < LM_COUNT; id++) {
         if (id == LM_CLRSOLO && !sequencer_core_any_solo()) continue;
@@ -116,8 +115,7 @@ static uint8_t lm_row_at(uint8_t idx)
 
 void layermenu_menu_reset(void)
 {
-    s_lm_track = seq_state.selected_track;
-    if (s_lm_track >= layermenu_num_tracks()) s_lm_track = 0;
+    if (seq_state.selected_track >= layermenu_num_tracks()) seq_state.selected_track = 0;
 }
 
 /* Pull the shared menu cursor back into the visible list after ClrSolo has
@@ -141,7 +139,7 @@ uint8_t layermenu_menu_row_index(uint8_t id)
 
 uint8_t layermenu_menu_track(void)
 {
-    return s_lm_track;
+    return seq_state.selected_track;
 }
 
 uint8_t layermenu_menu_item_count(void)
@@ -154,10 +152,11 @@ const char *layermenu_menu_title(void)
 {
     /* Names the layer always, even at "L1/1", so it stays discoverable that
      * every layer carries its own set of these values. */
-    static char s_title[20];
-    snprintf(s_title, sizeof(s_title), "LAYER  L%u/%u",
+    static char s_title[28];
+    snprintf(s_title, sizeof(s_title), "LAYER  L%u/%u  T%u",
              (unsigned)(seq_state.active_layer_idx + 1u),
-             (unsigned)seq_state.num_layers);
+             (unsigned)seq_state.num_layers,
+             (unsigned)(seq_state.selected_track + 1u));
     return s_title;
 }
 
@@ -167,7 +166,7 @@ const menu_item_view_t *layermenu_menu_build_items(void)
     uint8_t n  = lm_row_list(rows);
     uint8_t li = seq_state.active_layer_idx;
     uint8_t mel = layermenu_active_melodic_layer();
-    uint8_t tr = s_lm_track;
+    uint8_t tr = seq_state.selected_track;
 
     bool chord_mode = false; uint8_t chord_root = 0; chord_type_t ct = CHORD_MAJ;
     if (mel != 0xFF) sequencer_core_get_layer_chord(mel, &chord_mode, &chord_root, &ct);
@@ -395,7 +394,7 @@ void layermenu_menu_edit_value(uint8_t idx, int delta)
 
     uint8_t li  = seq_state.active_layer_idx;
     uint8_t mel = layermenu_active_melodic_layer();
-    uint8_t tr  = s_lm_track;
+    uint8_t tr  = seq_state.selected_track;
 
     switch (row) {
     case LM_STEPS:
@@ -458,9 +457,9 @@ void layermenu_menu_edit_value(uint8_t idx, int delta)
     }
     case LM_TRACK: {
         int n  = (int)layermenu_num_tracks();
-        int nt = (int)s_lm_track + dir;
+        int nt = (int)seq_state.selected_track + dir;
         if (nt < 0) nt += n; else if (nt >= n) nt -= n;
-        s_lm_track = (uint8_t)nt;
+        seq_state.selected_track = (uint8_t)nt;
         break;
     }
     case LM_LEVEL: {

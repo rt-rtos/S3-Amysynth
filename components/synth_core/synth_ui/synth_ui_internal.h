@@ -198,26 +198,19 @@ const char *menu_page_title(void);   /* header-bar title for the active page */
  * (synth_ui_menu_go_main); drives the hint strip's LB cell. */
 bool     menu_shoulder_goes_main(void);
 
-/* ─── Layer page: everything scoped to the active layer - steps, swing, melodic
- *     patch scope, gate/glide/groove, the manual chord, and the per-track
- *     level/repeat/mute/solo block (item model in ui_screen_layermenu.c; page state
- *     and input routing live in ui_screen_menu.c). Reached from the `Layer >`
+/* ─── Layer page: everything scoped to the active layer - the Track selector
+ *     and the per-track block it drives (level/key/follow/repeat/mute/solo,
+ *     frame, the Unison/PCM dives) first, then the layer-wide rows (steps,
+ *     swing, melodic patch scope, gate/glide/groove, the manual chord) (item
+ *     model in ui_screen_layermenu.c; page state and input routing live in
+ *     ui_screen_menu.c). Reached from the `Layer >`
  *     dive row on the main list. The visible row list is dynamic (ClrSolo
  *     comes and goes with the global solo state, Frame with the target
  *     track's patch, the Unison/PCM dive rows with the layer type and drum
  *     engine), so the count is a call, not a
  *     constant, and the handlers clamp the shared menu cursor. ─────────── */
 typedef enum {
-    LM_STEPS = 0,
-    LM_SWING,
-    LM_PATCH_SCOPE,
-    LM_GATE,
-    LM_GLIDE,
-    LM_GROOVE,
-    LM_CHORD,
-    LM_ROOT,
-    LM_TYPE,
-    LM_TRACK,
+    LM_TRACK = 0,   /* the grid's selected track (seq_state.selected_track) */
     LM_LEVEL,       /* the Track row's amp trim, 0..100 % */
     LM_KEYTRACK,    /* the Track row's filter key tracking, melodic layers */
     LM_FOLLOW,
@@ -228,6 +221,15 @@ typedef enum {
     LM_FRAME,       /* wavetable frame position, shown on a wavetable track */
     LM_UNISON,      /* dive row: Unison sub-page, melodic layers */
     LM_PCM,         /* dive row: PCM sub-page, drum layer on the PCM engine */
+    LM_STEPS,       /* layer-wide rows from here */
+    LM_SWING,
+    LM_PATCH_SCOPE,
+    LM_GATE,
+    LM_GLIDE,
+    LM_GROOVE,
+    LM_CHORD,
+    LM_ROOT,
+    LM_TYPE,
     LM_BACK,
     LM_COUNT
 } layer_item_id_t;
