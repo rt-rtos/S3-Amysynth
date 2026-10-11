@@ -48,10 +48,9 @@ packets, which violates TinyUSB's EP-IN flow-control precondition (FIFO of
 at least 4x the nominal packet) at small intervals and leaves no jitter
 margin. The depth knob sizes it in milliseconds instead.
 
-Upstream status: PR candidate, offered as
+Upstream status: the formula-sizing variant merged as
 [esp-iot-solution#764](https://github.com/espressif/esp-iot-solution/pull/764)
-(formula-sizing variant; the Kconfig variant is mentioned in the PR body as
-an alternative).
+(2026-10-10, v1.3.2); the Kconfig variant stays local.
 
 ### 2. EP-IN FIFO prefill at stream open
 
@@ -65,9 +64,9 @@ bridges the gap until the application's first audio arrives (the app ring
 is flushed at open, so its first block can be a full render period away),
 then drains to the setpoint silently via large packets.
 
-Upstream status: a half-depth (setpoint-targeting) variant is part of
-esp-iot-solution#764. The near-full variant is app-specific and stays
-local.
+Upstream status: a half-depth (setpoint-targeting) variant merged with
+esp-iot-solution#764 (v1.3.2). The near-full variant is app-specific and
+stays local.
 
 ### 3. Direct-write room-sized mic supply (mailbox retired, async source)
 
