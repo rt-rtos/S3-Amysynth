@@ -617,8 +617,9 @@ whether the arp follows the global scale (GLOB) or plays its slots unsnapped
 ### Mixer
 
 One row per sound source: master, the drum layer, each melodic layer, the
-arp, both drones, and the live voice and the clip slots while they exist.
-A layer row dives into its track rows. The bar is the fader position, 0-100;
+arp, both drones, and the live voice and the clip slots while they exist,
+then a **FADE** row that sets the fade length (1, 2, 4, 8, 16 or 32 bars,
+default 4). A layer row dives into its track rows. The bar is the fader position, 0-100;
 the gain is the position squared (50 = -12 dB), and a track's gain is its
 layer's times its own. MAST is the menu's **Volume** seen as a fader (100 =
 unity; a volume above unity shows as 100).
@@ -630,7 +631,18 @@ scales a synth's output after its voices and leaves every Level, envelope and
 LFO setting as it is; an LFO tremolo keeps its depth under a lowered fader.
 Faders and mutes are saved with the project.
 
-Hint strip: `1:Mute 2:- 3:Menu`, plus `LB:Back` in a layer's track rows and
+`MY_BUTTON_2` fades the cursor row to silence over the FADE row's bar count,
+starting on the next bar line (at once while the transport is stopped); a
+second press fades it back to where it was. A second press before the fade has moved (while it waits for the
+bar line) cuts the row to silence at once and fades it in from 0 to where
+it was, so an intro needs no fade-out first; a third press puts it back. A press mid-fade turns the fade
+around from where it is. The ramp follows the sequencer clock, so a tempo
+change mid-fade keeps the bar count. A tick on the bar marks the target, and
+turning the fader cancels the fade. On MAST it fades everything, clips and
+effect tails included. The FADE length is saved with the project; a fade in
+progress is not (the position is saved as it stands).
+
+Hint strip: `1:Mute 2:Fade 3:Menu`, plus `LB:Back` in a layer's track rows and
 `LB:Main` on the overview. Controls: [CONTROLS.md](CONTROLS.md#mixer-screen).
 
 ---

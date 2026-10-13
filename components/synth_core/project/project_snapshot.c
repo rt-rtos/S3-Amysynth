@@ -1002,9 +1002,10 @@ static void apply_clip(const staged_clip_t *c)
 
 /* ── MIXR section ─────────────────────────────────────────────────────────── */
 
-/* Mixer positions and soft mutes (mixer.h). Layer arrays are index-aligned
- * with the LAYR sections; master is GLOB's master volume, not stored here. */
-#define MIXR_VERSION 1
+/* Mixer positions, soft mutes and the FADE length (mixer.h). Layer arrays
+ * are index-aligned with the LAYR sections; master is GLOB's master volume,
+ * not stored here. A fade in progress is not stored. */
+#define MIXR_VERSION 2
 
 typedef mixer_snapshot_t staged_mixr_t;
 
@@ -1021,6 +1022,7 @@ static void ser_mixr(tlv_writer_t *w)
     for (uint8_t L = 0; L < MAX_LAYERS; L++) tlv_put_u8(w, m.track_mute[L]);
     for (uint8_t k = 0; k < MIX_MISC_COUNT; k++) tlv_put_u8(w, m.misc_pos[k]);
     tlv_put_u8(w, m.misc_mute);
+    tlv_put_u8(w, m.fade_bars_idx);
     tlv_end_section(w, h);
 }
 
@@ -1052,6 +1054,8 @@ static bool parse_mixr(tlv_reader_t *b, staged_mixr_t *m)
     }
     if (!tlv_get_u8(b, &m->misc_mute)) return false;
     m->misc_mute &= (uint8_t)((1u << MIX_MISC_COUNT) - 1u);
+    if (!tlv_get_u8(b, &m->fade_bars_idx)) return false;
+    if (m->fade_bars_idx > MIXER_FADE_BARS_COUNT - 1) m->fade_bars_idx = MIXER_FADE_BARS_COUNT - 1;
     return true;
 }
 

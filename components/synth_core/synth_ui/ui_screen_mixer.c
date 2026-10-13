@@ -18,15 +18,19 @@
  * ════════════════════════════════════════════════════════════════════════
  * Rows over the mixer model (mixer.h): the overview lists master, the drum
  * layer, each melodic layer, the arp, both drones, and the live voice and
- * clip slots while they exist; a layer row dives into its track rows. The
- * row list is rebuilt from live state on every view build and input call,
+ * clip slots while they exist, then the FADE settings row (the fade
+ * length); a layer row dives into its track rows. The row list is rebuilt from live state on every view build and input call,
  * so rows appear and vanish with their sources. Rendered by display_mixer.c.
  * Controls: CONTROLS.md. */
 
-/* Overview ceiling: MAST, every layer, ARP/DRON/STUT, LIVE, the clips. */
-#define MIX_PAGE_ROWS  (1u + MAX_LAYERS + 3u + 1u + CLIP_SLOT_COUNT)
+/* Overview ceiling: MAST, every layer, ARP/DRON/STUT, LIVE, the clips, FADE. */
+#define MIX_PAGE_ROWS  (1u + MAX_LAYERS + 3u + 1u + CLIP_SLOT_COUNT + 1u)
 #define MIX_LEVEL_STEP 5
 #define MIX_NO_DIVE    0xFFu
+#define MIX_SRC_NONE   0xFFu   /* src.kind of a settings row: no mixer source */
+
+/* mix_row_t.setting */
+enum { MIX_SETTING_NONE = 0, MIX_SETTING_FADE };
 
 _Static_assert(MIX_PAGE_ROWS >= SEQ_TRACKS, "dive rows fit the row list");
 
@@ -34,6 +38,7 @@ typedef struct {
     mix_src_t src;
     char      name[5];
     uint8_t   drum_track;   /* MIXER_NO_DRUM unless a drum-layer track row */
+    uint8_t   setting;      /* MIX_SETTING_*: a settings row, src unused */
 } mix_row_t;
 
 static uint8_t s_cursor          = 0;            /* into the shown row list */
@@ -55,6 +60,7 @@ static void add_row(mix_row_t *rows, uint8_t *n, uint8_t kind, uint8_t a, uint8_
     r->src = (mix_src_t){ .kind = kind, .a = a, .b = b };
     snprintf(r->name, sizeof(r->name), "%s", name);
     r->drum_track = drum_track;
+    r->setting    = MIX_SETTING_NONE;
 }
 
 /* The dive layer, or MIX_NO_DIVE when none is open or it no longer exists. */
@@ -96,6 +102,8 @@ static uint8_t build_rows(mix_row_t *rows, uint8_t dive)
         snprintf(name, sizeof(name), "CLP%u", (unsigned)(c + 1u));
         add_row(rows, &n, MIX_SRC_CLIP, c, 0, name, MIXER_NO_DRUM);
     }
+    add_row(rows, &n, MIX_SRC_NONE, 0, 0, "FADE", MIXER_NO_DRUM);
+    if (n > 0) rows[n - 1u].setting = MIX_SETTING_FADE;
     return n;
 }
 
@@ -173,8 +181,15 @@ void mixer_build_view(mixer_view_t *out)
         mixer_view_row_t *o = &out->rows[i];
         memcpy(o->name, r->name, sizeof(o->name));
         o->drum_track = r->drum_track;
-        o->pos        = mixer_get_pos(r->src);
         o->fade_to    = MIXER_NO_FADE;
+        if (r->setting == MIX_SETTING_FADE) {
+            snprintf(o->text, sizeof(o->text), "%u bar",
+                     (unsigned)mixer_fade_bars(mixer_get_fade_bars_idx()));
+            continue;   /* no level, no mute */
+        }
+        o->pos        = mixer_get_pos(r->src);
+        uint8_t to;
+        if (mixer_fade_active(r->src, &to)) o->fade_to = to;
         o->has_level  = 1;
         o->has_mute   = mixer_has_mute(r->src);
         o->mute       = o->has_mute && mixer_get_mute(r->src);
@@ -196,7 +211,10 @@ bool synth_ui_mixer_handle_encoder(int steps)
     mix_row_t rows[MIX_PAGE_ROWS];
     uint8_t n = sync_rows(rows);
     if (n == 0) return true;
-    if (s_focus == MIXER_FOCUS_LEVEL) {
+    if (s_focus == MIXER_FOCUS_LEVEL && rows[s_cursor].setting == MIX_SETTING_FADE) {
+        int idx = (int)mixer_get_fade_bars_idx() + steps;
+        mixer_set_fade_bars_idx((uint8_t)SEQ_CLAMP_INT(idx, 0, MIXER_FADE_BARS_COUNT - 1));
+    } else if (s_focus == MIXER_FOCUS_LEVEL) {
         mix_src_t src = rows[s_cursor].src;
         int pos = (int)mixer_get_pos(src) + MIX_LEVEL_STEP * steps;
         mixer_set_pos(src, (uint8_t)SEQ_CLAMP_INT(pos, 0, (int)MIXER_POS_MAX));
@@ -240,8 +258,21 @@ bool synth_ui_mixer_toggle_mute(void)
     uint8_t n = sync_rows(rows);
     if (n == 0) return true;
     mix_src_t src = rows[s_cursor].src;
-    if (mixer_has_mute(src)) {
+    if (rows[s_cursor].setting == MIX_SETTING_NONE && mixer_has_mute(src)) {
         mixer_set_mute(src, !mixer_get_mute(src));
+        s_force_redraw = true;
+    }
+    return true;
+}
+
+bool synth_ui_mixer_toggle_fade(void)
+{
+    if (!synth_ui_mixer_is_active()) return false;
+    mix_row_t rows[MIX_PAGE_ROWS];
+    uint8_t n = sync_rows(rows);
+    if (n == 0) return true;
+    if (rows[s_cursor].setting == MIX_SETTING_NONE) {
+        mixer_fade_toggle(rows[s_cursor].src);
         s_force_redraw = true;
     }
     return true;

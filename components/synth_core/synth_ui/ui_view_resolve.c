@@ -176,7 +176,7 @@ const ui_view_desc_t ui_view_table[UI_VIEW_COUNT] = {
 #else
     [UI_VIEW_WT]        = { "WT",     NULL,          NULL,           "-",      "-",     "Menu",  .badge_x =   0 },
 #endif
-    [UI_VIEW_MIXER]     = { "MIXER",  sig_mixer,     draw_mixer,     "Mute",   "-",     "Menu",  .badge_x = 110,
+    [UI_VIEW_MIXER]     = { "MIXER",  sig_mixer,     draw_mixer,     "Mute",   "Fade",  "Menu",  .badge_x = 110,
                             .bs_fn = hint_mixer_bs },
     [UI_VIEW_SEQ]       = { "SEQ",    sig_seq,       draw_seq,       "Patch",  "Pitch", "Menu",  .badge_x =  44 },
 };

@@ -1,7 +1,7 @@
 """Reader/writer for S3-Amysynth project files (Pnn.amp).
 
 Mirrors components/synth_core/project/project_snapshot.c field for field:
-GLOB v6, LAYR v25, ARP v16, DRON v6, DSTD v3, PROG v1, CHRD v1, CLIP v2, MIXR v1, PGEN v1,
+GLOB v6, LAYR v25, ARP v16, DRON v6, DSTD v3, PROG v1, CHRD v1, CLIP v2, MIXR v2, PGEN v1,
 WTCU v2, FMCU v1,
 inside project_store.c's 32-byte header (magic "AMYP", fmt 1, name, len, CRC32).
 Field order IS the format; when the firmware bumps a section version, update
@@ -21,7 +21,7 @@ NAME_LEN = 16
 TAG = {k: struct.unpack('<I', k.encode())[0] for k in ('GLOB', 'LAYR', 'ARP ', 'DRON', 'DSTD', 'PROG', 'CHRD', 'CLIP',
                                                        'MIXR', 'PGEN', 'WTCU', 'FMCU')}
 VER = {'GLOB': 6, 'LAYR': 25, 'ARP ': 16, 'DRON': 6, 'DSTD': 3, 'PROG': 1, 'CHRD': 1, 'CLIP': 2,
-       'MIXR': 1, 'PGEN': 1, 'WTCU': 2, 'FMCU': 1}
+       'MIXR': 2, 'PGEN': 1, 'WTCU': 2, 'FMCU': 1}
 
 MAX_LAYERS = 4
 SEQ_TRACKS = 5
@@ -417,7 +417,7 @@ def r_clip(r):
 
 
 def w_mixr(m):
-    """Mixer positions (0..100) and soft-mute bit masks, layer arrays MAX_LAYERS wide."""
+    """Mixer positions (0..100), soft-mute bit masks (layer arrays MAX_LAYERS wide), FADE length index."""
     w = W()
     for L in range(MAX_LAYERS):
         w.u8(m['layer_pos'][L])
@@ -430,6 +430,7 @@ def w_mixr(m):
     for k in range(MIX_MISC_COUNT):
         w.u8(m['misc_pos'][k])
     w.u8(m['misc_mute'])
+    w.u8(m['fade_bars_idx'])
     return bytes(w.b)
 
 
@@ -440,6 +441,7 @@ def r_mixr(r):
     m['track_mute'] = [r.u8() for _ in range(MAX_LAYERS)]
     m['misc_pos'] = [r.u8() for _ in range(MIX_MISC_COUNT)]
     m['misc_mute'] = r.u8()
+    m['fade_bars_idx'] = r.u8()
     return m
 
 

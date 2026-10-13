@@ -269,7 +269,11 @@ uint8_t synth_ui_wt_keyframe(void);
  * the cursor row's focus, none -> level -> none, on a layer row
  * none -> level -> dive -> none, where the click from dive opens that
  * layer's track rows. toggle_mute (Button 1) flips the cursor row's mixer
- * mute, in any focus; nothing on MAST. shoulder (SHOULDER click) leaves the
+ * mute, in any focus; nothing on MAST. toggle_fade (Button 2) starts or
+ * turns around the cursor row's fade (mixer_fade_toggle()), in any focus,
+ * MAST included. The overview's last row, FADE, sets the fade length: its
+ * level focus steps 1, 2, 4, 8, 16, 32 bars one per detent, and Buttons 1
+ * and 2 do nothing there. shoulder (SHOULDER click) leaves the
  * track rows for the overview on the row they were opened from, or on the
  * overview opens the menu on its main list. Controls: CONTROLS.md. All
  * UI/input task. */
@@ -277,6 +281,7 @@ bool    synth_ui_mixer_is_active(void);
 bool    synth_ui_mixer_handle_encoder(int steps);
 bool    synth_ui_mixer_handle_button(void);
 bool    synth_ui_mixer_toggle_mute(void);
+bool    synth_ui_mixer_toggle_fade(void);
 bool    synth_ui_mixer_shoulder(void);
 
 /* Global-FX reassert after a patch load (every Juno patch ends with global

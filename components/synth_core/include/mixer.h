@@ -27,7 +27,16 @@
  *   within a few frames. While every source sits at 100 and unmuted,
  *   nothing is sent.
  * - Positions are clamped to 0..100 on every write path, mute bits to the
- *   source widths. */
+ *   source widths.
+ * - Fades: mixer_fade_toggle() ramps a source's position to 0, or back to
+ *   where the last fade-out started, over mixer_fade_bars() bars of the
+ *   FADE length, from the next bar line (at once while the transport is
+ *   stopped). The ramp is stepped on the frame and its position is computed
+ *   from sequencer ticks only, so it stays bar-locked and a tempo change
+ *   mid-fade keeps the bar count. A toggle mid-fade turns it around from
+ *   where it is, starting at once. mixer_set_pos() cancels the source's
+ *   fade. A fade in progress is not persisted: the position is saved as it
+ *   stands. */
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -49,6 +58,8 @@ enum {
 };
 
 #define MIXER_POS_MAX 100u
+#define MIXER_FADE_BARS_COUNT 6   /* fade lengths: 1, 2, 4, 8, 16, 32 bars */
+#define MIXER_FADE_BARS_DEFAULT 2 /* index: 4 bars */
 
 /* Persistent state, field for field the project section's layout. */
 typedef struct {
@@ -58,31 +69,45 @@ typedef struct {
     uint8_t track_mute[MAX_LAYERS];             /* bit t */
     uint8_t misc_pos[MIX_MISC_COUNT];
     uint8_t misc_mute;                          /* bit MIX_MISC_* */
+    uint8_t fade_bars_idx;                      /* 0..MIXER_FADE_BARS_COUNT-1 */
 } mixer_snapshot_t;
 
-/* Defaults (all 100, no mute); nothing sent. Once from synth_ui_init(),
- * after synth_level_init(). */
+/* Defaults (all 100, no mute, no fade, FADE length 4 bars); nothing sent.
+ * Once from synth_ui_init(), after synth_level_init(). */
 void    mixer_init(void);
-/* All 100, no mute; every present source is re-sent on the next frame. */
+/* All 100, no mute, no fade, FADE length 4 bars; every present source is
+ * re-sent on the next frame. */
 void    mixer_reset_defaults(void);
 bool    mixer_src_present(mix_src_t s);
 /* MASTER: round(100 * sqrt(min(master volume, 1))). */
 uint8_t mixer_get_pos(mix_src_t s);
-/* Clamped to 0..100. MASTER writes amy_fx_set_master_volume() at once. */
+/* Clamped to 0..100; cancels the source's fade. MASTER writes
+ * amy_fx_set_master_volume() at once. */
 void    mixer_set_pos(mix_src_t s, uint8_t pos);
 bool    mixer_has_mute(mix_src_t s);   /* false for MASTER */
 bool    mixer_get_mute(mix_src_t s);
 void    mixer_set_mute(mix_src_t s, bool on);
-/* The 50 ms frame: sends what the setters and hooks marked, brings sources
- * that turned present to their gain, re-sends a few sub-unity synths. Call
- * from ui_services() only. */
+/* Fade toggle (contract above). Not fading: a position above 0 fades to 0
+ * and is remembered; at 0 it fades to the remembered position (100 when
+ * there is none). Fading: reverses toward the other end. */
+void    mixer_fade_toggle(mix_src_t s);
+/* True while s has a fade armed or running; *to_pos (may be NULL) gets its
+ * target. */
+bool    mixer_fade_active(mix_src_t s, uint8_t *to_pos);
+/* FADE length as an index into 1, 2, 4, 8, 16, 32 bars; set clamps. */
+uint8_t mixer_get_fade_bars_idx(void);
+void    mixer_set_fade_bars_idx(uint8_t idx);
+uint8_t mixer_fade_bars(uint8_t idx);   /* bar count of an index (clamped) */
+/* The 50 ms frame: steps the fades, sends what the setters and hooks
+ * marked, brings sources that turned present to their gain, re-sends a few
+ * sub-unity synths. Call from ui_services() only. */
 void    mixer_service(void);
 /* Layer table hooks, called by the UI task right after the structural edit:
  * added resets idx to defaults; deleted shifts idx+1.. down one and resets
  * the vacated last entry. */
 void    mixer_on_layer_added(uint8_t idx);
 void    mixer_on_layer_deleted(uint8_t idx);
-/* Codec. import clamps every field, resets layers at or past the live
- * layer count to defaults and re-sends every present source. */
+/* Codec. import clamps every field, cancels every fade, resets layers at or
+ * past the live layer count to defaults and re-sends every present source. */
 void    mixer_export(mixer_snapshot_t *out);
 void    mixer_import(const mixer_snapshot_t *in);

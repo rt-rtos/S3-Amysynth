@@ -67,7 +67,7 @@ screen; a DEV status bar replaces it on every screen while on.
 | Arp, Stutter, Normal drone | Patch | - | Menu |
 | FM | Link (page 1), - (page 2) | Mute | Menu (Done while linking) |
 | WT | Copy (- on HRM and the S tab) | Reset (Blend on keyframe M, off HRM; - on the S tab) | Menu |
-| Mixer | Mute | - | Menu |
+| Mixer | Mute | Fade | Menu |
 | Menu | - (Save while naming) | - (Disc while naming) | Menu |
 | Prog | Del | +Add | Menu |
 | DEV | - | - | Menu |
@@ -242,19 +242,20 @@ Button 1 and SHOULDER do nothing here.
 
 One row per sound source: MAST (master volume), DRUM (layer 0), L2..L4 (the
 melodic layers), ARP, DRON (normal drone), STUT (stutter drone), and LIVE and
-CLP1 / CLP2 while the live voice and those clip slots exist. A layer row dives
+CLP1 / CLP2 while the live voice and those clip slots exist, then FADE, the
+fade length (overview only). A layer row dives
 into its track rows (the drum layer's by role, LOW..AUX; a melodic layer's
 T1..T5). Each row shows a bar (the fader position) and an M cell: `M` filled
 for the mixer's mute, `m` when only the Layer page's (or the arp's) own mute
-is on.
+is on. While a row fades, a tick on its bar marks the target.
 
 | Input | Action |
 |---|---|
 | Encoder turn, no focus | Move the cursor (clamped); five rows show at a time |
 | Encoder click | Cycle the focus on the cursor row: none -> LEVEL -> none; on a layer row none -> LEVEL -> DIVE, and a click with DIVE focused opens that layer's track rows |
-| Encoder turn, LEVEL focus | Fader position in 5 % steps, 0..100 |
-| Button 1 (press) | Toggle the mixer mute of the cursor row (not MAST), in any focus |
-| Button 2 | Ignored |
+| Encoder turn, LEVEL focus | Fader position in 5 % steps, 0..100; cancels a fade on that row. FADE row: the fade length, one step per detent through 1, 2, 4, 8, 16, 32 bars |
+| Button 1 (press) | Toggle the mixer mute of the cursor row (not MAST, not FADE), in any focus |
+| Button 2 (press) | Fade the cursor row (MAST included, not FADE), in any focus: from above 0, to 0 over the FADE length from the next bar line (at once while stopped); from 0, back to where the last fade-out started (100 if none). During a fade that has not moved yet (waiting for the bar line): flip it, an out becomes a cut to silence and a fade in from 0 to the old level, an in becomes an out from that level; once it moves: turn it around from where it is, starting at once |
 | SHOULDER (tap) | In a layer's track rows: back to the overview, on the row it was opened from. Overview: open the menu on its main list |
 | Button 0 (tap / hold) | Cycle the active layer / play-stop |
 | Button 3 (tap) | Menu |

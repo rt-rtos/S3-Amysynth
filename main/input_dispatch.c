@@ -205,8 +205,8 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
     }
 #endif
 
-    /* Mixer screen: Button 1 toggles the cursor row's mute, Button 2 does
-     * nothing; neither is a hold (the patch-select and pitch holds would
+    /* Mixer screen: Button 1 toggles the cursor row's mute, Button 2 its
+     * fade; neither is a hold (the patch-select and pitch holds would
      * edit the layer behind the screen). Clear both latches in case one was
      * held when the screen switched. */
     if ((button_id == MY_BUTTON_1 || button_id == MY_BUTTON_2) &&
@@ -215,8 +215,9 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
         synth_ui_set_patch_select_mode(false);
         s_drum_select_held = false;
         synth_ui_set_drum_select_mode(false);
-        if (event == BUTTON_PRESS_DOWN && button_id == MY_BUTTON_1) {
-            synth_ui_mixer_toggle_mute();
+        if (event == BUTTON_PRESS_DOWN) {
+            if (button_id == MY_BUTTON_1) synth_ui_mixer_toggle_mute();
+            else                          synth_ui_mixer_toggle_fade();
         }
         return;
     }

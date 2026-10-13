@@ -6,6 +6,8 @@
 #include "custompatches/drone_core.h"
 #include "custompatches/drone_std_core.h"
 #include "custompatches/clip_player.h"
+#include "seq_core_config.h"   /* SEQ_TICKS_PER_BAR */
+#include "sequencer.h"         /* sequencer_ticks */
 #include "sdkconfig.h"
 #if CONFIG_SYNTH_WIRELESS
 #include "live_play.h"
@@ -27,6 +29,25 @@ _Static_assert(MAX_LAYERS <= 8 && SEQ_TRACKS <= 8 && MIX_MISC_COUNT <= 8, "mute 
 #define SYNTH_BYTES ((SYNTH_SLOT_COUNT + 7) / 8)
 
 static mixer_snapshot_t s_mix;
+
+/* Fades, one slot per fadeable source (fade_index()): master, the layers,
+ * their tracks, the misc sources. restore_pos is where the last fade-out
+ * started, the target of the next fade-in. */
+#define FADE_LAYER0  1
+#define FADE_TRACK0  (FADE_LAYER0 + MAX_LAYERS)
+#define FADE_MISC0   (FADE_TRACK0 + MAX_LAYERS * SEQ_TRACKS)
+#define FADE_SLOTS   (FADE_MISC0 + MIX_MISC_COUNT)
+
+typedef struct {
+    uint8_t  active;
+    uint8_t  from_pos, to_pos;
+    uint32_t start_tick;     /* first tick of the ramp */
+    uint32_t len_ticks;      /* bars * SEQ_TICKS_PER_BAR */
+} mix_fade_t;
+
+static const uint8_t s_fade_bars[MIXER_FADE_BARS_COUNT] = { 1, 2, 4, 8, 16, 32 };
+static mix_fade_t s_fade[FADE_SLOTS];
+static uint8_t    s_restore_pos[FADE_SLOTS];
 
 /* Sources whose synths go out on the next frame. */
 static uint8_t s_layer_dirty;
@@ -66,6 +87,25 @@ static void layer_defaults(uint8_t L)
     s_mix.track_mute[L] = 0;
 }
 
+static void fade_clear(int i)
+{
+    s_fade[i].active = 0;
+    s_restore_pos[i] = 0;
+}
+
+static void fade_clear_all(void)
+{
+    memset(s_fade, 0, sizeof(s_fade));
+    memset(s_restore_pos, 0, sizeof(s_restore_pos));
+}
+
+/* A layer's slot and its tracks' slots. */
+static void fade_clear_layer(uint8_t L)
+{
+    fade_clear(FADE_LAYER0 + L);
+    for (uint8_t t = 0; t < SEQ_TRACKS; t++) fade_clear(FADE_TRACK0 + L * SEQ_TRACKS + t);
+}
+
 static void mark_all_dirty(void)
 {
     s_layer_dirty = LAYER_MASK;
@@ -86,6 +126,39 @@ static uint8_t misc_index(mix_src_t s)
     }
 }
 
+/* Fade slot of a source, -1 for a source with none. */
+static int fade_index(mix_src_t s)
+{
+    switch (s.kind) {
+        case MIX_SRC_MASTER: return 0;
+        case MIX_SRC_LAYER:  return (s.a < MAX_LAYERS) ? FADE_LAYER0 + s.a : -1;
+        case MIX_SRC_TRACK:
+            return (s.a < MAX_LAYERS && s.b < SEQ_TRACKS) ? FADE_TRACK0 + s.a * SEQ_TRACKS + s.b : -1;
+        default: {
+            uint8_t k = misc_index(s);
+            return (k < MIX_MISC_COUNT) ? FADE_MISC0 + k : -1;
+        }
+    }
+}
+
+/* The source a fade slot belongs to (fade_index() inverted). */
+static mix_src_t fade_src(int i)
+{
+    static const uint8_t misc_kind[MIX_MISC_COUNT] = {
+        MIX_SRC_ARP, MIX_SRC_DRONE_STD, MIX_SRC_DRONE_STUT, MIX_SRC_LIVE, MIX_SRC_CLIP, MIX_SRC_CLIP,
+    };
+    if (i == 0) return (mix_src_t){ .kind = MIX_SRC_MASTER };
+    if (i < FADE_TRACK0) return (mix_src_t){ .kind = MIX_SRC_LAYER, .a = (uint8_t)(i - FADE_LAYER0) };
+    if (i < FADE_MISC0) {
+        int j = i - FADE_TRACK0;
+        return (mix_src_t){ .kind = MIX_SRC_TRACK, .a = (uint8_t)(j / SEQ_TRACKS),
+                            .b = (uint8_t)(j % SEQ_TRACKS) };
+    }
+    uint8_t k = (uint8_t)(i - FADE_MISC0);
+    return (mix_src_t){ .kind = misc_kind[k],
+                        .a = (k >= MIX_MISC_CLIP0) ? (uint8_t)(k - MIX_MISC_CLIP0) : 0u };
+}
+
 static bool live_ready(void)
 {
 #if CONFIG_SYNTH_WIRELESS
@@ -100,6 +173,8 @@ void mixer_init(void)
     memset(&s_mix, 0, sizeof(s_mix));
     for (uint8_t L = 0; L < MAX_LAYERS; L++) layer_defaults(L);
     memset(s_mix.misc_pos, MIXER_POS_MAX, sizeof(s_mix.misc_pos));
+    s_mix.fade_bars_idx = MIXER_FADE_BARS_DEFAULT;
+    fade_clear_all();
     s_layer_dirty = 0;
     memset(s_track_dirty, 0, sizeof(s_track_dirty));
     s_misc_dirty = 0;
@@ -113,6 +188,8 @@ void mixer_reset_defaults(void)
     for (uint8_t L = 0; L < MAX_LAYERS; L++) layer_defaults(L);
     memset(s_mix.misc_pos, MIXER_POS_MAX, sizeof(s_mix.misc_pos));
     s_mix.misc_mute = 0;
+    s_mix.fade_bars_idx = MIXER_FADE_BARS_DEFAULT;
+    fade_clear_all();
     mark_all_dirty();
 }
 
@@ -154,7 +231,9 @@ uint8_t mixer_get_pos(mix_src_t s)
     }
 }
 
-void mixer_set_pos(mix_src_t s, uint8_t pos)
+/* Position write shared by the public setter and the fade stepper; marks
+ * the source dirty (master: written at once). Does not touch the fade. */
+static void write_pos(mix_src_t s, uint8_t pos)
 {
     pos = clamp_pos(pos);
     switch (s.kind) {
@@ -179,6 +258,13 @@ void mixer_set_pos(mix_src_t s, uint8_t pos)
             return;
         }
     }
+}
+
+void mixer_set_pos(mix_src_t s, uint8_t pos)
+{
+    int f = fade_index(s);
+    if (f >= 0) s_fade[f].active = 0;   /* manual wins */
+    write_pos(s, pos);
 }
 
 bool mixer_has_mute(mix_src_t s)
@@ -227,6 +313,98 @@ void mixer_set_mute(mix_src_t s, bool on)
     }
 }
 
+uint8_t mixer_get_fade_bars_idx(void)
+{
+    return s_mix.fade_bars_idx;
+}
+
+void mixer_set_fade_bars_idx(uint8_t idx)
+{
+    s_mix.fade_bars_idx = (idx < MIXER_FADE_BARS_COUNT) ? idx : (uint8_t)(MIXER_FADE_BARS_COUNT - 1);
+}
+
+uint8_t mixer_fade_bars(uint8_t idx)
+{
+    return s_fade_bars[(idx < MIXER_FADE_BARS_COUNT) ? idx : MIXER_FADE_BARS_COUNT - 1];
+}
+
+void mixer_fade_toggle(mix_src_t s)
+{
+    int i = fade_index(s);
+    if (i < 0) return;
+    mix_fade_t *f = &s_fade[i];
+    uint8_t pos = mixer_get_pos(s);
+    uint8_t back = s_restore_pos[i] ? s_restore_pos[i] : (uint8_t)MIXER_POS_MAX;
+    f->len_ticks = (uint32_t)mixer_fade_bars(s_mix.fade_bars_idx) * SEQ_TICKS_PER_BAR;
+    if (f->active) {
+        if (pos == f->from_pos) {
+            /* Not moving yet (armed for the bar line, or just started):
+             * flip the shape. An out becomes an in from silence, the row
+             * goes quiet now and rises from the same start; an in becomes
+             * an out from its remembered level. */
+            if (f->to_pos == 0u) { f->from_pos = 0;    f->to_pos = back; write_pos(s, 0); }
+            else                 { f->from_pos = back; f->to_pos = 0;    write_pos(s, back); }
+            return;
+        }
+        /* Under way: turn around from where it is, at once, no re-quantize. */
+        f->to_pos     = (f->to_pos != 0u) ? 0u : back;
+        f->from_pos   = pos;
+        f->start_tick = sequencer_ticks();
+        return;
+    }
+    if (pos > 0u) {
+        s_restore_pos[i] = pos;
+        f->to_pos = 0;
+    } else {
+        f->to_pos = back;
+    }
+    f->from_pos = pos;
+    /* Next bar line; no bar grid while stopped, so start now. */
+    uint32_t bar = sequencer_core_next_bar_tick();
+    f->start_tick = bar ? bar : sequencer_ticks();
+    f->active = 1;
+}
+
+bool mixer_fade_active(mix_src_t s, uint8_t *to_pos)
+{
+    int i = fade_index(s);
+    if (i < 0 || !s_fade[i].active) return false;
+    if (to_pos) *to_pos = s_fade[i].to_pos;
+    return true;
+}
+
+/* Step 0: every active fade's position from the tick count, written only
+ * when it moved. */
+static void fade_step(void)
+{
+    uint32_t now = sequencer_ticks();
+    for (int i = 0; i < FADE_SLOTS; i++) {
+        mix_fade_t *f = &s_fade[i];
+        if (!f->active) continue;
+        mix_src_t s = fade_src(i);
+        uint8_t pos;
+        if ((int32_t)(now - f->start_tick) < 0) {
+            pos = f->from_pos;
+        } else {
+            uint32_t elapsed = now - f->start_tick;
+            if (elapsed >= f->len_ticks) {
+                pos = f->to_pos;
+                f->active = 0;
+            } else {
+                int32_t d    = (int32_t)f->to_pos - (int32_t)f->from_pos;
+                int32_t len  = (int32_t)f->len_ticks;
+                int32_t num  = d * (int32_t)elapsed;
+                int32_t step = (num + ((num >= 0) ? len / 2 : -len / 2)) / len;
+                int32_t p    = (int32_t)f->from_pos + step;
+                int32_t lo   = (d >= 0) ? f->from_pos : f->to_pos;
+                int32_t hi   = (d >= 0) ? f->to_pos : f->from_pos;
+                pos = (uint8_t)((p < lo) ? lo : (p > hi) ? hi : p);
+            }
+        }
+        if (pos != mixer_get_pos(s)) write_pos(s, pos);
+    }
+}
+
 static float track_factor(uint8_t L, uint8_t t)
 {
     if (((s_mix.layer_mute >> L) & 1u) || ((s_mix.track_mute[L] >> t) & 1u)) return 0.0f;
@@ -254,6 +432,8 @@ static void note_misc(uint8_t k, uint8_t synth, bool present)
 
 void mixer_service(void)
 {
+    fade_step();
+
     memset(s_present, 0, sizeof(s_present));
     memset(s_want, 0, sizeof(s_want));
 
@@ -319,6 +499,7 @@ void mixer_on_layer_added(uint8_t idx)
 {
     if (idx >= MAX_LAYERS) return;
     layer_defaults(idx);
+    fade_clear_layer(idx);
     s_layer_dirty |= (uint8_t)(1u << idx);
 }
 
@@ -329,11 +510,18 @@ void mixer_on_layer_deleted(uint8_t idx)
         s_mix.layer_pos[L] = s_mix.layer_pos[L + 1u];
         memcpy(s_mix.track_pos[L], s_mix.track_pos[L + 1u], sizeof(s_mix.track_pos[L]));
         s_mix.track_mute[L] = s_mix.track_mute[L + 1u];
+        s_fade[FADE_LAYER0 + L]        = s_fade[FADE_LAYER0 + L + 1];
+        s_restore_pos[FADE_LAYER0 + L] = s_restore_pos[FADE_LAYER0 + L + 1];
+        memcpy(&s_fade[FADE_TRACK0 + L * SEQ_TRACKS], &s_fade[FADE_TRACK0 + (L + 1) * SEQ_TRACKS],
+               SEQ_TRACKS * sizeof(s_fade[0]));
+        memcpy(&s_restore_pos[FADE_TRACK0 + L * SEQ_TRACKS],
+               &s_restore_pos[FADE_TRACK0 + (L + 1) * SEQ_TRACKS], SEQ_TRACKS);
     }
     uint8_t below = (uint8_t)(s_mix.layer_mute & ((1u << idx) - 1u));
     uint8_t above = (uint8_t)((s_mix.layer_mute >> (idx + 1u)) << idx);
     s_mix.layer_mute = (uint8_t)(below | above);
     layer_defaults(MAX_LAYERS - 1u);
+    fade_clear_layer(MAX_LAYERS - 1u);
     s_layer_dirty |= (uint8_t)(LAYER_MASK & ~((1u << idx) - 1u));
 }
 
@@ -364,5 +552,7 @@ void mixer_import(const mixer_snapshot_t *in)
         s_mix.misc_pos[k] = clamp_pos(in->misc_pos[k]);
     }
     s_mix.misc_mute = (uint8_t)(in->misc_mute & MISC_MASK);
+    mixer_set_fade_bars_idx(in->fade_bars_idx);
+    fade_clear_all();
     mark_all_dirty();
 }
