@@ -131,6 +131,13 @@ uint8_t voice_wob_db_to_depth(uint8_t db);
 /* Sustain is stored as a percentage of peak. */
 #define VOICE_ENV_SUSTAIN_MAX_PCT 100u
 
+/* KS string feedback when the row has never authored one (seq_filter_t.feedback
+ * at its 0 sentinel): the voice configure sends it, and the filter editor opens
+ * its FB readout on it. The one home of the value. 0.998 rings for seconds at
+ * A3; 0.9 died in about 0.3 s, so a row switched to KS sounded muted. AMY's own
+ * default is 0 and 1.0 is lossless; above 1 the KS buffer diverges. */
+#define VOICE_KS_FEEDBACK_DEFAULT 0.998f
+
 /* Reset a voice_params_t (seq_model.h) to defaults: zeroed/unauthored, with
  * amp_trim at unity and both LFO rates at 1/8. The single place those get
  * their non-zero defaults - use it instead of re-setting them after a memset. */
@@ -174,7 +181,7 @@ typedef struct {
     float    osc0_amp_vel;         /* the shared apply path: 1.0           */
     bool     ks_feedback_authored; /* authored feedback drives KS decay    */
     float    ks_feedback;          /* seq_filter_t.feedback (0..1) when authored;
-                                      <= 0 or unauthored -> fixed 0.9 default */
+                                      <= 0 or unauthored -> VOICE_KS_FEEDBACK_DEFAULT */
     float    ks_duty_ofs;          /* seq_filter_t.ks_duty_ofs: KS pluck duty
                                       = 0.5 + this; 0 = AMY's default burst */
     int16_t  wt_preset;            /* >=0 => e->preset (WAVETABLE); else -1 */

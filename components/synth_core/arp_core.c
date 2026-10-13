@@ -214,8 +214,9 @@ static void arp_apply_filter(const seq_filter_t *f)
         e->filter_type = FILTER_NONE;
     }
     /* KS string decay from the authored feedback field; 0 = never authored,
-     * keep AMY's build-time 0.9 default. Pluck duty is written on every KS
-     * push: its zero offset IS the 0.5 default, so no authored gate. */
+     * keep what the voice configure sent (VOICE_KS_FEEDBACK_DEFAULT,
+     * voice_config.h). Pluck duty is written on every KS push: its zero
+     * offset IS the 0.5 default, so no authored gate. */
     if (s_arp.patch == SEQ_PATCH_KS) {
         if (f->feedback > 0.0f) {
             e->feedback = SEQ_CLAMP_F32(f->feedback, 0.0f, 1.0f);

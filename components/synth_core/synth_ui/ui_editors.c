@@ -1750,10 +1750,10 @@ static void filter_load_from_target(void)
                  (unsigned)(li + 1), (unsigned)(tr + 1), badge);
     }
     s_fgraph.show_toggles = true;
-    /* KS: zero feedback means never authored - seed the engine's build-time
-     * default so the FB readout does not open at a silent-string 0%. */
+    /* KS: zero feedback means never authored - seed the value the voice plays
+     * (voice_config.h) so the FB readout does not open at a silent-string 0%. */
     if (filter_target_is_feedback() && f.feedback <= 0.0f) {
-        f.feedback = 0.9f;
+        f.feedback = VOICE_KS_FEEDBACK_DEFAULT;
     }
     s_filter_edit = f;
 }

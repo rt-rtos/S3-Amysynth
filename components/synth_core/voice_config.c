@@ -350,10 +350,10 @@ void voice_build_wave(const voice_wave_cfg_t *cfg)
         if (cfg->wt_preset >= 0) e->preset = cfg->wt_preset;
         if (cfg->wave == KS) {
             /* Authored feedback drives KS string decay; the 0 "never set"
-             * sentinel falls back to the fixed default. */
+             * sentinel falls back to VOICE_KS_FEEDBACK_DEFAULT. */
             float fb = cfg->ks_feedback;
             if (fb > 1.0f) fb = 1.0f;   /* > 1 would make the KS buffer diverge */
-            e->feedback = (cfg->ks_feedback_authored && fb > 0.0f) ? fb : 0.9f;
+            e->feedback = (cfg->ks_feedback_authored && fb > 0.0f) ? fb : VOICE_KS_FEEDBACK_DEFAULT;
             e->duty_coefs[COEF_CONST] = 0.5f + cfg->ks_duty_ofs;
         }
         e->freq_coefs[COEF_NOTE] = 1.0f;

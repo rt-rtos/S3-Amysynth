@@ -129,8 +129,8 @@ typedef struct {
                               meaningful on feedback waves, where the filter
                               editor exposes a dedicated FB cursor alongside the
                               still-editable biquad resonance. 0.0 (memset
-                              default) = never authored, so apply paths leave
-                              AMY's build-time 0.9 default untouched. */
+                              default) = never authored: the voice plays
+                              VOICE_KS_FEEDBACK_DEFAULT (voice_config.h). */
     float   ks_duty_ofs;   /* KS pluck duty minus 0.5, -0.5..0.5 (AMY holds
                               duty 0..1; d and 1-d sound the same). Stored as
                               an offset so 0.0 (memset default) is AMY's 0.5
