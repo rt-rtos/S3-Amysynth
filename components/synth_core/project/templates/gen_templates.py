@@ -45,6 +45,7 @@ NOTE_DIV_H = 'synth_core/include/note_div.h'
 CHORDS_H = 'synth_core/include/seq_chords.h'
 SLOTS_H = 'synth_core/include/synth_slots.h'
 DRONE_H = 'synth_core/include/custompatches/drone_core.h'
+FM_VOICE_H = 'synth_core/include/custompatches/fm_voice.h'
 CHORD_TYPES_H = 'display/chord_types.h'
 AMY_H = 'amy/src/amy.h'
 
@@ -157,6 +158,7 @@ def constant_checks(fw):
     checks = [
         ('MAGIC', C.MAGIC, STORE_H, d, 'PROJECT_MAGIC'),
         ('FMT_VERSION', C.FMT_VERSION, STORE_H, d, 'PROJECT_FMT_VERSION'),
+        ('FM_NUM_OPS', C.FM_NUM_OPS, FM_VOICE_H, d, 'FM_NUM_OPS'),
         ('NAME_LEN', C.NAME_LEN, STORE_H, d, 'PROJECT_NAME_LEN'),
         ('SEQ_EGT_COUNT', C.SEQ_EGT_COUNT, SEQ_MODEL_H, n, 'SEQ_EGT_COUNT'),
         ('SEQ_TRACKS', C.SEQ_TRACKS, SEQ_MODEL_H, d, 'SEQ_TRACKS'),

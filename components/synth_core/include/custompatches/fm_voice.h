@@ -40,8 +40,8 @@ extern "C" {
  * op_fixed) or sounds op_fixed_hz regardless of the note (bit set).
  *
  * op_mute is audition state: a muted operator is pushed at level 0 while its
- * op_level is kept. Presets and fm_voice_default() leave it 0, and it is never
- * serialized when the FM voice gets a snapshot section. */
+ * op_level is kept. Presets and fm_voice_default() leave it 0, and the project
+ * file leaves it out (FMCU section, project_snapshot.c): a load clears it. */
 
 #define FM_NUM_OPS      6
 #define FM_ALGO_CUSTOM  0xFF   /* algorithm: use op_targets[]/fb_op */
@@ -94,7 +94,8 @@ typedef struct {
  * this module. The FM UI screen mutates it (through the setters below for
  * anything topological) then calls sequencer_core_fm_voice_changed() to push
  * to AMY. Written from the Core-0 input tasks (encoder_task, button_task),
- * not only the UI task. */
+ * not only the UI task; a project load (project_snapshot.c, synth_ui task)
+ * replaces it whole and pushes FM_PUSH_ALL. */
 extern fm_voice_t s_fm_voice;
 
 /* Safe, audible default: DX7 algorithm 1 with only the OP2->OP1 pair (indices

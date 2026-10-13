@@ -33,6 +33,9 @@
 #if CONFIG_SYNTH_CUSTOM_WT
 #include "custompatches/wt_builder.h"
 #endif
+#if CONFIG_SYNTH_CUSTOM_FM
+#include "custompatches/fm_voice.h"
+#endif
 
 #include "esp_heap_caps.h"
 #include "esp_log.h"
@@ -52,6 +55,7 @@ static const char *TAG = "project_snapshot";
 #define TAG_CLIP 0x50494C43u
 #define TAG_PGEN 0x4E454750u
 #define TAG_WTCU 0x55435457u
+#define TAG_FMCU 0x55434D46u
 
 #define PROJECT_SER_BUF_CAP (64 * 1024)
 
@@ -1132,6 +1136,56 @@ static bool parse_wtcu(tlv_reader_t *b, wt_params_t *p)
 }
 #endif
 
+/* ── FMCU section (custom FM voice, CONFIG_SYNTH_CUSTOM_FM) ────────────────
+ * Version 1: the fm_voice_t of patch 276 (fm_voice.h): algorithm and fb_op,
+ * then per operator its target mask, ratio, fixed Hz, level and envelope
+ * (R1..R4, L1..L4, eg_type), then feedback and the op_fixed mask. op_mute is
+ * audition state and stays out. Written only when the FM voice is compiled
+ * in; a build without it skips the section as unknown. */
+#if CONFIG_SYNTH_CUSTOM_FM
+static void ser_fmcu(tlv_writer_t *w)
+{
+    size_t h = tlv_begin_section(w, TAG_FMCU, 1);
+    const fm_voice_t *v = &s_fm_voice;
+    tlv_put_u8(w, v->algorithm);
+    tlv_put_u8(w, v->fb_op);
+    for (uint8_t i = 0; i < FM_NUM_OPS; i++) {
+        tlv_put_u8(w, v->op_targets[i]);
+        tlv_put_f32(w, v->op_ratio[i]);
+        tlv_put_f32(w, v->op_fixed_hz[i]);
+        tlv_put_f32(w, v->op_level[i]);
+        for (uint8_t s = 0; s < 4; s++) tlv_put_u8(w, v->op_env[i].rate[s]);
+        for (uint8_t s = 0; s < 4; s++) tlv_put_u8(w, v->op_env[i].level[s]);
+        tlv_put_u8(w, v->op_env[i].eg_type);
+    }
+    tlv_put_f32(w, v->feedback);
+    tlv_put_u8(w, v->op_fixed);
+    tlv_end_section(w, h);
+}
+
+/* Clamped here (crash-safety for foreign data); fm_voice_clamp also reseeds a
+ * custom routing that would not compile, so the voice always pushes. */
+static bool parse_fmcu(tlv_reader_t *b, fm_voice_t *v)
+{
+    memset(v, 0, sizeof *v);
+    if (!tlv_get_u8(b, &v->algorithm)) return false;
+    if (!tlv_get_u8(b, &v->fb_op)) return false;
+    for (uint8_t i = 0; i < FM_NUM_OPS; i++) {
+        if (!tlv_get_u8(b, &v->op_targets[i])) return false;
+        if (!tlv_get_f32(b, &v->op_ratio[i])) return false;
+        if (!tlv_get_f32(b, &v->op_fixed_hz[i])) return false;
+        if (!tlv_get_f32(b, &v->op_level[i])) return false;
+        for (uint8_t s = 0; s < 4; s++) if (!tlv_get_u8(b, &v->op_env[i].rate[s]))  return false;
+        for (uint8_t s = 0; s < 4; s++) if (!tlv_get_u8(b, &v->op_env[i].level[s])) return false;
+        if (!tlv_get_u8(b, &v->op_env[i].eg_type)) return false;
+    }
+    if (!tlv_get_f32(b, &v->feedback)) return false;
+    if (!tlv_get_u8(b, &v->op_fixed)) return false;
+    fm_voice_clamp(v);
+    return true;
+}
+#endif
+
 /* ── CHRD section (chord presets, seq_chords.h) ──────────────────────────
  * v1: u8 slot count, then per slot u8 tone count + SEQ_CHORD_MAX_NOTES note
  * bytes (fixed width; a wider voicing bumps the version). Old firmware skips
@@ -1207,6 +1261,9 @@ bool project_snapshot_save(uint8_t slot, const char *name)
 #if CONFIG_SYNTH_CUSTOM_WT
     ser_wtcu(&w);
 #endif
+#if CONFIG_SYNTH_CUSTOM_FM
+    ser_fmcu(&w);
+#endif
 
     bool ok = !w.err && project_store_write(slot, name, buf, w.len);
 
@@ -1251,6 +1308,10 @@ bool project_snapshot_load_buffer(const uint8_t *payload, size_t len, const char
 #if CONFIG_SYNTH_CUSTOM_WT
     wt_params_t staged_wtcu;
     bool got_wtcu = false;
+#endif
+#if CONFIG_SYNTH_CUSTOM_FM
+    fm_voice_t staged_fmcu;
+    bool got_fmcu = false;
 #endif
 
     tlv_reader_t r;
@@ -1313,6 +1374,13 @@ bool project_snapshot_load_buffer(const uint8_t *payload, size_t len, const char
             if (got_wtcu || ver != 2) { ok = false; break; }
             ok = parse_wtcu(&body, &staged_wtcu);
             got_wtcu = ok;
+            break;
+#endif
+#if CONFIG_SYNTH_CUSTOM_FM
+        case TAG_FMCU:
+            if (got_fmcu || ver != 1) { ok = false; break; }
+            ok = parse_fmcu(&body, &staged_fmcu);
+            got_fmcu = ok;
             break;
 #endif
         default:
@@ -1384,6 +1452,14 @@ bool project_snapshot_load_buffer(const uint8_t *payload, size_t len, const char
      * the drones above. */
     if (!got_wtcu) wt_params_default(&staged_wtcu);
     wt_builder_set_params(&staged_wtcu);
+#endif
+#if CONFIG_SYNTH_CUSTOM_FM
+    /* Same rule: no section, the default voice. The layers imported above
+     * configured their FM rows from the session's voice; the push re-sends the
+     * loaded one to them, the arp and the drones. */
+    if (!got_fmcu) fm_voice_default(&staged_fmcu);
+    s_fm_voice = staged_fmcu;
+    sequencer_core_fm_voice_changed(FM_PUSH_ALL);
 #endif
 
     /* The layer import writes solo[] wholesale rather than through the setter,

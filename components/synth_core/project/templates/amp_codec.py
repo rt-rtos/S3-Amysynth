@@ -1,7 +1,7 @@
 """Reader/writer for S3-Amysynth project files (Pnn.amp).
 
 Mirrors components/synth_core/project/project_snapshot.c field for field:
-GLOB v6, LAYR v25, ARP v16, DRON v6, DSTD v3, PROG v1, CHRD v1, CLIP v2, PGEN v1, WTCU v2,
+GLOB v6, LAYR v25, ARP v16, DRON v6, DSTD v3, PROG v1, CHRD v1, CLIP v2, PGEN v1, WTCU v2, FMCU v1,
 inside project_store.c's 32-byte header (magic "AMYP", fmt 1, name, len, CRC32).
 Field order IS the format; when the firmware bumps a section version, update
 the matching read_/write_ pair and VER here (gen_templates.py fails the build
@@ -18,9 +18,9 @@ FMT_VERSION = 1
 NAME_LEN = 16
 
 TAG = {k: struct.unpack('<I', k.encode())[0] for k in ('GLOB', 'LAYR', 'ARP ', 'DRON', 'DSTD', 'PROG', 'CHRD', 'CLIP',
-                                                       'PGEN', 'WTCU')}
+                                                       'PGEN', 'WTCU', 'FMCU')}
 VER = {'GLOB': 6, 'LAYR': 25, 'ARP ': 16, 'DRON': 6, 'DSTD': 3, 'PROG': 1, 'CHRD': 1, 'CLIP': 2,
-       'PGEN': 1, 'WTCU': 2}
+       'PGEN': 1, 'WTCU': 2, 'FMCU': 1}
 
 SEQ_TRACKS = 5
 SEQ_MAX_STEPS = 32
@@ -445,6 +445,37 @@ def r_wtcu(r):
     return c
 
 
+FM_NUM_OPS = 6
+
+
+def w_fmcu(v):
+    """Custom FM voice (fm_voice_t): algorithm, fb_op, then per operator a dict
+    {targets, ratio, fixed_hz, level, rate[4], env_level[4], eg_type}, then
+    feedback and the op_fixed mask. op_mute is audition state and is not stored."""
+    w = W()
+    w.u8(v['algorithm']); w.u8(v['fb_op'])
+    assert len(v['ops']) == FM_NUM_OPS
+    for op in v['ops']:
+        w.u8(op['targets']); w.f32(op['ratio']); w.f32(op['fixed_hz']); w.f32(op['level'])
+        for x in op['rate']: w.u8(x)
+        for x in op['env_level']: w.u8(x)
+        w.u8(op['eg_type'])
+    w.f32(v['feedback']); w.u8(v['op_fixed'])
+    return bytes(w.b)
+
+
+def r_fmcu(r):
+    v = {'algorithm': r.u8(), 'fb_op': r.u8(), 'ops': []}
+    for _ in range(FM_NUM_OPS):
+        op = {'targets': r.u8(), 'ratio': r.f32(), 'fixed_hz': r.f32(), 'level': r.f32()}
+        op['rate'] = [r.u8() for _ in range(4)]
+        op['env_level'] = [r.u8() for _ in range(4)]
+        op['eg_type'] = r.u8()
+        v['ops'].append(op)
+    v['feedback'] = r.f32(); v['op_fixed'] = r.u8()
+    return v
+
+
 # ── whole project ───────────────────────────────────────────────────────────
 
 def encode_payload(p):
@@ -461,6 +492,8 @@ def encode_payload(p):
     w.section('PGEN', w_pgen(p['pgen']))
     if 'wtcu' in p:   # optional: a file without it loads the builder defaults
         w.section('WTCU', w_wtcu(p['wtcu']))
+    if 'fmcu' in p:   # optional: a file without it loads the default FM voice
+        w.section('FMCU', w_fmcu(p['fmcu']))
     return bytes(w.b)
 
 
@@ -485,7 +518,7 @@ def decode_file(data):
     readers = {'GLOB': ('glob', r_glob), 'ARP ': ('arp', r_arp), 'DRON': ('drone', r_dron),
                'DSTD': ('drone_std', r_dstd),
                'PROG': ('prog', r_prog), 'CHRD': ('chords', r_chrd), 'CLIP': ('clip', r_clip),
-               'PGEN': ('pgen', r_pgen), 'WTCU': ('wtcu', r_wtcu)}
+               'PGEN': ('pgen', r_pgen), 'WTCU': ('wtcu', r_wtcu), 'FMCU': ('fmcu', r_fmcu)}
     while not r.done():
         tag = r.u32(); ver = r.u8(); blen = r.u32(); body = R(r.raw(blen))
         name4 = struct.pack('<I', tag).decode(errors='replace')
