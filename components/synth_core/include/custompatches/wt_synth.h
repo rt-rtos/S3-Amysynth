@@ -36,8 +36,12 @@ extern "C" {
  *                   centred on that harmonic
  *   range  0..2     harmonic cap H = 63, 31, 15
  *
- * Per frame: the exact spectrum of the hard-synced slave (saw/square blend)
- * for the effective ratio, the Bright slope, a levelling gain on that
+ * Per frame: the spectrum of the hard-synced slave (saw/square blend) for
+ * the effective ratio, with a soft reset: a slave restart later in the
+ * master cycle is weighted down linearly (WT_SYNC_FADE in wt_synth.c, 0.2 at
+ * the cycle's end), so the comb's nulls are dips of 14 dB and more instead of
+ * zeros and the master's pitch stays under the sync harmonic; at sync 1.0
+ * nothing changes. Then the Bright slope, a levelling gain on that
  * spectrum (Parseval) to the RMS of a plain falling saw at peak 32000
  * (32000/sqrt(3)), capped at 4x (a frame under 1e-3 of that reference takes
  * the cap, so silent frames fade instead of boosting a residue), then the

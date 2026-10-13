@@ -14,6 +14,10 @@
 #define WT_PEAK_K      18.0f                  /* 1 / (2 sigma^2), sigma = 1/6 octave */
 #define WT_FFT_M       (WT_CYCLE / 2)         /* complex points of the half-length FFT */
 #define WT_TW_LEN      (WT_CYCLE * 3 / 4)
+/* Soft reset: a slave restart k at phase th_k inside the master cycle is
+ * weighted 1 - WT_SYNC_FADE * th_k / 2pi, so the hard-sync comb's nulls become
+ * dips and the master's pitch stays under it. 0 is the exact comb. */
+#define WT_SYNC_FADE 0.2f
 
 static const uint8_t s_harmonics[WT_RANGES] = { 63, 31, 15 };
 
@@ -191,16 +195,23 @@ static void build_frame(float *buf, uint8_t H, float shape, float width, float b
      * so the steps sum to 0. */
     int kmax = (int)ceilf(r - 1e-6f) - 1;
     if (kmax < 0) kmax = 0;
+    /* Each step inside the cycle is weighted by the soft reset (WT_SYNC_FADE)
+     * at its phase; the restart at phase 0 then closes the cycle: the saw's
+     * ramps drop 2r over it in all, the square returns to +1. */
+    float saw_drop = 0.0f;                   /* the saw's weighted restarts */
     float sq_last = 1.0f;                    /* the square's value at the cycle end */
     for (int k = 1; k <= kmax; k++) {
-        add_jump(buf, H, 2.0f * WT_PI * (float)k / r, 2.0f);
-        sq_last += 2.0f;
+        float ph = (float)k / r, w = 1.0f - WT_SYNC_FADE * ph;
+        add_jump(buf, H, 2.0f * WT_PI * ph, 2.0f * w);
+        saw_drop += 2.0f * w;
+        sq_last  += 2.0f * w;
     }
     for (int k = 0; (float)k + width < r - 1e-6f; k++) {
-        add_jump(buf, H, 2.0f * WT_PI * ((float)k + width) / r, -2.0f * shape);
-        sq_last -= 2.0f;
+        float ph = ((float)k + width) / r, w = 1.0f - WT_SYNC_FADE * ph;
+        add_jump(buf, H, 2.0f * WT_PI * ph, -2.0f * shape * w);
+        sq_last -= 2.0f * w;
     }
-    float restart = (1.0f - shape) * 2.0f * (r - (float)kmax) + shape * (1.0f - sq_last);
+    float restart = (1.0f - shape) * (2.0f * r - saw_drop) + shape * (1.0f - sq_last);
     add_jump(buf, H, 0.0f, restart);
 
     /* 2. Bright: flat up to the sync harmonic, n^-k slope above it. */
