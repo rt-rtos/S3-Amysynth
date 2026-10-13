@@ -175,7 +175,7 @@ static inline bool seq_filter_eg1_live(const seq_filter_t *f)
     return false;
 }
 
-/* ── LFO (per-track tempo-synced software modulator) ── */
+/* ── LFO (per-track tempo-synced modulator: native carrier or software stepper) ── */
 typedef enum { LFO_MODE_FREE = 0, LFO_MODE_RETRIG = 1 } lfo_mode_t;
 typedef enum {
     LFO_WAVE_SINE = 0, LFO_WAVE_TRIANGLE,
@@ -190,8 +190,8 @@ typedef enum {
                                wave=WAVETABLE, pulse width when wave=PULSE */
     /* Distortion rails, one independent bit each - check either or both.
        They behave like every other target (ENGINE-SEMANTICS.md, "LFO: native
-       carrier vs software stepper") and live on a second target-checklist tab
-       in the LFO editor, so the panel stays 5 rows tall. */
+       carrier vs software stepper") and are the last rows of the LFO
+       editor's scrolling target checklist. */
     LFO_TARGET_DIST_DRIVE, /* pre-gain sweep (breathing distortion)        */
     LFO_TARGET_DIST_MIX,   /* wet/dry sweep on a preconfigured shaper      */
     LFO_TARGET_COUNT,
@@ -212,14 +212,16 @@ typedef struct {
     note_div_t   rate;
     uint8_t      depth;    /* 0..100 %, shared across all active targets      */
     uint8_t      targets;  /* bitmask of (1 << lfo_target_t): one AMY mod
-                              carrier drives every checked target - osc1's
-                              amplitude is the shared depth, each target's
-                              COEF_MOD scaled by its own constant.            */
+                              carrier drives every checked target; depth is
+                              scaled into each target's MOD rail by its own
+                              constant (voice_lfo_wire, or
+                              voice_apply_native_lfo_topo without
+                              CONFIG_SEQ_LFO_SHARED).                        */
     uint8_t      wob_rate; /* note_div_t of the WOBBLE (second-order) LFO:
-                              osc2 modulating the osc1 carrier's depth AND
-                              rate via chained mod_source.                    */
+                              the wobble osc modulating the carrier's depth
+                              AND rate via chained mod_source.                */
     uint8_t      wob_depth;/* 0..100 % of VOICE_WOB_DEPTH_AMP; 0 (zero-init) =
-                              wobble off, osc2 dormant. The UI authors this in
+                              wobble off, wobble osc dormant. The UI authors this in
                               whole dB of dip below the authored LFO depth
                               (see voice_config.h); the stored unit is
                               unchanged so project snapshots stay compatible. */

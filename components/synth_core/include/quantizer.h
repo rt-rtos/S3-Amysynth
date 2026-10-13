@@ -35,6 +35,10 @@ uint8_t quantizer_snap_to_chord(uint8_t midi_note, uint8_t root,
  * type, or NULL if out of range - the single shared interval table. */
 const int8_t *quantizer_chord_intervals(chord_type_t chord_type);
 
+/* Tones in chord_type's interval row (up to the -1 sentinel, at most 5); 0 if
+ * out of range. Pure; any task. */
+uint8_t quantizer_chord_note_count(chord_type_t chord_type);
+
 /* Most rows quantizer_voice_chord voices together. */
 #define QUANTIZER_VOICE_MAX 5
 

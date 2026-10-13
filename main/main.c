@@ -428,8 +428,10 @@ void app_main(void)
      * two above the top tag. */
     amy_cfg.max_sequencer_tags = SEQ_CLIP_TAG_MAX + 2;
     /* Slot map lives in synth_slots.h: statics pack 1..SEQ_MEL_SYNTH_BASE-1, melodic is the
-     * open-ended arena SEQ_MEL_SYNTH_BASE..SYNTH_SLOT_COUNT-1. This is the polyphony knob. */
-    amy_cfg.max_synths = SYNTH_SLOT_COUNT;
+     * open-ended arena SEQ_MEL_SYNTH_BASE..SYNTH_SLOT_COUNT-1, the shared LFO synths sit
+     * above it. Each LFO synth also takes one voice id from AMY's pool. */
+    amy_cfg.max_synths = AMY_SYNTH_COUNT;
+    amy_cfg.max_voices += LFO_SYNTH_MAX;
     /* One bus per synth group (fx_bus.h): the buses beyond 0 carry a group
      * only while its Split toggle is on, but the tables are preallocated
      * either way, so this is a fixed cost, not a per-split one. */

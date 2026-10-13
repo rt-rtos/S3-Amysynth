@@ -1,7 +1,7 @@
 """Reader/writer for S3-Amysynth project files (Pnn.amp).
 
 Mirrors components/synth_core/project/project_snapshot.c field for field:
-GLOB v6, LAYR v25, ARP v14, DRON v4, DSTD v2, PROG v1, CHRD v1, CLIP v2, PGEN v1, WTCU v2,
+GLOB v6, LAYR v25, ARP v16, DRON v6, DSTD v3, PROG v1, CHRD v1, CLIP v2, PGEN v1, WTCU v2,
 inside project_store.c's 32-byte header (magic "AMYP", fmt 1, name, len, CRC32).
 Field order IS the format; when the firmware bumps a section version, update
 the matching read_/write_ pair and VER here (gen_templates.py fails the build
@@ -19,7 +19,7 @@ NAME_LEN = 16
 
 TAG = {k: struct.unpack('<I', k.encode())[0] for k in ('GLOB', 'LAYR', 'ARP ', 'DRON', 'DSTD', 'PROG', 'CHRD', 'CLIP',
                                                        'PGEN', 'WTCU')}
-VER = {'GLOB': 6, 'LAYR': 25, 'ARP ': 14, 'DRON': 4, 'DSTD': 2, 'PROG': 1, 'CHRD': 1, 'CLIP': 2,
+VER = {'GLOB': 6, 'LAYR': 25, 'ARP ': 16, 'DRON': 6, 'DSTD': 3, 'PROG': 1, 'CHRD': 1, 'CLIP': 2,
        'PGEN': 1, 'WTCU': 2}
 
 SEQ_TRACKS = 5
@@ -80,7 +80,8 @@ class R:
 # every rate and the echo note.
 ECHO_DIV = {k: i for i, k in enumerate(('4BAR', '2BAR', '1/1', '1/2', '1/4', '1/8', '1/16', '1/32',
                                         '1/2T', '1/4T', '1/8T', '1/16T', '1/32T',
-                                        '1/2D', '1/4D', '1/8D', '1/16D', '1/32D'))}
+                                        '1/2D', '1/4D', '1/8D', '1/16D', '1/32D',
+                                        '8BAR', '16BAR'))}
 
 
 # ── defaults ────────────────────────────────────────────────────────────────
@@ -302,6 +303,8 @@ def w_arp(a):
         w.i16(a['slots'][i])
     w_env(w, a['env']); w_env(w, a['env2']); w_filter(w, a['filter']); w_lfo(w, a['lfo'])
     w.u8(a['quant_mode']); w_dist(w, a['dist'])
+    w.u8(1 if a['muted'] else 0); w.u8(1 if a['solo'] else 0)
+    w.u8(a['uni_count']); w.u8(a['uni_detune']); w.u8(a['uni_spread']); w.u8(a['uni_blend'])
     return bytes(w.b)
 
 
@@ -311,19 +314,20 @@ def r_arp(r):
     a['slots'] = [r.i16() for _ in range(ARP_MAX_SLOTS)]
     a['env'] = r_env(r); a['env2'] = r_env(r); a['filter'] = r_filter(r); a['lfo'] = r_lfo(r)
     a['quant_mode'] = r.u8(); a['dist'] = r_dist(r)
+    a['muted'] = r.u8() != 0; a['solo'] = r.u8() != 0
+    a['uni_count'] = r.u8(); a['uni_detune'] = r.u8(); a['uni_spread'] = r.u8()
+    a['uni_blend'] = r.u8()
     return a
 
 
-DRON_FIELDS = [('enabled', 'b1'), ('source', 'u8'), ('wave', 'u16'), ('chord', 'u8'), ('root', 'u8'),
-               ('patch', 'u16'), ('resonance', 'f32'), ('amp_peak', 'f32'), ('amp_duck', 'f32'),
-               ('rate', 'u8'), ('sub_enabled', 'b1'), ('sub_interval', 'i8'),
-               ('sweep_lo', 'f32'), ('sweep_hi', 'f32'), ('sweep_bars', 'u8'), ('gate_len', 'f32'),
+DRON_FIELDS = [('enabled', 'b1'), ('chord', 'u8'), ('root', 'u8'), ('patch', 'u16'),
+               ('amp_peak', 'f32'), ('amp_duck', 'f32'), ('rate', 'u8'),
+               ('sub_enabled', 'b1'), ('sub_interval', 'i8'), ('gate_len', 'f32'),
                ('swing', 'u8'), ('blip', 'f32'), ('pattern', 'u8'), ('follow', 'u8')]
 
 
-DSTD_FIELDS = [('enabled', 'b1'), ('source', 'u8'), ('wave', 'u16'), ('chord', 'u8'), ('root', 'u8'),
-               ('follow', 'u8'), ('level', 'f32'), ('patch', 'u16'), ('sub_enabled', 'b1'),
-               ('sub_interval', 'i8')]
+DSTD_FIELDS = [('enabled', 'b1'), ('chord', 'u8'), ('root', 'u8'), ('follow', 'u8'),
+               ('level', 'f32'), ('patch', 'u16'), ('sub_enabled', 'b1'), ('sub_interval', 'i8')]
 
 
 def w_fields_vp(fields, d):

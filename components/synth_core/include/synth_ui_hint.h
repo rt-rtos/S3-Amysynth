@@ -15,9 +15,8 @@ extern "C" {
  * e.g. "1:Patch 2:Pitch 3:Menu". Cheap enough to call every frame. */
 const char *synth_ui_hint_text(void);
 
-/* False for views whose bottom rows are load-bearing content (the drone
- * gate-pattern visualiser) or that already render an equivalent button
- * legend of their own (the chord-progression screen). */
+/* False for views that already render an equivalent button legend of their
+ * own (the chord-progression screen). */
 bool synth_ui_hint_visible(void);
 
 #ifdef __cplusplus

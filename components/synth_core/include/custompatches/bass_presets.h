@@ -19,6 +19,12 @@ extern "C" {
 void bass_preset_configure_track(uint8_t synth_id, uint16_t patch,
                                  uint16_t num_voices);
 
+/* The amp CONST `patch`'s build gives voice-relative `osc` (the preset's
+ * balance between its two audible oscs); 1.0 for any other patch or osc. A
+ * consumer that writes amp CONST over the preset's oscs (the drones' level
+ * and gate) multiplies by it so the balance survives. Pure; any task. */
+float bass_preset_osc_level(uint16_t patch, uint8_t osc);
+
 #ifdef __cplusplus
 }
 #endif

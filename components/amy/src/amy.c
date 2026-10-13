@@ -905,6 +905,7 @@ void amy_event_to_deltas_queue(amy_event *e, uint16_t base_osc, uint16_t oscs_pe
     EVENT_TO_DELTA_COEFS(pan_coefs, PAN)
     EVENT_TO_DELTA_F(feedback, FEEDBACK)
     EVENT_TO_DELTA_F(trigger_phase, PHASE)
+    EVENT_TO_DELTA_F(phase_warp, PHASE_WARP)  // LOCAL EDIT (S3-Amysynth): see amy_event.
     // LOCAL EDIT (S3-Amysynth, experimental): unison cluster.
     EVENT_TO_DELTA_I(unison_count, UNISON_COUNT)
     EVENT_TO_DELTA_F(unison_spacing, UNISON_SPACING)
@@ -935,6 +936,12 @@ void amy_event_to_deltas_queue(amy_event *e, uint16_t base_osc, uint16_t oscs_pe
     // names, so `mod_source=3` still means "slot 0 = osc 3, leave slot 1 alone".
     for (int i = 0; i < NUM_MOD_SOURCES; ++i) {
         EVENT_TO_DELTA_OSC_REF(mod_source[i], MOD_SOURCE_START + i, "mod_source")
+    }
+    // LOCAL EDIT (S3-Amysynth, 2026-10-12, experimental): a synth number is not
+    // an osc reference, so it is neither range-checked against the voice nor
+    // rebased onto base_osc.
+    for (int i = 0; i < NUM_MOD_SOURCES; ++i) {
+        EVENT_TO_DELTA_I(mod_synth[i], MOD_SYNTH_START + i)
     }
     EVENT_TO_DELTA_I(note_source_channel, NOTE_SOURCE_CHANNEL)
     EVENT_TO_DELTA_I(filter_type, FILTER_TYPE)
@@ -1562,7 +1569,8 @@ int chained_osc_would_cause_loop(uint16_t osc, uint16_t chained_osc) {
 // out means either a cycle or a graph too tangled to be worth chasing, and both
 // answer "yes" -- refusing a legal-but-absurd assignment is the safe direction.
 static bool mod_osc_reaches(uint16_t from, uint16_t target, int *budget) {
-    if (!AMY_IS_SET(from)) return false;
+    // LOCAL EDIT (S3-Amysynth): a mod source named by synth is not an osc edge.
+    if (!AMY_IS_SET(from) || (from & MOD_SRC_SYNTH_FLAG)) return false;
     if ((*budget)-- <= 0) return true;
     // Walk without allocating (see chained_osc_would_cause_loop): an osc with
     // no storage has no mod_sources, so it reaches nothing.
@@ -1721,6 +1729,10 @@ void play_delta(struct delta *d) {
         if (!AMY_WAVE_IS_PCM(synth[d->osc]->wave))
             synth[d->osc]->phase = F2P(synth[d->osc]->trigger_phase);
     }
+    // LOCAL EDIT (S3-Amysynth, 2026-10-12, experimental): move the running
+    // phase and store nothing, so a later note-on keeps it (see amy_event).
+    if (d->param == PHASE_WARP && !AMY_WAVE_IS_PCM(synth[d->osc]->wave))
+        synth[d->osc]->phase = F2P(d->data.f);
     // LOCAL EDIT (S3-Amysynth, experimental): unison cluster.  Count and
     // blend clamp here so unison_prepare() reads checked values every block.
     DELTA_TO_SYNTH_I_CLAMPED(UNISON_COUNT, unison_count, 1, AMY_UNISON_MAX)
@@ -1833,6 +1845,18 @@ void play_delta(struct delta *d) {
         if(d->data.i < (uint32_t)AMY_OSCS + amy_global.config.max_buses) {
             reset_osc(d->data.i);
         }
+    }
+    // LOCAL EDIT (S3-Amysynth, 2026-10-12, experimental): a mod source named by
+    // synth is resolved every block (compute_mod_scale), so it takes no osc
+    // allocation, role change or loop check here, and nothing guards a cycle
+    // through it: a source synth's oscs must never name the synth they feed.
+    // A synth number past max_synths unsets the slot.
+    if (d->param >= MOD_SYNTH_START && d->param < MOD_SYNTH_END) {
+        uint16_t which_source = d->param - MOD_SYNTH_START;
+        if (d->data.i < (uint32_t)amy_global.config.max_synths)
+            synth[d->osc]->mod_source[which_source] = MOD_SRC_SYNTH_FLAG | (uint16_t)d->data.i;
+        else
+            AMY_UNSET(synth[d->osc]->mod_source[which_source]);
     }
     if(d->param >= MOD_SOURCE_START && d->param < MOD_SOURCE_END) {
         uint16_t which_source = d->param - MOD_SOURCE_START;
@@ -1995,7 +2019,10 @@ void play_delta(struct delta *d) {
                     for (int m = 0; m < NUM_MOD_SOURCES; ++m) {
                         uint16_t mod_osc = synth[osc]->mod_source[m];
                         // A modulator named by this osc may have been freed.
-                        if(AMY_IS_SET(mod_osc) && synth[mod_osc] != NULL) {
+                        // LOCAL EDIT (S3-Amysynth): a mod source named by synth
+                        // is shared by every voice that names it, so no single
+                        // voice's note-on retriggers it.
+                        if(AMY_IS_SET(mod_osc) && !(mod_osc & MOD_SRC_SYNTH_FLAG) && synth[mod_osc] != NULL) {
                             if (AMY_IS_SET(synth[mod_osc]->trigger_phase))
                                 synth[mod_osc]->phase = F2P(synth[mod_osc]->trigger_phase);
                             synth[mod_osc]->note_on_clock = amy_global.total_samples;  // Need a note_on_clock to have envelope work correctly.
@@ -2373,9 +2400,24 @@ SAMPLE render_osc_wave(uint16_t osc, uint8_t core, SAMPLE* buf) {
 // this render walks those pointers. Without it, a patch toggle on Core 0 could
 // free synth[osc] between the NULL check below and the deref in hold_and_modify,
 // producing a LoadProhibited (EXCVADDR=0x8). See AMY-EDITS.md.
+// LOCAL EDIT (S3-Amysynth, 2026-10-12, experimental): advance every
+// free-running mod synth's first osc once per block (SYNTH_FLAGS_FREE_RUN_MOD).
+// compute_mod_value() memoizes per block, so the voices that name it through
+// mod_synth read this block's value instead of advancing it again.
+static AMY_IRAM_ATTR void advance_free_run_mod_synths(void) {
+    for (uint16_t s = 0; s < amy_global.config.max_synths; s++) {
+        if (!synth_free_run[s]) continue;
+        uint16_t osc = synth_first_osc[s];
+        if (!AMY_IS_SET(osc) || osc >= AMY_OSCS || synth[osc] == NULL) continue;
+        hold_and_modify(osc);
+        compute_mod_value(osc);
+    }
+}
+
 AMY_IRAM_ATTR void amy_render(uint16_t start, uint16_t end, uint8_t core) {
     AMY_PROFILE_START(AMY_RENDER)
     amy_grab_lock();
+    if (core == 0) advance_free_run_mod_synths();  // LOCAL EDIT (S3-Amysynth)
 
     for(int bus = 0; bus <= amy_global.highest_bus; ++bus)
         // LOCAL EDIT (S3-Amysynth): PIE block clear via algorithms.c zero().

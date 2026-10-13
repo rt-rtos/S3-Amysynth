@@ -410,6 +410,10 @@ enum coefs{
 #define SYNTH_FLAGS_NOTES_VIA_MIDI 1    // Note-on/off events are routed through the MIDI interface (to pick up MIDI note cmds)
 #define SYNTH_FLAGS_IGNORE_NOTE_OFFS 2  // Note offs are ignored (for drums with long decays)
 #define SYNTH_FLAGS_NEGATE_PEDAL 4      // Flip interpretation of MIDI pedals
+// LOCAL EDIT (S3-Amysynth, 2026-10-12, experimental): the synth's first osc is
+// advanced every block whether or not a voice that names it renders, so a
+// modulator shared through mod_synth keeps time across its consumers' rests.
+#define SYNTH_FLAGS_FREE_RUN_MOD 16
 #define SYNTH_FLAGS_NO_NOTE_WARNINGS 8  // Don't print note-on/off warnings (unmatched note-off etc). For hosts where a sequencer joining mid-bar makes them by design, and stderr is a slow UART in the audio path.
 
 #define true 1
@@ -511,10 +515,18 @@ enum params{
     SAMPLE_OFFSET,              // PCM note-on start offset in samples within its block
     FIT,                        // PCM time-stretch/pitch-shift target in sequencer ticks
     FIT_SEARCH,                 // PCM fit engine: WSOLA correlation search half-width, in frames
-    NO_PARAM                    // 210
+    // LOCAL EDIT (S3-Amysynth, 2026-10-12, experimental): see amy_event.
+    MOD_SYNTH_START,
+    MOD_SYNTH_END = MOD_SYNTH_START + NUM_MOD_SOURCES,
+    PHASE_WARP = MOD_SYNTH_END,
+    NO_PARAM
 };
 // Before there were two mod sources there was just MOD_SOURCE; it names slot 0.
 #define MOD_SOURCE MOD_SOURCE_START
+// LOCAL EDIT (S3-Amysynth, 2026-10-12, experimental): a stored mod_source[]
+// value with this bit set names a synth (amy_event.mod_synth), not an osc.
+// The unset sentinel is 0xFFFF, so it never carries the flag alone.
+#define MOD_SRC_SYNTH_FLAG 0x8000
 
 ///////////////////////////////////////
 // Profiler setup
@@ -676,6 +688,10 @@ typedef struct amy_event {
     float feedback;
     float velocity;
     float trigger_phase;
+    // LOCAL EDIT (S3-Amysynth, 2026-10-12, experimental): moves the osc's
+    // running phase without storing it, so later note-ons do not reset it
+    // (trigger_phase both stores and moves). Struct-only: no wire letter.
+    float phase_warp;
     // LOCAL EDIT (S3-Amysynth, experimental): unison cluster.  Copy i of
     // unison_count renders at logfreq + unison_offset + i * unison_spacing
     // (both in octaves); unison_blend tapers the outer copies (1 = equal).
@@ -698,6 +714,12 @@ typedef struct amy_event {
     uint16_t portamento_ms;  // synth is alpha
     uint16_t chained_osc;
     uint16_t mod_source[NUM_MOD_SOURCES];
+    // LOCAL EDIT (S3-Amysynth, 2026-10-12, experimental): a mod source named
+    // by synth number - osc 0 of that synth's first voice, resolved every
+    // block through synth_first_osc[] - so the source synth can be freed or
+    // recreated while modulated oscs still name it. Struct-only: no wire
+    // letter, so a path that serializes the event to wire drops it.
+    uint16_t mod_synth[NUM_MOD_SOURCES];
     uint8_t algorithm;
     uint8_t filter_type;
     // Distortion ('G' distortion sub-commands on the wire).  One enable per
@@ -1500,6 +1522,16 @@ extern int instrument_get_oscs_per_voice(int instrument_number);
 // LOCAL EDIT (S3-Amysynth, 2026-07-28): expose the voice -> base oscillator
 // mapping read-only; the table itself has no header declaration. See AMY-EDITS.md.
 extern bool amy_voice_base_osc(uint16_t voice, uint16_t *base_osc);
+// LOCAL EDIT (S3-Amysynth, 2026-10-12, experimental): base osc of each synth's
+// first voice, indexed by synth number, unset when the synth has none. Written
+// only on the event-parse path (patches.c); read per block by the render path
+// (compute_mod_scale) without amy_queue_lock, which is why it is a flat
+// uint16_t table and not a walk of instruments[].
+extern uint16_t *synth_first_osc;
+// LOCAL EDIT (S3-Amysynth, 2026-10-12, experimental): 1 for a synth created with
+// SYNTH_FLAGS_FREE_RUN_MOD, indexed by synth number; same writer and reader
+// rules as synth_first_osc.
+extern uint8_t *synth_free_run;
 // LOCAL EDIT (S3-Amysynth, 2026-08-07): oscs per voice for a patch (0 if
 // undefined), so embedders can budget num_voices before loading. AMY-EDITS.md.
 extern uint16_t amy_patch_oscs_per_voice(uint16_t patch_number);

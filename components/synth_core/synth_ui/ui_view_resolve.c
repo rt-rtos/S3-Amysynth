@@ -20,7 +20,7 @@ ui_view_id_t synth_ui_active_view(void)
     if (seq_state.menu_open)            return UI_VIEW_MENU;
     switch (seq_state.ui_mode) {
         case UI_MODE_ARP:       return UI_VIEW_ARP;
-        case UI_MODE_DRONE:     return s_drone_vis_open ? UI_VIEW_DRONE_VIS : UI_VIEW_DRONE;
+        case UI_MODE_DRONE:     return UI_VIEW_DRONE;
         case UI_MODE_DRONE_STD: return UI_VIEW_DRONE_STD;
         case UI_MODE_PROG:      return UI_VIEW_PROG;
 #if CONFIG_SYNTH_CUSTOM_FM
@@ -61,39 +61,6 @@ static void draw_drone(u8g2_t *g, ui_view_vw_t *vw)     { display_drone_draw_fra
 static void draw_drone_std(u8g2_t *g, ui_view_vw_t *vw) { display_drone_draw_frame_titled(g, "DRONE", &vw->drone); }
 static void draw_prog(u8g2_t *g, ui_view_vw_t *vw)      { display_prog_draw_frame(g, &vw->prog); }
 static void draw_seq(u8g2_t *g, ui_view_vw_t *vw)       { (void)vw; display_seq_draw_frame(g, &seq_state, seq_get_bpm()); }
-
-/* DRONE_VIS composites the sweep/amp visualiser from the live drone getters
- * rather than a prebuilt view struct; the signature still uses drone_view for
- * render-gating. */
-static void draw_drone_vis(u8g2_t *g, ui_view_vw_t *vw)
-{
-    (void)vw;
-    const float SWEEP_MIN = 100.0f, SWEEP_MAX = 8000.0f;
-    float span = SWEEP_MAX - SWEEP_MIN;
-    float c = drone_get_amp_peak();
-    float m = drone_get_amp_duck();
-    float fl, cl;
-    drone_get_amp_levels_norm(&fl, &cl);
-    drone_vis_t dvis = {
-        .sweep_lo_norm  = (drone_get_sweep_lo() - SWEEP_MIN) / span,
-        .sweep_hi_norm  = (drone_get_sweep_hi() - SWEEP_MIN) / span,
-        .amp_const      = c,
-        .amp_mod        = m,
-        .amp_floor_norm = fl,
-        .amp_ceil_norm  = cl,
-        .resonance      = drone_get_resonance(),
-        .rate_name      = note_div_label(drone_get_rate()),
-        .sweep_bars     = drone_get_sweep_bars(),
-        .pattern_mask   = (uint8_t)0xFF, /* filled below */
-        .gate_len       = drone_get_gate_len(),
-        .wave_mode      = (drone_get_source() == DRONE_SRC_WAVE),
-    };
-    static const uint8_t pat_masks[] = { 0xFF, 0x55, 0xAA, 0x5B, 0x51 };
-    drone_pattern_t pat = drone_get_pattern();
-    if ((size_t)pat < sizeof(pat_masks))
-        dvis.pattern_mask = pat_masks[pat];
-    display_drone_vis_draw(g, &dvis);
-}
 
 #if CONFIG_SYNTH_CUSTOM_FM
 static uint32_t sig_fm(ui_view_vw_t *vw)  { return fm_view_signature(&vw->fm); }
@@ -180,7 +147,6 @@ const ui_view_desc_t ui_view_table[UI_VIEW_COUNT] = {
     [UI_VIEW_MENU]      = { "MENU",   sig_menu,      draw_menu,      NULL,     NULL,    "Menu",  .badge_x =  52,
                             .b1_fn = hint_menu_b1, .b2_fn = hint_menu_b2, .bs_fn = hint_menu_bs },
     [UI_VIEW_ARP]       = { "ARP",    sig_arp,       draw_arp,       "Patch",  "-",     "Menu",  .badge_x =  52 },
-    [UI_VIEW_DRONE_VIS] = { "DRONEV", sig_drone,     draw_drone_vis, "Patch",  "-",     "Menu",  .badge_x =  58 },
     [UI_VIEW_DRONE]     = { "DRONE",  sig_drone,     draw_drone,     "Patch",  "-",     "Menu",  .badge_x =  52 },
     [UI_VIEW_DRONE_STD] = { "DRONST", sig_drone_std, draw_drone_std, "Patch",  "-",     "Menu",  .badge_x =  52 },
     [UI_VIEW_PROG]      = { "PROG",   sig_prog,      draw_prog,      "Del",    "+Add",  "Menu",  .badge_x =  30 },

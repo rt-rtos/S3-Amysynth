@@ -1,7 +1,9 @@
 #include "sequencer_core/seq_core_internal.h"
 #include "custompatches/clip_player.h"
 #include "voice_config.h"                   /* SEQ_LFO_PITCH_BASE_HZ */
+#include "custompatches/drone_core.h"       /* drone_core_refresh_lfo_freq */
 #include "custompatches/drone_std_core.h"   /* drone_std_core_refresh_lfo_freq */
+#include "lfo_bank.h"                       /* lfo_bank_set_bpm */
 #include "seq_clamp.h"
 #include "amy_fx.h"                         /* amy_fx_on_tempo_change */
 #include "sdkconfig.h"
@@ -92,7 +94,13 @@ void sequencer_core_set_bpm(uint16_t new_bpm)
     sequencer_push_tempo(s_bpm);
     for (int li = 0; li < s_num_layers; li++) {
         for (int tr = 0; tr < SEQ_TRACKS; tr++) {
-#if CONFIG_SEQ_MELODIC_AMY_NATIVE_LFO
+#if CONFIG_SEQ_LFO_SHARED
+            /* Rows on a shared LFO synth keep s_lfo_hz == 0: the synth is
+             * retuned by lfo_bank_set_bpm() below, and a nonzero value would
+             * double-modulate. Every other row with a live LFO, wave rows
+             * included, is on the stepper. */
+            if (s_lfo_synth[li][tr] != LFO_BANK_NONE) continue;
+#elif CONFIG_SEQ_MELODIC_AMY_NATIVE_LFO
             /* Native-LFO rows must keep s_lfo_hz == 0: their carrier is retuned
              * by melodic_lfo_refresh_native_freq() below, and a nonzero value
              * would double-modulate. Per row, since a melodic layer can mix
@@ -108,13 +116,15 @@ void sequencer_core_set_bpm(uint16_t new_bpm)
         }
     }
     /* Sync every native LFO carrier to the new BPM (each a no-op when the
-     * owner has none active). */
+     * owner has none active, and always with CONFIG_SEQ_LFO_SHARED). */
     arp_core_refresh_lfo_freq();
+    drone_core_refresh_lfo_freq();
     drone_std_core_refresh_lfo_freq();
     melodic_lfo_refresh_native_freq();
 #if CONFIG_SYNTH_WIRELESS
     live_play_refresh_lfo_freq();
 #endif
+    lfo_bank_set_bpm(s_bpm);   /* the shared LFO synths */
     clip_player_on_tempo_change(s_bpm);
     amy_fx_on_tempo_change();
 }
@@ -147,14 +157,19 @@ void sequencer_core_set_quantizer_root_note(uint8_t root_note)
     sequencer_refresh_melodic_layers(false);
     quantizer_changed_refresh_arp();
     /* The root is the key-tracking pivot (sequencer_core_filter_const_hz):
-     * re-push every tracked row's filter. Each row is pushed once from the
-     * block it reads, so a shared block is not fanned out per peer. */
+     * re-push every tracked filter, rows, arp and live voice. Each row is
+     * pushed once from the block it reads, so a shared block is not fanned
+     * out per peer. */
     for (uint8_t li = 0; li < s_num_layers; li++) {
         for (uint8_t t = 0; t < s_layers[li].num_tracks; t++) {
             if (seq_track_vp(li, t)->filter.key_track != 0.0f)
                 sequencer_configure_melodic_filter_track(li, t);
         }
     }
+    arp_core_refresh_key_track();
+#if CONFIG_SYNTH_WIRELESS
+    live_play_refresh_key_track();
+#endif
     ESP_LOGI(TAG, "quantizer root -> %u", root_note);
 }
 

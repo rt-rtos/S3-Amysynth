@@ -7,35 +7,38 @@
 
 /* Two-panel layout (128x64): left checklist of the modulation targets (one LFO
  * carrier drives every checked one), right column of shared WAVE/RATE/DEPTH/EN
- * parameters. Both use the 5x7 font at a tight pitch so every row ends above
- * the hint strip at y=57. The panel holds five checklist rows, so the targets
- * are split across two tabs - the five carrier targets, then the distortion
- * pair - and the shoulder button flips between them. */
+ * parameters. Both use the 5x7 font at an 8 px pitch, every row's box between
+ * the yellow header band (rows 0..15) and the hint strip (y=57): row boxes span
+ * baseline-7..baseline+1, first baseline 23 (box from y=16), last 55 (box to
+ * y=56). The left panel holds five of the seven checklist
+ * rows and scrolls with the cursor, a triangle marking the hidden direction
+ * (the step-trig popup's cue). */
 #define LFO_DIV_X      60      /* vertical divider between the two panels */
-#define LFO_ROW0_Y     21      /* first checklist row baseline            */
+#define LFO_ROW0_Y     23      /* first checklist row baseline            */
 #define LFO_ROW_DY      8      /* checklist row pitch                      */
 #define LFO_RCOL_X     64      /* right-column text x                      */
 #define LFO_SCROLL_X  117      /* scroll caret x (clears the widest row and
                                   the adjust caret at x=123)               */
-#define LFO_TAB_X      45      /* tab marker x: right of the widest target
-                                  label, still inside the left panel       */
-#define LFO_TAB_Y      53      /* tab marker baseline = last checklist row  */
+#define LFO_TGT_CUE_X  55      /* checklist scroll cue x: right of the widest
+                                  target label, inside the left panel      */
 
-/* Precomputed y-offsets (from icon center) for 16-pixel-wide wave icons.
- * Positive = below center on screen (screen y increases downward). */
+/* Precomputed y-offsets (from icon center) for 16-pixel-wide wave icons,
+ * +/-4 so the icon fits its row's 9 px box. Positive = below center on screen
+ * (screen y increases downward). */
+#define LFO_ICON_HALF   4
 static const int8_t s_wave_icon[LFO_WAVE_COUNT][16] = {
     /* SINE */
-    { 0,-3,-5,-6,-7,-6,-5,-3, 0, 3, 5, 6, 7, 6, 5, 3},
+    { 0,-2,-3,-4,-4,-4,-3,-2, 0, 2, 3, 4, 4, 4, 3, 2},
     /* TRIANGLE */
-    { 7, 5, 4, 2, 0,-2,-4,-6,-7,-6,-4,-2, 0, 2, 4, 6},
+    { 4, 3, 2, 1, 0,-1,-2,-3,-4,-3,-2,-1, 0, 1, 2, 3},
     /* SAW_UP  */
-    { 7, 6, 5, 4, 3, 2, 1, 0,-1,-2,-3,-4,-5,-6,-7,-7},
+    { 4, 4, 3, 3, 2, 2, 1, 0, 0,-1,-2,-2,-3,-3,-4,-4},
     /* SAW_DOWN */
-    {-7,-6,-5,-4,-3,-2,-1, 0, 1, 2, 3, 4, 5, 6, 7, 7},
+    {-4,-4,-3,-3,-2,-2,-1, 0, 0, 1, 2, 2, 3, 3, 4, 4},
     /* SQUARE */
-    {-7,-7,-7,-7,-7,-7,-7,-7, 7, 7, 7, 7, 7, 7, 7, 7},
+    {-4,-4,-4,-4,-4,-4,-4,-4, 4, 4, 4, 4, 4, 4, 4, 4},
     /* RANDOM */
-    { 4, 4, 4, 4,-5,-5,-5,-5, 2, 2, 2, 2,-4,-4,-4,-4},
+    { 2, 2, 2, 2,-3,-3,-3,-3, 1, 1, 1, 1,-2,-2,-2,-2},
 };
 
 static const char *target_name(int t)
@@ -64,9 +67,17 @@ static void draw_wave_icon(u8g2_t *u8g2, uint8_t x0, uint8_t y_center,
     }
     /* For saw waves, draw the reset edge. */
     if (wave == LFO_WAVE_SAW_UP || wave == LFO_WAVE_SAW_DOWN) {
-        u8g2_DrawVLine(u8g2, x0 + 15, y_center - 7, 14);
+        u8g2_DrawVLine(u8g2, x0 + 15, y_center - LFO_ICON_HALF, 2 * LFO_ICON_HALF + 1);
     }
     u8g2_SetDrawColor(u8g2, 1);
+}
+
+/* A cutoff in at most four characters: "550", "2.2k", "11k". */
+static void hz_label(char out[6], float hz)
+{
+    if (hz < 999.5f)        snprintf(out, 6, "%u", (unsigned)(hz + 0.5f));
+    else if (hz < 9950.0f)  snprintf(out, 6, "%.1fk", (double)(hz / 1000.0f));
+    else                    snprintf(out, 6, "%uk", (unsigned)(hz / 1000.0f + 0.5f));
 }
 
 /* Right-column parameter row ("Label  value"), inverted when selected, with a
@@ -107,12 +118,15 @@ void lfo_view_draw(u8g2_t *u8g2, const lfo_view_t *v)
                  v->layer_idx + 1u, v->track_idx + 1u, v->src_badge);
     }
     u8g2_DrawStr(u8g2, 1, 10, hdr);
+    uint8_t hdr_w = (uint8_t)u8g2_GetStrWidth(u8g2, hdr);
+    uint8_t chip_x;
     /* En chip lives in the header: the right panel is full with the five
      * parameter rows. Cursor on LFO_FLD_EN highlights it. */
     {
         bool en_sel = (v->cursor == LFO_FLD_EN);
         const char *en_txt = l->enabled ? "ON" : "--";
         uint8_t tw = (uint8_t)u8g2_GetStrWidth(u8g2, en_txt);
+        chip_x = (uint8_t)(127 - tw - 4);
         if (en_sel) {
             u8g2_DrawBox(u8g2, (uint8_t)(127 - tw - 4), 1, (uint8_t)(tw + 4), 11);
             u8g2_SetDrawColor(u8g2, 0);
@@ -122,16 +136,28 @@ void lfo_view_draw(u8g2_t *u8g2, const lfo_view_t *v)
         u8g2_DrawStr(u8g2, (uint8_t)(127 - tw - 2), 10, en_txt);
         if (en_sel) u8g2_SetDrawColor(u8g2, 1);
     }
+    /* FILTER swing range ("550-2.2k"), right-aligned against the En chip in
+     * the small font; dropped when a long title leaves no room for it. */
+    if (v->flt_lo_hz > 0.0f && (l->targets & LFO_TGT_BIT(LFO_TARGET_FILTER))) {
+        char lo[6], hi[6], rng[14];
+        hz_label(lo, v->flt_lo_hz);
+        hz_label(hi, v->flt_hi_hz);
+        snprintf(rng, sizeof(rng), "%s-%s", lo, hi);
+        u8g2_SetFont(u8g2, u8g2_font_4x6_tr);
+        int rx = (int)chip_x - 3 - (int)u8g2_GetStrWidth(u8g2, rng);
+        if (rx > (int)hdr_w + 3) u8g2_DrawStr(u8g2, (uint8_t)rx, 8, rng);
+    }
     u8g2_DrawHLine(u8g2, 0, 13, 128);
-    u8g2_DrawVLine(u8g2, LFO_DIV_X, 15, 42);
+    u8g2_DrawVLine(u8g2, LFO_DIV_X, 16, 41);   /* y 16..56: clear of header and hint */
 
     /* Panels use the compact font so all rows clear the hint strip. */
     u8g2_SetFont(u8g2, u8g2_font_5x7_tr);
 
-    /* ── Left panel: target checklist, one tab at a time ── */
-    bool     dist_tab = (v->tgt_tab != 0);
-    uint8_t  tgt_lo   = dist_tab ? LFO_TARGET_DIST_DRIVE : 0;
-    uint8_t  tgt_hi   = dist_tab ? LFO_TARGET_COUNT : LFO_TARGET_DIST_DRIVE;
+    /* ── Left panel: target checklist, LFO_TGT_SLOTS rows from tgt_first ── */
+    uint8_t tgt_lo = v->tgt_first;
+    if (tgt_lo > LFO_TARGET_COUNT - LFO_TGT_SLOTS)
+        tgt_lo = (uint8_t)(LFO_TARGET_COUNT - LFO_TGT_SLOTS);
+    uint8_t tgt_hi = (uint8_t)(tgt_lo + LFO_TGT_SLOTS);
     for (uint8_t t = tgt_lo; t < tgt_hi; t++) {
         uint8_t base = LFO_ROW0_Y + (uint8_t)(t - tgt_lo) * LFO_ROW_DY;
         bool selected = (v->cursor == t);
@@ -149,26 +175,29 @@ void lfo_view_draw(u8g2_t *u8g2, const lfo_view_t *v)
         /* Distortion targets without a serving stepper (drone): inert, struck
          * through like the WOBBLE rows on software tracks. Current colour
          * already matches the row context (0 on the inverted selection bar). */
-        if (dist_tab && v->dist_inert)
+        if (t >= LFO_TARGET_DIST_DRIVE && v->dist_inert)
             u8g2_DrawHLine(u8g2, 11, (uint8_t)(base - 3),
                            u8g2_GetStrWidth(u8g2, target_name(t)));
+        /* Scroll cues on the window's edge rows, in the row's colour: an
+         * up triangle when rows lie above, a down one when rows lie below. */
+        if (t == tgt_lo && tgt_lo > 0)
+            u8g2_DrawTriangle(u8g2, LFO_TGT_CUE_X,     (int16_t)(base - 2),
+                                    LFO_TGT_CUE_X + 3, (int16_t)(base - 2),
+                                    LFO_TGT_CUE_X + 1, (int16_t)(base - 7));
+        if (t == tgt_hi - 1u && tgt_hi < LFO_TARGET_COUNT)
+            u8g2_DrawTriangle(u8g2, LFO_TGT_CUE_X,     (int16_t)(base - 7),
+                                    LFO_TGT_CUE_X + 3, (int16_t)(base - 7),
+                                    LFO_TGT_CUE_X + 1, (int16_t)(base - 2));
         if (selected) u8g2_SetDrawColor(u8g2, 1);
     }
 
-    /* Tab marker: the only cue that half the targets live behind the shoulder
-     * button. It shares the bottom checklist row, which on tab 1 is empty and
-     * on tab 0 may carry the selection bar - so follow that row's colour. */
-    {
-        bool last_row_sel = (!dist_tab && v->cursor == LFO_TARGET_SCAN);
-        u8g2_SetDrawColor(u8g2, last_row_sel ? 0 : 1);
-        u8g2_DrawStr(u8g2, LFO_TAB_X, LFO_TAB_Y, dist_tab ? "2/2" : "1/2");
-        u8g2_SetDrawColor(u8g2, 1);
-    }
-
-    /* ── Right panel: shared LFO parameters, LFO_PANEL_SLOTS rows at 8 px
-     * pitch. More parameters than slots, so the window scrolls by one when the
-     * cursor reaches the last row. ── */
-    static const uint8_t slot_y[LFO_PANEL_SLOTS] = { 22, 31, 39, 47, 55 };
+    /* ── Right panel: shared LFO parameters, LFO_PANEL_SLOTS rows on the left
+     * panel's baselines. More parameters than slots, so the window scrolls by
+     * one when the cursor reaches the last row. ── */
+    static const uint8_t slot_y[LFO_PANEL_SLOTS] = {
+        LFO_ROW0_Y, LFO_ROW0_Y + LFO_ROW_DY, LFO_ROW0_Y + 2 * LFO_ROW_DY,
+        LFO_ROW0_Y + 3 * LFO_ROW_DY, LFO_ROW0_Y + 4 * LFO_ROW_DY,
+    };
     char buf[14];
 
     uint8_t first = 0;   /* first parameter row shown in the window */
@@ -196,19 +225,19 @@ void lfo_view_draw(u8g2_t *u8g2, const lfo_view_t *v)
                 u8g2_DrawBox(u8g2, LFO_DIV_X + 1, base - 7, 127 - LFO_DIV_X, 9);
                 u8g2_SetDrawColor(u8g2, 0);
             }
-            u8g2_DrawStr(u8g2, LFO_RCOL_X, base, "Wav");
+            u8g2_DrawStr(u8g2, LFO_RCOL_X, base, "Wave");
             if (sel && v->editing) u8g2_DrawBox(u8g2, 123, base - 6, 3, 6);  /* color 0 while selected */
-            draw_wave_icon(u8g2, 92, base - 6, l->wave, sel);                /* restores color 1 */
+            draw_wave_icon(u8g2, 92, base - 3, l->wave, sel);                /* restores color 1 */
             if (sel) u8g2_SetDrawColor(u8g2, 1);
             continue;
         }
 
         switch (fld) {
             case LFO_FLD_RATE:
-                snprintf(buf, sizeof(buf), "Rte %s", note_div_label(l->rate));
+                snprintf(buf, sizeof(buf), "Rate %s", note_div_label(l->rate));
                 break;
             case LFO_FLD_DEPTH:
-                snprintf(buf, sizeof(buf), "Dep %u%%", (unsigned)l->depth);
+                snprintf(buf, sizeof(buf), "Depth %u%%", (unsigned)l->depth);
                 break;
             case LFO_FLD_FLT_OCT:
                 /* Octaves around the authored cutoff - the unit the log2 filter
@@ -248,10 +277,11 @@ void lfo_view_draw(u8g2_t *u8g2, const lfo_view_t *v)
         draw_right_row(u8g2, base, buf, sel, v->editing, scroll);
 
         /* WOBBLE rows are inert when the target runs the software stepper
-         * (patch strings without a native carrier): strike them through
-         * rather than hide them - the values persist and re-arm the moment
-         * the patch turns native. Match the row's colour context so the
-         * strike stays legible on the inverted selection bar. */
+         * (no modulator osc: no shared LFO synth, or a patch without a
+         * native carrier): strike them through rather than hide them - the
+         * values persist and re-arm the moment the target gets one. Match
+         * the row's colour context so the strike stays legible on the
+         * inverted selection bar. */
         if (!v->wob_native &&
             (fld == LFO_FLD_WOB_RATE || fld == LFO_FLD_WOB_DEPTH ||
              fld == LFO_FLD_WOB_MODE)) {

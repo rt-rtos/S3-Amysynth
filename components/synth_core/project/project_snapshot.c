@@ -20,6 +20,7 @@
 #include "arp_core.h"
 #include "custompatches/drone_core.h"
 #include "custompatches/drone_std_core.h"
+#include "custompatches/drone_common.h"   /* DRONE_SUB_INTERVAL_MIN/MAX */
 #include "custompatches/clip_bounce.h"
 #include "custompatches/clip_player.h"
 #include "amy_fx.h"
@@ -208,7 +209,7 @@ static bool de_lfo(tlv_reader_t *r, seq_lfo_t *l)
     l->rate    = (rate < NOTE_DIV_COUNT) ? (note_div_t)rate : NOTE_DIV_1_8;
     l->depth   = (depth > 100) ? 100 : depth;
     l->targets = (uint8_t)(tgt & LFO_TGT_ALL);
-    l->wob_rate  = (wrate < NOTE_DIV_COUNT) ? wrate : (uint8_t)NOTE_DIV_1_8;
+    l->wob_rate  = (wrate < NOTE_DIV_STD_COUNT) ? wrate : (uint8_t)NOTE_DIV_1_8;
     /* Snap to a whole-dB authoring step (voice_config.h), so an off-grid byte
      * cannot read as OFF while the modulator still runs. */
     l->wob_depth = voice_wob_db_to_depth(voice_wob_depth_to_db(wdepth));
@@ -368,7 +369,7 @@ static bool parse_glob(tlv_reader_t *b, staged_glob_t *g)
         if (!tlv_get_u8(b, &v))                   return true;
         f->echo_sync = v != 0;
         if (!tlv_get_u8(b, &f->echo_div))         return true;
-        if (f->echo_div >= NOTE_DIV_COUNT) f->echo_div = NOTE_DIV_1_8D;
+        if (f->echo_div >= NOTE_DIV_STD_COUNT) f->echo_div = NOTE_DIV_1_8D;
         if (!tlv_get_i16(b, &f->reverb_liveness)) return true;
         if (!tlv_get_i16(b, &f->reverb_damping))  return true;
         if (!tlv_get_i16(b, &f->reverb_xover_hz)) return true;
@@ -651,12 +652,15 @@ typedef struct {
     seq_filter_t filter;
     seq_lfo_t    lfo;
     seq_dist_t   dist;
+    bool         muted;
+    bool         solo;
+    voice_unison_t unison;
 } staged_arp_t;
 
 static void ser_arp(tlv_writer_t *w)
 {
     /* One fixed shape per version, as for LAYR. Field history: git log. */
-    size_t h = tlv_begin_section(w, TAG_ARP, 14);
+    size_t h = tlv_begin_section(w, TAG_ARP, 16);
     tlv_put_u8(w, arp_get_enabled() ? 1 : 0);
     tlv_put_u16(w, arp_get_patch());
     tlv_put_u8(w, (uint8_t)arp_get_direction());
@@ -674,6 +678,13 @@ static void ser_arp(tlv_writer_t *w)
     seq_lfo_t l; arp_get_lfo(&l);        ser_lfo(w, &l);
     tlv_put_u8(w, (uint8_t)arp_get_quant_mode());
     seq_dist_t d; arp_get_dist(&d);      ser_dist(w, &d);
+    tlv_put_u8(w, arp_get_muted() ? 1 : 0);
+    tlv_put_u8(w, sequencer_core_get_arp_solo() ? 1 : 0);
+    voice_unison_t u; arp_get_unison(&u);
+    tlv_put_u8(w, u.count);
+    tlv_put_u8(w, u.detune_cents);
+    tlv_put_u8(w, u.spread_pct);
+    tlv_put_u8(w, u.blend_pct);
     tlv_end_section(w, h);
 }
 
@@ -689,7 +700,7 @@ static bool parse_arp(tlv_reader_t *b, staged_arp_t *a)
     if (!tlv_get_u8(b, &a->octaves)) return false;
     a->octaves = SEQ_CLAMP_U8(a->octaves, 1, ARP_OCT_MAX);
     if (!tlv_get_u8(b, &v)) return false;
-    a->rate = (v >= NOTE_DIV_COUNT) ? NOTE_DIV_1_4 : (note_div_t)v;
+    a->rate = (v >= NOTE_DIV_STD_COUNT) ? NOTE_DIV_1_4 : (note_div_t)v;
     if (!tlv_get_u8(b, &a->gate_pct)) return false;
     a->gate_pct = SEQ_CLAMP_U8(a->gate_pct, 10, 100);
     if (!tlv_get_u8(b, &a->scale)) return false;
@@ -711,13 +722,30 @@ static bool parse_arp(tlv_reader_t *b, staged_arp_t *a)
     if (!tlv_get_u8(b, &v)) return false;
     a->quant_mode = (v >= ARP_QUANT_COUNT) ? ARP_QUANT_CHORD : v;
     if (!de_dist(b, &a->dist)) return false;
+    if (!tlv_get_u8(b, &v)) return false;
+    a->muted = v != 0;
+    if (!tlv_get_u8(b, &v)) return false;
+    a->solo = v != 0;
+    /* Unison raw fields, clamped as parse_layer does; count 0 (never set)
+     * survives the parse. */
+    voice_unison_t *u = &a->unison;
+    if (!tlv_get_u8(b, &u->count))        return false;
+    if (!tlv_get_u8(b, &u->detune_cents)) return false;
+    if (!tlv_get_u8(b, &u->spread_pct))   return false;
+    if (!tlv_get_u8(b, &u->blend_pct))    return false;
+    u->count        = SEQ_CLAMP_U8(u->count, 0u, VOICE_UNISON_MAX_COPIES);
+    u->detune_cents = SEQ_CLAMP_U8(u->detune_cents, 0u, VOICE_UNISON_MAX_DETUNE);
+    u->spread_pct   = SEQ_CLAMP_U8(u->spread_pct, 0u, 100u);
+    u->blend_pct    = SEQ_CLAMP_U8(u->blend_pct, 0u, 100u);
     return true;
 }
 
-/* patch first so later param pushes land on the rebuilt slot; enabled LAST. */
+/* patch, then unison (both may rebuild the slot), first so later param
+ * pushes land on the rebuilt slot; enabled, then mute and solo, LAST. */
 static void apply_arp(const staged_arp_t *a)
 {
     arp_set_patch(a->patch);
+    arp_set_unison(&a->unison);
     arp_set_direction(a->dir);
     arp_set_octaves(a->octaves);
     arp_set_rate(a->rate);
@@ -734,25 +762,22 @@ static void apply_arp(const staged_arp_t *a)
     arp_set_lfo(&a->lfo);
     arp_set_dist(&a->dist);
     arp_set_enabled(a->enabled);
+    arp_set_muted(a->muted);
+    sequencer_core_set_arp_solo(a->solo);
 }
 
 /* ── DRON section ─────────────────────────────────────────────────────────── */
 
 typedef struct {
     bool            enabled;
-    drone_source_t  source;
-    uint16_t        wave;
     chord_type_t    chord;
     uint8_t         root;
     uint16_t        patch;
-    float           resonance;
     float           amp_peak;
     float           amp_duck;
     note_div_t      rate;
     bool            sub_enabled;
     int8_t          sub_interval;
-    float           sweep_lo, sweep_hi;
-    uint8_t         sweep_bars;
     float           gate_len;
     uint8_t         swing;
     float           blip;
@@ -763,22 +788,16 @@ typedef struct {
 
 static void ser_drone(tlv_writer_t *w)
 {
-    size_t h = tlv_begin_section(w, TAG_DRON, 4);
+    size_t h = tlv_begin_section(w, TAG_DRON, 6);
     tlv_put_u8(w, drone_get_enabled() ? 1 : 0);
-    tlv_put_u8(w, (uint8_t)drone_get_source());
-    tlv_put_u16(w, drone_get_wave());
     tlv_put_u8(w, (uint8_t)drone_get_chord());
     tlv_put_u8(w, drone_get_root_note());
     tlv_put_u16(w, drone_get_patch());
-    tlv_put_f32(w, drone_get_resonance());
     tlv_put_f32(w, drone_get_amp_peak());
     tlv_put_f32(w, drone_get_amp_duck());
     tlv_put_u8(w, (uint8_t)drone_get_rate());
     tlv_put_u8(w, drone_get_sub_enabled() ? 1 : 0);
     tlv_put_i8(w, drone_get_sub_interval());
-    tlv_put_f32(w, drone_get_sweep_lo());
-    tlv_put_f32(w, drone_get_sweep_hi());
-    tlv_put_u8(w, drone_get_sweep_bars());
     tlv_put_f32(w, drone_get_gate_len());
     tlv_put_u8(w, drone_get_swing());
     tlv_put_f32(w, drone_get_blip());
@@ -794,25 +813,20 @@ static bool parse_drone(tlv_reader_t *b, staged_drone_t *d)
     if (!tlv_get_u8(b, &v)) return false;
     d->enabled = v != 0;
     if (!tlv_get_u8(b, &v)) return false;
-    d->source = (v > DRONE_SRC_PATCH) ? DRONE_SRC_PATCH : (drone_source_t)v;
-    if (!tlv_get_u16(b, &d->wave)) return false;
-    if (!tlv_get_u8(b, &v)) return false;
     d->chord = (v >= CHORD_TYPE_COUNT) ? CHORD_MAJ : (chord_type_t)v;
     if (!tlv_get_u8(b, &d->root))  return false;
     if (!tlv_get_u16(b, &d->patch)) return false;
     d->patch = clamp_patch(d->patch);
-    if (!tlv_get_f32(b, &d->resonance)) return false;
     if (!tlv_get_f32(b, &d->amp_peak))  return false;
     d->amp_peak = SEQ_CLAMP_F32(d->amp_peak, 0.0f, 1.0f);
     if (!tlv_get_f32(b, &d->amp_duck))  return false;
     d->amp_duck = SEQ_CLAMP_F32(d->amp_duck, 0.0f, 1.0f);
     if (!tlv_get_u8(b, &v)) return false;
-    d->rate = (v >= NOTE_DIV_COUNT) ? NOTE_DIV_1_4 : (note_div_t)v;
+    d->rate = (v >= NOTE_DIV_STD_COUNT) ? NOTE_DIV_1_4 : (note_div_t)v;
     { uint8_t se; if (!tlv_get_u8(b, &se)) return false; d->sub_enabled = se != 0; }
     if (!tlv_get_i8(b, &d->sub_interval)) return false;
-    if (!tlv_get_f32(b, &d->sweep_lo)) return false;
-    if (!tlv_get_f32(b, &d->sweep_hi)) return false;
-    if (!tlv_get_u8(b, &d->sweep_bars)) return false;
+    d->sub_interval = (int8_t)SEQ_CLAMP_INT(d->sub_interval, DRONE_SUB_INTERVAL_MIN,
+                                            DRONE_SUB_INTERVAL_MAX);
     if (!tlv_get_f32(b, &d->gate_len)) return false;
     d->gate_len = SEQ_CLAMP_F32(d->gate_len, 0.05f, 0.95f);
     if (!tlv_get_u8(b, &d->swing)) return false;
@@ -828,23 +842,17 @@ static bool parse_drone(tlv_reader_t *b, staged_drone_t *d)
 }
 
 /* enabled LAST; patch is skipped (leaving the live patch) when the value
- * falls in a range the drone's excitation model can't play. */
+ * falls outside the stutter drone's domain. */
 static void apply_drone(const staged_drone_t *d)
 {
-    drone_set_source(d->source);
-    drone_set_wave(d->wave);
     drone_set_chord(d->chord);
     drone_set_root_note(d->root);
-    if (!drone_patch_excluded(d->patch)) drone_set_patch(d->patch);
-    drone_set_resonance(d->resonance);
+    if (!drone_stutter_patch_excluded(d->patch)) drone_set_patch(d->patch);
     drone_set_amp_peak(d->amp_peak);
     drone_set_amp_duck(d->amp_duck);
     drone_set_rate(d->rate);
     drone_set_sub_interval(d->sub_interval);
     drone_set_sub_enabled(d->sub_enabled);
-    drone_set_sweep_lo(d->sweep_lo);
-    drone_set_sweep_hi(d->sweep_hi);
-    drone_set_sweep_bars(d->sweep_bars);
     drone_set_gate_len(d->gate_len);
     drone_set_swing(d->swing);
     drone_set_blip(d->blip);
@@ -858,8 +866,6 @@ static void apply_drone(const staged_drone_t *d)
 
 typedef struct {
     bool            enabled;
-    drone_source_t  source;
-    uint16_t        wave;
     chord_type_t    chord;
     uint8_t         root;
     drone_follow_t  follow;
@@ -872,10 +878,8 @@ typedef struct {
 
 static void ser_drone_std(tlv_writer_t *w)
 {
-    size_t h = tlv_begin_section(w, TAG_DSTD, 2);
+    size_t h = tlv_begin_section(w, TAG_DSTD, 3);
     tlv_put_u8(w, drone_std_get_enabled() ? 1 : 0);
-    tlv_put_u8(w, (uint8_t)drone_std_get_source());
-    tlv_put_u16(w, drone_std_get_wave());
     tlv_put_u8(w, (uint8_t)drone_std_get_chord());
     tlv_put_u8(w, drone_std_get_root_note());
     tlv_put_u8(w, (uint8_t)drone_std_get_follow());
@@ -893,9 +897,6 @@ static bool parse_drone_std(tlv_reader_t *b, staged_drone_std_t *d)
     if (!tlv_get_u8(b, &v)) return false;
     d->enabled = v != 0;
     if (!tlv_get_u8(b, &v)) return false;
-    d->source = (v > DRONE_SRC_PATCH) ? DRONE_SRC_PATCH : (drone_source_t)v;
-    if (!tlv_get_u16(b, &d->wave)) return false;
-    if (!tlv_get_u8(b, &v)) return false;
     d->chord = (v >= CHORD_TYPE_COUNT) ? CHORD_MAJ : (chord_type_t)v;
     if (!tlv_get_u8(b, &d->root)) return false;
     if (!tlv_get_u8(b, &v)) return false;
@@ -906,6 +907,8 @@ static bool parse_drone_std(tlv_reader_t *b, staged_drone_std_t *d)
     d->patch = clamp_patch(d->patch);
     { uint8_t se; if (!tlv_get_u8(b, &se)) return false; d->sub_enabled = se != 0; }
     if (!tlv_get_i8(b, &d->sub_interval)) return false;
+    d->sub_interval = (int8_t)SEQ_CLAMP_INT(d->sub_interval, DRONE_SUB_INTERVAL_MIN,
+                                            DRONE_SUB_INTERVAL_MAX);
     if (!de_vp(b, &d->vp)) return false;
     return true;
 }
@@ -913,8 +916,6 @@ static bool parse_drone_std(tlv_reader_t *b, staged_drone_std_t *d)
 /* As apply_drone(): enabled LAST, an unplayable patch leaves the live one. */
 static void apply_drone_std(const staged_drone_std_t *d)
 {
-    drone_std_set_source(d->source);
-    drone_std_set_wave(d->wave);
     drone_std_set_chord(d->chord);
     drone_std_set_root_note(d->root);
     drone_std_set_follow(d->follow);
@@ -1273,17 +1274,17 @@ bool project_snapshot_load_buffer(const uint8_t *payload, size_t len, const char
             break;
         case TAG_ARP:
             /* Exactly ser_arp()'s version (see TAG_LAYR). */
-            if (got_arp || ver != 14) { ok = false; break; }
+            if (got_arp || ver != 16) { ok = false; break; }
             ok = parse_arp(&body, &staged_arp);
             got_arp = ok;
             break;
         case TAG_DRON:
-            if (got_drone || ver != 4) { ok = false; break; }
+            if (got_drone || ver != 6) { ok = false; break; }
             ok = parse_drone(&body, &sd->drone);
             got_drone = ok;
             break;
         case TAG_DSTD:
-            if (got_dstd || ver != 2) { ok = false; break; }
+            if (got_dstd || ver != 3) { ok = false; break; }
             ok = parse_drone_std(&body, &sd->dstd);
             got_dstd = ok;
             break;

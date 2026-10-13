@@ -122,6 +122,48 @@ hunk is dropped at the next sync.
 
 ## Active local edits
 
+### `amy.h` + `amy.c` + `envelope.c` + `patches.c` + `api.c` - mod source named by synth, phase warp, free-running mod synths (experimental)
+
+Two struct-only additions for LFOs that live in a synth of their own and are
+shared by every voice that uses them. No wire letter: a path that serializes
+an event to wire (tick-scheduled sends, the readable print) drops both fields.
+Not posted upstream.
+
+`amy_event.mod_synth[NUM_MOD_SOURCES]` names a mod source by synth number:
+osc 0 of that synth's first voice. The delta (`MOD_SYNTH_START..END`) stores
+`MOD_SRC_SYNTH_FLAG | synth` in the osc's `mod_source[]`; a number past
+`max_synths` unsets the slot. `compute_mod_scale()` resolves it every block
+through `synth_first_osc[]`, a flat table beside `voice_to_base_osc` that the
+event-parse path writes (on synth creation, on delete, and when
+`release_voice_oscs()` frees the first voice). The render path reads the
+table instead of `instruments[]` because the parse path frees and re-mallocs
+instruments without `amy_queue_lock`. A missing synth reads as no
+modulation, so the source synth can be freed or recreated while modulated
+oscs still name it; a raw osc number in `mod_source[]` would instead follow
+the osc to its next owner.
+
+A synth reference is not an osc edge: the note-on mod-source trigger loop and
+`mod_osc_reaches()` skip it, so nothing guards a cycle through it, and a
+source synth's oscs must never name the synth they feed.
+`set_event_for_osc()` round-trips it as `mod_synth` (unrebased), so synth
+copies and the voice-count reshape keep the wiring, and the memory-patch
+builder reads `MOD_SYNTH_START` deltas back. `event_addresses_oscs()` counts
+the field, so a bare unwire event is not dropped.
+
+`amy_event.phase_warp` (delta `PHASE_WARP`) moves an osc's running phase and
+stores nothing. `trigger_phase` both stores and moves, and a stored value
+resets every mod source on each later note-on of a voice that names it, which
+rules it out for aligning a shared LFO to the bar.
+
+`SYNTH_FLAGS_FREE_RUN_MOD` (synth flag 16): a mod source only advances when a
+voice that names it renders (`compute_mod_value()` runs from the consumer's
+`compute_mod_scale()`), so a source shared by gated voices slows by their
+silent fraction (0.5 Hz under a 25 % gate: 2.96 of 4 cycles in 8 s). A synth
+created with the flag is recorded in `synth_free_run[]` (beside
+`synth_first_osc[]`, same writer and reader rules), and `amy_render()` advances
+its first osc once per block on core 0 before any osc renders; the per-block
+memo in `compute_mod_value()` hands that value to the consumers.
+
 ### `patches.c` - a synth-addressed `reset_osc` keeps the instrument's bus (upstream PR candidate)
 
 `reset_osc()` puts the osc back on bus 0 (`reset_osc_params`), but the bus

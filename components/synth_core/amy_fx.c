@@ -140,7 +140,7 @@ float amy_fx_echo_time_ms(uint8_t bus)
     if (bus >= FX_BUS_COUNT) return ECHO_DEFAULT_DELAY_MS;
     const fx_state_t *f = &s_fx[bus];
     float ms;
-    if (f->echo_sync && f->echo_div < NOTE_DIV_COUNT) {
+    if (f->echo_sync && f->echo_div < NOTE_DIV_STD_COUNT) {
         uint16_t bpm = sequencer_core_get_bpm();
         ms = (bpm > 0) ? note_div_ms((note_div_t)f->echo_div, (float)bpm)
                        : (float)FX_ECHO_MAX_MS;

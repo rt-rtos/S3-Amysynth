@@ -18,8 +18,13 @@
 #include "esp_heap_caps.h"
 
 #include "harness.h"
+#include "amy.h"
+#include "amy_helpers.h"
 #include "sequencer_core.h"
 #include "synth_ui.h"
+#include "lfo_bank.h"
+#include "synth_slots.h"   /* LFO_SYNTH_MAX */
+#include "sequencer.h"     /* sequencer_ticks */
 #if CONFIG_SYNTH_PROJECT_STORE
 #include "project_templates.h"
 #endif
@@ -84,6 +89,36 @@ static void cmd_st_drop(harness_reply_fn reply)
           " chunk_drop=%" PRIu32,
           d.wire_zlp, d.ring_underrun, d.ring_overrun, d.render_overrun,
           d.chunk_drop);
+}
+
+/* One "LFOBANK" line per live shared LFO synth (lfo_bank.h), with its
+ * carrier's running phase read from AMY's osc table under amy_queue_lock
+ * (-1 when the synth has no osc yet), then the count and the bar grid's
+ * reference: the current tick and the bar baseline. */
+static void cmd_st_lfobank(harness_reply_fn reply)
+{
+    unsigned used = 0;
+    for (int i = 0; i < LFO_SYNTH_MAX; i++) {
+        uint16_t refs;
+        bool pending;
+        seq_lfo_t key;
+        uint8_t n = lfo_bank_info((uint8_t)i, &refs, &pending, &key);
+        if (n == LFO_BANK_NONE) continue;
+        float phase = -1.0f;
+        amy_grab_lock();
+        uint16_t osc = synth_first_osc[n];
+        if (AMY_IS_SET(osc) && osc < AMY_OSCS && synth[osc] != NULL)
+            phase = P2F(synth[osc]->phase);
+        amy_release_lock();
+        printf("LFOBANK %u refs=%u pending=%d wave=%u rate=%u wob=%u,%u,%u"
+               " phase=%.4f\n",
+               (unsigned)n, (unsigned)refs, pending ? 1 : 0,
+               (unsigned)key.wave, (unsigned)key.rate, (unsigned)key.wob_rate,
+               (unsigned)key.wob_depth, (unsigned)key.wob_reach, (double)phase);
+        used++;
+    }
+    REPLY("ok n=%u tick=%" PRIu32 " base=%" PRIu32, used, sequencer_ticks(),
+          sequencer_core_bar_baseline_tick());
 }
 
 #if CONFIG_AMYSYNTH_DROPOUT_TS
@@ -156,6 +191,47 @@ static void cmd_tr_bpm(char *args, harness_reply_fn reply)
     REPLY("ok bpm=%u", (unsigned)sequencer_core_get_bpm());
 }
 
+/* "amy.wire <msg>" parses one AMY wire message (no trailing Z) into an event
+ * and sends it through amy_helpers, the app's only path into AMY: queued, not
+ * applied, by the time the reply prints. An osc number in a message without
+ * a synth is absolute. */
+static void cmd_amy_wire(char *args, harness_reply_fn reply)
+{
+    if (*args == '\0') { REPLY("err empty message"); return; }
+    amy_event *e = amy_helpers_event_begin();
+    amy_parse_message(args, e);
+    amy_helpers_event_send(e);
+    REPLY("ok");
+}
+
+/* "amy.voices synth=<n>" prints "VOICE <voice> <base_osc> L=<m0>,<m1>" per
+ * voice of the synth: the absolute osc numbers a raw-osc amy.wire message
+ * needs, and the base osc's two mod sources (-1 = unset). Reads AMY's voice
+ * and osc tables under amy_queue_lock. */
+static void cmd_amy_voices(char *args, harness_reply_fn reply)
+{
+    const char *v = arg_value(args, "synth");
+    if (v == NULL) { REPLY("err need synth=<n>"); return; }
+    uint16_t voices[MAX_VOICES_PER_INSTRUMENT];
+    uint16_t base[MAX_VOICES_PER_INSTRUMENT];
+    int mod[MAX_VOICES_PER_INSTRUMENT][NUM_MOD_SOURCES];
+    amy_grab_lock();
+    int n = instrument_get_num_voices((int)strtol(v, NULL, 10), voices);
+    for (int i = 0; i < n; i++) {
+        if (!amy_voice_base_osc(voices[i], &base[i])) base[i] = UINT16_MAX;
+        for (int m = 0; m < NUM_MOD_SOURCES; m++) {
+            mod[i][m] = (base[i] != UINT16_MAX && synth[base[i]] != NULL &&
+                         AMY_IS_SET(synth[base[i]]->mod_source[m]))
+                        ? (int)synth[base[i]]->mod_source[m] : -1;
+        }
+    }
+    amy_release_lock();
+    for (int i = 0; i < n; i++) {
+        printf("VOICE %u %u L=%d,%d\n", (unsigned)voices[i], (unsigned)base[i], mod[i][0], mod[i][1]);
+    }
+    REPLY("ok n=%d", n);
+}
+
 #if CONFIG_SYNTH_PROJECT_STORE
 /* "pr.tpl" lists the built-in templates as "TPL <i> <name>" lines; "pr.tpl
  * <name or index>" queues one for the UI task to load. Names carry spaces,
@@ -206,6 +282,7 @@ void harness_exec(const harness_hooks_t *hooks, const char *cmdline,
     else if (strcmp(line, "sys.build") == 0) cmd_sys_build(reply);
     else if (strcmp(line, "st.heap") == 0)   cmd_st_heap(reply);
     else if (strcmp(line, "st.drop") == 0)   cmd_st_drop(reply);
+    else if (strcmp(line, "st.lfobank") == 0) cmd_st_lfobank(reply);
     else if (strcmp(line, "st.uacpull") == 0) {
 #if CONFIG_AMYSYNTH_DROPOUT_TS
         uint32_t c[4];
@@ -254,6 +331,8 @@ void harness_exec(const harness_hooks_t *hooks, const char *cmdline,
         REPLY("err project store not compiled in");
 #endif
     }
+    else if (strcmp(line, "amy.wire") == 0)   cmd_amy_wire(args, reply);
+    else if (strcmp(line, "amy.voices") == 0) cmd_amy_voices(args, reply);
     else if (strcmp(line, "in.btn") == 0)  cmd_in_btn(hooks, args, reply);
     else if (strcmp(line, "in.enc") == 0)  cmd_in_enc(hooks, args, reply);
     else REPLY("err unknown cmd '%s'", line);

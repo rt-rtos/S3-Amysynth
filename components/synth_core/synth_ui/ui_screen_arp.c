@@ -99,7 +99,7 @@ static void arp_edit_value(uint8_t cursor, int delta)
             break;
         case ARP_CUR_RATE: {
             int r = (int)arp_get_rate() + dir;
-            r = SEQ_CLAMP_INT(r, 0, NOTE_DIV_COUNT - 1);
+            r = SEQ_CLAMP_INT(r, 0, NOTE_DIV_STD_COUNT - 1);
             arp_set_rate((note_div_t)r);
             break;
         }

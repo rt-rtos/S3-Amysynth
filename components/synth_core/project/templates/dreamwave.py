@@ -49,7 +49,7 @@ def sparkle():
 
 
 def pump():
-    return drone(True, CHORD_MIN, 58, wave=WAVE_SAW_DOWN, peak=0.4, duck=0.65,
+    return drone(True, CHORD_MIN, 58, patch=P_SAW_DOWN, peak=0.4, duck=0.65,
                  rate=NOTE_DIV_1_8, sweep=(700.0, 2600.0), sweep_bars=4, res=1.0,
                  amp_env=env(150, 300, 100, 800), follow=DRONE_FOLLOW_CHORD)
 

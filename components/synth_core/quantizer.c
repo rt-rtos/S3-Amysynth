@@ -112,6 +112,15 @@ const int8_t *quantizer_chord_intervals(chord_type_t chord_type)
     return s_chord_intervals[chord_type];
 }
 
+uint8_t quantizer_chord_note_count(chord_type_t chord_type)
+{
+    const int8_t *row = quantizer_chord_intervals(chord_type);
+    if (!row) return 0;
+    uint8_t n = 0;
+    while (n < sizeof(s_chord_intervals[0]) && row[n] >= 0) n++;
+    return n;
+}
+
 uint8_t quantizer_snap_to_chord(uint8_t midi_note, uint8_t root,
                                 chord_type_t chord_type)
 {

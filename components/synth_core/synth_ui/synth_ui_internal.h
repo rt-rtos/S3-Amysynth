@@ -12,6 +12,7 @@
 #include "display_fm.h"        /* fm_view_t (CONFIG_SYNTH_CUSTOM_FM) */
 #include "display_wt.h"        /* wt_view_t (CONFIG_SYNTH_CUSTOM_WT) */
 #include "u8g2.h"              /* u8g2_t */
+#include "synth_ui/ui_voice_target.h"   /* voice_target_kind_t */
 
 /* ─── Cross-file shared state (owners noted; only these need extern) ──── */
 /* UI state lives behind a pointer so CONFIG_SEQ_STATE_IN_PSRAM can place it
@@ -29,7 +30,6 @@ extern uint8_t           s_graph_track;    /* owner: ui_editors.c; task clamps i
 extern bool              s_filter_active;  /* owner: ui_editors.c; task reads for cascade */
 extern bool              s_lfo_active;     /* owner: ui_editors.c; task reads for cascade */
 extern bool              s_dist_active;    /* owner: ui_editors.c; task reads for cascade */
-extern bool              s_drone_vis_open; /* owner: ui_screen_drone.c; task reads for V_DRONE_VIS */
 
 /* ─── FNV-1a render-on-change (all view signature functions use this) ── */
 #define FNV1A_OFFSET 2166136261u
@@ -131,7 +131,7 @@ typedef union {
     fm_view_t        fm;
     wt_view_t        wt;
     arp_view_t       arp;
-    drone_view_t     drone;      /* DRONE and DRONE_VIS */
+    drone_view_t     drone;      /* DRONE and DRONE_STD */
     prog_view_t      prog;
     stepedit_view_t  stepedit;
     dev_view_t       dev;
@@ -248,12 +248,20 @@ uint8_t  layermenu_menu_row_index(uint8_t id);
  * Unison/PCM sub-pages. */
 uint8_t  layermenu_menu_track(void);
 const char *layermenu_menu_title(void);
+/* Which entry the page shows: a sequencer layer (VT_MELODIC, every row
+ * above), the arp (VT_ARP: Level, Key, Mute, Solo, ClrSolo, Unison, Gate,
+ * Glide) or the live-play voice (VT_LIVE: Level, Key, Unison, Glide). The
+ * arp and live rows go through ui_voice_target.h. Set by the page router
+ * before it lands the cursor, since the row list depends on it. */
+void     layermenu_menu_set_kind(voice_target_kind_t kind);
+voice_target_kind_t layermenu_menu_kind(void);
 
 /* ─── Layer sub-pages, dived into from the Layer page (item model in
  *     ui_screen_layer_sub.c; page state and input routing in
  *     ui_screen_menu.c). Both edit the active layer at the Layer page's track
- *     (layermenu_menu_track). Unison: Count/Detune/Spread/Blend, following
- *     the layer's patch scope. PCM: the drum track's PCM playback mode. ─── */
+ *     (layermenu_menu_track); Unison edits the arp or live voice instead on
+ *     those entries. Unison: Count/Detune/Spread/Blend, following the layer's
+ *     patch scope. PCM: the drum track's PCM playback mode. ─── */
 const menu_item_view_t *layer_uni_menu_build_items(void);
 uint8_t  layer_uni_menu_item_count(void);
 bool     layer_uni_menu_item_is_back(uint8_t idx);

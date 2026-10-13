@@ -22,6 +22,9 @@ uint8_t *memory_patch_auto = NULL;
 uint16_t next_user_patch_index = 0;
 uint16_t * osc_to_voice = NULL;
 uint16_t *voice_to_base_osc = NULL;
+// LOCAL EDIT (S3-Amysynth, 2026-10-12, experimental): see amy.h.
+uint16_t *synth_first_osc = NULL;
+uint8_t *synth_free_run = NULL;
 
 void patches_deinit() {
     memory_patch_deltas = NULL;
@@ -29,6 +32,8 @@ void patches_deinit() {
     memory_patch_auto = NULL;
     osc_to_voice = NULL;
     voice_to_base_osc = NULL;
+    synth_first_osc = NULL;
+    synth_free_run = NULL;
 }
 
 void patches_init(int max_memory_patches) {
@@ -38,14 +43,18 @@ void patches_init(int max_memory_patches) {
 	    + max_num_memory_patches * sizeof(uint16_t)
             + AMY_OSCS * sizeof(uint16_t)
             + amy_global.config.max_voices * sizeof(uint16_t)
-            + max_num_memory_patches * sizeof(uint8_t),
+            + amy_global.config.max_synths * sizeof(uint16_t)
+            + max_num_memory_patches * sizeof(uint8_t)
+            + amy_global.config.max_synths * sizeof(uint8_t),
 	    amy_global.config.ram_caps_synth
     );
     memory_patch_deltas = (struct delta **)alloc_base;
     memory_patch_oscs = (uint16_t *)(memory_patch_deltas + max_num_memory_patches);
     osc_to_voice = (uint16_t *)(memory_patch_oscs + max_num_memory_patches);
     voice_to_base_osc = (uint16_t *)(osc_to_voice + AMY_OSCS);
-    memory_patch_auto = (uint8_t *)(voice_to_base_osc + amy_global.config.max_voices);
+    synth_first_osc = (uint16_t *)(voice_to_base_osc + amy_global.config.max_voices);
+    memory_patch_auto = (uint8_t *)(synth_first_osc + amy_global.config.max_synths);
+    synth_free_run = memory_patch_auto + max_num_memory_patches;
     bzero(memory_patch_deltas, max_num_memory_patches * sizeof(struct delta *));
     bzero(memory_patch_auto, max_num_memory_patches * sizeof(uint8_t));
     patches_reset();
@@ -72,6 +81,10 @@ void patches_reset() {
     }
     for(uint32_t i = 0; i < AMY_OSCS; i++) {
         AMY_UNSET(osc_to_voice[i]);
+    }
+    for(uint32_t s = 0; s < amy_global.config.max_synths; s++) {
+        AMY_UNSET(synth_first_osc[s]);
+        synth_free_run[s] = 0;
     }
     for(uint32_t i = 0; i < max_num_memory_patches; i++) {
         patches_reset_patch(_PATCHES_FIRST_USER_PATCH + i);
@@ -563,6 +576,8 @@ bool event_addresses_oscs(amy_event *e) {
     _RET_TRUE_IF_SET(portamento_ms);
     _RET_TRUE_IF_SET(chained_osc);
     _RET_TRUE_IF_SET_SEQ(mod_source, NUM_MOD_SOURCES);
+    _RET_TRUE_IF_SET_SEQ(mod_synth, NUM_MOD_SOURCES);  // LOCAL EDIT (S3-Amysynth)
+    _RET_TRUE_IF_SET(phase_warp);                       // LOCAL EDIT (S3-Amysynth)
     _RET_TRUE_IF_SET(algorithm);
     _RET_TRUE_IF_SET(filter_type);
     // Distortion addresses oscs only when the event names one; with no osc
@@ -720,6 +735,8 @@ struct delta *deltas_to_event(struct delta *queue, struct amy_event *event) {
       for (int i = 0; i < NUM_MOD_SOURCES; ++i) {
           if ((int)queue->param == (int)MOD_SOURCE_START + i)
               event->mod_source[i] = queue->data.i;
+          if ((int)queue->param == (int)MOD_SYNTH_START + i)  // LOCAL EDIT (S3-Amysynth)
+              event->mod_synth[i] = queue->data.i;
       }
       for (int i = 0; i < MAX_BREAKPOINT_SETS; ++i) {
           for (int j = 0; j < MAX_BREAKPOINTS; ++j) {
@@ -870,7 +887,15 @@ void set_event_for_osc(int base_osc, int rel_osc, struct amy_event *event) {
     EVENT_FROM_OSC(resonance);
     EVENT_FROM_OSC_MAPPED(portamento_alpha, portamento_ms, alpha_to_portamento_ms);
     EVENT_FROM_OSC_BASEOSC(chained_osc);
-    EVENT_FROM_OSC_ARRAY_BASEOSC(mod_source, NUM_MOD_SOURCES);
+    // LOCAL EDIT (S3-Amysynth): a slot naming a synth goes back out as
+    // mod_synth, unrebased, so copies and reshapes keep the wiring.
+    for (int i = 0; i < NUM_MOD_SOURCES; ++i) {
+        if (synth[osc]->mod_source[i] == empty_synth.mod_source[i]) continue;
+        if (synth[osc]->mod_source[i] & MOD_SRC_SYNTH_FLAG)
+            event->mod_synth[i] = synth[osc]->mod_source[i] & (uint16_t)~MOD_SRC_SYNTH_FLAG;
+        else
+            event->mod_source[i] = synth[osc]->mod_source[i] - base_osc;
+    }
     EVENT_FROM_OSC(algorithm);
     EVENT_FROM_OSC(filter_type);
     // Distortion: one enable per stage that is on (a stage that is off is
@@ -1435,6 +1460,11 @@ void release_voice_oscs(int32_t voice, uint32_t time) {
                 schedule_osc_free(time, i, NULL);
             }
         }
+        // LOCAL EDIT (S3-Amysynth): a synth whose first voice this was no
+        // longer resolves to these oscs.
+        for(uint32_t s = 0; s < amy_global.config.max_synths; s++) {
+            if (synth_first_osc[s] == voice_to_base_osc[voice])  AMY_UNSET(synth_first_osc[s]);
+        }
         AMY_UNSET(voice_to_base_osc[voice]);
     }
 }
@@ -1517,6 +1547,10 @@ uint8_t patches_voices_for_load_synth(amy_event *e, uint16_t voices[]) {
             // instrument never holds one, and a patch the caller numbered
             // explicitly is never freed behind their back.
             // Delete the instrument
+            if (e->synth < amy_global.config.max_synths) {  // LOCAL EDIT (S3-Amysynth)
+                AMY_UNSET(synth_first_osc[e->synth]);
+                synth_free_run[e->synth] = 0;
+            }
             instrument_release(e->synth);
             // Delete the instrument number so we don't forward the 'rest' of the event to it.
             AMY_UNSET(e->synth);
@@ -1725,6 +1759,12 @@ void patches_load_patch(amy_event *e) {
         uint16_t stored_patch_number = patch_number;
         if (auto_patch)  AMY_UNSET(stored_patch_number);
         instrument_add_new(e->synth, num_voices, voices, stored_patch_number, oscs_per_voice, bus, flags);
+        // LOCAL EDIT (S3-Amysynth): publish the first voice's base osc for
+        // mod sources named by synth (synth_first_osc, amy.h).
+        if (e->synth < amy_global.config.max_synths) {
+            synth_first_osc[e->synth] = voice_to_base_osc[voices[0]];
+            synth_free_run[e->synth] = (flags & SYNTH_FLAGS_FREE_RUN_MOD) ? 1 : 0;
+        }
     }
     // Now actually initialize the newly-allocated osc blocks with the patch
     bool is_first_voice = true;  // flag for once-only messages.

@@ -44,7 +44,7 @@ def melody():
 
 
 def bed():
-    return drone(True, CHORD_SUS2, 48, wave=WAVE_SAW_DOWN, peak=0.35, duck=0.0,
+    return drone(True, CHORD_SUS2, 48, patch=P_SAW_DOWN, peak=0.35, duck=0.0,
                  rate=NOTE_DIV_1_1, sweep=(250.0, 900.0), sweep_bars=16, res=0.8,
                  amp_env=env(2000, 300, 100, 3000))
 

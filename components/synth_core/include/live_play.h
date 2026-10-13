@@ -49,18 +49,29 @@ void live_play_set_wave_mode(bool wave);
 uint16_t live_play_get_glide_ms(void);
 void     live_play_set_glide_ms(uint16_t ms);
 
-/* True when the current patch has a reserved LFO carrier pair, so
- * live_play_set_lfo() applies natively. Patch strings own their osc layout and
- * fall back to the software stepper below - the melodic/arp split. */
+/* True when the voice's LFO runs on a modulator osc - the path on which
+ * WOBBLE exists. With CONFIG_SEQ_LFO_SHARED: while the voice is bound to a
+ * shared LFO synth (lfo_bank.h); the stepper fallback has no wobble. Without
+ * it: when the current patch has a reserved LFO carrier pair, so
+ * live_play_set_lfo() applies natively; patch strings own their osc layout
+ * and fall back to the software stepper below - the melodic/arp split. */
 bool live_play_lfo_native_eligible(void);
 
 /* Retune the BPM-synced LFO carriers after a tempo change; called from
- * sequencer_core_set_bpm() alongside the arp/melodic/drone equivalents. */
+ * sequencer_core_set_bpm() alongside the arp/melodic/drone equivalents. A
+ * no-op with CONFIG_SEQ_LFO_SHARED (no per-voice carriers). */
 void live_play_refresh_lfo_freq(void);
 
-/* Software LFO stepper for non-native patches. Call once per UI frame from
- * the synth_ui task, like arp_core_service(); cheap no-op when the live LFO
- * is off, native, or the slot is not ready. */
+/* Re-push the filter after the key-tracking pivot moved (the quantizer root);
+ * called from sequencer_core_set_quantizer_root_note(). No-op unless the
+ * voice is up and its filter is authored, enabled and key-tracked. */
+void live_play_refresh_key_track(void);
+
+/* Software LFO stepper for voices with no modulator osc (not bound to a
+ * shared LFO synth; without CONFIG_SEQ_LFO_SHARED, non-native patches). Call
+ * once per UI frame from the synth_ui task, like arp_core_service(); cheap
+ * no-op when the live LFO is off, served elsewhere, or the slot is not
+ * ready. */
 void live_play_lfo_service(void);
 
 /* ── Runtime-editable voice params (shared ADSR / filter / LFO editors) ──
@@ -91,6 +102,15 @@ void live_play_set_lfo(const seq_lfo_t *lfo);
 
 float live_play_get_amp_scale(void);
 void  live_play_set_amp_scale(float v);
+
+/* Unison (Layer menu LIVE entry, Unison sub-page): the arp's contract
+ * (arp_core.h, arp_set_unison) at this slot's patch and voice count. A moved
+ * effective count rebuilds the slot once it is up (sounding notes stop); a
+ * spec set before then is built by live_play_ensure_ready(). Session-only,
+ * like the rest of this block. */
+void    live_play_get_unison(voice_unison_t *out);
+void    live_play_set_unison(const voice_unison_t *u);
+uint8_t live_play_unison_max(void);
 
 /* Editor live-preview (ENGINE-SEMANTICS.md, "Editor preview and cancel"). */
 void live_play_preview_envelope(const seq_env_t *env);

@@ -40,9 +40,26 @@
  * page is always safe to open. ClrSolo exists only while something is soloed;
  * it and the dive rows are what make the row list dynamic. Row ids
  * (layer_item_id_t) are in synth_ui_internal.h, so the page router can land
- * on a row by id. */
+ * on a row by id.
+ *
+ * The page has three entries (s_lm_kind): the sequencer layer described
+ * above, the arp ("ARP") and the live-play voice ("LIVE"). The arp and live
+ * entries show only their per-voice rows, the Unison dive among them; Level,
+ * Key, Mute, Solo, Gate and Glide here and the Unison sub-page read and write
+ * through ui_voice_target.h on every entry. */
 
 static menu_item_view_t s_lm_items[LM_COUNT];
+static voice_target_kind_t s_lm_kind = VT_MELODIC;
+
+void layermenu_menu_set_kind(voice_target_kind_t kind)
+{
+    s_lm_kind = kind;
+}
+
+voice_target_kind_t layermenu_menu_kind(void)
+{
+    return s_lm_kind;
+}
 
 /* Swing detents are engine ticks, not swing_pct points: pct values that floor
  * to the same tick play identically, so each detent lands on its tick's
@@ -87,6 +104,23 @@ static uint8_t layermenu_active_melodic_layer(void)
  * fixed range. Returns the count; `rows` holds LM_COUNT. */
 static uint8_t lm_row_list(uint8_t *rows)
 {
+    if (s_lm_kind != VT_MELODIC) {
+        /* Per-voice rows only, in enum order. */
+        static const uint8_t arp_rows[]  = { LM_LEVEL, LM_KEYTRACK, LM_MUTE, LM_SOLO,
+                                             LM_CLRSOLO, LM_UNISON, LM_GATE, LM_GLIDE,
+                                             LM_BACK };
+        static const uint8_t live_rows[] = { LM_LEVEL, LM_KEYTRACK, LM_UNISON, LM_GLIDE,
+                                             LM_BACK };
+        const uint8_t *src = (s_lm_kind == VT_ARP) ? arp_rows : live_rows;
+        uint8_t        cnt = (s_lm_kind == VT_ARP) ? (uint8_t)sizeof(arp_rows)
+                                                   : (uint8_t)sizeof(live_rows);
+        uint8_t n = 0;
+        for (uint8_t i = 0; i < cnt; i++) {
+            if (src[i] == LM_CLRSOLO && !sequencer_core_any_solo()) continue;
+            rows[n++] = src[i];
+        }
+        return n;
+    }
     uint8_t li  = seq_state.active_layer_idx;
     bool    mel = (layermenu_active_melodic_layer() != 0xFF);
     bool    pcm = li < seq_state.num_layers &&
@@ -115,6 +149,7 @@ static uint8_t lm_row_at(uint8_t idx)
 
 void layermenu_menu_reset(void)
 {
+    if (s_lm_kind != VT_MELODIC) return;
     if (seq_state.selected_track >= layermenu_num_tracks()) seq_state.selected_track = 0;
 }
 
@@ -152,6 +187,8 @@ const char *layermenu_menu_title(void)
 {
     /* Names the layer always, even at "L1/1", so it stays discoverable that
      * every layer carries its own set of these values. */
+    const char *vt = vt_title(s_lm_kind);
+    if (vt) return vt;
     static char s_title[28];
     snprintf(s_title, sizeof(s_title), "LAYER  L%u/%u  T%u",
              (unsigned)(seq_state.active_layer_idx + 1u),
@@ -193,7 +230,7 @@ const menu_item_view_t *layermenu_menu_build_items(void)
                               ? "TRACK" : "LAYER");
             break;
         case LM_GATE: {
-            uint16_t gate = sequencer_core_get_layer_gate_pct(li);
+            uint16_t gate = vt_get_gate_pct(s_lm_kind);
             snprintf(it->label, MENU_LABEL_LEN, "Gate");
             if (gate == SEQ_GATE_HOLD) snprintf(it->value, MENU_VALUE_LEN, "Hold");
             else if (gate > 100u)      snprintf(it->value, MENU_VALUE_LEN, "%u st",
@@ -203,9 +240,10 @@ const menu_item_view_t *layermenu_menu_build_items(void)
         }
         case LM_GLIDE:
             snprintf(it->label, MENU_LABEL_LEN, "Glide");
-            if (mel == 0xFF) snprintf(it->value, MENU_VALUE_LEN, "--");
+            if (s_lm_kind == VT_MELODIC && mel == 0xFF)
+                snprintf(it->value, MENU_VALUE_LEN, "--");
             else snprintf(it->value, MENU_VALUE_LEN, "%ums",
-                          (unsigned)sequencer_core_get_melodic_portamento_ms(mel));
+                          (unsigned)vt_get_glide_ms(s_lm_kind));
             break;
         case LM_GROOVE:
             snprintf(it->label, MENU_LABEL_LEN, "Groove");
@@ -238,11 +276,11 @@ const menu_item_view_t *layermenu_menu_build_items(void)
         case LM_LEVEL:
             snprintf(it->label, MENU_LABEL_LEN, "Level");
             snprintf(it->value, MENU_VALUE_LEN, "%u%%",
-                     (unsigned)lroundf(sequencer_core_get_melodic_amp_scale(li, tr) * 100.0f));
+                     (unsigned)lroundf(vt_get_level(s_lm_kind) * 100.0f));
             break;
         case LM_KEYTRACK: {
             seq_filter_t f = {0};
-            sequencer_core_get_melodic_filter(mel, tr, &f);
+            vt_get_filter(s_lm_kind, &f);
             snprintf(it->label, MENU_LABEL_LEN, "Key");
             snprintf(it->value, MENU_VALUE_LEN, "%u%%",
                      (unsigned)lroundf(f.key_track * 100.0f));
@@ -266,12 +304,12 @@ const menu_item_view_t *layermenu_menu_build_items(void)
         case LM_MUTE:
             snprintf(it->label, MENU_LABEL_LEN, "Mute");
             snprintf(it->value, MENU_VALUE_LEN, "%s",
-                     sequencer_core_get_track_mute(li, tr) ? "ON" : "OFF");
+                     vt_get_mute(s_lm_kind) ? "ON" : "OFF");
             break;
         case LM_SOLO:
             snprintf(it->label, MENU_LABEL_LEN, "Solo");
             snprintf(it->value, MENU_VALUE_LEN, "%s",
-                     sequencer_core_get_track_solo(li, tr) ? "ON" : "OFF");
+                     vt_get_solo(s_lm_kind) ? "ON" : "OFF");
             break;
         case LM_CLRSOLO:
             snprintf(it->label, MENU_LABEL_LEN, "ClrSolo");
@@ -308,6 +346,18 @@ bool layermenu_menu_item_is_back(uint8_t idx)
  * and the progression-locked chord rows are inert. */
 static bool lm_row_is_editable(uint8_t row)
 {
+    if (s_lm_kind != VT_MELODIC) {
+        switch (row) {
+        case LM_LEVEL:
+        case LM_KEYTRACK:
+            return true;
+        case LM_MUTE:  return vt_has_mute(s_lm_kind);
+        case LM_SOLO:  return vt_has_solo(s_lm_kind);
+        case LM_GATE:  return vt_has_gate(s_lm_kind);
+        case LM_GLIDE: return vt_has_glide(s_lm_kind);
+        default:       return false;
+        }
+    }
     bool mel = (layermenu_active_melodic_layer() != 0xFF);
     switch (row) {
     case LM_PATCH_SCOPE:
@@ -411,15 +461,20 @@ void layermenu_menu_edit_value(uint8_t idx, int delta)
                      ? (uint8_t)SEQ_PATCH_SCOPE_LAYER : (uint8_t)SEQ_PATCH_SCOPE_TRACK);
         break;
     case LM_GATE:
-        sequencer_core_set_layer_gate_pct(
-            li, lm_gate_step(sequencer_core_get_layer_gate_pct(li), dir));
+        if (s_lm_kind == VT_ARP) {
+            /* 5%/detent within 10..100, as the arp screen's GATE control. */
+            int v = SEQ_CLAMP_INT((int)vt_get_gate_pct(s_lm_kind) + dir * 5, 10, 100);
+            vt_set_gate_pct(s_lm_kind, (uint16_t)v);
+        } else {
+            vt_set_gate_pct(s_lm_kind, lm_gate_step(vt_get_gate_pct(s_lm_kind), dir));
+        }
         break;
     case LM_GLIDE: {
-        /* 1ms/detent, matching the arp glide resolution. */
-        int v = SEQ_CLAMP_INT(
-            (int)sequencer_core_get_melodic_portamento_ms(mel) + dir * 1,
-            0, (int)SEQ_MELODIC_PORTAMENTO_MAX_MS);
-        sequencer_core_set_melodic_portamento_ms(mel, (uint16_t)v);
+        /* 1ms/detent, matching the arp glide resolution; the provider clamps
+         * to the target's ceiling. */
+        int v = (int)vt_get_glide_ms(s_lm_kind) + dir * 1;
+        if (v < 0) v = 0;
+        vt_set_glide_ms(s_lm_kind, (uint16_t)v);
         break;
     }
     case LM_GROOVE: {
@@ -465,20 +520,19 @@ void layermenu_menu_edit_value(uint8_t idx, int delta)
     case LM_LEVEL: {
         /* 5%/detent, matching GATE; the setter re-emits the track. */
         int v = SEQ_CLAMP_INT(
-            (int)lroundf(sequencer_core_get_melodic_amp_scale(li, tr) * 100.0f) + dir * 5,
-            0, 100);
-        sequencer_core_set_melodic_amp_scale(li, tr, (float)v / 100.0f);
+            (int)lroundf(vt_get_level(s_lm_kind) * 100.0f) + dir * 5, 0, 100);
+        vt_set_level(s_lm_kind, (float)v / 100.0f);
         break;
     }
     case LM_KEYTRACK: {
         /* 5%/detent. The setter authors the filter and fans out to the rows
          * sharing the voice block. */
         seq_filter_t f;
-        if (!sequencer_core_get_melodic_filter(mel, tr, &f)) break;
+        if (!vt_get_filter(s_lm_kind, &f)) break;
         sequencer_core_filter_seed_default(&f);
         int v = SEQ_CLAMP_INT((int)lroundf(f.key_track * 100.0f) + dir * 5, 0, 100);
         f.key_track = (float)v / 100.0f;
-        sequencer_core_set_melodic_filter(mel, tr, &f);
+        vt_set_filter(s_lm_kind, &f);
         break;
     }
     case LM_FOLLOW: {
@@ -494,10 +548,10 @@ void layermenu_menu_edit_value(uint8_t idx, int delta)
         break;
     }
     case LM_MUTE:
-        sequencer_core_set_track_mute(li, tr, !sequencer_core_get_track_mute(li, tr));
+        vt_set_mute(s_lm_kind, !vt_get_mute(s_lm_kind));
         break;
     case LM_SOLO:
-        sequencer_core_set_track_solo(li, tr, !sequencer_core_get_track_solo(li, tr));
+        vt_set_solo(s_lm_kind, !vt_get_solo(s_lm_kind));
         break;
     case LM_FRAME: {
         /* One frame per detent; Auto (0) sits below frame 0 (stored 1). */

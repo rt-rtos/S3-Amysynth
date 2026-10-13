@@ -29,8 +29,5 @@ bool synth_ui_hint_visible(void)
     if (seq_state.ui_mode == UI_MODE_PROG) {
         return false;
     }
-    if (seq_state.ui_mode == UI_MODE_DRONE && s_drone_vis_open) {
-        return false;
-    }
     return true;
 }

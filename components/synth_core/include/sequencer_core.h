@@ -41,8 +41,9 @@ extern "C" {
 #define SEQ_PATCH_WAVE_MAX    263
 
 /* ── Multi-osc bass presets (bass_presets.c) ────────────────────────────
- * Two audible oscs plus a reserved LFO carrier pair (oscs_per_voice=4). A bass
- * preset keeps its own envelope until the user authors one for the row. */
+ * Two audible oscs (oscs_per_voice=2), plus a reserved LFO carrier pair
+ * (oscs_per_voice=4) without CONFIG_SEQ_LFO_SHARED. A bass preset keeps its
+ * own envelope until the user authors one for the row. */
 #define SEQ_PATCH_BASS_BASE   264
 #define SEQ_PATCH_BASS_1      264   /* PULSE + detuned SAW_DOWN, LPF24 swept by EG1 */
 #define SEQ_PATCH_BASS_2      265   /* Acid pluck: SINE + SAW_DOWN, LPF24 on osc 1 */
@@ -66,7 +67,7 @@ static inline bool sequencer_core_is_wavetable_patch(uint16_t patch);
 /* True for any raw-waveform virtual patch (SINE..KS, plus the wavetable banks
  * when AMY_WAVETABLE is compiled in). Shared by the melodic synth/LFO
  * configurators so both ranges route the same way: direct oscillator config,
- * no amy_send_patch(), native-LFO eligible. */
+ * no amy_send_patch(), wave-topology LFO layout. */
 static inline bool sequencer_core_is_wave_patch(uint16_t patch)
 {
     if (patch >= SEQ_PATCH_WAVE_BASE && patch <= SEQ_PATCH_WAVE_MAX) return true;
@@ -76,32 +77,50 @@ static inline bool sequencer_core_is_wave_patch(uint16_t patch)
     return false;
 }
 
-/* Native-LFO layout for a patch: which voice-relative osc carries the LFO pair
- * (carrier; wobble = carrier+1) and which audible oscs take the COEF_MOD
- * coupling (bitmask, bit n = osc n). True for every topology reserving a
- * trailing carrier pair (raw-wave/wavetable 3-osc, custom bass 4-osc); false
- * means the 20 Hz software stepper serves the LFO. THE single
- * native-vs-software predicate - every gate must use it, since a site left on
- * sequencer_core_is_wave_patch would stack the software stepper on a native
- * carrier (double modulation). Out-params may be NULL. Both paths, the target
- * rails and the DIST behaviour: ENGINE-SEMANTICS.md, "LFO: native carrier vs
- * software stepper". */
-static inline bool sequencer_core_lfo_native_layout(uint16_t patch,
-                                                    uint8_t *carrier_osc,
-                                                    uint8_t *coupled_mask)
+/* Wave-topology LFO layout for a patch: true for raw waves, wavetables and
+ * the bass presets - voices the app builds osc by osc - with the audible oscs
+ * the LFO's rails land on in *coupled_mask (bit n = osc n; 0x01 for a wave,
+ * 0x03 for both bass oscs). Under CONFIG_SEQ_LFO_SHARED these voices reserve
+ * no LFO oscs: their LFO is a shared LFO synth (lfo_bank.h) wired over the
+ * coupled oscs, with the software stepper as the fallback. Without it they
+ * reserve a carrier pair, located by sequencer_core_lfo_native_layout()
+ * below. Out-param may be NULL. Both paths, the target rails and the DIST
+ * behaviour: ENGINE-SEMANTICS.md, "LFO: native carrier vs software
+ * stepper". */
+static inline bool sequencer_core_lfo_wave_layout(uint16_t patch,
+                                                  uint8_t *coupled_mask)
 {
     if (sequencer_core_is_wave_patch(patch)) {
-        if (carrier_osc)  *carrier_osc  = 1;
         if (coupled_mask) *coupled_mask = 0x01;
         return true;
     }
     if (patch >= SEQ_PATCH_BASS_BASE && patch <= SEQ_PATCH_BASS_MAX) {
-        if (carrier_osc)  *carrier_osc  = 2;    /* osc0/1 audible pair */
         if (coupled_mask) *coupled_mask = 0x03; /* couple BOTH audible oscs */
         return true;
     }
     return false;
 }
+
+#if !CONFIG_SEQ_LFO_SHARED
+/* Native-LFO layout (per-voice carriers; compiled only without
+ * CONFIG_SEQ_LFO_SHARED, which has no carrier to name): the wave-topology
+ * predicate above plus the voice-relative osc of the reserved LFO pair
+ * (carrier; wobble = carrier+1) - osc 1 above a wave's osc 0, osc 2 above the
+ * bass pair. False means the 20 Hz software stepper serves the LFO. THE
+ * native-vs-software predicate on this path - every gate must use it, since a
+ * site left on sequencer_core_is_wave_patch would stack the software stepper
+ * on a native carrier (double modulation). Out-params may be NULL. */
+static inline bool sequencer_core_lfo_native_layout(uint16_t patch,
+                                                    uint8_t *carrier_osc,
+                                                    uint8_t *coupled_mask)
+{
+    uint8_t coupled = 0;
+    if (!sequencer_core_lfo_wave_layout(patch, &coupled)) return false;
+    if (carrier_osc)  *carrier_osc  = (coupled == 0x03) ? 2u : 1u;
+    if (coupled_mask) *coupled_mask = coupled;
+    return true;
+}
+#endif
 
 /* ── DX7-style 6-operator FM/ALGO voices (melodic only; oscs_per_voice=7) ──
  * Osc 0 is the AMY ALGO control osc (algorithm + algo_source[0..5] wired to
@@ -215,6 +234,15 @@ void sequencer_core_set_transport_change_cb(seq_transport_change_cb_t cb);
  * stopped. UI task. */
 uint32_t sequencer_core_next_bar_tick(void);
 
+/* AMY time (amy_sysclock() ms) at which absolute sequencer tick `tick`
+ * sounds: now for tick 0 or a tick already reached, else now plus the ticks
+ * ahead at AMY's current tick length. Task context; takes no lock. */
+uint32_t sequencer_core_tick_to_amy_ms(uint32_t tick);
+
+/* Tick of the bar the transport counts bars from (anchored at play start);
+ * a multiple of SEQ_TICKS_PER_BAR. Any task (single aligned 32-bit read). */
+uint32_t sequencer_core_bar_baseline_tick(void);
+
 /* ── Freeze (loop bounce) ────────────────────────────────────────────────
  * From end_tick on, nothing periodic fires: AMY's repeating entries (every
  * sequencer track and the arp) and the trig engine's decorated one-shots
@@ -280,7 +308,7 @@ void     sequencer_core_set_patch_scope(uint8_t layer_idx, uint8_t scope);
 uint8_t  sequencer_core_get_patch_scope(uint8_t layer_idx);
 
 /* Re-push the live custom FM voice (s_fm_voice) to every melodic row on
- * SEQ_PATCH_FM_CUSTOM (and the arp). `what` is an FM_PUSH_* scope or an
+ * SEQ_PATCH_FM_CUSTOM (and the arp and both drones). `what` is an FM_PUSH_* scope or an
  * operator index (fm_voice.h). Called by the FM UI screen / operator ADSR
  * editor after any edit. UI task only. */
 void sequencer_core_fm_voice_changed(uint8_t what);
@@ -301,7 +329,8 @@ void sequencer_core_fm_voice_changed(uint8_t what);
 int sequencer_core_cycle_layer_fm_algo(uint8_t layer_idx, int dir);
 
 /* Re-push the live custom additive voice (s_additive_voice) to every melodic
- * row on SEQ_PATCH_ADDITIVE_CUSTOM, plus the arp if it is playing it. */
+ * row on SEQ_PATCH_ADDITIVE_CUSTOM, plus the arp and either drone if it is
+ * playing it. */
 void sequencer_core_additive_voice_changed(void);
 
 /* ── Drum per-track patch (curated Juno list) ──
@@ -397,6 +426,35 @@ void           sequencer_core_set_layer_unison(uint8_t layer_idx,
 uint8_t        sequencer_core_get_unison_layout(void);
 void           sequencer_core_set_unison_layout(uint8_t layout);
 uint8_t        sequencer_core_track_unison_max(uint8_t layer_idx, uint8_t track);
+
+/* The unison clamp every slot owner shares (rows, arp, live voice): the
+ * effective copy count a build of `patch` at `voices` voices gets for an
+ * authored `count` under the global backend - 1 for non-wave patches, KS, or
+ * a budget that leaves no room; otherwise count capped by the backend's
+ * per-voice osc budget (SEQ_TRACK_OSC_BUDGET / voices). Always 1 without the
+ * native-LFO build. unison_max_for: the highest effective count, 0 when the
+ * patch cannot carry unison at that voice count. Pure; any task. */
+uint8_t sequencer_core_unison_copies_for(uint16_t patch, uint8_t count, uint8_t voices);
+uint8_t sequencer_core_unison_max_for(uint16_t patch, uint8_t voices);
+
+/* Osc-addressing layout of one voice of a wave-topology slot. */
+typedef struct {
+#if !CONFIG_SEQ_LFO_SHARED
+    uint8_t carrier;     /* LFO carrier osc; wobble = carrier + 1 */
+#endif
+    uint8_t pitch_mask;  /* oscs whose freq/duty MOD rails the LFO drives */
+    uint8_t voice_mask;  /* oscs whose filter/amp/pan/dist MOD rails the LFO drives */
+    uint8_t heads_mask;  /* SILENT-head oscs; 0 = no heads: filter pushes
+                            broadcast and dist pushes address osc 0 as before */
+} seq_voice_layout_t;
+
+/* LFO / push layout for a slot playing `patch` built with `copies` effective
+ * unison copies (sequencer_core_unison_copies_for; 1 = none) under the global
+ * backend: the patch-only predicate (sequencer_core_lfo_wave_layout) lifted
+ * over the unison oscs. Returns false (out untouched) when the patch is not
+ * wave-topology. `carrier` exists only without CONFIG_SEQ_LFO_SHARED. out may
+ * be NULL. Pure; any task. */
+bool sequencer_core_voice_layout(uint16_t patch, uint8_t copies, seq_voice_layout_t *out);
 
 /* KS voices per melodic row, 1..CONFIG_SEQ_KS_VOICES_MAX (clamped): every row
  * whose patch is KS plays exactly this many voices, chord rows included,
@@ -571,6 +629,10 @@ void sequencer_core_set_melodic_lfo(uint8_t layer_idx, uint8_t track,
 bool sequencer_core_get_melodic_lfo(uint8_t layer_idx, uint8_t track,
                                     seq_lfo_t *out);
 void sequencer_core_lfo_service(void);
+/* True while the row's LFO runs on a shared LFO synth (lfo_bank.h) - the
+ * path on which WOBBLE exists. Always false without CONFIG_SEQ_LFO_SHARED or
+ * out of range. UI task. */
+bool sequencer_core_track_lfo_bound(uint8_t layer_idx, uint8_t track);
 
 #if CONFIG_SEQ_OOM_RESYNC
 /* Self-heal service (UI task, same cadence as the LFO service): once an AMY
@@ -827,17 +889,31 @@ uint8_t sequencer_core_arp_voices(void);
 /* Clamp a MIDI note to the melodic playable range (C1..C7). */
 uint8_t sequencer_core_clamp_melodic_note(int32_t midi_note);
 
-/* (Re)configure the arp synth with a patch + voice count (flags = 0). */
+/* (Re)configure the arp synth with a patch + voice count (flags = 0). `uni`
+ * is the unison spec to build with, its count already the EFFECTIVE one
+ * (sequencer_core_unison_copies_for) and its layout the global backend; NULL
+ * (or count 1) builds the single-osc voice. */
 void sequencer_core_arp_configure(uint16_t patch_number, uint8_t num_voices,
                                   bool filter_authored, float ks_feedback,
-                                  float ks_duty_ofs);
+                                  float ks_duty_ofs, const voice_unison_t *uni);
 
 /* (Re)configure an out-of-band dedicated synth slot with any routable patch
  * (flags = 0, neutral filter/KS authoring). Kills sounding voices first and
  * reasserts global FX for string patches. For slot owners outside the track
- * allocator (live play); track and arp slots have their own entry points. */
+ * allocator (live play, drones); track and arp slots have their own entry
+ * points. `uni` as for sequencer_core_arp_configure; the drones pass NULL. */
 void sequencer_core_configure_synth_slot(uint8_t synth_id, uint16_t patch_number,
-                                         uint8_t num_voices);
+                                         uint8_t num_voices, const voice_unison_t *uni);
+
+/* The voice count a patch load of `patch` actually builds when `want` voices
+ * are asked for: a patch string (ids below SEQ_PATCH_WAVE_BASE: Juno, DX7,
+ * piano) is clamped so oscs-per-voice x voices fits SEQ_TRACK_OSC_BUDGET (at
+ * least 1 voice); every virtual id returns `want`, since AMY's built-in table
+ * has its own patches at the app's virtual numbers.
+ * The clamp every patch load applies, for a slot owner that has to know the
+ * count beforehand (the standard drone truncates its chord to it). Sends no
+ * AMY event; logs a warning when it clamps. Any task. */
+uint16_t sequencer_core_clamp_patch_voices(uint16_t patch, uint16_t want);
 
 /* AMY synth slot backing a melodic row, or 0 when layer_idx/track are out of
  * range (0 is never a melodic slot). The mapping is assigned at layer build
@@ -933,22 +1009,35 @@ uint8_t  sequencer_core_get_melodic_groove_pct(uint8_t layer_idx);
  *
  * The arp and the drones are not sequencer tracks - they are silenced through
  * the solo-change hook below, which the app layer wires to their duck setters.
- * The live-play voice is deliberately left alone: playing against a soloed row
+ * The arp is also a member of the solo set: its own solo flag
+ * (sequencer_core_set_arp_solo) counts as "something is soloed" like a track's,
+ * so a soloed arp silences every unsoloed track and stays audible itself, and
+ * stacks with soloed tracks. The drones are never members, only ducked. The
+ * live-play voice is deliberately left alone: playing against a soloed row
  * is the point of soloing it.
  *
- * Call from the UI task. sequencer_core_set_track_solo() and
- * sequencer_core_clear_all_solos() invoke the hook synchronously. */
+ * Call from the UI task. sequencer_core_set_track_solo(),
+ * sequencer_core_set_arp_solo() and sequencer_core_clear_all_solos() invoke
+ * the hook synchronously. */
 void sequencer_core_set_track_mute(uint8_t layer_idx, uint8_t track, bool mute);
 bool sequencer_core_get_track_mute(uint8_t layer_idx, uint8_t track);
 void sequencer_core_set_track_solo(uint8_t layer_idx, uint8_t track, bool solo);
 bool sequencer_core_get_track_solo(uint8_t layer_idx, uint8_t track);
 
-/* True when any track of any layer is soloed - i.e. when the solo mode that
- * silences everything else is in force. Drives the Trackopts clear affordance. */
+/* The arp's solo flag. Set stores it and, when the value changed, re-applies
+ * the solo state to every layer and calls the hook; the hook owns muting or
+ * restoring the arp itself (it plays while soloed, or while nothing is).
+ * UI task only. Persisted in the project's arp section. */
+void sequencer_core_set_arp_solo(bool solo);
+bool sequencer_core_get_arp_solo(void);
+
+/* True when the arp or any track of any layer is soloed - i.e. when the solo
+ * mode that silences everything else is in force. Drives the Trackopts clear
+ * affordance. */
 bool sequencer_core_any_solo(void);
 
-/* Drop every solo flag in the project and restore normal mute-only gating.
- * No-op (and no hook call) when nothing was soloed. */
+/* Drop every solo flag in the project, the arp's included, and restore normal
+ * mute-only gating. No-op (and no hook call) when nothing was soloed. */
 void sequencer_core_clear_all_solos(void);
 
 /* Fired whenever the set of soloed tracks changes; `any_solo` is the new value

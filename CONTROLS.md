@@ -16,7 +16,7 @@ is right and this file is stale.
 | Button 1 | `MY_BUTTON_1` | Hold modifier (acts on press, released on release), or a press action in some views |
 | Button 2 | `MY_BUTTON_2` | Same as button 1 |
 | Button 3 | `MY_BUTTON_3` | Acts on tap |
-| SHOULDER (LB) | `MY_BUTTON_SHOULDER` | Left shoulder button. Acts on press, except the LFO tab flip, the FM page flip and the WT keyframe cycle (tap) |
+| SHOULDER (LB) | `MY_BUTTON_SHOULDER` | Left shoulder button. Acts on press, except the FM page flip and the WT keyframe cycle (tap) |
 | SHIFT (RB) | `MY_BUTTON_SHIFT` | Right shoulder button. Hold modifier; a bare tap does nothing |
 
 Pin assignments: `components/my_buttons/my_buttons.c` (`s_button_gpios[]`).
@@ -33,7 +33,7 @@ button input; the rest are mode screens. Resolved in one place,
 4. Step Trig popup
 5. ADSR (graph) editor
 6. Menu
-7. Mode screen: Arp, Drone visualiser, Stutter drone, Normal drone, Prog, FM, DEV, WT, Seq (default at boot)
+7. Mode screen: Arp, Stutter drone, Normal drone, Prog, FM, DEV, WT, Seq (default at boot)
 
 Screens are changed only through the Menu.
 
@@ -45,7 +45,7 @@ Screens are changed only through the Menu.
 | SHIFT + Button 0 (hold) | Discard a running bounce |
 | SHIFT + Button 1 | Open the ADSR editor on the current instrument (Seq, Arp, Drone screens, or the Wireless menu page). With an editor open: commit and close it |
 | SHIFT + Button 2 | Sequencer screen, no menu: open the Step Trig popup. Popup open: close it. Filter/LFO/DIST/ADSR editor open: release the open tab to the patch |
-| SHIFT + Button 3 | Sequencer screen, no menu: open the menu on the Layer page, on the row it was left on if the menu was closed on that page, else on Gate. Menu open on the Layer page: close it. Filter/LFO/DIST/ADSR editor open on a melodic row: flip the row between its own voice block and the layer's shared block |
+| SHIFT + Button 3 | Sequencer screen, no menu: open the menu on the Layer page, on the row it was left on if the menu was closed on that page's layer entry, else on Gate. Arpeggiator screen, no menu: the same on the page's ARP entry, else on Level. Menu open on the Wireless page: switch to the Layer page's LIVE entry, on Level. Menu open on the Layer page: close it. Filter/LFO/DIST/ADSR editor open on a melodic row: flip the row between its own voice block and the layer's shared block |
 | Button 3 (tap) | Toggle the menu; it reopens on the page and row it was closed on. With an editor open: next editor. With the Step Trig popup open: close it |
 
 A SHIFT chord is latched on its digit's press and swallows the rest of that
@@ -58,8 +58,7 @@ The bottom line shows `1:<b1> 2:<b2> 3:<b3>` and, in the menu on a sub-page,
 ` LB:Main`; on the FM screen ` LB:Pg2` or ` LB:Pg1` (the page SHOULDER flips
 to); on the WT screen ` LB:Key`. It is read from `ui_view_table[]` (`ui_view_resolve.c`) for the
 active view. SHIFT chords are not shown. The strip is hidden on the Prog
-screen and on the drone visualiser; a DEV status bar replaces it on every screen
-while on.
+screen; a DEV status bar replaces it on every screen while on.
 
 | View | 1 | 2 | 3 |
 |---|---|---|---|
@@ -134,7 +133,7 @@ Main list rows:
 
 | Kind | Rows |
 |---|---|
-| Screen (runs and closes the menu) | Screen: Seq, Arp, Drone (the normal drone), Prog, FM (`CONFIG_SYNTH_CUSTOM_FM`), WT (`CONFIG_SYNTH_CUSTOM_WT`), DEV (`CONFIG_SYNTH_DEV_MENU`) |
+| Screen (runs and closes the menu) | Sequencer, Arpeggiator, Drones (the normal drone, with the stutter drone behind its STUTTER row), Progression, FM (`CONFIG_SYNTH_CUSTOM_FM`), Wavetable (`CONFIG_SYNTH_CUSTOM_WT`), DEV (`CONFIG_SYNTH_DEV_MENU`) |
 | Action (runs and closes the menu) | Add Layer, Del Layer |
 | Value (click to edit) | BPM, Quant, Scale, Root, Arp, Drone, Stutter, Drum Bank, Volume (5 % steps) |
 | Dive (open a sub-page) | Layer, Chords, Bounce, Prog Gen, FX, Projects (`CONFIG_SYNTH_PROJECT_STORE`), Wireless (`CONFIG_SYNTH_WIRELESS`) |
@@ -154,7 +153,7 @@ FRM between 1 and 62 also narrows the LFO square into a pulse of that width
 
 | Page | Rows |
 |---|---|
-| Layer | Title `LAYER L<layer>/<layers> T<track>`. Track (the grid's selected track: turning it moves the cursor's row, and the rows below it edit that row), Level (the Track row's volume, 0-100 % in 5 % steps), Key (filter key tracking, 0-100 %, pivot = main menu Root in octave 4; melodic layers), Follow, Repeat, Mute, Solo, ClrSolo (action, present only while something is soloed), Frame (wavetable tracks, see above), Unison (dive, melodic), PCM (dive, drum layer on the PCM engine), then the layer-wide rows Steps, Swing, Patch scope, Gate, Glide, Groove, Chord, Root, Type. Drum layers show `--` for melodic-only rows |
+| Layer | Title `LAYER L<layer>/<layers> T<track>`. Track (the grid's selected track: turning it moves the cursor's row, and the rows below it edit that row), Level (the Track row's volume, 0-100 % in 5 % steps), Key (filter key tracking, 0-100 %, pivot = main menu Root in octave 4; melodic layers), Follow, Repeat, Mute, Solo, ClrSolo (action, present only while something is soloed), Frame (wavetable tracks, see above), Unison (dive, melodic), PCM (dive, drum layer on the PCM engine), then the layer-wide rows Steps, Swing, Patch scope, Gate, Glide, Groove, Chord, Root, Type. Drum layers show `--` for melodic-only rows. The page has two more entries, reached with SHIFT + Button 3. ARP (from the arp screen): Level, Key, Mute, Solo, ClrSolo, Unison (dive), Gate (10-100 %, 5 % steps), Glide. Mute silences the arp without switching it off; Solo makes the arp a member of the solo set, so it plays alongside soloed rows and mutes everything unsoloed. LIVE (from the Wireless page): Level, Key, Unison (dive), Glide; `< Back` returns to the Wireless page. Their Unison page edits the arp's or live voice's own unison, with the same rows and limits as a track's (the arp's is saved with the project, the live voice's lasts the session) |
 | Chords | Slot list CH1..CH8; a slot opens Root, Type, Clear. Every edit commits at once and auditions |
 | Bounce | Shape rows (slot, bars, format, tail, after), Rec, Cancel, Undo, four rows per clip slot (play/mute, level, tempo, clear), Sample and its cancel |
 | Prog Gen | Root, Scale, Arp Q, Style, Length, Bars, Ext, Var, Seed, Generate, Undo |
@@ -188,7 +187,7 @@ selected and adjusted with the encoder.
 | Encoder click | Enter / leave adjusting the selected point. The sustain point cycles level, then time (when explicit decay is on), then back to selecting. In a sub-mode (below): leave the sub-mode |
 | Encoder turn, adjusting | Change the point's value. Time steps scale with the segment length. The axis switches between a 2 s and a 15 s range on its own |
 | Button 1 (press) | Cycle the shown envelope's curve type: Normal, Linear, DX7, TrueExp |
-| Button 2 (press) | Cycle the sub-mode: off, AMP (amplitude trim, 5 % steps; arp, live voice and drones only - a sequencer row sets its level on the Layer page's Level row), SWG (layer swing; melodic rows reading the layer block, EG0 page only), then one stop per routing target PIT / CUT / DRV / MIX on rows carrying the depth matrix. The EG1 page starts straight on the target stops |
+| Button 2 (press) | Cycle the sub-mode: off, AMP (amplitude trim, 5 % steps; live voice and drones only - a sequencer row sets its level on the Layer page's Level row, the arp on the ARP entry's Level row), SWG (layer swing; melodic rows reading the layer block, EG0 page only), then one stop per routing target PIT / CUT / DRV / MIX on rows carrying the depth matrix. The EG1 page starts straight on the target stops |
 | SHOULDER (press) | Target stop up: flip the sign of that depth |
 | Button 3 (tap) | Next editor: EG0, EG1, Filter, LFO, DIST, back to EG0. Targets without an EG1 page skip it |
 | Button 0 (tap) | Commit and close |
@@ -197,7 +196,7 @@ selected and adjusted with the encoder.
 | SHIFT + Button 2 | Release the open tab (EG0 or EG1) to the patch |
 | SHIFT + Button 3 | Flip the voice-block source |
 
-Routing depth steps: 0.05 per detent on MIX, 0.25 octave on the others.
+Routing depth steps per detent: on PIT 0.01 octave below 0.2, 0.05 from 0.2 to 1.0, 0.25 from 1.0 (turning back toward 0 takes the finer step at a boundary: 1.00 -> 0.95, 0.20 -> 0.19); 0.05 on MIX and SCN, 0.25 octave on CUT and DRV.
 Live preview: edits sound at once; cancel restores.
 
 ## Filter editor
@@ -212,23 +211,21 @@ Live preview: edits sound at once; cancel restores.
 | Button 0 (tap / hold) | Commit / cancel and close |
 | SHIFT + Button 1 / 2 / 3 | Commit and close / release to patch / flip source |
 
-The stutter drone's filter has only cutoff (sweep midpoint) and resonance.
-
 ## LFO editor
 
-Not available on the stutter drone screen.
+While FILTER is a checked target and the surface's filter is on, the header
+shows the cutoff range the LFO sweeps, as low-high Hz (e.g. "550-2.2k").
 
 | Input | Action |
 |---|---|
-| Encoder turn, browsing | Move the cursor (wraps) over the shown tab's target checkboxes, then Wave, Rate, Depth, Flt oct, Wobble rate, Wobble depth, Wobble mode, Enable |
+| Encoder turn, browsing | Move the cursor (wraps) over the seven target checkboxes (Filter, Amp, Pitch, Pan, Scan, Drive, Mix; the list scrolls, five rows at a time), then Wave, Rate, Depth, Flt oct, Wobble rate, Wobble depth, Wobble mode, Enable |
 | Encoder click | Checkbox, Enable, Wobble mode: toggle / cycle directly. Other rows: enter / leave editing |
 | Encoder turn, editing | Wave and Rate: cycle. Depth: 1 % steps up to 10, then 5 %. Flt oct: quarter octaves. Wobble depth: whole dB |
-| SHOULDER (tap) | Flip the target checklist between its two tabs (the second tab holds the distortion targets) |
 | Button 3 (tap) | Next editor |
 | Button 0 (tap / hold) | Commit / cancel and close |
 | SHIFT + Button 1 / 2 / 3 | Commit and close / release to patch / flip source |
 
-Button 1 does nothing here.
+Button 1 and SHOULDER do nothing here.
 
 ## DIST editor
 
@@ -259,13 +256,19 @@ Both are a scrollable parameter list.
 | Input | Action |
 |---|---|
 | Encoder turn, browsing | Move the cursor (clamped) |
-| Encoder click | Enter / leave editing. Normal drone, STUTTER row: open the stutter drone. Stutter drone, visualiser row: open the visualiser; any click closes it and the encoder is inert there |
+| Encoder click | Enter / leave editing. Normal drone, STUTTER row: open the stutter drone |
 | Encoder turn, editing | Change the value |
 | Button 1 hold + turn | Cycle the drone's patch |
 | Button 0 (hold) | Play / stop. A tap does nothing |
 | Button 2 | Ignored |
 | Button 3 (tap) | Menu (the way back to the normal drone from the stutter drone) |
-| SHIFT + Button 1 | Open the ADSR editor on the drone. Editors then cycle EG0, EG1, Filter, LFO, DIST (normal drone: no EG1 page; stutter drone: no LFO or DIST tab) |
+| SHIFT + Button 1 | Open the ADSR editor on the drone. Editors then cycle EG0, EG1, Filter, LFO, DIST |
+
+Each drone's PATCH row names its patch and, while editing, cycles the same
+patch list as Button 1 hold + turn. On the stutter drone, LEVEL and DUCK set
+the gate's on and off levels, and the PATTERN row draws its 8 steps (filled =
+open). Its filter, its sweep (the LFO editor's FILTER target) and its
+distortion live in the shared editors.
 
 The FOLLOW row after CHORD (both drones, wraps) sets how the drone follows
 the chord progression: OFF plays its own ROOT and CHORD, ROOT moves its own

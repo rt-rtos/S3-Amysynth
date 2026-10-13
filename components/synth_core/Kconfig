@@ -287,15 +287,48 @@ config SEQ_MELODIC_AMY_NATIVE_LFO
 	bool "Use AMY built-in LFO for melodic wave patches"
 	default y
 	help
-		When enabled, melodic tracks using wave patches (SINE, SAW, etc.)
-		drive the LFO via AMY's native modulation oscillator (osc 1 per
-		voice, mod_source=1), mirroring the arp implementation.  Bass and
-		Juno/DX7 patch-based tracks continue to use the software service
-		loop so there is no regression on those patch types.
-		PAN target and RANDOM waveform always fall back to the software
-		path even when this option is enabled, since the AMY native LFO
-		does not support them (same limitation as the arp).
-		Disable to revert all melodic LFO to the software accumulator.
+		When enabled, melodic tracks on raw waves, wavetables and bass
+		presets drive the LFO through AMY's native modulation (every
+		target, RANDOM as NOISE sample-and-hold). With SEQ_LFO_SHARED on,
+		that is a shared LFO synth wired through mod slot 1 and the voices
+		reserve no LFO oscs; with it off, each voice reserves a trailing
+		carrier and wobble osc and the audible oscs name the carrier as
+		mod_source. Patch strings (Juno, DX7, FM) use the shared LFO synths
+		when SEQ_LFO_SHARED is on and the software stepper otherwise.
+		Disable to put every wave-track LFO on the software stepper.
+
+config SEQ_MEL_SLOT_COUNT
+	int "Melodic synth slots (polyphony arena)"
+	default 52
+	range 8 200
+	help
+		AMY synth slots in the melodic sequencer's arena, above the static
+		slots (arp, drones, drums, live voice, clip players). Each melodic
+		row claims one slot. The real ceiling is AMY's osc pool (max_oscs);
+		the slot map plus LFO_SYNTH_MAX must fit AMY's 8-bit synth number.
+
+config SEQ_LFO_SHARED
+	bool "Shared LFO synths (experimental)"
+	default y
+	help
+		Every tempo-synced LFO runs as an osc in a small AMY synth of its
+		own, shared by every voice that uses the same LFO settings and
+		named through mod slot 1. Replaces the software stepper on patch
+		strings and the per-voice carrier oscs on wave voices; the stepper
+		remains the fallback when no shared LFO is free. Off keeps the
+		per-voice native carriers and the stepper.
+
+config LFO_SYNTH_MAX
+	int "Shared LFO synths at once"
+	default 16
+	range 1 32
+	depends on SEQ_LFO_SHARED
+	help
+		Most distinct LFO settings that can run as shared LFO synths at the
+		same time. Each one takes an AMY synth number above the slot map,
+		one AMY voice and two oscs (carrier and wobble) while in use; an
+		unused number costs a table entry. An LFO past this count falls
+		back to the software stepper.
 
 config SYNTH_CUSTOM_FM
 	bool "Custom FM/DX7 6-operator voices (WIP)"

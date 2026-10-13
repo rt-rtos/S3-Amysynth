@@ -10,20 +10,39 @@
 #include "sequencer_core.h"    /* SEQ_PATCH_BASS_* */
 #include "amy.h"               /* PULSE, SAW_DOWN, SINE, FILTER_LPF24, COEF_*, ENVELOPE_* */
 #include "amy_helpers.h"       /* amy_helpers_event_begin/send */
-#include "voice_config.h"      /* voice_park_oscs (reserved LFO pair) */
+#include "voice_config.h"      /* voice_park_oscs, VOICE_LFO_PAIR_OSCS */
+
+/* Each preset's amp CONST on osc 0 and osc 1: the balance between its two
+ * audible oscs. Indexed by patch - SEQ_PATCH_BASS_BASE. */
+static const float s_bass_osc_level[SEQ_PATCH_BASS_MAX - SEQ_PATCH_BASS_BASE + 1][2] = {
+    { 1.0f, 0.8f },   /* BASS_1: saw slightly quieter than the carrier */
+    { 1.0f, 0.7f },   /* BASS_2 */
+    { 1.0f, 0.7f },   /* BASS_3 */
+};
+
+float bass_preset_osc_level(uint16_t patch, uint8_t osc)
+{
+    if (patch < SEQ_PATCH_BASS_BASE || patch > SEQ_PATCH_BASS_MAX || osc > 1u)
+        return 1.0f;
+    return s_bass_osc_level[patch - SEQ_PATCH_BASS_BASE][osc];
+}
 
 void bass_preset_configure_track(uint8_t synth_id, uint16_t patch,
                                  uint16_t num_voices)
 {
-    /* 2 audible oscs per voice plus a reserved native-LFO carrier pair at
-     * osc2/osc3 (sequencer_core_lfo_native_layout), parked until an LFO is
-     * authored: notes reach every osc of the voice (voice_park_oscs). */
+    /* 2 audible oscs per voice. Without CONFIG_SEQ_LFO_SHARED a native-LFO
+     * carrier pair follows at osc2/osc3 (sequencer_core_lfo_native_layout),
+     * parked until an LFO is authored: notes reach every osc of the voice
+     * (voice_park_oscs). With it the LFO is a shared LFO synth and nothing is
+     * reserved. */
     amy_event *e = amy_helpers_event_begin();
     e->synth          = synth_id;
     e->num_voices     = num_voices;
-    e->oscs_per_voice = 4;
+    e->oscs_per_voice = 2u + VOICE_LFO_PAIR_OSCS;
     amy_helpers_event_send(e);
+#if !CONFIG_SEQ_LFO_SHARED
     voice_park_oscs(synth_id, 2, 4);
+#endif
 
     if (patch == SEQ_PATCH_BASS_1) {
         /* ─── Preset 264: Classic Sub-Heavy Detune Bass ─────────────────
@@ -37,7 +56,7 @@ void bass_preset_configure_track(uint8_t synth_id, uint16_t patch,
         e->osc                            = 0;
         e->wave                           = PULSE;
         e->freq_coefs[COEF_NOTE]          = 1.0f;
-        e->amp_coefs[COEF_CONST]          = 1.0f;
+        e->amp_coefs[COEF_CONST]          = bass_preset_osc_level(patch, 0);
         e->amp_coefs[COEF_VEL]            = 1.0f;
         e->amp_coefs[COEF_EG0]            = 1.0f;
         e->filter_type                    = FILTER_LPF24;
@@ -62,7 +81,7 @@ void bass_preset_configure_track(uint8_t synth_id, uint16_t patch,
         e->wave                   = SAW_DOWN;
         e->freq_coefs[COEF_NOTE]  = 1.0f;
         e->freq_coefs[COEF_CONST] = ZERO_LOGFREQ_IN_HZ * 1.005f;
-        e->amp_coefs[COEF_CONST] = 0.8f;    /* slightly quieter than carrier */
+        e->amp_coefs[COEF_CONST] = bass_preset_osc_level(patch, 1);
         e->amp_coefs[COEF_VEL]   = 1.0f;
         e->amp_coefs[COEF_EG0]   = 1.0f;
         e->eg_type[0]            = ENVELOPE_NORMAL;
@@ -85,7 +104,7 @@ void bass_preset_configure_track(uint8_t synth_id, uint16_t patch,
         e->osc                   = 0;
         e->wave                  = SINE;
         e->freq_coefs[COEF_NOTE] = 1.0f;
-        e->amp_coefs[COEF_CONST] = 1.0f;
+        e->amp_coefs[COEF_CONST] = bass_preset_osc_level(patch, 0);
         e->amp_coefs[COEF_VEL]   = 1.0f;
         e->amp_coefs[COEF_EG0]   = 1.0f;
         e->chained_osc           = 1;         /* voice-local osc 1 */
@@ -102,7 +121,7 @@ void bass_preset_configure_track(uint8_t synth_id, uint16_t patch,
         e->osc                            = 1;
         e->wave                           = SAW_DOWN;
         e->freq_coefs[COEF_NOTE]          = 1.0f;
-        e->amp_coefs[COEF_CONST]          = 0.7f;
+        e->amp_coefs[COEF_CONST]          = bass_preset_osc_level(patch, 1);
         e->amp_coefs[COEF_VEL]            = 1.0f;
         e->amp_coefs[COEF_EG0]            = 1.0f;
         e->filter_type                    = FILTER_LPF24;
@@ -131,7 +150,7 @@ void bass_preset_configure_track(uint8_t synth_id, uint16_t patch,
         e->osc                   = 0;
         e->wave                  = PULSE;
         e->freq_coefs[COEF_NOTE] = 1.0f;
-        e->amp_coefs[COEF_CONST] = 1.0f;
+        e->amp_coefs[COEF_CONST] = bass_preset_osc_level(patch, 0);
         e->amp_coefs[COEF_VEL]   = 1.0f;
         e->amp_coefs[COEF_EG0]   = 1.0f;
         e->chained_osc           = 1;         /* voice-local osc 1 */
@@ -149,7 +168,7 @@ void bass_preset_configure_track(uint8_t synth_id, uint16_t patch,
         e->wave                  = SAW_DOWN;
         e->freq_coefs[COEF_NOTE]  = 1.0f;
         e->freq_coefs[COEF_CONST] = ZERO_LOGFREQ_IN_HZ * 0.5f;   /* one octave below carrier */
-        e->amp_coefs[COEF_CONST]  = 0.7f;
+        e->amp_coefs[COEF_CONST]  = bass_preset_osc_level(patch, 1);
         e->amp_coefs[COEF_VEL]   = 1.0f;
         e->amp_coefs[COEF_EG0]   = 1.0f;
         e->eg_type[0]            = ENVELOPE_NORMAL;

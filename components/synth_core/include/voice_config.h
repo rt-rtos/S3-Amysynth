@@ -1,8 +1,10 @@
 #pragma once
 
 /* Shared voice-config layer: leaf utilities, canonical constants, the WAVE
- * voice skeleton and the native-LFO topology appliers used by every engine. */
+ * voice skeleton, the LFO source pair and slot-1 wiring, and (without
+ * CONFIG_SEQ_LFO_SHARED) the native-LFO topology appliers. */
 
+#include "sdkconfig.h"
 #include "seq_model.h"     /* seq_env_t, lfo_wave_t */
 #include <stdbool.h>
 #include <stdint.h>
@@ -13,7 +15,16 @@
  * (COEF_MOD) path AND the software-stepper pushes (sequencer/arp/live),
  * which must multiply the same scalar inside their powf(2, ...) term. */
 #define VOICE_LFO_DEPTH_FILTER 3.0f
-#define VOICE_LFO_DEPTH_AMP    0.5f
+/* Amp is AMY's dB combine (amp_combine_controls, amy.c): a COEF_MOD weight w
+ * on a +-1 carrier is a gain swing of 10^(+-3w), symmetric about the authored
+ * level, so the loud half-cycle overshoots the unmodulated note. The shared
+ * wire keeps the dip and removes the overshoot by pre-dropping the synth's
+ * level (amy_event.synth_level, which nothing else in the app writes) by the
+ * same 10^(-3w): the swing then runs from 10^(-6w) up to the unmodulated
+ * level, a 30 dB tremolo at 100 % depth that is never louder than the note.
+ * The software stepper's AMP (lfo_push_amp) dips linearly from unity to
+ * 1 - depth. */
+#define VOICE_LFO_DEPTH_AMP    0.25f
 /* Pitch is log2: 1.0 = a full octave at 100% depth, which made even 5%
  * (+-60 cents) heavy vibrato. One semitone at 100% puts the whole musical
  * vibrato range on the knob - depth% ~= 1.2 cents/%. Octave-scale sweeps
@@ -130,9 +141,18 @@ void voice_params_init_defaults(voice_params_t *vp);
  * replacing the 20 Hz software lfo_next_rand() poll. */
 uint16_t voice_lfo_wave_to_amy(lfo_wave_t wave);
 
+/* Oscs a wave-topology voice (sequencer_core_lfo_wave_layout()) reserves
+ * above its audible layout for a per-voice LFO carrier and wobble: none with
+ * CONFIG_SEQ_LFO_SHARED (the LFO is a shared LFO synth), the pair otherwise. */
+#if CONFIG_SEQ_LFO_SHARED
+#define VOICE_LFO_PAIR_OSCS 0u
+#else
+#define VOICE_LFO_PAIR_OSCS 2u
+#endif
+
 /* ── Shared WAVE-voice skeleton ──────────────────────────────────────────
- * The canonical "N voices, osc0 = note-following carrier" build used by the
- * arp, drone and melodic sequencer. Sends the pool definition, the audible
+ * The canonical "N voices, osc0 = note-following carrier" build behind every
+ * wave patch on the shared apply path (melodic rows, arp, live, drones). Sends the pool definition, the audible
  * skeleton, and a park (amp CONST 0, MOD rails cleared) for every osc above
  * the audible layout up to oscs_per_voice. Guarantee: a reserved osc never
  * sounds until its owner configures it - a note with no osc named reaches
@@ -147,10 +167,11 @@ uint16_t voice_lfo_wave_to_amy(lfo_wave_t wave);
 typedef struct {
     uint8_t  synth;
     uint8_t  num_voices;
-    uint8_t  oscs_per_voice;       /* 3 when oscs 1-2 are reserved as the LFO pair */
+    uint8_t  oscs_per_voice;       /* audible oscs + any reserved above them
+                                      (VOICE_LFO_PAIR_OSCS)                   */
     uint16_t wave;                 /* AMY wave constant for osc0           */
-    float    osc0_amp_const;       /* arp/melodic 1.0; drone const_sent    */
-    float    osc0_amp_vel;         /* arp/melodic 1.0; drone 0.0           */
+    float    osc0_amp_const;       /* the shared apply path: 1.0           */
+    float    osc0_amp_vel;         /* the shared apply path: 1.0           */
     bool     ks_feedback_authored; /* authored feedback drives KS decay    */
     float    ks_feedback;          /* seq_filter_t.feedback (0..1) when authored;
                                       <= 0 or unauthored -> fixed 0.9 default */
@@ -185,7 +206,8 @@ typedef struct {
  * osc 0, R is osc 1 - so copy_osc returns the group osc and the "heads" are
  * the two cluster oscs. Fan: copy i is osc i. `layout` is a
  * voice_unison_layout_t (seq_model.h). */
-uint8_t voice_unison_oscs_per_voice(uint8_t n, uint8_t layout); /* n+2 / n+4 / 4 */
+/* Pool shape: fan n, headed n + 2, engine 2, each plus VOICE_LFO_PAIR_OSCS. */
+uint8_t voice_unison_oscs_per_voice(uint8_t n, uint8_t layout);
 uint8_t voice_unison_copy_osc(uint8_t i, uint8_t n, uint8_t layout);
 uint8_t voice_unison_head_osc(uint8_t group, uint8_t n, uint8_t layout); /* 0: L, 1: R */
 uint8_t voice_unison_copies_mask(uint8_t n, uint8_t layout);    /* bit = osc */
@@ -222,8 +244,8 @@ void voice_push_unison_live(uint8_t synth, const voice_unison_t *u,
  *
  * Applies to any synth the caller names, patch-backed or wave-backed. If a
  * future patch layout needs excluding, gate at the call sites the way the LFO
- * editor gates WOBBLE on sequencer_core_lfo_native_layout(); nothing here
- * inspects the target's topology. */
+ * editor gates WOBBLE on the consumer's LFO path; nothing here inspects the
+ * target's topology. */
 
 /* Clamp a block to the documented field ranges, in place. Callers that accept
  * values from the wire, a snapshot, or the UI run this before storing. */
@@ -242,24 +264,30 @@ void voice_apply_dist_osc(uint8_t synth, uint8_t osc, const seq_dist_t *d);
  * swept drive and/or mix - whichever of LFO_TARGET_DIST_DRIVE / DIST_MIX the
  * caller checked in lfo->targets - around the committed `base` block, and
  * writes ONLY the drive/mix coefs' CONST term (type/bits/rate stay whatever the
- * dist editor last applied). Only tracks that
- * sequencer_core_lfo_native_layout() rejects reach this stepper; the others
- * drive distortion through voice_apply_native_lfo_topo(). The law here matches
- * the native rail exactly. No-op when the shaper is OFF - an inert target, not
- * an implicit enable. Core-0 / UI-task only. */
+ * dist editor last applied). Only voices with no modulator osc reach this
+ * stepper: not bound to a shared LFO synth (voice_lfo_wire), and without
+ * CONFIG_SEQ_LFO_SHARED not on native carriers either
+ * (voice_apply_native_lfo_topo). The law here matches the rails exactly.
+ * No-op when the shaper is OFF - an inert target, not an implicit enable.
+ * Core-0 / UI-task only. */
 void voice_push_dist_lfo(uint8_t synth, const seq_dist_t *base,
                          const seq_lfo_t *lfo, float val);
 
 /* Park voice-relative oscs [first, end) of every voice of `synth`: amp CONST
  * 0 (render skips the osc) and its amp/freq MOD rails cleared. For builders
- * outside voice_build_wave that reserve oscs (the bass presets' LFO pair);
+ * outside voice_build_wave that reserve oscs (the bass presets' LFO pair
+ * without CONFIG_SEQ_LFO_SHARED);
  * voice_build_wave parks its own. Send after the pool definition, before
  * any configuration of those oscs. Core-0 / UI-task only. */
 void voice_park_oscs(uint8_t synth, uint8_t first, uint8_t end);
 
-/* Apply the AMY-native mod-source LFO routing for one synth built by
- * voice_build_wave() with oscs_per_voice=3: osc0 gets mod_source=1 plus the
- * selected target's COEF_MOD depth, osc1 becomes the LFO carrier at the
+#if !CONFIG_SEQ_LFO_SHARED
+/* Native per-voice carriers: compiled only without CONFIG_SEQ_LFO_SHARED,
+ * whose voices reserve no carrier pair.
+ *
+ * Apply the AMY-native mod-source LFO routing for one synth built by
+ * voice_build_wave() with oscs_per_voice=3: osc0 gets mod_source=1 plus a
+ * COEF_MOD depth for each checked target, osc1 becomes the LFO carrier at the
  * BPM-synced rate. Pass lfo=NULL (or a disabled lfo) to deactivate: the mod
  * coupling is cleared and the carrier silenced.
  *
@@ -281,7 +309,57 @@ void voice_apply_native_lfo(uint8_t synth, const seq_lfo_t *lfo, uint16_t bpm);
  * the pitch and the heads carry the per-voice stages. Every osc in either mask
  * gets mod_source and a full sibling clear. Derive the masks from
  * seq_track_voice_layout() / sequencer_core_lfo_native_layout(), never hardcode
- * osc indices. */
+ * osc indices. The carrier pair itself is configured by
+ * voice_lfo_source_apply(). */
 void voice_apply_native_lfo_topo(uint8_t synth, const seq_lfo_t *lfo,
                                  uint16_t bpm, uint8_t carrier_osc,
                                  uint8_t pitch_mask, uint8_t voice_mask);
+#endif
+
+/* ── LFO source pair ─────────────────────────────────────────────────────
+ * The one carrier/wobble law, used by the LFO bank (lfo_bank.h; the pair is
+ * a synth of its own) and, without CONFIG_SEQ_LFO_SHARED, by the native
+ * topology above (the pair inside a consumer's voice). carrier_osc / wobble_osc are voice-relative.
+ * Enabled lfo: the carrier runs voice_lfo_wave_to_amy(wave) at
+ * lfo_rate_to_hz(rate, bpm) with no note, bend, velocity or envelope, amp
+ * CONST 1 (or pre-dropped by the wobble swing), and takes the wobble osc as
+ * its mod_source[0] with the WOB_REACH-selected COEF_MOD rails; the wobble osc
+ * is a TRIANGLE at wob_rate, audible only while wob_depth > 0. NULL or
+ * disabled lfo: both oscs dormant (amp CONST 0) and the carrier's wobble rails
+ * cleared. `targets` and `depth` are not read - they belong to whoever the
+ * carrier modulates.
+ * Core-0 / UI-task only; pushes through amy_helpers (never amy_queue_lock). */
+void voice_lfo_source_apply(uint8_t synth, uint8_t carrier_osc,
+                            uint8_t wobble_osc, const seq_lfo_t *lfo,
+                            uint16_t bpm);
+
+/* BPM refresh of a pair configured by voice_lfo_source_apply(): only the
+ * carrier's and the wobble's freq CONST. NULL lfo: no-op. Core-0 / UI-task
+ * only; pushes through amy_helpers (never amy_queue_lock). */
+void voice_lfo_source_set_rate(uint8_t synth, uint8_t carrier_osc,
+                               uint8_t wobble_osc, const seq_lfo_t *lfo,
+                               uint16_t bpm);
+
+/* mod_synth value that unwires a mod slot. AMY unsets the slot for any synth
+ * number >= its max_synths; 0xFFFF is AMY's unset sentinel, which a delta
+ * reads as "no change", so the unwire value sits one below it. */
+#define LFO_WIRE_UNSET 0xFFFEu
+
+/* Wire one consumer synth to a shared LFO synth (lfo_bank_acquire()) through
+ * mod slot 1: one synth-addressed event per osc in voice_mask | pitch_mask |
+ * scan_mask (bit n = voice-relative osc n, so it reaches osc n of every
+ * voice), setting mod_synth[1] = lfo_synth, clearing all seven COEF_MOD1 rails
+ * and then writing each checked target's depth with the same law as
+ * voice_apply_native_lfo_topo()'s COEF_MOD: PITCH on pitch_mask oscs, SCAN on
+ * scan_mask oscs, FILTER, AMP, PAN (with pan CONST 0.5) and DIST on voice_mask
+ * oscs. AMP also sends one synth-scoped event with synth_level =
+ * 10^(-3 * depth * VOICE_LFO_DEPTH_AMP), the overshoot cap described at that
+ * scalar; every other call writes synth_level 1.0 there, so an unwire or a
+ * target change restores the level. NULL lfo, a disabled lfo, no targets or
+ * lfo_synth == LFO_BANK_NONE unwire instead: mod_synth[1] = LFO_WIRE_UNSET
+ * and every COEF_MOD1 rail 0.
+ * Idempotent and state-clean, like the native applier. Masks come from
+ * lfo_targets_of_patch() or the consumer's own layout.
+ * Core-0 / UI-task only; pushes through amy_helpers (never amy_queue_lock). */
+void voice_lfo_wire(uint8_t synth, uint16_t voice_mask, uint16_t pitch_mask,
+                    uint16_t scan_mask, const seq_lfo_t *lfo, uint8_t lfo_synth);

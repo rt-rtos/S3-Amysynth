@@ -6,6 +6,7 @@
 #include "sequencer_core.h"
 #include "seq_core_config.h"  /* SEQ_LFO_SW_MAX_HZ, SEQ_MEL_PATCH */
 #include "voice_config.h"   /* voice_params_init_defaults, env bounds, LFO apply */
+#include "lfo_bank.h"       /* shared LFO synths (lfo_bank_bind) */
 #include "seq_clamp.h"
 #include "esp_log.h"
 #include <math.h>           /* sinf/powf - software LFO stepper (UI task) */
@@ -44,6 +45,10 @@ static uint16_t s_patch_mem_patch = 138;                  /* DX7 E.PIANO 1 */
 /* Glide time (ms) between note pitches, AMY-native portamento. Same range as
  * the arp / melodic layer Glide (1 ms per encoder detent). */
 static uint16_t s_glide_ms = 0;
+
+/* Unison spec (count 0 = never set: live_play_get_unison's defaults).
+ * Session-only, like the rest of the voice's state. */
+static voice_unison_t s_unison;
 
 /* Runtime-editable voice params, the same block every other engine embeds.
  * Defaults land on first ensure_ready so amp_trim starts at unity, not 0. */
@@ -111,6 +116,44 @@ static void live_note(uint8_t note, float velocity)
     amy_helpers_event_send(e);
 }
 
+/* Effective unison copies the slot is built with: the stored count through
+ * the shared clamp (a never-set count of 0 gives 1). */
+static uint8_t live_unison_copies(void)
+{
+    return sequencer_core_unison_copies_for(s_patch, s_unison.count, LIVE_VOICES);
+}
+
+/* The stored spec carrying the effective count and the global backend. */
+static voice_unison_t live_unison_eff(void)
+{
+    voice_unison_t eff;
+    live_play_get_unison(&eff);
+    eff.count = live_unison_copies();
+    return eff;
+}
+
+/* Osc layout of one live voice as built (sequencer_core_voice_layout); false
+ * for patches that are not wave-topology. */
+static bool live_voice_layout(seq_voice_layout_t *vl)
+{
+    return sequencer_core_voice_layout(s_patch, live_unison_copies(), vl);
+}
+
+/* One dist block where the voice carries the stage: each head under unison,
+ * else the base osc (mirrors melodic_dist_apply). */
+static void live_push_dist(const seq_dist_t *d)
+{
+    seq_voice_layout_t vl;
+    uint8_t heads = live_voice_layout(&vl) ? vl.heads_mask : 0u;
+    if (!heads) {
+        voice_apply_dist(LIVE_SYNTH, d);
+        return;
+    }
+    for (uint8_t o = 0; (uint8_t)(heads >> o) != 0u; o++)
+        if (heads & (uint8_t)(1u << o))
+            voice_apply_dist_osc(LIVE_SYNTH, o, d);
+}
+
 /* Push the stored filter plus its envelope routing matrix (eg_depth, in its
  * own event, all eight slots once the filter block is authored). Mirrors
  * arp_apply_filter(), including its KS branch for the raw KS patch. EG1
@@ -141,9 +184,8 @@ static void live_apply_filter(const seq_filter_t *f)
 
     sequencer_core_push_eg_depths(LIVE_SYNTH, sequencer_core_patch_voice_osc(s_patch), f, s_vp.filter_authored);
     if (sequencer_core_is_wavetable_patch(s_patch)) {
-        uint8_t carrier, coupled;
-        uint8_t mask = sequencer_core_lfo_native_layout(s_patch, &carrier, &coupled)
-                     ? coupled : 0x01u;
+        seq_voice_layout_t vl;
+        uint8_t mask = live_voice_layout(&vl) ? vl.pitch_mask : 0x01u;
         sequencer_core_push_eg_scan(LIVE_SYNTH, mask, f, s_vp.filter_authored);
     }
 
@@ -162,18 +204,48 @@ static void live_push_glide(void)
     amy_helpers_event_send(e);
 }
 
-/* Apply or park the native LFO where sequencer_core_lfo_native_layout() says
- * so; other patches get the software stepper below. Parking a never-authored
- * voice is a coupled-osc-only clear - the carrier pair stays unmaterialized
- * (voice_config.h). */
+#if CONFIG_SEQ_LFO_SHARED
+/* The shared LFO synth LIVE_SYNTH holds (lfo_bank.h); LFO_BANK_NONE while the
+ * software stepper serves it, or nothing does. */
+static uint8_t s_live_lfo_ref = LFO_BANK_NONE;
+#endif
+
+/* With CONFIG_SEQ_LFO_SHARED: a shared LFO synth over the wave-topology
+ * coupled oscs or a patch string's lfo_targets map; when the bank is full,
+ * the LFO is off or the patch has no map, the software stepper below serves
+ * it. Without it: apply or park the native LFO where
+ * sequencer_core_lfo_native_layout() says so; other patches get the software
+ * stepper. Parking a never-authored voice is a coupled-osc-only clear - the
+ * carrier pair stays unmaterialized (voice_config.h). */
 static void live_apply_lfo(void)
 {
-    uint8_t carrier, coupled;
-    if (!sequencer_core_lfo_native_layout(s_patch, &carrier, &coupled)) return;
     bool on = s_vp.lfo_authored && s_vp.lfo.enabled;
+    uint16_t bpm = sequencer_core_get_bpm();
+#if CONFIG_SEQ_LFO_SHARED
+    lfo_target_map_t map;
+    seq_voice_layout_t vl;
+    bool mapped;
+    if (live_voice_layout(&vl)) {
+        /* SCAN rides the pitch mask, as on a row (melodic_lfo_apply_runtime). */
+        map = (lfo_target_map_t){ .voice_mask = vl.voice_mask,
+                                  .pitch_mask = vl.pitch_mask,
+                                  .scan_mask  = vl.pitch_mask };
+        mapped = true;
+    } else {
+        mapped = lfo_targets_of_patch(s_patch, &map);
+    }
+    if (mapped)
+        (void)lfo_bank_bind(LIVE_SYNTH, &map, on ? &s_vp.lfo : NULL, bpm,
+                            &s_live_lfo_ref);
+    else
+        lfo_bank_unbind(&s_live_lfo_ref);   /* the patch re-apply unwired it */
+#else
+    seq_voice_layout_t vl;
+    if (!sequencer_core_lfo_native_layout(s_patch, NULL, NULL) || !live_voice_layout(&vl))
+        return;
     voice_apply_native_lfo_topo(LIVE_SYNTH, on ? &s_vp.lfo : NULL,
-                                sequencer_core_get_bpm(), carrier,
-                                coupled, coupled);
+                                bpm, vl.carrier, vl.pitch_mask, vl.voice_mask);
+#endif
 }
 
 /* Re-push whatever the user has authored. Called after every slot configure,
@@ -187,11 +259,24 @@ static void live_apply_authored(void)
         sequencer_core_push_envelope_osc(LIVE_SYNTH, sequencer_core_patch_voice_osc(s_patch), &s_vp.env);
     if (s_vp.env1_authored)   sequencer_core_push_envelope_eg1(LIVE_SYNTH, 0, &s_vp.env1);
     if (s_vp.filter_authored) live_apply_filter(&s_vp.filter);
-    if (s_vp.dist_authored)   voice_apply_dist(LIVE_SYNTH, &s_vp.dist);
-    live_apply_lfo();   /* internal layout guard: no-op for patch strings */
+    if (s_vp.dist_authored)   live_push_dist(&s_vp.dist);
+    live_apply_lfo();   /* internal layout guard: patch strings bank or stepper */
     /* Patch loads reset per-osc portamento_alpha; reassert unconditionally
      * (0 is a valid "off" reassert) - the arp_rebuild discipline. */
     live_push_glide();
+}
+
+/* Configure the slot for s_patch with the effective unison, then re-push the
+ * authored state. The reconfigure kills sounding voices (osc topology may
+ * change), so the held bitmap is cleared and stale note-offs are not replayed
+ * later. */
+static void live_rebuild(void)
+{
+    for (uint8_t w = 0; w < 4; w++) s_held[w] = 0;
+    voice_unison_t eff = live_unison_eff();
+    sequencer_core_configure_synth_slot(LIVE_SYNTH, s_patch, LIVE_VOICES,
+                                        (eff.count > 1u) ? &eff : NULL);
+    live_apply_authored();
 }
 
 void live_play_ensure_ready(void)
@@ -201,8 +286,7 @@ void live_play_ensure_ready(void)
         live_seed_defaults();
         s_vp_inited = true;
     }
-    sequencer_core_configure_synth_slot(LIVE_SYNTH, s_patch, LIVE_VOICES);
-    live_apply_authored();
+    live_rebuild();
     s_ready = true;
     ESP_LOGI(TAG, "live slot %u ready (patch %u, %u voices)",
              (unsigned)LIVE_SYNTH, (unsigned)s_patch, (unsigned)LIVE_VOICES);
@@ -248,12 +332,42 @@ void live_play_set_patch(uint16_t patch_number)
     patch_number = SEQ_CLAMP_U16(patch_number, 0, SEQ_PATCH_FULL_MAX);
     if (s_patch == patch_number) return;
     s_patch = patch_number;
-    if (s_ready) {
-        /* Reconfigure kills sounding voices (osc topology may change);
-         * clear the bitmap so stale note-offs are not replayed later. */
-        for (uint8_t w = 0; w < 4; w++) s_held[w] = 0;
-        sequencer_core_configure_synth_slot(LIVE_SYNTH, s_patch, LIVE_VOICES);
-        live_apply_authored();
+    if (s_ready) live_rebuild();
+}
+
+void live_play_get_unison(voice_unison_t *out)
+{
+    if (!out) return;
+    /* First-turn defaults, as on a row; count 1 keeps them inert. */
+    voice_unison_t u = { 1u, 12u, 50u, 100u, 0u };
+    if (s_unison.count != 0u) u = s_unison;
+    u.layout = sequencer_core_get_unison_layout();
+    *out = u;
+}
+
+uint8_t live_play_unison_max(void)
+{
+    return sequencer_core_unison_max_for(s_patch, LIVE_VOICES);
+}
+
+void live_play_set_unison(const voice_unison_t *u)
+{
+    if (!u) return;
+    uint8_t was = live_unison_copies();
+    voice_unison_t v = *u;
+    v.count        = SEQ_CLAMP_U8(v.count, 1u, VOICE_UNISON_MAX_COPIES);
+    v.detune_cents = SEQ_CLAMP_U8(v.detune_cents, 0u, VOICE_UNISON_MAX_DETUNE);
+    v.spread_pct   = SEQ_CLAMP_U8(v.spread_pct, 0u, 100u);
+    v.blend_pct    = SEQ_CLAMP_U8(v.blend_pct, 0u, 100u);
+    v.layout       = 0u;   /* storage ignores it: the backend is global */
+    s_unison = v;
+    if (!s_ready) return;   /* live_play_ensure_ready() builds it */
+    uint8_t now = live_unison_copies();
+    if (now != was) {
+        live_rebuild();
+    } else if (now > 1u) {
+        voice_unison_t eff = live_unison_eff();
+        voice_push_unison_live(LIVE_SYNTH, &eff, 1.0f);
     }
 }
 
@@ -287,22 +401,39 @@ void live_play_set_glide_ms(uint16_t ms)
 
 bool live_play_lfo_native_eligible(void)
 {
+#if CONFIG_SEQ_LFO_SHARED
+    /* Only a shared LFO synth carries the wobble; the stepper has none. */
+    return s_live_lfo_ref != LFO_BANK_NONE;
+#else
     return sequencer_core_lfo_native_layout(s_patch, NULL, NULL);
+#endif
 }
 
 /* Retune the BPM-synced carrier pair after a tempo change. Full re-apply
  * rather than the arp's targeted freq pushes: menu-rate, and it keeps the
  * depth/wobble coupling in one authoring path. The software stepper needs
- * nothing here - it reads the BPM every frame. */
+ * nothing here - it reads the BPM every frame. A no-op with
+ * CONFIG_SEQ_LFO_SHARED: no per-voice carriers, and the shared synth is
+ * retuned by lfo_bank_set_bpm(). */
 void live_play_refresh_lfo_freq(void)
 {
+#if !CONFIG_SEQ_LFO_SHARED
     if (!s_ready || !s_vp.lfo_authored || !s_vp.lfo.enabled) return;
     live_apply_lfo();
+#endif
+}
+
+void live_play_refresh_key_track(void)
+{
+    const seq_filter_t *f = &s_vp.filter;
+    if (s_ready && s_vp.filter_authored && f->enabled && f->key_track != 0.0f)
+        live_apply_filter(f);
 }
 
 /* ── PATCH-mode software LFO fallback ────────────────────────────────────
- * The 20 Hz stepper for patches without a native layout (live_apply_lfo
- * serves the rest); mirrors arp_swlfo_service. Split and target coverage:
+ * The 20 Hz stepper for voices without a shared LFO synth and, without
+ * CONFIG_SEQ_LFO_SHARED, without a native layout (live_apply_lfo serves the
+ * rest); mirrors arp_swlfo_service. Split and target coverage:
  * ENGINE-SEMANTICS.md, "LFO: native carrier vs software stepper". */
 static float   s_swlfo_phase   = 0.0f;
 static float   s_swlfo_rnd     = 0.0f;
@@ -340,11 +471,19 @@ static float live_swlfo_eval(lfo_wave_t wave, float ph)
 void live_play_lfo_service(void)
 {
     const seq_lfo_t *lfo = &s_vp.lfo;
+#if CONFIG_SEQ_LFO_SHARED
+    /* A shared LFO synth serves the voice: stand down (restoring below). With
+     * no per-voice carriers, every unbound patch, wave or string, is ours. */
+    const bool native = false;
+    bool want = s_ready && s_vp.lfo_authored && lfo->enabled &&
+                lfo->targets != 0 && s_live_lfo_ref == LFO_BANK_NONE;
+#else
     /* The stepper is fully off on native-eligible patches (mirrors the
      * arp/sequencer steppers). */
     bool native = live_play_lfo_native_eligible();
     bool want = s_ready && s_vp.lfo_authored && lfo->enabled &&
                 lfo->targets != 0 && !native;
+#endif
 
     if (!want) {
         if (s_swlfo_active) {
@@ -487,19 +626,19 @@ void live_play_set_dist(const seq_dist_t *d)
     vp->dist = *d;
     voice_dist_clamp(&vp->dist);
     vp->dist_authored = true;
-    if (s_ready) voice_apply_dist(LIVE_SYNTH, &vp->dist);
+    if (s_ready) live_push_dist(&vp->dist);
 }
 
 void live_play_preview_dist(const seq_dist_t *d)
 {
-    if (d && s_ready) voice_apply_dist(LIVE_SYNTH, d);
+    if (d && s_ready) live_push_dist(d);
 }
 
 /* Re-assert after a voice rebuild (patch change) clears the per-osc stage. */
 void live_play_reapply_dist(void)
 {
     voice_params_t *vp = live_vp();
-    if (vp->dist_authored && s_ready) voice_apply_dist(LIVE_SYNTH, &vp->dist);
+    if (vp->dist_authored && s_ready) live_push_dist(&vp->dist);
 }
 
 void live_play_get_lfo(seq_lfo_t *out)
@@ -507,8 +646,8 @@ void live_play_get_lfo(seq_lfo_t *out)
     if (out) *out = live_vp()->lfo;
 }
 
-/* Native where the patch has a carrier pair; otherwise picked up by
- * live_play_lfo_service on its next frame. */
+/* A shared LFO synth or the native carriers take the edit now
+ * (live_apply_lfo); the software stepper picks it up on its next frame. */
 void live_play_set_lfo(const seq_lfo_t *lfo)
 {
     if (!lfo) return;

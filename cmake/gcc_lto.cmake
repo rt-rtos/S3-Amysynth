@@ -41,8 +41,14 @@ set(AMYSYNTH_LTO_COMPRESSION "9" CACHE STRING "GCC -flto-compression-level (0-19
 
 set(GCC_LTO_COMPILE_OPTIONS -flto=auto -ffat-lto-objects
                             -flto-compression-level=${AMYSYNTH_LTO_COMPRESSION})
+# -mtext-section-literals: each function's literals go in its own text
+# section, beside it. A single ltrans unit (partition "one") otherwise keeps
+# one literal pool for the whole program, and a function placed more than
+# 256 KB after it is out of l32r's reach ("dangerous relocation: l32r:
+# literal target out of range"); app_main hit that as the unit grew.
 set(GCC_LTO_LINK_OPTIONS    -flto -fuse-linker-plugin -ffat-lto-objects
                             -flto-partition=${AMYSYNTH_LTO_PARTITION}
+                            -mtext-section-literals
                             -Werror=lto-type-mismatch)
 
 function(gcc_lto_enable)

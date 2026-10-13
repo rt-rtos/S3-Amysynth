@@ -9,48 +9,73 @@ it.
 
 ## LFO: native carrier vs software stepper
 
-An LFO reaches the sound one of two ways, chosen per patch by one predicate,
-`sequencer_core_lfo_native_layout()` (`sequencer_core.h`).
+With `CONFIG_SEQ_LFO_SHARED` (the default) an LFO reaches the sound one of two
+ways: a shared LFO synth, or the software stepper when none can be had.
 
 ```mermaid
 flowchart TD
-    P["Patch on the row / arp / live voice"] --> Q{"sequencer_core_lfo_native_layout()"}
-    Q -->|"raw wave, wavetable, bass preset, standard drone"| N["Native: reserved carrier pair,<br/>COEF_MOD rails, no stepping"]
-    Q -->|"Juno / DX7 / FM / additive string"| S["Software: 20 Hz stepper<br/>rewrites COEF_CONST"]
+    C["Row / arp / live voice / standard drone"] --> M{"target map?"}
+    M -->|"wave topology: sequencer_core_lfo_wave_layout()<br/>patch string: lfo_targets_of_patch()"| B{"lfo_bank_bind()"}
+    M -->|"no map: piano, additive"| S["Software: 20 Hz stepper<br/>rewrites COEF_CONST"]
+    B -->|"BANK"| L["Shared LFO synth on mod slot 1,<br/>COEF_MOD1 rails, no stepping"]
+    B -->|"FULL"| S
+    B -->|"OFF: disabled, no targets"| O["Unwired, neutrals restored"]
 ```
 
-**Native.** The voice reserves a trailing osc pair: the carrier (an AMY
-oscillator at the BPM-synced LFO rate, RANDOM mapped to the NOISE sample-and-
-hold) and the wobble modulator chained behind it. The audible oscs name the
-carrier as `mod_source`, and each checked target's COEF_MOD depth is set once
-(`voice_apply_native_lfo_topo()`, `voice_config.c`): filter, amp, pitch, scan,
-pan and both distortion rails. Nothing is stepped, so there is no zipper. The
-per-target depth scalars are the `VOICE_LFO_DEPTH_*` constants in
-`voice_config.h`.
+**Shared LFO synth.** Every distinct LFO source (wave, rate and the three
+wobble settings) runs once, as a two-osc AMY synth of its own above the slot
+map (`lfo_bank.h`): the carrier at the BPM-synced rate, RANDOM mapped to the
+NOISE sample-and-hold, and the wobble modulator chained behind it
+(`voice_lfo_source_apply()`). Every voice using that source names the synth in
+its mod slot 1, and each checked target's COEF_MOD1 depth is set once
+(`voice_lfo_wire()`, `voice_config.c`): filter, amp, pitch, scan, pan and both
+distortion rails. Nothing is stepped, so there is no zipper. The per-target
+depth scalars are the `VOICE_LFO_DEPTH_*` constants in `voice_config.h`.
+The LFO synth is created free-running (`SYNTH_FLAGS_FREE_RUN_MOD`): AMY
+advances it every block whether or not its voices sound, so every voice on it
+shares one phase that keeps time across rests. While the transport plays it
+is also bar-locked: warped onto the bar grid when created and again at each
+bar line, so every LFO cycle starts on the grid counted from the bar baseline
+(a carrier whose rate the wobble swings is left free; contract in
+`lfo_bank.h`).
+Which oscs take which rail comes from the voice: a wave-topology voice (raw
+wave, wavetable, bass preset; `sequencer_core_lfo_wave_layout()`, lifted over
+the row's unison layout by `seq_track_voice_layout()`) or a patch-string
+family map (`lfo_targets_of_patch()`, `lfo_targets.h`). Wave voices reserve no
+LFO oscs. A depth or target change re-wires; a source change moves the voice
+to another LFO synth, acquiring the new one before releasing the old.
 
-**Software.** A patch string owns its whole osc layout, so there is no free
-osc to serve as carrier, and naming one as `mod_source` would mute it. The
-20 Hz stepper (`sequencer_core_lfo_service()` for sequencer rows, with the same
-law in `arp_core.c` and `live_play.c`; mechanics in
-`sequencer_core/software_lfo.md`) recomputes each checked target's COEF_CONST
-and re-sends it. The rate is capped at `SEQ_LFO_SW_MAX_HZ`. WOBBLE
-and SCAN have no software analog. Pitch is written to osc 0 only, because a
-synth-wide event would also rewrite the patch's internal modulator oscs' freq
-CONST, which is their rate. On ALGO voices (the FM range and the DX7 bank) AMP
-is written to osc 0 as well, because an operator's amp CONST is its output
-level (`sequencer_core_patch_amp_osc()`).
+**Software.** A voice with no shared LFO synth - the bank is full, or the
+patch has no target map - falls back to the 20 Hz stepper
+(`sequencer_core_lfo_service()` for sequencer rows, with the same law in
+`arp_core.c` and `live_play.c`; mechanics in `sequencer_core/software_lfo.md`),
+which recomputes each checked target's COEF_CONST and re-sends it. The rate
+is capped at `SEQ_LFO_SW_MAX_HZ`. WOBBLE and SCAN have no software analog.
+Pitch is written to osc 0 only, because a synth-wide event would also rewrite
+the patch's internal modulator oscs' freq CONST, which is their rate. On ALGO
+voices (the FM range and the DX7 bank) AMP is written to osc 0 as well,
+because an operator's amp CONST is its output level
+(`sequencer_core_patch_amp_osc()`). The standard drone has no stepper: past a
+full bank it runs without an LFO.
 
-**One predicate.** Every gate must use `sequencer_core_lfo_native_layout()`. A
-site left on `sequencer_core_is_wave_patch()` would run the stepper on a native
-carrier and modulate twice.
+**One state.** Whether a voice is on a shared LFO synth is its bank reference
+(per row `s_lfo_synth`, and one each in the arp, live voice and drone); the
+stepper runs only while that reference is empty, so the two never modulate the
+same voice. The LFO editor's WOBBLE rows follow the same state.
 
-**Distortion.** DRIVE and MIX are independent target bits. AMY has COEF_MOD
-rails for both (`dist_logdrive_coefs`, `dist_mix_coefs`), so on a native layout
-they ride the carrier like every other target; the stepper drives them only on
-software patches (`voice_push_dist_lfo()`), with the same law. The per-target depth
-law (drive in octaves, mix linear) is stated in the top-level README, LFO
-editor section. With the shaper OFF the target is inert:
-the LFO never switches distortion on.
+**Distortion.** DRIVE and MIX are independent target bits. AMY has MOD rails
+for both (`dist_logdrive_coefs`, `dist_mix_coefs`), so on a shared LFO synth
+they ride it like every other target; the stepper drives them only when it
+serves the voice (`voice_push_dist_lfo()`), with the same law. The per-target
+depth law (drive in octaves, mix linear) is stated in the top-level README,
+LFO editor section. With the shaper OFF the target is inert: the LFO never
+switches distortion on.
+
+**Without `CONFIG_SEQ_LFO_SHARED`** each wave-topology voice reserves a
+trailing carrier and wobble osc pair that its audible oscs name as
+`mod_source` on slot 0 (`voice_apply_native_lfo_topo()`), patch strings stay on
+the stepper, and `sequencer_core_lfo_native_layout()` is the one predicate
+every gate uses.
 
 ## Voice blocks and deferred authority
 
@@ -95,7 +120,7 @@ commit and cancel alike.
 | Fact | Home |
 |---|---|
 | freq COEF_CONST is Hz stored as log2(f/440); pitch pushes anchor on 440 Hz | `SEQ_LFO_PITCH_BASE_HZ`, `voice_config.h` |
-| Amp combine is in dB; wobble applies downward-only | `VOICE_WOB_DEPTH_AMP`, `voice_config.h` |
+| Amp combine is in dB; wobble and the AMP LFO target apply downward-only | `VOICE_WOB_DEPTH_AMP`, `VOICE_LFO_DEPTH_AMP`, `voice_config.h` |
 | A never-configured breakpoint set reads as a constant 1.0 | `sequencer_core_push_envelope_eg1()`, `sequencer_core.h` |
 | An unconfigured osc plays a full-level SINE, so reserved oscs are parked | `voice_wave_cfg_t`, `voice_config.h` |
 | An event naming osc N reaches osc N of every voice | "Reach" in `voice_config.h` |

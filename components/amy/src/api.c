@@ -134,6 +134,7 @@ void amy_clear_event(amy_event *e) {
     AMY_UNSET(e->mode);
     AMY_UNSET(e->patch_number);
     AMY_UNSET(e->trigger_phase);
+    AMY_UNSET(e->phase_warp);  // LOCAL EDIT (S3-Amysynth): see amy_event.
     // LOCAL EDIT (S3-Amysynth, experimental): unison cluster fields.
     AMY_UNSET(e->unison_count);
     AMY_UNSET(e->unison_spacing);
@@ -172,6 +173,7 @@ void amy_clear_event(amy_event *e) {
     }
     AMY_UNSET(e->chained_osc);
     for (int i = 0; i < NUM_MOD_SOURCES; ++i) AMY_UNSET(e->mod_source[i]);
+    for (int i = 0; i < NUM_MOD_SOURCES; ++i) AMY_UNSET(e->mod_synth[i]);  // LOCAL EDIT (S3-Amysynth)
     AMY_UNSET(e->algorithm);
     AMY_UNSET(e->bp_is_set[0]);
     AMY_UNSET(e->bp_is_set[1]);

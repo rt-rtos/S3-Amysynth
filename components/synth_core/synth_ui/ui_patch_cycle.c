@@ -48,14 +48,14 @@ static const uint16_t s_patch_catalog[] = {
     273, /* FM E.Piano (6-op ALGO) */
     274, /* FM Bell (6-op ALGO) */
     275, /* FM Lead (6-op ALGO) */
-    276, /* FM Custom - edited via Menu > Screen: FM */
+    276, /* FM Custom - edited via Menu > FM */
     277, /* Add Organ (BYO_PARTIALS, 8 harmonics) */
     278, /* Add Bell (inharmonic partial ratios)  */
     279, /* Add Custom - live-editable additive voice (editor screen TBD) */
     /* App wavetable bank slots (280-287): the ones past wavetable_bank_count()
      * are skipped by sequencer_core_patch_compiled_out() like a gated range. */
     280, 281, 282, 283, 284, 285, 286, 287,
-    288, /* Wavetable: Custom - edited via Menu > Screen: WT */
+    288, /* Wavetable: Custom - edited via Menu > Wavetable */
 };
 #define SEQ_RUNTIME_PATCH_COUNT ((int)(sizeof(s_patch_catalog) / sizeof(s_patch_catalog[0])))
 #endif
@@ -82,6 +82,12 @@ static const patch_domain_t s_melodic_domain = {
  * drone_set_patch()'s snap-back. */
 static const patch_domain_t s_drone_domain = {
     PATCH_DOMAIN_CATALOG, .excluded = drone_patch_excluded
+};
+
+/* Stutter drone: the drone domain minus patches its gate has no osc map for
+ * (drone_stutter_patch_excluded()). */
+static const patch_domain_t s_stutter_domain = {
+    PATCH_DOMAIN_CATALOG, .excluded = drone_stutter_patch_excluded
 };
 
 void synth_ui_cycle_melodic_patch(int delta)
@@ -259,12 +265,12 @@ void synth_ui_cycle_live_patch(int delta)
 }
 #endif
 
-/* Cycle the drone's PATCH-mode preset (hold+turn on the drone screen). */
+/* Cycle the stutter drone's patch (hold+turn on its screen, or its PATCH row). */
 void synth_ui_drone_cycle_patch(int delta)
 {
     if (delta == 0) return;
     int dir = (delta > 0) ? 1 : -1;
-    uint16_t next = patch_domain_step(&s_drone_domain, drone_get_patch(), dir);
+    uint16_t next = patch_domain_step(&s_stutter_domain, drone_get_patch(), dir);
     drone_set_patch(next);
 
     const char *name = patch_name_for(next);

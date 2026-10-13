@@ -197,6 +197,11 @@ extern float          s_lfo_phase[][SEQ_TRACKS];
 extern float          s_lfo_hz[][SEQ_TRACKS];
 extern float          s_lfo_rnd[][SEQ_TRACKS];
 extern uint32_t       s_lfo_rng_state;
+#if CONFIG_SEQ_LFO_SHARED
+/* Shared LFO synth (lfo_bank.h) a melodic row holds a reference to;
+ * LFO_BANK_NONE = none. Parallel to s_lfo_hz: compacted by delete_layer. */
+extern uint8_t        s_lfo_synth[][SEQ_TRACKS];
+#endif
 
 /* Owned by seq_core_progression.c */
 extern chord_progression_t s_prog;
@@ -277,18 +282,12 @@ seq_env_t *seq_layer_env1(uint8_t layer_idx, uint8_t track);
  * here; only amp_trim, the drum bank seeding and the project store touch the
  * blocks directly. Out-of-range indices clamp to 0. */
 voice_params_t *seq_track_vp(uint8_t layer_idx, uint8_t track);
-typedef struct {
-    uint8_t carrier;     /* LFO carrier osc; wobble = carrier + 1 */
-    uint8_t pitch_mask;  /* oscs whose freq/duty MOD rails the LFO drives */
-    uint8_t voice_mask;  /* oscs whose filter/amp/pan/dist MOD rails the LFO drives */
-    uint8_t heads_mask;  /* SILENT-head oscs; 0 = no heads: filter pushes
-                            broadcast and dist pushes address osc 0 as before */
-} seq_voice_layout_t;
 
-/* Native-LFO / push layout for one melodic track: the patch-only predicate
- * (sequencer_core_lfo_native_layout) lifted over the row's AS-BUILT unison
- * fan. Every per-track osc-addressed consumer (LFO apply, BPM refresh, filter
- * and dist pushes) resolves through this. Returns false for non-native rows. */
+/* LFO / push layout for one melodic track: sequencer_core_voice_layout() for
+ * the row's patch and AS-BUILT unison copy count. Every per-track
+ * osc-addressed consumer (LFO wiring, BPM refresh, filter and dist pushes)
+ * resolves through this. Returns false for rows that are not wave-topology
+ * or out of range. */
 bool seq_track_voice_layout(uint8_t layer_idx, uint8_t track,
                             seq_voice_layout_t *out);
 /* Effective unison copy count the track's synth is built with (1 = none). */
@@ -317,6 +316,13 @@ float seq_track_frame_duty(const seq_layer_t *layer, uint8_t track, uint8_t step
 void sequencer_configure_melodic_dist_track(uint8_t layer_idx, uint8_t track);
 void sequencer_configure_melodic_lfo(uint8_t layer_idx, uint8_t rows);
 void melodic_lfo_refresh_native_freq(void);
+/* Release every row's shared-LFO reference of a layer (s_lfo_synth back to
+ * LFO_BANK_NONE). Sends no AMY event. No-op without CONFIG_SEQ_LFO_SHARED. */
+void melodic_lfo_bank_drop_layer(uint8_t layer_idx);
+/* The same for one row (s_lfo_synth[layer_idx][track] back to LFO_BANK_NONE),
+ * for a row whose synth goes away (layer shrink). Sends no AMY event; UI task
+ * (the layers applier). No-op without CONFIG_SEQ_LFO_SHARED. */
+void melodic_lfo_bank_drop_row(uint8_t layer_idx, uint8_t track);
 
 /* From seq_core_tempo.c */
 uint16_t sequencer_clamp_bpm(uint16_t b);

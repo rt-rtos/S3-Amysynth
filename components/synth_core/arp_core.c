@@ -4,6 +4,7 @@
 #include "custompatches/additive_voice.h"  /* s_additive_voice + push_live (ADDITIVE_CUSTOM) */
 #include "amy_helpers.h"   /* amy_helpers_event_begin/send */
 #include "voice_config.h"  /* canonical LFO depth scalars + shared wave map */
+#include "lfo_bank.h"      /* shared LFO synths (lfo_bank_bind) */
 #include "seq_core_config.h" /* SEQ_LFO_SW_MAX_HZ (software-stepper rate cap) */
 #include "quantizer.h"
 #include "seq_clamp.h"
@@ -45,6 +46,8 @@ typedef struct {
     bool       solo_muted;    /* silenced because something is soloed; kept
                                  apart from `enabled` so the user's own on/off
                                  survives a solo round-trip                 */
+    bool       muted;         /* user mute; like solo_muted, leaves `enabled`
+                                 alone                                       */
     arp_dir_t  dir;
     uint8_t    octaves;       /* 1..ARP_OCT_MAX */
     note_div_t rate;
@@ -60,6 +63,7 @@ typedef struct {
                                     time. */
     uint16_t     portamento_ms;  /* glide time, 0=off. The memset default matches
                                     AMY's own reset value, so no explicit init. */
+    voice_unison_t unison;       /* count 0 = never set (arp_get_unison defaults) */
 } arp_state_t;
 
 static arp_state_t s_arp;
@@ -153,6 +157,47 @@ static void arp_kill_voices(void)
     amy_helpers_event_send(e);
 }
 
+/* Effective unison copies the arp slot is built with: the stored count through
+ * the shared clamp (a never-set count of 0 gives 1). */
+static uint8_t arp_unison_copies(void)
+{
+    return sequencer_core_unison_copies_for(s_arp.patch, s_arp.unison.count,
+                                            sequencer_core_arp_voices());
+}
+
+/* The stored spec carrying the effective count and the global backend: what
+ * the build and the live push take. */
+static voice_unison_t arp_unison_eff(void)
+{
+    voice_unison_t eff;
+    arp_get_unison(&eff);
+    eff.count = arp_unison_copies();
+    return eff;
+}
+
+/* Osc layout of one arp voice as built (sequencer_core_voice_layout); false
+ * for patches that are not wave-topology. */
+static bool arp_voice_layout(seq_voice_layout_t *vl)
+{
+    return sequencer_core_voice_layout(s_arp.patch, arp_unison_copies(), vl);
+}
+
+/* One dist block where the voice carries the stage: each head under unison,
+ * else the base osc (mirrors melodic_dist_apply). */
+static void arp_push_dist(const seq_dist_t *d)
+{
+    uint8_t synth = sequencer_core_arp_synth();
+    seq_voice_layout_t vl;
+    uint8_t heads = arp_voice_layout(&vl) ? vl.heads_mask : 0u;
+    if (!heads) {
+        voice_apply_dist(synth, d);
+        return;
+    }
+    for (uint8_t o = 0; (uint8_t)(heads >> o) != 0u; o++)
+        if (heads & (uint8_t)(1u << o))
+            voice_apply_dist_osc(synth, o, d);
+}
+
 /* Push the arp filter plus its envelope routing matrix (seq_filter_t.eg_depth,
  * in its own event). Mirrors melodic_filter_apply(); the EG1 breakpoints ride
  * along whenever an EG1 rail is live (sequencer_core_push_envelope_eg1()). */
@@ -183,9 +228,8 @@ static void arp_apply_filter(const seq_filter_t *f)
                                   sequencer_core_patch_voice_osc(s_arp.patch), f,
                                   s_arp.vp.filter_authored);
     if (sequencer_core_is_wavetable_patch(s_arp.patch)) {
-        uint8_t carrier, coupled;
-        uint8_t mask = sequencer_core_lfo_native_layout(s_arp.patch, &carrier, &coupled)
-                     ? coupled : 0x01u;
+        seq_voice_layout_t vl;
+        uint8_t mask = arp_voice_layout(&vl) ? vl.pitch_mask : 0x01u;
         sequencer_core_push_eg_scan(sequencer_core_arp_synth(), mask, f,
                                     s_arp.vp.filter_authored);
     }
@@ -196,18 +240,74 @@ static void arp_apply_filter(const seq_filter_t *f)
     }
 }
 
+#if CONFIG_SEQ_LFO_SHARED
+/* The shared LFO synth the arp synth holds (lfo_bank.h); LFO_BANK_NONE while
+ * the software stepper serves it, or nothing does. */
+static uint8_t s_arp_lfo_ref = LFO_BANK_NONE;
+#endif
+
+/* Apply the arp's LFO (`lfo`, or NULL for none) to its synth. Sent after every
+ * rebuild (the patch re-apply cleared the wiring) and on every edit.
+ * With CONFIG_SEQ_LFO_SHARED: a shared LFO synth over the wave-topology
+ * coupled oscs or the lfo_targets map; when the bank is full, the LFO is off
+ * or the patch has no map, the software stepper (arp_swlfo_service) serves
+ * it. Without it: native-layout patches take their per-voice carriers and
+ * every other patch the stepper. */
+static void arp_apply_lfo(const seq_lfo_t *lfo)
+{
+    uint8_t synth = sequencer_core_arp_synth();
+    uint16_t bpm  = sequencer_core_get_bpm();
+#if CONFIG_SEQ_LFO_SHARED
+    lfo_target_map_t map;
+    seq_voice_layout_t vl;
+    bool mapped;
+    if (arp_voice_layout(&vl)) {
+        /* SCAN rides the pitch mask, as on a row (melodic_lfo_apply_runtime). */
+        map = (lfo_target_map_t){ .voice_mask = vl.voice_mask,
+                                  .pitch_mask = vl.pitch_mask,
+                                  .scan_mask  = vl.pitch_mask };
+        mapped = true;
+    } else {
+        mapped = lfo_targets_of_patch(s_arp.patch, &map);
+    }
+    if (mapped)
+        (void)lfo_bank_bind(synth, &map, lfo, bpm, &s_arp_lfo_ref);
+    else
+        lfo_bank_unbind(&s_arp_lfo_ref);   /* the patch re-apply unwired it */
+#else
+    seq_voice_layout_t vl;
+    if (sequencer_core_lfo_native_layout(s_arp.patch, NULL, NULL) && arp_voice_layout(&vl))
+        voice_apply_native_lfo_topo(synth, lfo, bpm, vl.carrier, vl.pitch_mask,
+                                    vl.voice_mask);
+#endif
+}
+
+bool arp_lfo_bound(void)
+{
+#if CONFIG_SEQ_LFO_SHARED
+    return s_arp_lfo_ref != LFO_BANK_NONE;
+#else
+    return false;
+#endif
+}
+
 /* Recompute and push the LFO carrier frequency at the current BPM. Called by
  * sequencer_core_set_bpm() after s_bpm updates. Must NOT be called from the
- * render body - amy_queue_lock is held there; set_bpm() runs on the UI task. */
+ * render body - amy_queue_lock is held there; set_bpm() runs on the UI task.
+ * A no-op with CONFIG_SEQ_LFO_SHARED: no per-voice carriers, and the shared
+ * synth is retuned by lfo_bank_set_bpm(). */
 void arp_core_refresh_lfo_freq(void)
 {
+#if !CONFIG_SEQ_LFO_SHARED
     if (!s_arp.vp.lfo_authored || !s_arp.vp.lfo.enabled)
         return;
     /* Only native-layout patches carry a BPM-synced carrier; the software
-     * stepper tracks BPM per step on its own. */
-    uint8_t carrier;
-    if (!sequencer_core_lfo_native_layout(s_arp.patch, &carrier, NULL))
+     * stepper tracks BPM per step on its own. The carrier sits above the
+     * unison oscs (sequencer_core_voice_layout). */
+    seq_voice_layout_t vl;
+    if (!sequencer_core_lfo_native_layout(s_arp.patch, NULL, NULL) || !arp_voice_layout(&vl))
         return;
+    uint8_t carrier = vl.carrier;
 
     amy_event *e = amy_helpers_event_begin();
     e->synth                  = sequencer_core_arp_synth();
@@ -223,6 +323,7 @@ void arp_core_refresh_lfo_freq(void)
     e->freq_coefs[COEF_CONST] = lfo_rate_to_hz((note_div_t)s_arp.vp.lfo.wob_rate,
                                                      sequencer_core_get_bpm());
     amy_helpers_event_send(e);
+#endif
 }
 
 /* Push the current glide time to the arp synth. Leaving e->osc and e->velocity
@@ -247,9 +348,11 @@ static void arp_rebuild(void)
     arp_core_clear_all();
     arp_kill_voices();
 
+    voice_unison_t eff = arp_unison_eff();
     sequencer_core_arp_configure(s_arp.patch, sequencer_core_arp_voices(),
                                  s_arp.vp.filter_authored, s_arp.vp.filter.feedback,
-                                 s_arp.vp.filter.ks_duty_ofs);
+                                 s_arp.vp.filter.ks_duty_ofs,
+                                 (eff.count > 1u) ? &eff : NULL);
     /* Raw wave/wavetable patches have no built-in EG0; always push the
      * envelope so notes decay. Juno/DX7 strings and bass/FM presets carry
      * their own envelope as part of their character: only override when
@@ -260,14 +363,8 @@ static void arp_rebuild(void)
     }
     /* Native-layout patches take the native LFO here; the software stepper
      * skips them. */
-    uint8_t carrier, coupled;
-    if (sequencer_core_lfo_native_layout(s_arp.patch, &carrier, &coupled)) {
-        bool lfo_on = s_arp.vp.lfo_authored && s_arp.vp.lfo.enabled;
-        voice_apply_native_lfo_topo(sequencer_core_arp_synth(),
-                                    lfo_on ? &s_arp.vp.lfo : NULL,
-                                    sequencer_core_get_bpm(),
-                                    carrier, coupled, coupled);
-    }
+    bool lfo_on = s_arp.vp.lfo_authored && s_arp.vp.lfo.enabled;
+    arp_apply_lfo(lfo_on ? &s_arp.vp.lfo : NULL);
     /* arp_apply_filter also pushes the routing matrix, and the EG1 breakpoints
      * whenever an EG1 rail is live. */
     if (s_arp.vp.filter_authored) {
@@ -352,7 +449,7 @@ void arp_core_refresh(void)
      * only note-off they will ever get. */
     arp_kill_voices();
 
-    if (!s_arp.enabled || s_arp.solo_muted) {
+    if (!s_arp.enabled || s_arp.solo_muted || s_arp.muted) {
         return;
     }
 
@@ -452,6 +549,16 @@ void arp_set_solo_muted(bool muted)
     arp_core_refresh();
 }
 
+void arp_set_muted(bool muted)
+{
+    if (s_arp.muted == muted) return;
+    s_arp.muted = muted;
+    /* Muting clears the schedule and silences the sounding notes at once, as
+     * disable does; unmuting lets the next service frame re-emit. */
+    if (muted) arp_core_refresh();
+    else       arp_mark_dirty();
+}
+
 void arp_set_direction(arp_dir_t dir)
 {
     if (s_arp.dir == dir) return;
@@ -469,7 +576,7 @@ void arp_set_octaves(uint8_t octaves)
 
 void arp_set_rate(note_div_t rate)
 {
-    if (rate >= NOTE_DIV_COUNT) return;
+    if (rate >= NOTE_DIV_STD_COUNT) return;
     if (s_arp.rate == rate) return;
     s_arp.rate = rate;
     arp_mark_dirty();
@@ -516,6 +623,42 @@ void arp_set_patch(uint16_t patch_number)
     s_arp.patch = patch_number;
     arp_rebuild();
     /* Patch reconfig does not change scheduling; no re-emit needed. */
+}
+
+void arp_get_unison(voice_unison_t *out)
+{
+    if (!out) return;
+    /* First-turn defaults, as on a row; count 1 keeps them inert. */
+    voice_unison_t u = { 1u, 12u, 50u, 100u, 0u };
+    if (s_arp.unison.count != 0u) u = s_arp.unison;
+    u.layout = sequencer_core_get_unison_layout();
+    *out = u;
+}
+
+uint8_t arp_unison_max(void)
+{
+    return sequencer_core_unison_max_for(s_arp.patch, sequencer_core_arp_voices());
+}
+
+void arp_set_unison(const voice_unison_t *u)
+{
+    if (!u) return;
+    uint8_t was = arp_unison_copies();
+    voice_unison_t v = *u;
+    v.count        = SEQ_CLAMP_U8(v.count, 1u, VOICE_UNISON_MAX_COPIES);
+    v.detune_cents = SEQ_CLAMP_U8(v.detune_cents, 0u, VOICE_UNISON_MAX_DETUNE);
+    v.spread_pct   = SEQ_CLAMP_U8(v.spread_pct, 0u, 100u);
+    v.blend_pct    = SEQ_CLAMP_U8(v.blend_pct, 0u, 100u);
+    v.layout       = 0u;   /* storage ignores it: the backend is global */
+    s_arp.unison = v;
+    uint8_t now = arp_unison_copies();
+    if (now != was) {
+        /* The pool shape moved: full rebuild, as a patch change. */
+        arp_rebuild();
+    } else if (now > 1u) {
+        voice_unison_t eff = arp_unison_eff();
+        voice_push_unison_live(sequencer_core_arp_synth(), &eff, 1.0f);
+    }
 }
 
 void arp_core_fm_voice_changed(uint8_t what)
@@ -622,7 +765,7 @@ void arp_get_dist(seq_dist_t *out)
 
 void arp_preview_dist(const seq_dist_t *d)
 {
-    voice_apply_dist(sequencer_core_arp_synth(), d);
+    arp_push_dist(d);
 }
 
 void arp_set_dist(const seq_dist_t *d)
@@ -631,7 +774,7 @@ void arp_set_dist(const seq_dist_t *d)
     s_arp.vp.dist = *d;
     voice_dist_clamp(&s_arp.vp.dist);
     s_arp.vp.dist_authored = true;
-    voice_apply_dist(sequencer_core_arp_synth(), &s_arp.vp.dist);
+    arp_push_dist(&s_arp.vp.dist);
     ESP_LOGI(TAG, "arp dist -> type%u drv%u bit%u rte%u mix%u",
              s_arp.vp.dist.type, s_arp.vp.dist.drive, s_arp.vp.dist.bits,
              s_arp.vp.dist.rate, s_arp.vp.dist.mix);
@@ -642,7 +785,14 @@ void arp_set_dist(const seq_dist_t *d)
 void arp_reapply_dist(void)
 {
     if (s_arp.vp.dist_authored)
-        voice_apply_dist(sequencer_core_arp_synth(), &s_arp.vp.dist);
+        arp_push_dist(&s_arp.vp.dist);
+}
+
+void arp_core_refresh_key_track(void)
+{
+    const seq_filter_t *f = &s_arp.vp.filter;
+    if (s_arp.vp.filter_authored && f->enabled && f->key_track != 0.0f)
+        arp_apply_filter(f);
 }
 
 void arp_get_lfo(seq_lfo_t *out)
@@ -655,16 +805,10 @@ void arp_set_lfo(const seq_lfo_t *lfo)
     if (!lfo) return;
     s_arp.vp.lfo = *lfo;
     s_arp.vp.lfo_authored = true;
-    /* Native carrier patches take the edit immediately via the shared applier
-     * (mirrors the melodic editor path); software-stepper patches read
-     * s_arp.vp.lfo live each frame, nothing to push. */
-    uint8_t carrier, coupled;
-    if (sequencer_core_lfo_native_layout(s_arp.patch, &carrier, &coupled)) {
-        voice_apply_native_lfo_topo(sequencer_core_arp_synth(),
-                                    lfo->enabled ? &s_arp.vp.lfo : NULL,
-                                    sequencer_core_get_bpm(),
-                                    carrier, coupled, coupled);
-    }
+    /* A shared LFO synth or the native carriers take the edit immediately
+     * (arp_apply_lfo; mirrors the melodic editor path); software-stepper
+     * patches read s_arp.vp.lfo live each frame. */
+    arp_apply_lfo(lfo->enabled ? &s_arp.vp.lfo : NULL);
     ESP_LOGI(TAG, "arp LFO -> en=%d wave=%u rate=%u depth=%u tgt=0x%02x",
              lfo->enabled, (unsigned)lfo->wave, (unsigned)lfo->rate,
              (unsigned)lfo->depth, (unsigned)lfo->targets);
@@ -694,8 +838,9 @@ void arp_core_mark_dirty(void)
 }
 
 /* ── Software LFO fallback ───────────────────────────────────────────────
- * Native-layout patches get the AMY-native LFO (arp_rebuild); every other
- * patch runs the 20 Hz software stepper (canonical impl:
+ * A shared LFO synth (with CONFIG_SEQ_LFO_SHARED) or, without it, the
+ * AMY-native carriers of a native-layout patch serve the arp (arp_apply_lfo);
+ * anything else runs the 20 Hz software stepper (canonical impl:
  * sequencer_core_lfo_service; split: ENGINE-SEMANTICS.md, "LFO: native carrier
  * vs software stepper"). */
 static float   s_swlfo_phase   = 0.0f;
@@ -736,10 +881,18 @@ static float arp_swlfo_eval(lfo_wave_t wave, float ph)
 static void arp_swlfo_service(void)
 {
     const seq_lfo_t *lfo = &s_arp.vp.lfo;
+#if CONFIG_SEQ_LFO_SHARED
+    /* A shared LFO synth serves the arp: stand down (restoring below). With
+     * no per-voice carriers, every unbound patch, wave or string, is ours. */
+    const bool native = false;
+    bool want = s_arp.enabled && lfo->enabled && lfo->targets != 0 &&
+                s_arp_lfo_ref == LFO_BANK_NONE;
+#else
     /* Native-layout patches are served by arp_rebuild; stepping them here
      * would double-modulate (mirrors sequencer_core_lfo_service). */
     bool native = sequencer_core_lfo_native_layout(s_arp.patch, NULL, NULL);
     bool want = s_arp.enabled && lfo->enabled && lfo->targets != 0 && !native;
+#endif
 
     if (!want) {
         if (s_swlfo_active) {
@@ -831,6 +984,7 @@ void arp_core_service(void)
 /* ── Getters ─────────────────────────────────────────────────────────── */
 
 bool         arp_get_enabled(void)    { return s_arp.enabled; }
+bool         arp_get_muted(void)      { return s_arp.muted; }
 arp_dir_t    arp_get_direction(void)  { return s_arp.dir; }
 uint8_t      arp_get_octaves(void)    { return s_arp.octaves; }
 note_div_t   arp_get_rate(void)       { return s_arp.rate; }

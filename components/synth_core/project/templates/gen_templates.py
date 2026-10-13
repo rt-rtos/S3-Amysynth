@@ -209,17 +209,12 @@ def constant_checks(fw):
     for sym in ('OWN', 'GLOBAL', 'CHORD'):
         checks.append(('ARP_QUANT_' + sym, getattr(S, 'ARP_QUANT_' + sym), ARP_H, e,
                        'ARP_QUANT_' + sym))
-    for sym in ('WAVE', 'PATCH'):
-        checks.append(('DRONE_SRC_' + sym, getattr(S, 'DRONE_SRC_' + sym), DRONE_H, e,
-                       'DRONE_SRC_' + sym))
     for sym in ('FULL', 'FOUR', 'OFFBEAT', 'GALLOP', 'DUB'):
         checks.append(('DRONE_PAT_' + sym, getattr(S, 'DRONE_PAT_' + sym), DRONE_H, e,
                        'DRONE_PAT_' + sym))
     for sym in ('OFF', 'ROOT', 'CHORD'):
         checks.append(('DRONE_FOLLOW_' + sym, getattr(S, 'DRONE_FOLLOW_' + sym), DRONE_H, e,
                        'DRONE_FOLLOW_' + sym))
-    for sym in ('SINE', 'PULSE', 'SAW_DOWN', 'SAW_UP', 'TRIANGLE'):
-        checks.append(('WAVE_' + sym, getattr(S, 'WAVE_' + sym), AMY_H, d, sym))
     for sym in ('DRUMS', 'DRONES', 'CLIPS'):
         checks.append(('SPLIT_' + sym, getattr(S, 'SPLIT_' + sym), FX_BUS_H, b, 'FX_GROUP_' + sym))
     for sym, fsym in (('SINE', 'SINE'), ('SAW_DOWN', 'SAW_DOWN'), ('SAW_UP', 'SAW_UP'),

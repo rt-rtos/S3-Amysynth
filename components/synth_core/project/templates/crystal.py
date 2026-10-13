@@ -64,7 +64,7 @@ def arpeggio():
 
 
 def wash():
-    return drone(True, CHORD_MIN, 54, wave=WAVE_SAW_DOWN, peak=0.3, duck=0.45,
+    return drone(True, CHORD_MIN, 54, patch=P_SAW_DOWN, peak=0.3, duck=0.45,
                  rate=NOTE_DIV_1_16, sweep=(900.0, 3500.0), sweep_bars=8, res=1.0,
                  amp_env=env(400, 300, 100, 900), follow=DRONE_FOLLOW_CHORD)
 

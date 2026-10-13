@@ -27,12 +27,12 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
 {
     /* MY_BUTTON_SHOULDER, per view: SEQ toggles the step under the cursor
      * (two-handed tracker-style entry), GRAPH flips the routing depth's sign,
-     * LFO flips the target checklist tab, FM flips the editor page, WT cycles
-     * the focused keyframe, MENU leaves a sub-page for the main list (button 3
-     * reopens the last page, so this is the way home). Step entry, the
-     * polarity flip and the menu jump take PRESS_DOWN for zero tap latency;
-     * the tab, page and keyframe flips are deliberate navigation gestures, so
-     * they wait for the click. All events consumed. */
+     * FM flips the editor page, WT cycles the focused keyframe, MENU leaves a
+     * sub-page for the main list (button 3 reopens the last page, so this is
+     * the way home); elsewhere (the LFO editor included) it does nothing.
+     * Step entry, the polarity flip and the menu jump take PRESS_DOWN for zero
+     * tap latency; the page and keyframe flips are deliberate navigation
+     * gestures, so they wait for the click. All events consumed. */
     if (button_id == MY_BUTTON_SHOULDER) {
         ui_view_id_t sv = synth_ui_active_view();
         if (event == BUTTON_PRESS_DOWN) {
@@ -44,8 +44,6 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
             } else if (sv == UI_VIEW_MENU) {
                 synth_ui_menu_go_main();
             }
-        } else if (event == BUTTON_SINGLE_CLICK && sv == UI_VIEW_LFO) {
-            synth_ui_lfo_toggle_target_tab();
 #if CONFIG_SYNTH_CUSTOM_FM
         } else if (event == BUTTON_SINGLE_CLICK && sv == UI_VIEW_FM) {
             synth_ui_fm_toggle_page();
@@ -114,8 +112,7 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
         ui_view_id_t sv = synth_ui_active_view();
         if (button_id == MY_BUTTON_1) {
             bool open_from_screen = (sv == UI_VIEW_SEQ || sv == UI_VIEW_ARP ||
-                                     sv == UI_VIEW_DRONE || sv == UI_VIEW_DRONE_VIS ||
-                                     sv == UI_VIEW_DRONE_STD);
+                                     sv == UI_VIEW_DRONE || sv == UI_VIEW_DRONE_STD);
 #if CONFIG_SYNTH_WIRELESS
             /* Wireless overlay page: same chord, bound to the BLE live-play
              * voice (synth_ui_graph_open_envelope picks the target). */
@@ -154,7 +151,7 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
             if (sv == UI_VIEW_GRAPH || sv == UI_VIEW_LFO || sv == UI_VIEW_DIST ||
                 sv == UI_VIEW_FILTER) {
                 synth_ui_toggle_editor_source();
-            } else if (sv == UI_VIEW_SEQ || sv == UI_VIEW_MENU) {
+            } else if (sv == UI_VIEW_SEQ || sv == UI_VIEW_ARP || sv == UI_VIEW_MENU) {
                 synth_ui_menu_toggle_layer_page();
             }
         }
@@ -408,7 +405,6 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
                 if (event == BUTTON_PRESS_DOWN)  synth_ui_arp_handle_button();
                 return;
             case UI_VIEW_DRONE:
-            case UI_VIEW_DRONE_VIS:
                 if (event == BUTTON_PRESS_DOWN)  synth_ui_drone_handle_button();
                 return;
             case UI_VIEW_DRONE_STD:
@@ -501,7 +497,7 @@ void input_dispatch_encoder_steps(long steps)
     if (s_patch_held) {
         // Patch hold+turn cycles the active screen's patch; on a drum
         // layer that is the SELECTED track's own patch.
-        if (v == UI_VIEW_DRONE || v == UI_VIEW_DRONE_VIS) {
+        if (v == UI_VIEW_DRONE) {
             synth_ui_drone_cycle_patch((int)steps);
         } else if (v == UI_VIEW_DRONE_STD) {
             synth_ui_drone_std_cycle_patch((int)steps);
@@ -513,7 +509,7 @@ void input_dispatch_encoder_steps(long steps)
         } else {
             synth_ui_cycle_melodic_patch((int)steps);
         }
-    } else if (v == UI_VIEW_DRONE || v == UI_VIEW_DRONE_VIS) {
+    } else if (v == UI_VIEW_DRONE) {
         synth_ui_drone_handle_encoder(steps);
     } else if (v == UI_VIEW_DRONE_STD) {
         synth_ui_drone_std_handle_encoder(steps);

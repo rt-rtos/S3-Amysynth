@@ -79,7 +79,7 @@ def bell():
 
 
 def haze():
-    return drone(True, CHORD_MIN, 41, wave=WAVE_SAW_DOWN, peak=0.22, duck=0.0,
+    return drone(True, CHORD_MIN, 41, patch=P_SAW_DOWN, peak=0.22, duck=0.0,
                  rate=NOTE_DIV_1_1, sweep=(220.0, 900.0), sweep_bars=16, res=1.4,
                  amp_env=env(1500, 300, 100, 2500), follow=DRONE_FOLLOW_CHORD)
 

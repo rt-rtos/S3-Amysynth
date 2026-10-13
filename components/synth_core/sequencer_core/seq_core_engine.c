@@ -34,6 +34,20 @@ uint32_t sequencer_core_next_bar_tick(void)
     return (t / SEQ_TICKS_PER_BAR + 1u) * SEQ_TICKS_PER_BAR;
 }
 
+uint32_t sequencer_core_tick_to_amy_ms(uint32_t tick)
+{
+    uint32_t now = amy_sysclock();
+    if (tick == 0) return now;
+    int32_t ahead = (int32_t)(tick - sequencer_ticks());
+    if (ahead <= 0) return now;
+    return now + (uint32_t)((uint64_t)ahead * amy_global.us_per_tick / 1000u);
+}
+
+uint32_t sequencer_core_bar_baseline_tick(void)
+{
+    return s_bar_baseline;
+}
+
 _Atomic uint32_t s_freeze_tick = 0;
 _Atomic bool     s_freeze_set  = false;
 
@@ -310,12 +324,16 @@ float sequencer_step_velocity(const seq_layer_t *layer,
 static seq_solo_change_cb_t s_solo_change_cb = NULL;
 static seq_transport_change_cb_t s_transport_change_cb = NULL;   /* likewise */
 
-/* True when any track of any layer has solo engaged (solo is global:
- * sequencer_core.h). Scans only the rows each layer has (num_tracks): a row
- * dropped by a shrink keeps its stored flag, which must not gate the rows
- * still in use. */
+/* The arp's membership in the solo set (sequencer_core_set_arp_solo). */
+static bool s_arp_solo = false;
+
+/* True when the arp or any track of any layer has solo engaged (solo is
+ * global: sequencer_core.h). Scans only the rows each layer has (num_tracks):
+ * a row dropped by a shrink keeps its stored flag, which must not gate the
+ * rows still in use. */
 bool sequencer_core_any_solo(void)
 {
+    if (s_arp_solo) return true;
     for (uint8_t li = 0; li < s_num_layers; li++) {
         for (uint8_t t = 0; t < s_layers[li].num_tracks; t++) {
             if (s_layers[li].solo[t]) return true;
@@ -1229,9 +1247,22 @@ void sequencer_core_set_track_solo(uint8_t layer_idx, uint8_t track, bool solo)
     sequencer_apply_solo_change();
 }
 
+void sequencer_core_set_arp_solo(bool solo)
+{
+    if (s_arp_solo == solo) return;
+    s_arp_solo = solo;
+    sequencer_apply_solo_change();
+}
+
+bool sequencer_core_get_arp_solo(void)
+{
+    return s_arp_solo;
+}
+
 void sequencer_core_clear_all_solos(void)
 {
-    bool any = false;
+    bool any = s_arp_solo;
+    s_arp_solo = false;
     for (uint8_t li = 0; li < s_num_layers; li++) {
         for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
             if (s_layers[li].solo[t]) { s_layers[li].solo[t] = false; any = true; }

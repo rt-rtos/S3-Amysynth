@@ -1,17 +1,61 @@
 #include "sequencer_core/seq_core_internal.h"
 #include "voice_config.h"
 #include "seq_clamp.h"
+#include "lfo_bank.h"
+#include "lfo_targets.h"
 
 /* ── State definitions — owns LFO phase accumulators ────────────────── */
 /* Software LFO state (phase accumulator, per-layer/track) */
 float    s_lfo_phase[MAX_LAYERS][SEQ_TRACKS]; /* 0..1 normalized */
-float    s_lfo_hz[MAX_LAYERS][SEQ_TRACKS];    /* Hz from rate+BPM; 0 = native or inactive */
+float    s_lfo_hz[MAX_LAYERS][SEQ_TRACKS];    /* Hz from rate+BPM; 0 = native, bank or inactive */
 float    s_lfo_rnd[MAX_LAYERS][SEQ_TRACKS];   /* S&H held value   */
 uint32_t s_lfo_rng_state = 0xDEADBEEFu;
+#if CONFIG_SEQ_LFO_SHARED
+uint8_t  s_lfo_synth[MAX_LAYERS][SEQ_TRACKS]; /* bank reference; LFO_BANK_NONE = none */
+
+/* Release the row's bank reference, if any. Sends no AMY event: callers reach
+ * it after a patch re-apply (which cleared the row's mod slot 1) or after
+ * their own unwire. */
+static void melodic_lfo_bank_drop(uint8_t layer_idx, uint8_t track)
+{
+    lfo_bank_unbind(&s_lfo_synth[layer_idx][track]);
+}
+#endif
+
+void melodic_lfo_bank_drop_layer(uint8_t layer_idx)
+{
+#if CONFIG_SEQ_LFO_SHARED
+    for (uint8_t t = 0; t < SEQ_TRACKS; t++) melodic_lfo_bank_drop(layer_idx, t);
+#else
+    (void)layer_idx;
+#endif
+}
+
+bool sequencer_core_track_lfo_bound(uint8_t layer_idx, uint8_t track)
+{
+#if CONFIG_SEQ_LFO_SHARED
+    if (layer_idx >= s_num_layers || track >= SEQ_TRACKS) return false;
+    return s_lfo_synth[layer_idx][track] != LFO_BANK_NONE;
+#else
+    (void)layer_idx;
+    (void)track;
+    return false;
+#endif
+}
+
+void melodic_lfo_bank_drop_row(uint8_t layer_idx, uint8_t track)
+{
+#if CONFIG_SEQ_LFO_SHARED
+    melodic_lfo_bank_drop(layer_idx, track);
+#else
+    (void)layer_idx;
+    (void)track;
+#endif
+}
 
 /* ── AMY native LFO helpers (wave patches only) ──────────────────────── */
 
-#if CONFIG_SEQ_MELODIC_AMY_NATIVE_LFO
+#if CONFIG_SEQ_MELODIC_AMY_NATIVE_LFO && !CONFIG_SEQ_LFO_SHARED
 
 /* True when an authored track should use the AMY native LFO. Caller must
  * already know the patch is native-layout (sequencer_core_lfo_native_layout);
@@ -43,7 +87,7 @@ static void melodic_configure_native_lfo_track(uint8_t layer_idx, uint8_t track)
                              &seq_track_vp(layer_idx, track)->lfo);
 }
 
-#endif /* CONFIG_SEQ_MELODIC_AMY_NATIVE_LFO */
+#endif /* CONFIG_SEQ_MELODIC_AMY_NATIVE_LFO && !CONFIG_SEQ_LFO_SHARED */
 
 /* The row's SILENT-head oscs, or 0 when its voice carries the filter and dist
  * stages the flat way (broadcast / base osc). Every osc-addressed per-voice
@@ -686,15 +730,48 @@ static bool preview_snapshot(melodic_preview_t *out)
     return out->active;
 }
 
-/* Push an EXPLICIT lfo struct to one track's engine state (native topology or
- * software-service arming) without touching the store. Shared by the
- * committing setter (which passes the just-stored struct), the live preview
- * (editor scratch) and cancel-restore (stored struct). */
+/* Push an EXPLICIT lfo struct to one track's engine state (shared LFO synth,
+ * native topology or software-service arming) without touching the store.
+ * Shared by the committing setter (which passes the just-stored struct), the
+ * live preview (editor scratch) and cancel-restore (stored struct). */
 static void melodic_lfo_apply_runtime(uint8_t layer_idx, uint8_t track,
                                       const seq_lfo_t *lfo)
 {
     const seq_layer_t *layer = &s_layers[layer_idx];
+#if CONFIG_SEQ_LFO_SHARED
+    /* Every mapped melodic row binds a shared LFO synth through mod slot 1
+     * (lfo_bank.h): a wave-topology row over its as-built layout (SCAN rides
+     * the pitch mask), a patch string over its lfo_targets map. Acquire before
+     * release, so an unchanged source keeps its synth and phase. A full bank
+     * or a disabled LFO leaves the row to the software path below. Melodic
+     * only: a drum row's stored patch is just its SYNTH-mode selection. */
+    lfo_target_map_t tm;
+    bool mapped = false;
+    if (layer->type == SEQ_LAYER_MELODIC) {
 #if CONFIG_SEQ_MELODIC_AMY_NATIVE_LFO
+        seq_voice_layout_t vl;
+        if (seq_track_voice_layout(layer_idx, track, &vl)) {
+            tm = (lfo_target_map_t){ .voice_mask = vl.voice_mask,
+                                     .pitch_mask = vl.pitch_mask,
+                                     .scan_mask  = vl.pitch_mask };
+            mapped = true;
+        } else
+#endif
+        mapped = lfo_targets_of_patch(layer->track_patch[track], &tm);
+    }
+    if (mapped &&
+        lfo_bank_bind(layer->synth_id[track], &tm, lfo, s_bpm,
+                      &s_lfo_synth[layer_idx][track]) == LFO_BIND_BANK) {
+        /* The stepper was driving this row: put its last CONST writes back
+         * to their static values. */
+        if (s_lfo_hz[layer_idx][track] != 0.0f)
+            lfo_restore_target_neutrals(layer_idx, track, lfo);
+        s_lfo_hz[layer_idx][track] = 0.0f;
+        return;
+    }
+    /* Every row that reaches the stepper holds no bank reference. */
+    melodic_lfo_bank_drop(layer_idx, track);
+#elif CONFIG_SEQ_MELODIC_AMY_NATIVE_LFO
     /* Native topology is melodic-only: it writes voice-relative oscs 1 and 2,
      * and AMY applies the base_osc offset without a bounds check, so on a
      * 1-osc-per-voice synth (a PCM drum slot) those events would land on the
@@ -715,8 +792,11 @@ static void melodic_lfo_apply_runtime(uint8_t layer_idx, uint8_t track,
         s_lfo_hz[layer_idx][track] = 0.0f;
         return;
     }
+#else
+    (void)layer;
 #endif
-    /* Software path: patches without a carrier pair, or native LFO compiled out. */
+    /* Software path: no shared LFO synth (bank full, LFO off, no target map)
+     * and no native carrier pair, or native LFO compiled out. */
     if (!lfo->enabled) {
         lfo_restore_target_neutrals(layer_idx, track, lfo);
         s_lfo_hz[layer_idx][track] = 0.0f;
@@ -823,11 +903,13 @@ void __attribute__((optimize("O3", "unroll-loops", "fast-math"))) sequencer_core
             float d   = (float)lfo->depth / 100.0f;
             uint8_t syn = s_layers[li].synth_id[tr];
 
-#if CONFIG_SEQ_MELODIC_AMY_NATIVE_LFO
+#if CONFIG_SEQ_MELODIC_AMY_NATIVE_LFO && !CONFIG_SEQ_LFO_SHARED
             /* Native tracks disarm the stepper (s_lfo_hz = 0 in
              * melodic_lfo_apply_runtime) and never reach this body; the guard
              * is belt-and-braces, since stepping a native track would
-             * double-modulate. */
+             * double-modulate. With CONFIG_SEQ_LFO_SHARED a wave row has no
+             * carriers and the stepper is its fallback; bound rows keep
+             * s_lfo_hz == 0. */
             bool native_track =
                 s_layers[li].type == SEQ_LAYER_MELODIC &&
                 sequencer_core_lfo_native_layout(s_layers[li].track_patch[tr],
@@ -840,8 +922,9 @@ void __attribute__((optimize("O3", "unroll-loops", "fast-math"))) sequencer_core
             e->synth = syn;
             /* Multi-target: each checked target modulates its own COEF_CONST
              * from the same LFO value. SCAN has no software analog (a
-             * wavetable voice always takes the native path); DIST is handled
-             * after this block. */
+             * wavetable voice takes a shared LFO synth or, without
+             * CONFIG_SEQ_LFO_SHARED, the native path; on a full bank it goes
+             * unswept); DIST is handled after this block. */
             if (LFO_HAS_TGT(lfo, LFO_TARGET_FILTER)) {
                 const seq_filter_t *fb = (prev_here && prev.filter_valid)
                                          ? &prev.filter
@@ -885,13 +968,39 @@ void __attribute__((optimize("O3", "unroll-loops", "fast-math"))) sequencer_core
  * Called after a patch/synth rebuild and after BPM changes, so native LFO
  * carrier state stays consistent with the layer's patch and tempo. */
 
-/* Re-apply the authored native LFO for every row whose patch reserves a
- * carrier pair. Skipped rows fall to the software loop. */
+/* Post-apply LFO tail. With CONFIG_SEQ_LFO_SHARED: re-wire every row with a
+ * live LFO and a target map to its shared LFO synth (the patch re-apply
+ * cleared its mod slot 1). Without it: re-apply the authored native LFO for
+ * every row whose patch reserves a carrier pair. Skipped rows fall to the
+ * software loop. */
 void sequencer_configure_melodic_lfo(uint8_t layer_idx, uint8_t rows)
 {
-#if CONFIG_SEQ_MELODIC_AMY_NATIVE_LFO
     const seq_layer_t *layer = &s_layers[layer_idx];
+#if CONFIG_SEQ_LFO_SHARED
+    /* Only melodic rows take the bank; a drum row never holds a reference. */
+    if (layer->type != SEQ_LAYER_MELODIC) {
+        melodic_lfo_bank_drop_layer(layer_idx);
+        return;
+    }
+#endif
     for (uint8_t t = 0; t < rows; t++) {
+#if CONFIG_SEQ_LFO_SHARED
+        /* Per row: a mixed layer can have wave rows next to string rows. The
+         * stored block, while authored. A row without a live LFO drops its
+         * reference and sends nothing: the fresh re-apply carries no slot-1
+         * wiring and no stepper residue, and a neutral restore would
+         * overwrite the patch's own values. */
+        const voice_params_t *vp = seq_track_vp(layer_idx, t);
+        uint16_t patch = layer->track_patch[t];
+        bool mapped = lfo_targets_of_patch(patch, NULL);
+#if CONFIG_SEQ_MELODIC_AMY_NATIVE_LFO
+        mapped = mapped || sequencer_core_lfo_wave_layout(patch, NULL);
+#endif
+        if (vp->lfo_authored && vp->lfo.enabled && vp->lfo.targets && mapped)
+            melodic_lfo_apply_runtime(layer_idx, t, &vp->lfo);
+        else
+            melodic_lfo_bank_drop(layer_idx, t);
+#elif CONFIG_SEQ_MELODIC_AMY_NATIVE_LFO
         /* Per row: a mixed layer can have wave rows next to string rows, and
          * only the former reserve a carrier pair. */
         if (!sequencer_core_lfo_native_layout(layer->track_patch[t], NULL, NULL))
@@ -901,18 +1010,23 @@ void sequencer_configure_melodic_lfo(uint8_t layer_idx, uint8_t rows)
         /* Keep s_lfo_hz in sync so the service loop skips native tracks
          * (mirrors melodic_lfo_apply_runtime). */
         s_lfo_hz[layer_idx][t] = 0.0f;
-    }
-#else
-    (void)layer_idx;
-    (void)rows;
 #endif
+    }
+#if CONFIG_SEQ_LFO_SHARED
+    for (uint8_t t = rows; t < SEQ_TRACKS; t++) melodic_lfo_bank_drop(layer_idx, t);
+#endif
+    (void)layer;
+    (void)rows;
 }
 
 /* Update the carrier frequency on all active native-LFO tracks after a BPM
  * change. Mirrors arp_core_refresh_lfo_freq(). */
 void melodic_lfo_refresh_native_freq(void)
 {
-#if CONFIG_SEQ_MELODIC_AMY_NATIVE_LFO
+    /* With CONFIG_SEQ_LFO_SHARED there are no per-voice carriers: a bound
+     * row's shared synth is retuned by lfo_bank_set_bpm(), a stepper row by
+     * sequencer_core_set_bpm(). */
+#if CONFIG_SEQ_MELODIC_AMY_NATIVE_LFO && !CONFIG_SEQ_LFO_SHARED
     for (int li = 0; li < s_num_layers; li++) {
         const seq_layer_t *layer = &s_layers[li];
         /* Melodic-only, same reason as sequencer_core_set_melodic_lfo(): the
@@ -1103,9 +1217,10 @@ seq_vp_src_t sequencer_core_get_melodic_vp_source(uint8_t layer_idx, uint8_t tra
  * when every group is authored; otherwise a layer reload, the only way to get
  * the patch's own values back for the unauthored groups (it re-pushes every
  * authored group of the whole layer through the resolver). The LFO runtime
- * (software pacing, native carrier) is re-armed first either way: the reload
- * path only covers native tracks, and its neutral restores must land before
- * the block's filter/dist pushes, not after. */
+ * (software pacing, shared LFO synth or native carrier) is re-armed first
+ * either way: the reload path only covers live mapped / native tracks, and
+ * its neutral restores must land before the block's filter/dist pushes, not
+ * after. */
 static void melodic_repush_track(uint8_t layer_idx, uint8_t track)
 {
     const voice_params_t *vp = seq_track_vp(layer_idx, track);
@@ -1158,8 +1273,9 @@ void sequencer_core_release_melodic_group(uint8_t layer_idx, uint8_t track,
         case SEQ_VP_GROUP_LFO:
             vp->lfo_authored = false;
             /* Every row reading this block loses its modulator now, not on
-             * the next tempo change: disarm the stepper / native carrier and
-             * restore the rails before the reload re-imposes the patch. */
+             * the next tempo change: disarm the stepper / unwire the shared
+             * LFO synth or native carrier and restore the rails before the
+             * reload re-imposes the patch. */
             melodic_push_peers(layer_idx, track, melodic_reapply_lfo_track);
             break;
         case SEQ_VP_GROUP_DIST:   vp->dist_authored   = false; break;

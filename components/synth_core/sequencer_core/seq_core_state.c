@@ -1,6 +1,7 @@
 #include "sequencer_core/seq_core_internal.h"
 #include "custompatches/drum_cache.h"
 #include "voice_config.h"
+#include "lfo_bank.h"
 #include "esp_heap_caps.h"
 #include <assert.h>
 
@@ -84,6 +85,7 @@ void sequencer_core_init(void)
 {
     amy_helpers_init();
     sequencer_core_trig_pump_init();
+    lfo_bank_init();   /* before any consumer can acquire */
     s_num_layers = 0;
     s_next_melodic_synth = SEQ_MEL_SYNTH_BASE;
 #if CONFIG_SEQ_STATE_IN_PSRAM
@@ -121,6 +123,9 @@ void sequencer_core_init(void)
     memset(s_lfo_phase, 0, MAX_LAYERS * SEQ_TRACKS * sizeof(s_lfo_phase[0][0]));
     memset(s_lfo_hz,    0, MAX_LAYERS * SEQ_TRACKS * sizeof(s_lfo_hz[0][0]));
     memset(s_lfo_rnd,   0, MAX_LAYERS * SEQ_TRACKS * sizeof(s_lfo_rnd[0][0]));
+#if CONFIG_SEQ_LFO_SHARED
+    memset(s_lfo_synth, LFO_BANK_NONE, MAX_LAYERS * SEQ_TRACKS * sizeof(s_lfo_synth[0][0]));
+#endif
     DIAG_HEAP_CHECK("core_init: before push_tempo");
     sequencer_push_tempo(s_bpm);
     DIAG_HEAP_CHECK("core_init: after push_tempo");
@@ -140,6 +145,10 @@ uint8_t sequencer_core_add_layer(seq_layer_type_t type, uint8_t num_steps)
     uint8_t idx = s_num_layers;
     seq_layer_t *layer = &s_layers[idx];
     memset(layer, 0, sizeof(seq_layer_t));
+#if CONFIG_SEQ_LFO_SHARED
+    /* No row of a new layer holds a shared-LFO reference. */
+    memset(s_lfo_synth[idx], LFO_BANK_NONE, sizeof(s_lfo_synth[idx]));
+#endif
 
     /* Per-row voice params: unauthored with amp_trim at unity. The single
      * defaults source, so no field here needs post-memset repair. */
@@ -262,6 +271,8 @@ bool sequencer_core_delete_layer(uint8_t layer_idx)
     for (uint8_t t = 0; t < dead->num_tracks; t++) {
         sequencer_release_synth(dead->synth_id[t]);
     }
+    /* Its rows' shared-LFO references go with it. */
+    melodic_lfo_bank_drop_layer(layer_idx);
 
     /* Raise the mutation guard so the sequencer tick early-returns instead of
      * reading s_layers[] mid-memmove. Skipped ticks are inaudible - trig state
@@ -294,7 +305,17 @@ bool sequencer_core_delete_layer(uint8_t layer_idx)
         memmove(&s_lfo_rnd[layer_idx],
                 &s_lfo_rnd[layer_idx + 1],
                 tail * sizeof(s_lfo_rnd[0]));
+#if CONFIG_SEQ_LFO_SHARED
+        memmove(&s_lfo_synth[layer_idx],
+                &s_lfo_synth[layer_idx + 1],
+                tail * sizeof(s_lfo_synth[0]));
+#endif
     }
+#if CONFIG_SEQ_LFO_SHARED
+    /* The vacated last layer's references moved down with it. */
+    memset(s_lfo_synth[s_num_layers - 1], LFO_BANK_NONE,
+           sizeof(s_lfo_synth[0]));
+#endif
     s_num_layers--;
     /* Only the permanent drum layer left: every melodic slot is free again
      * (AMY released each deleted layer's voices above), so rewind the bump
@@ -413,6 +434,7 @@ bool sequencer_core_set_layer_tracks(uint8_t layer_idx, uint8_t num_tracks)
             sequencer_core_trig_clear_track(layer_idx, t);
             sequencer_kill_synth_voices(layer->synth_id[t]);
             sequencer_release_synth(layer->synth_id[t]);
+            melodic_lfo_bank_drop_row(layer_idx, t);
         }
         layer->num_tracks = num_tracks;
         if (layer->type == SEQ_LAYER_DRUM) drum_cache_sync();

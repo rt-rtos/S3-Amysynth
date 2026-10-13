@@ -63,11 +63,13 @@ melodic layer, running at 108 BPM. From there:
   tempo-locked rates including triplets and dotted, gate length, portamento
   glide, and its own scale/root quantizer (or the global one). See
   [ARP-ARCHITECTURE.md](components/synth_core/ARP-ARCHITECTURE.md).
-- **Two drones** - a free-running drone (chord carrier plus mono sub, raw
-  wave or any patch, with the full filter / LFO / distortion editor set) and
-  a stutter drone: a chord carrier chopped by a tempo-locked square gate with
-  swing, gate length and rhythmic step patterns, a slowly sweeping filter
-  with per-gate "blip" zaps, and a sub up to three octaves below. See
+- **Two drones** - a free-running drone (a chord on any entry of the patch
+  list plus a sine sub, with the full envelope / filter / LFO / distortion
+  editor set) and
+  a stutter drone: a chord on any entry of the patch list chopped by a
+  tempo-locked gate with swing, gate length and rhythmic step patterns, a
+  slowly sweeping filter with per-step "blip" zaps, and a sine sub up to
+  three octaves below. See
   [DRONE.md](components/synth_core/custompatches/DRONE.md).
 - **BLE MIDI live play** - the device advertises as a BLE-MIDI peripheral
   (`Amysynth`); note on/off from any BLE-MIDI host (DAW, phone app, hardware
@@ -202,7 +204,7 @@ A few design decisions worth calling out:
   by `(synth, pitch)`, a shared synth would collapse two same-pitch notes into
   one voice; separate slots keep them independent.
 - **Tempo-locked from the audio clock.** The arp schedule and the drone's stutter
-  LFO + filter sweep derive their timing from AMY's sequencer tick counter (the
+  gate + filter sweep derive their timing from AMY's sequencer tick counter (the
   same clock the grid rides). The AMY music clock is the master clock for all
   audio-path logic, so everything stays beat-locked across tempo changes.
 - **Deferred envelope authority.** A patch's own envelope, filter, LFO and
@@ -528,12 +530,12 @@ is open, `MY_BUTTON_3` cycles editor pages instead of toggling the menu.
 
 | Menu action | Destination |
 |---|---|
-| Screen: Seq | Step sequencer grid (default at boot) |
-| Screen: Arp | Arpeggiator |
-| Screen: Drone | Free-running drone (the stutter drone is a dive row inside it) |
-| Screen: Prog | Chord progression editor |
-| Screen: FM | 6-op FM operator editor for patch 276 (with `CONFIG_SYNTH_CUSTOM_FM`) - see [VOICE-BUILDERS.md](VOICE-BUILDERS.md#fm-custom-patch-276) |
-| Screen: WT | Wavetable builder for patch 288 (with `CONFIG_SYNTH_CUSTOM_WT`, default on) - see [VOICE-BUILDERS.md](VOICE-BUILDERS.md#custom-wavetable-patch-288) |
+| Sequencer | Step sequencer grid (default at boot) |
+| Arpeggiator | Arpeggiator |
+| Drones | Free-running drone (the stutter drone is a dive row inside it) |
+| Progression | Chord progression editor |
+| FM | 6-op FM operator editor for patch 276 (with `CONFIG_SYNTH_CUSTOM_FM`) - see [VOICE-BUILDERS.md](VOICE-BUILDERS.md#fm-custom-patch-276) |
+| Wavetable | Wavetable builder for patch 288 (with `CONFIG_SYNTH_CUSTOM_WT`, default on) - see [VOICE-BUILDERS.md](VOICE-BUILDERS.md#custom-wavetable-patch-288) |
 | Layer / Chords / Bounce / Prog Gen / FX / Projects / Wireless | Dive pages inside the menu (see below) |
 | DEV | Developer screen (with `CONFIG_SYNTH_DEV_MENU`, default on): heap, per-core load, OOM count, status/drop bars |
 
@@ -571,6 +573,12 @@ appears while anything is soloed and clears all solos), and for melodic
 layers **Chord / Root / Type** (read-only while the global progression is
 enabled) and, on a wavetable track, **Frame** (the frame its notes start on;
 see [VOICE-BUILDERS.md](VOICE-BUILDERS.md#frame-position-frame-and-frm)).
+`MY_BUTTON_SHIFT` + `MY_BUTTON_3` also opens the page on an **ARP** entry from
+the arp screen (Level, Key, Mute, Solo, Unison, Gate, Glide; a soloed arp
+plays alongside soloed rows) and on a **LIVE** entry from the Wireless page
+(Level, Key, Unison, Glide for the BLE live-play voice). Their Unison page
+stacks detuned copies on the arp or live voice the way a melodic track's
+does.
 
 **Patch selection:**
 
@@ -611,7 +619,7 @@ whether the arp follows the global scale (GLOB) or plays its slots unsnapped
 |---|---|
 | DEV | Developer screen (with `CONFIG_SYNTH_DEV_MENU`) |
 | Layer | opens the active layer's page: first **Track**, the grid's selected track (turning it moves the cursor's row too), and the per-track level/key/repeat/mute/solo it drives, then the layer-wide steps, swing, patch scope, gate/glide/groove and chord. **Level** is the row's volume, 0-100 % in 5 % steps (50 % = -6 dB); the arp, live voice and drones set theirs with the envelope editor's AMP stop instead. **Key** (filter key tracking, 0-100 %, pivot = main menu Root in octave 4) moves the row's cutoff with the played note, 100 % one octave per octave; the filter's cutoff is then the cutoff at the pivot note. Melodic layers only. **Gate** from 10 to 100 % is a share of one step (drum layers start at 50 %, melodic at 92 %). Above that it is whole steps, `2 st` to `8 st`. `Hold` keeps the note until the row's next trig. At any setting a note ends at least one tick before the next active step on its row fires, even when that step's conditions keep it silent this loop. **Glide** (ms, AMY-native portamento) and **Groove** (0-100 % accent / humanize) are melodic only |
-| Screen: Seq / Arp / Drone / Prog / FM | Switch mode screen |
+| Sequencer / Arpeggiator / Drones / Progression / FM / Wavetable | Switch mode screen |
 | BPM | 40-300 |
 | Quant | ON / OFF |
 | Scale | Chromatic, Major (Ionian), Natural Minor, Dorian, Phrygian, Lydian, Mixolydian, Minor Pentatonic, Major Pentatonic, Harmonic Minor, Locrian, Whole Tone |
@@ -751,10 +759,10 @@ at least one slot is filled.
 ### Drones
 
 Two independent drone instruments, each on its own pair of synth slots
-(chord carrier + mono sub), each with its own ON/OFF row in the menu
+(chord carrier + sine sub), each with its own ON/OFF row in the menu
 (**Drone** and **Stutter**). Both are fully independent of the sequencer
 grid and the chord progression; timing derives from the same AMY musical
-clock. `Screen: Drone` opens the free-running drone; its **STUTTER** row
+clock. `Drones` in the menu opens the free-running drone; its **STUTTER** row
 dives into the stutter drone's screen.
 
 **Free-running drone** - a sustained chord, no gating. Rows:
@@ -763,55 +771,50 @@ dives into the stutter drone's screen.
 |---|---|
 | STUTTER | dive into the stutter drone (also shows whether it is on) |
 | DRONE | ON / OFF |
-| SOURCE | WAVE (raw oscillator) or PATCH (any patch) |
-| WAVE | SAW / SAWUP / PULSE / TRI / SINE (WAVE mode only) |
+| PATCH | patch-list entry by name (raw waves, wavetables, Juno, DX7, piano, bass, FM, additive; no noise or KS); the chord keeps as many tones as the patch's voices fit |
 | ROOT | C1-C5 |
 | CHORD | one of the fourteen chord types |
+| FOLLOW | OFF / ROOT / CHORD - chord progression follow |
 | LEVEL | 0.0-1.0 |
-| SUB | ON / OFF - mono octave-down voice |
-| SUB INT | 0 to -36 semitones below chord root |
-| PATCH | patch number (PATCH mode only) |
+| SUB | ON / OFF - sine voice below the root |
+| SUB INT | -1 to -36 semitones below chord root |
 
 Its envelope, filter, LFO and distortion are edited with the shared voice
 editors (`MY_BUTTON_SHIFT` + `MY_BUTTON_1`); it is the drone with the full
 editor set.
 
-**Stutter drone** - a chord carrier chopped by a tempo-locked square gate.
+**Stutter drone** - a chord carrier chopped by a tempo-locked gate.
 Controls: [CONTROLS.md](CONTROLS.md#drone-screens); `MY_BUTTON_SHIFT` +
-`MY_BUTTON_1` opens its envelope and filter editors.
+`MY_BUTTON_1` opens its envelope, filter, LFO and distortion editors.
 
 | Parameter | Range / notes |
 |---|---|
-| SOURCE | WAVE (raw oscillator) or PATCH (AMY preset) |
-| WAVE | SAW / SAWUP / PULSE / TRI / SINE (WAVE mode only) |
+| PATCH | patch-list entry by name (raw waves, wavetables, Juno, DX7, bass, FM, additive; no piano, noise or KS); the chord keeps as many tones as the patch's voices fit |
 | ROOT | C1-C5 (chromatic; shifts the entire voicing) |
 | CHORD | one of the fourteen chord types; carrier capped at 5 voices |
-| RES | 0.1-3.0 filter resonance |
-| PEAK | 0.0-1.0 - always-on carrier level (WAVE mode only; keep it above 0) |
-| DUCK | 0.0-1.0 - stutter depth; 1.0 = full hard gate (WAVE mode only) |
-| VISUALISE | ON / OFF - switch the screen to the drone visualizer |
-| STUTTER rate | the arp's Rate divisions, tempo-locked (WAVE mode only) |
-| GATE | 0.05-0.95 - gate duty cycle (WAVE mode only) |
+| FOLLOW | OFF / ROOT / CHORD - chord progression follow |
+| LEVEL | 0.0-1.0 - gate on level |
+| DUCK | 0.0-1.0 - gate off level, 0 to 40 dB below LEVEL |
+| STUTTER rate | the arp's Rate divisions, tempo-locked |
+| GATE | 0.05-0.95 - open time per step |
 | SWING | 0-66 % |
-| PATTERN | FULL (all 8), FOUR (4-on-the-floor), OFFBT (upbeats), GALOP (short-short-long), DUB (dub push); 8-step masks against stutter subdivisions |
-| BLIP | 0.0-1.0 filter-zap intensity on gate edges |
-| SWEEP LO / HI | 100-8000 Hz - filter cutoff sweep range |
-| SWEEP SPD | 1-16 bars per sweep cycle |
-| SUB | ON / OFF - mono octave-down voice |
-| SUB INT | 0 to -36 semitones below chord root |
-| PATCH | AMY preset number (PATCH mode only) |
+| PATTERN | FULL (all 8), FOUR (4-on-the-floor), OFFBT (upbeats), GALOP (short-short-long), DUB (dub push); 8-step masks against stutter subdivisions, drawn as step cells |
+| BLIP | 0.0-1.0 cutoff-zap intensity at each open step |
+| SUB | ON / OFF - sine voice below the root, gated with the chord |
+| SUB INT | -1 to -36 semitones below chord root |
 
-In **PATCH mode**, the stutter LFO (PEAK / DUCK / STUTTER / GATE rows) is
-inactive - the patch owns its own oscillators and amplitude. Filter sweep and
-resonance still apply. The stutter drone's filter is a fixed LPF24 whose
-cutoff is the sweep midpoint, so its filter editor shows only cutoff and
-resonance, and it has no LFO or distortion page.
+The gate and the filter act on the patch's head osc (osc 0 of a raw wave, the
+Juno VCA, the DX7 and FM ALGO osc, the additive parent; both oscs of a bass
+preset, keeping its balance), so they work the same on every entry; the
+gate's LEVEL replaces the patch's own head level. The filter sweep is the LFO's
+FILTER target: a fresh drone starts on an LPF24 at 1100 Hz swept +/-1 octave
+by a 4-bar sine, and the LFO editor shows the swept range in Hz.
 
 ---
 
 ### Chord progression (Prog screen)
 
-The Prog screen (menu → Screen: Prog) holds a list of up to 8 chord entries.
+The Prog screen (menu → Progression) holds a list of up to 8 chord entries.
 When the progression is enabled it auto-advances through them as the
 sequencer plays, re-voicing any layers that have chord mode on and re-rooting
 the **arpeggiator's** quantizer to match. The drones do not follow it - their
@@ -968,13 +971,13 @@ staircase - same numbers and law, coarser stepping
 Square / Random sample-and-hold), rate, depth (0-100 %), filter octave
 range, the three WOBBLE rows, enable.
 
-**Rates**, all tempo-locked: the arp's Rate divisions (4BAR to 1/32,
-triplets, dotted).
+**Rates**, all tempo-locked: 16BAR and 8BAR (LFO rate only), then the arp's
+Rate divisions (4BAR to 1/32, triplets, dotted).
 
-**Targets** live on two tabs, switched with `MY_BUTTON_SHOULDER`: tab 1 is
-**Filter / Amp / Pitch / Pan / Scan**, tab 2 is **Drive / Mix** (distortion
-pre-gain and wet/dry, active only when the voice has a distortion stage
-set). **Scan** sweeps the wavetable cycle position on wavetable patches
+**Targets** are one checklist that scrolls five rows at a time:
+**Filter / Amp / Pitch / Pan / Scan / Drive / Mix** (Drive and Mix are the
+distortion pre-gain and wet/dry, active only when the voice has a distortion
+stage set). **Scan** sweeps the wavetable cycle position on wavetable patches
 (and pulse width on PULSE).
 
 **How depth maps to each target.** Depth is one 0-100 % knob, but what 100 %
@@ -985,7 +988,11 @@ set). **Scan** sweeps the wavetable cycle position on wavetable patches
   the value you set. Pitch is anchored at one semitone per 100 %. Drive is
   denominated in octaves of pre-gain: full depth swings +-2 octaves (x4 / /4)
   around the committed drive - subtle on a low drive, dramatic on a high one.
-- **Offset targets (additive) - Amp, Pan, Scan, Mix.** Depth swings a fixed
+- **Amp dips only.** Depth sets how far the tremolo falls below the note's
+  own level: 100 % is a 30 dB dip, 25 % about 7.5 dB. The loud half of the
+  cycle sits at the unmodulated level, so an Amp LFO never makes a row louder
+  than it is without one.
+- **Offset targets (additive) - Pan, Scan, Mix.** Depth swings a fixed
   *absolute* amount that does not scale with the current value, then clamps to
   the legal range. Mix at full depth swings +-0.5 of the 0-1 wet/dry range; set
   near 0 % or 100 % it clips against the end, so one half of the LFO cycle
@@ -1019,8 +1026,8 @@ has no distortion page; the free-running drone does.
 ## Voice builders
 
 Two patches are authored on the device rather than picked from a bank: the
-6-operator FM Custom voice (patch 276, **Menu -> Screen: FM**) and the
-custom wavetable (patch 288, **Menu -> Screen: WT**). Each is one voice
+6-operator FM Custom voice (patch 276, **Menu -> FM**) and the
+custom wavetable (patch 288, **Menu -> Wavetable**). Each is one voice
 shared by every row and the arp that plays it, and edits are heard live.
 The wavetable is saved with the project; the FM voice is not yet. User guide
 and implementation: [VOICE-BUILDERS.md](VOICE-BUILDERS.md). Controls:

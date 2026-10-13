@@ -5,7 +5,7 @@ Two patches are built on the device instead of chosen from a bank:
 | | FM Custom | Custom wavetable |
 |---|---|---|
 | Patch | 276 | 288 (`Wavetable: Custom`) |
-| Open with | Menu -> Screen: FM | Menu -> Screen: WT |
+| Open with | Menu -> FM | Menu -> Wavetable |
 | Build option | `CONFIG_SYNTH_CUSTOM_FM` (default off, work in progress) | `CONFIG_SYNTH_CUSTOM_WT` (default on; needs `CONFIG_AMY_WAVETABLE`) |
 | What you author | a 6-operator DX7-style FM voice: routing, levels, frequencies, envelopes, feedback | a 64-frame wavetable morphing through three keyframes, from sixteen parameters |
 | Saved with the project | not yet: resets to its default voice on boot | yes |
@@ -33,7 +33,7 @@ AMY's ALGO oscillator: a control osc plus six sine operators per note. Every
 sequencer row and the arp that use patch 276 play the same voice, so an edit
 on this screen changes all of them at once - it is one authored instrument,
 not a per-track setting. The fixed FM presets 272-275 are not editable here.
-Requires `CONFIG_SYNTH_CUSTOM_FM`; open it with **Menu → Screen: FM**.
+Requires `CONFIG_SYNTH_CUSTOM_FM`; open it with **Menu → FM**.
 
 The voice is not yet stored in project snapshots: it resets to its default
 (algorithm 1, only the OP2 → OP1 pair audible) on boot.

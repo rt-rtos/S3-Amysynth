@@ -40,6 +40,17 @@ AMY_IRAM_ATTR SAMPLE compute_mod_scale(uint16_t osc, uint16_t which_source) {
     // shared modulators cheap -- including one shared between an osc's own two
     // mod slots.
     uint16_t source = synth[osc]->mod_source[which_source];
+    // LOCAL EDIT (S3-Amysynth, 2026-10-12, experimental): a mod source named by
+    // synth resolves to that synth's first osc through synth_first_osc[], a
+    // flat table the event-parse path writes (the render path must not walk
+    // instruments[], which that path frees). Gone or out of range reads as no
+    // modulation.
+    if (AMY_IS_SET(source) && (source & MOD_SRC_SYNTH_FLAG)) {
+        uint16_t s = source & (uint16_t)~MOD_SRC_SYNTH_FLAG;
+        if (s >= amy_global.config.max_synths) return 0;
+        source = synth_first_osc[s];
+        if (!AMY_IS_SET(source) || source >= AMY_OSCS) return 0;
+    }
     if(AMY_IS_SET(source)) {
         // synth[source] can be NULL: FREE_OSC returns a released voice's osc
         // storage to the heap, while every osc that named it as a modulator

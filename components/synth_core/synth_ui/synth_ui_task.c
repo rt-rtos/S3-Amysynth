@@ -25,6 +25,7 @@
 #include "synth_ui_hint.h"
 #include "usb_audio_watchdog.h"
 #include "amy_helpers.h"
+#include "lfo_bank.h"       /* lfo_bank_service */
 #include "project_snapshot.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -84,6 +85,8 @@ static void ui_services(void)
     /* Normal drone: drain its coalesced rebuild (no tick machinery). */
     drone_std_core_service();
     sequencer_core_lfo_service();
+    /* Shared LFO synths: free released entries once their hold passes. */
+    lfo_bank_service();
     {
         /* A Prog Gen row request drained here grows layers in the core;
          * mirror them back. */
@@ -101,8 +104,8 @@ static void ui_services(void)
     sequencer_core_oom_service();
 #endif
 #if CONFIG_SYNTH_WIRELESS
-    /* Live voice: 20 Hz software LFO for patch-string (non-native)
-     * patches; cheap no-op otherwise. */
+    /* Live voice: 20 Hz software LFO when no modulator osc serves it;
+     * cheap no-op otherwise. */
     live_play_lfo_service();
 #endif
 
@@ -316,11 +319,12 @@ static void synth_ui_task(void *pvParameters)
 /* Sequencer solo is global, and the arp and drones are not sequencer tracks -
  * they run off their own modules, which sequencer_core does not (and should
  * not) know about. This is the join: the core reports "something is soloed",
- * and the app layer silences the voices it owns. The live-play voice is left
- * sounding on purpose - playing over a soloed row is why one solos it. */
+ * and the app layer silences the voices it owns. The arp is a member of the
+ * solo set, so it keeps playing while it is itself soloed. The live-play voice
+ * is left sounding on purpose - playing over a soloed row is why one solos it. */
 static void ui_solo_change(bool any_solo)
 {
-    arp_set_solo_muted(any_solo);
+    arp_set_solo_muted(any_solo && !sequencer_core_get_arp_solo());
     drone_set_solo_muted(any_solo);
     drone_std_set_solo_muted(any_solo);
 }

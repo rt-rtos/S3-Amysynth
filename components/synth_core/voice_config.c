@@ -2,6 +2,7 @@
 #include "amy.h"            /* wave constants, COEF_* indices */
 #include "amy_helpers.h"    /* shared scratch-event begin/send */
 #include "sequencer_core.h" /* lfo_rate_to_hz */
+#include "lfo_bank.h"       /* LFO_BANK_NONE */
 #include "note_div.h"
 #include "seq_clamp.h"
 #include <math.h>           /* powf: wobble downward-only center offset */
@@ -82,8 +83,9 @@ static inline bool unison_is_engine(uint8_t n, uint8_t layout)
 uint8_t voice_unison_oscs_per_voice(uint8_t n, uint8_t layout)
 {
     if (n < 1u) n = 1u;
-    if (unison_is_engine(n, layout)) return 4u;   /* L, R clusters + carrier pair */
-    return (uint8_t)(n + (unison_is_headed(n, layout) ? 4u : 2u));
+    if (unison_is_engine(n, layout))   /* L, R clusters */
+        return (uint8_t)(2u + VOICE_LFO_PAIR_OSCS);
+    return (uint8_t)(n + (unison_is_headed(n, layout) ? 2u : 0u) + VOICE_LFO_PAIR_OSCS);
 }
 
 uint8_t voice_unison_head_osc(uint8_t group, uint8_t n, uint8_t layout)
@@ -378,8 +380,8 @@ void voice_build_wave(const voice_wave_cfg_t *cfg)
     }
 
     /* Park every osc the caller reserved above the audible layout (the native
-     * LFO carrier pair; why: voice_wave_cfg_t). The LFO path raises the
-     * carrier when one is authored. */
+     * LFO carrier pair without CONFIG_SEQ_LFO_SHARED; why: voice_wave_cfg_t).
+     * Their owner raises them. An empty range when nothing is reserved. */
     voice_park_oscs(cfg->synth, audible, cfg->oscs_per_voice);
 
     /* A rebuild must not drop the stage, so the owner's block rides every
@@ -504,6 +506,153 @@ void voice_push_dist_lfo(uint8_t synth, const seq_dist_t *base,
     amy_helpers_event_send(e);
 }
 
+/* The LFO source pair, shared by the native topology and the LFO bank:
+ * contract in voice_config.h. */
+void voice_lfo_source_apply(uint8_t synth, uint8_t carrier_osc,
+                            uint8_t wobble_osc, const seq_lfo_t *lfo,
+                            uint16_t bpm)
+{
+    amy_event *e;
+
+    if (!lfo || !lfo->enabled) {
+        e = amy_helpers_event_begin();
+        e->synth                 = synth;
+        e->osc                   = carrier_osc;
+        e->amp_coefs[COEF_CONST] = 0.0f;  /* dormant */
+        e->amp_coefs[COEF_MOD]   = 0.0f;  /* clear wobble depth coupling */
+        e->freq_coefs[COEF_MOD]  = 0.0f;  /* clear wobble rate coupling  */
+        amy_helpers_event_send(e);
+
+        e = amy_helpers_event_begin();
+        e->synth                 = synth;
+        e->osc                   = wobble_osc;
+        e->amp_coefs[COEF_CONST] = 0.0f;  /* wobble modulator dormant */
+        amy_helpers_event_send(e);
+        return;
+    }
+
+    /* Carrier: BPM-synced, no pitch tracking / velocity / envelope. WOBBLE
+     * (second-order LFO) chains the wobble osc as the carrier's own
+     * mod_source per AMY's chained-modulator semantics
+     * (mod_osc_would_cause_loop / compute_mod_scale); the reach picks
+     * which carrier rails it drives. Depth breathing is DOWNWARD-ONLY:
+     * amp CONST is pre-dropped by the swing so the breath peaks exactly
+     * at the authored LFO depth (an unclamped +swing would multiply the
+     * effective depth through the exponential MOD rail - voice_config.h).
+     * All coupled coefs are ALWAYS written so a stale wobble cannot keep
+     * modulating after it is turned off or its reach changes (the
+     * clear-siblings contract). */
+    float w = (float)lfo->wob_depth / 100.0f;
+    float wcoef = w * VOICE_WOB_DEPTH_AMP;
+    bool wob_depth_live = lfo->wob_depth > 0 &&
+                          lfo->wob_reach != WOB_REACH_RATE;
+    bool wob_rate_live  = lfo->wob_depth > 0 &&
+                          lfo->wob_reach != WOB_REACH_DEPTH;
+    e = amy_helpers_event_begin();
+    e->synth                  = synth;
+    e->osc                    = carrier_osc;
+    e->wave                   = voice_lfo_wave_to_amy(lfo->wave);
+    e->freq_coefs[COEF_CONST] = lfo_rate_to_hz(lfo->rate, bpm);
+    e->freq_coefs[COEF_NOTE]  = 0.0f;
+    e->freq_coefs[COEF_BEND]  = 0.0f;
+    e->amp_coefs[COEF_CONST]  = wob_depth_live
+                              ? powf(10.0f, -3.0f * wcoef) : 1.0f;
+    e->amp_coefs[COEF_VEL]    = 0.0f;
+    e->amp_coefs[COEF_EG0]    = 0.0f;
+    e->mod_source[0]          = wobble_osc;
+    e->amp_coefs[COEF_MOD]    = wob_depth_live ? wcoef : 0.0f;
+    e->freq_coefs[COEF_MOD]   = wob_rate_live
+                              ? w * VOICE_WOB_DEPTH_RATE : 0.0f;
+    amy_helpers_event_send(e);
+
+    /* The wobble modulator itself: fixed TRIANGLE (smooth, no steps on the
+     * depth/rate rails), BPM-synced, dormant at 0 %. */
+    e = amy_helpers_event_begin();
+    e->synth                  = synth;
+    e->osc                    = wobble_osc;
+    e->wave                   = TRIANGLE;
+    e->freq_coefs[COEF_CONST] = lfo_rate_to_hz((note_div_t)lfo->wob_rate, bpm);
+    e->freq_coefs[COEF_NOTE]  = 0.0f;
+    e->freq_coefs[COEF_BEND]  = 0.0f;
+    e->amp_coefs[COEF_CONST]  = (lfo->wob_depth > 0) ? 1.0f : 0.0f;
+    e->amp_coefs[COEF_VEL]    = 0.0f;
+    e->amp_coefs[COEF_EG0]    = 0.0f;
+    amy_helpers_event_send(e);
+}
+
+void voice_lfo_source_set_rate(uint8_t synth, uint8_t carrier_osc,
+                               uint8_t wobble_osc, const seq_lfo_t *lfo,
+                               uint16_t bpm)
+{
+    if (!lfo) return;
+    amy_event *e = amy_helpers_event_begin();
+    e->synth                  = synth;
+    e->osc                    = carrier_osc;
+    e->freq_coefs[COEF_CONST] = lfo_rate_to_hz(lfo->rate, bpm);
+    amy_helpers_event_send(e);
+
+    e = amy_helpers_event_begin();
+    e->synth                  = synth;
+    e->osc                    = wobble_osc;
+    e->freq_coefs[COEF_CONST] = lfo_rate_to_hz((note_div_t)lfo->wob_rate, bpm);
+    amy_helpers_event_send(e);
+}
+
+/* Shared-LFO wiring: contract in voice_config.h. Same depth laws as the
+ * COEF_MOD (slot 0) rails of voice_apply_native_lfo_topo, on slot 1. */
+void voice_lfo_wire(uint8_t synth, uint16_t voice_mask, uint16_t pitch_mask,
+                    uint16_t scan_mask, const seq_lfo_t *lfo, uint8_t lfo_synth)
+{
+    uint16_t all   = (uint16_t)(voice_mask | pitch_mask | scan_mask);
+    bool     wired = lfo && lfo->enabled && lfo->targets &&
+                     lfo_synth != LFO_BANK_NONE;
+    float    d     = wired ? (float)lfo->depth / 100.0f : 0.0f;
+    for (uint8_t o = 0; (uint16_t)(all >> o) != 0u; o++) {
+        uint16_t bit = (uint16_t)(1u << o);
+        if (!(all & bit)) continue;
+        amy_event *e = amy_helpers_event_begin();
+        e->synth        = synth;
+        e->osc          = o;
+        e->mod_synth[1] = wired ? lfo_synth : LFO_WIRE_UNSET;
+        e->filter_freq_coefs[COEF_MOD1] = 0.0f;
+        e->amp_coefs[COEF_MOD1]         = 0.0f;
+        e->freq_coefs[COEF_MOD1]        = 0.0f;
+        e->duty_coefs[COEF_MOD1]        = 0.0f;
+        e->pan_coefs[COEF_MOD1]         = 0.0f;
+        e->dist_drive_coefs[COEF_MOD1]  = 0.0f;
+        e->dist_mix_coefs[COEF_MOD1]    = 0.0f;
+        if (wired) {
+            if ((pitch_mask & bit) && LFO_HAS_TGT(lfo, LFO_TARGET_PITCH))
+                e->freq_coefs[COEF_MOD1] = d * VOICE_LFO_DEPTH_PITCH;
+            if ((scan_mask & bit) && LFO_HAS_TGT(lfo, LFO_TARGET_SCAN))
+                e->duty_coefs[COEF_MOD1] = d * VOICE_LFO_DEPTH_SCAN;
+            if (voice_mask & bit) {
+                if (LFO_HAS_TGT(lfo, LFO_TARGET_FILTER)) e->filter_freq_coefs[COEF_MOD1] = voice_lfo_filter_octaves(lfo);
+                if (LFO_HAS_TGT(lfo, LFO_TARGET_AMP))    e->amp_coefs[COEF_MOD1]         = d * VOICE_LFO_DEPTH_AMP;
+                if (LFO_HAS_TGT(lfo, LFO_TARGET_DIST_DRIVE))
+                    e->dist_drive_coefs[COEF_MOD1] = d * VOICE_LFO_DEPTH_DIST_OCT;
+                if (LFO_HAS_TGT(lfo, LFO_TARGET_DIST_MIX))
+                    e->dist_mix_coefs[COEF_MOD1]   = d * VOICE_LFO_DEPTH_DIST_MIX;
+                if (LFO_HAS_TGT(lfo, LFO_TARGET_PAN)) {
+                    /* Center baseline in the same event, as the slot-0 path. */
+                    e->pan_coefs[COEF_CONST] = 0.5f;
+                    e->pan_coefs[COEF_MOD1]  = d * VOICE_LFO_DEPTH_PAN;
+                }
+            }
+        }
+        amy_helpers_event_send(e);
+    }
+
+    /* AMP overshoot cap (VOICE_LFO_DEPTH_AMP): the pre-dropped synth level
+     * while AMP is wired, unity on every other call. */
+    bool amp = wired && voice_mask != 0u && LFO_HAS_TGT(lfo, LFO_TARGET_AMP);
+    amy_event *lv = amy_helpers_event_begin();
+    lv->synth       = synth;
+    lv->synth_level = amp ? powf(10.0f, -3.0f * d * VOICE_LFO_DEPTH_AMP) : 1.0f;
+    amy_helpers_event_send(lv);
+}
+
+#if !CONFIG_SEQ_LFO_SHARED
 void voice_apply_native_lfo_topo(uint8_t synth, const seq_lfo_t *lfo,
                                  uint16_t bpm, uint8_t carrier_osc,
                                  uint8_t pitch_mask, uint8_t voice_mask)
@@ -565,53 +714,14 @@ void voice_apply_native_lfo_topo(uint8_t synth, const seq_lfo_t *lfo,
             amy_helpers_event_send(e);
         }
 
-        /* Carrier: BPM-synced, no pitch tracking / velocity / envelope. WOBBLE
-         * (second-order LFO) chains the next osc as the carrier's own
-         * mod_source per AMY's chained-modulator semantics
-         * (mod_osc_would_cause_loop / compute_mod_scale); the reach picks
-         * which carrier rails it drives. Depth breathing is DOWNWARD-ONLY:
-         * amp CONST is pre-dropped by the swing so the breath peaks exactly
-         * at the authored LFO depth (an unclamped +swing would multiply the
-         * effective depth through the exponential MOD rail - voice_config.h).
-         * All coupled coefs are ALWAYS written so a stale wobble cannot keep
-         * modulating after it is turned off or its reach changes (the
-         * clear-siblings contract). */
-        float w = (float)lfo->wob_depth / 100.0f;
-        float wcoef = w * VOICE_WOB_DEPTH_AMP;
-        bool wob_depth_live = lfo->wob_depth > 0 &&
-                              lfo->wob_reach != WOB_REACH_RATE;
-        bool wob_rate_live  = lfo->wob_depth > 0 &&
-                              lfo->wob_reach != WOB_REACH_DEPTH;
+        /* AMP overshoot cap, as voice_lfo_wire(). */
         e = amy_helpers_event_begin();
-        e->synth                  = synth;
-        e->osc                    = carrier_osc;
-        e->wave                   = voice_lfo_wave_to_amy(lfo->wave);
-        e->freq_coefs[COEF_CONST] = lfo_rate_to_hz(lfo->rate, bpm);
-        e->freq_coefs[COEF_NOTE]  = 0.0f;
-        e->freq_coefs[COEF_BEND]  = 0.0f;
-        e->amp_coefs[COEF_CONST]  = wob_depth_live
-                                  ? powf(10.0f, -3.0f * wcoef) : 1.0f;
-        e->amp_coefs[COEF_VEL]    = 0.0f;
-        e->amp_coefs[COEF_EG0]    = 0.0f;
-        e->mod_source[0]          = wobble_osc;
-        e->amp_coefs[COEF_MOD]    = wob_depth_live ? wcoef : 0.0f;
-        e->freq_coefs[COEF_MOD]   = wob_rate_live
-                                  ? w * VOICE_WOB_DEPTH_RATE : 0.0f;
+        e->synth       = synth;
+        e->synth_level = (voice_mask != 0u && LFO_HAS_TGT(lfo, LFO_TARGET_AMP))
+                       ? powf(10.0f, -3.0f * d * VOICE_LFO_DEPTH_AMP) : 1.0f;
         amy_helpers_event_send(e);
 
-        /* The wobble modulator itself: fixed TRIANGLE (smooth, no steps on the
-         * depth/rate rails), BPM-synced, dormant at 0 %. */
-        e = amy_helpers_event_begin();
-        e->synth                  = synth;
-        e->osc                    = wobble_osc;
-        e->wave                   = TRIANGLE;
-        e->freq_coefs[COEF_CONST] = lfo_rate_to_hz((note_div_t)lfo->wob_rate, bpm);
-        e->freq_coefs[COEF_NOTE]  = 0.0f;
-        e->freq_coefs[COEF_BEND]  = 0.0f;
-        e->amp_coefs[COEF_CONST]  = (lfo->wob_depth > 0) ? 1.0f : 0.0f;
-        e->amp_coefs[COEF_VEL]    = 0.0f;
-        e->amp_coefs[COEF_EG0]    = 0.0f;
-        amy_helpers_event_send(e);
+        voice_lfo_source_apply(synth, carrier_osc, wobble_osc, lfo, bpm);
     } else {
         /* Disabled: clear the mod coupling on every coupled osc, silence the
          * carrier. The coupled-osc events always go out (those oscs exist as
@@ -630,20 +740,12 @@ void voice_apply_native_lfo_topo(uint8_t synth, const seq_lfo_t *lfo,
             e->dist_mix_coefs[COEF_MOD]    = 0.0f;
             amy_helpers_event_send(e);
         }
-
         e = amy_helpers_event_begin();
-        e->synth                 = synth;
-        e->osc                   = carrier_osc;
-        e->amp_coefs[COEF_CONST] = 0.0f;  /* dormant */
-        e->amp_coefs[COEF_MOD]   = 0.0f;  /* clear wobble depth coupling */
-        e->freq_coefs[COEF_MOD]  = 0.0f;  /* clear wobble rate coupling  */
+        e->synth       = synth;
+        e->synth_level = 1.0f;
         amy_helpers_event_send(e);
 
-        e = amy_helpers_event_begin();
-        e->synth                 = synth;
-        e->osc                   = wobble_osc;
-        e->amp_coefs[COEF_CONST] = 0.0f;  /* wobble modulator dormant */
-        amy_helpers_event_send(e);
+        voice_lfo_source_apply(synth, carrier_osc, wobble_osc, NULL, bpm);
     }
 }
 
@@ -653,3 +755,4 @@ void voice_apply_native_lfo(uint8_t synth, const seq_lfo_t *lfo, uint16_t bpm)
 {
     voice_apply_native_lfo_topo(synth, lfo, bpm, 1, 0x01, 0x01);
 }
+#endif /* !CONFIG_SEQ_LFO_SHARED */

@@ -19,7 +19,7 @@ into the home for all the OLED rendering as the UI expanded.
 **Renderers** (project-specific; the UI logic lives in `synth_core`, this layer
 only draws the flat view structs it is handed)
 
-- Every screen: sequencer grid, arp, drone (list + visualizer), menu overlay,
+- Every screen: sequencer grid, arp, drone lists, menu overlay,
   chord progression, step-trig popup, and the bottom hint strip
 - A reusable ADSR/curve **graph-popup** widget used by the envelope editor,
   plus the filter-response and LFO editor renderers
@@ -32,7 +32,7 @@ only draws the flat view structs it is handed)
 | `priv_i2c_u8g2.{c,h}` | I2C + U8g2 HAL: bus/device setup, init, power, `u8g2_t*` accessor (`i2c_u8g2_*` symbols) |
 | `display_seq.{c,h}` | sequencer grid renderer + the shared UI state struct |
 | `display_arp.{c,h}` | arp screen renderer + its flat view struct |
-| `display_drone.{c,h}` | drone parameter-list renderer + the drone visualizer |
+| `display_drone.{c,h}` | drone parameter-list renderer (a row can carry an 8-step pattern glyph) |
 | `display_menu.{c,h}` | menu overlay renderer (scrollable label:value list, also reused by the FX and FM pages) |
 | `display_prog.{c,h}` | chord-progression screen renderer |
 | `display_stepedit.{c,h}` | per-step probability / ratchet / conditional-trig popup |
@@ -105,10 +105,8 @@ Cursor 0 is cutoff (one semitone per detent), 1 resonance (2 % of range per
 detent); the rows after them (KS feedback and duty, filter type, enable) and
 the key bindings are in [CONTROLS.md](../../CONTROLS.md).
 
-Stutter drone target: the filter type is always LPF24 (fixed by the drone
-architecture), so only cutoff and resonance are on the cursor. Committing moves the filter sweep midpoint to the chosen
-cutoff while preserving the sweep width; resonance maps directly to the drone
-resonance parameter.
+Both drones take the full cursor map, like the arp and the sequencer rows; the
+stutter drone's sweep is its LFO's FILTER target.
 
 ### `filter_graph_t` — data struct
 

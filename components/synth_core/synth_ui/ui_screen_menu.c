@@ -233,15 +233,15 @@ void menu_build_view(menu_view_t *out)
 #if CONFIG_SYNTH_DEV_MENU
     snprintf(s_menu_items[MI_DEV].label, MENU_LABEL_LEN, "DEV");
 #endif
-    snprintf(s_menu_items[MI_SCREEN_SEQ].label, MENU_LABEL_LEN, "Screen: Seq");
-    snprintf(s_menu_items[MI_SCREEN_ARP].label, MENU_LABEL_LEN, "Screen: Arp");
-    snprintf(s_menu_items[MI_SCREEN_DRONE].label, MENU_LABEL_LEN, "Screen: Drone");
-    snprintf(s_menu_items[MI_SCREEN_PROG].label, MENU_LABEL_LEN, "Screen: Prog");
+    snprintf(s_menu_items[MI_SCREEN_SEQ].label, MENU_LABEL_LEN, "Sequencer");
+    snprintf(s_menu_items[MI_SCREEN_ARP].label, MENU_LABEL_LEN, "Arpeggiator");
+    snprintf(s_menu_items[MI_SCREEN_DRONE].label, MENU_LABEL_LEN, "Drones");
+    snprintf(s_menu_items[MI_SCREEN_PROG].label, MENU_LABEL_LEN, "Progression");
 #if CONFIG_SYNTH_CUSTOM_FM
-    snprintf(s_menu_items[MI_SCREEN_FM].label, MENU_LABEL_LEN, "Screen: FM");
+    snprintf(s_menu_items[MI_SCREEN_FM].label, MENU_LABEL_LEN, "FM");
 #endif
 #if CONFIG_SYNTH_CUSTOM_WT
-    snprintf(s_menu_items[MI_SCREEN_WT].label, MENU_LABEL_LEN, "Screen: WT");
+    snprintf(s_menu_items[MI_SCREEN_WT].label, MENU_LABEL_LEN, "Wavetable");
 #endif
 
     snprintf(s_menu_items[MI_BPM].label, MENU_LABEL_LEN, "BPM");
@@ -589,17 +589,32 @@ bool synth_ui_menu_go_main(void)
 void synth_ui_menu_toggle_layer_page(void)
 {
     if (seq_state.menu_open) {
-        if (s_layer_page) synth_ui_menu_toggle();
+        if (s_layer_page) {
+            synth_ui_menu_toggle();
+#if CONFIG_SYNTH_WIRELESS
+        } else if (s_wireless_page) {
+            /* The live voice's per-voice rows, from the page that plays it. */
+            s_wireless_page = false;
+            layermenu_menu_set_kind(VT_LIVE);
+            s_layer_page = true;
+            seq_state.menu_cursor  = layermenu_menu_row_index(LM_LEVEL);
+            seq_state.menu_editing = false;
+            s_force_redraw = true;
+#endif
+        }
         return;
     }
     if (synth_ui_graph_is_active()) return;
-    if (!s_layer_page) {
-        /* Not closed on the Layer page: dive as the main list's Layer row
-         * does, but land on Gate. */
+    voice_target_kind_t kind = (seq_state.ui_mode == UI_MODE_ARP) ? VT_ARP : VT_MELODIC;
+    if (!s_layer_page || layermenu_menu_kind() != kind) {
+        /* Not closed on the Layer page, or closed on another entry: dive as
+         * the main list's Layer row does, but land on Gate (layer) or Level
+         * (arp). */
         menu_clear_subpages();
         s_main_cursor = MI_LAYER_MENU;
+        layermenu_menu_set_kind(kind);
         s_layer_page = true;
-        seq_state.menu_cursor = layermenu_menu_row_index(LM_GATE);
+        seq_state.menu_cursor = layermenu_menu_row_index(kind == VT_ARP ? LM_LEVEL : LM_GATE);
     }
     synth_ui_menu_toggle();
 }
@@ -659,8 +674,18 @@ bool synth_ui_menu_handle_button(void)
         uint8_t idx = seq_state.menu_cursor;
         if (layermenu_menu_item_is_back(idx)) {
             s_layer_page = false;
-            seq_state.menu_cursor  = s_main_cursor;
             seq_state.menu_editing = false;
+#if CONFIG_SYNTH_WIRELESS
+            if (layermenu_menu_kind() == VT_LIVE) {
+                /* The LIVE entry was reached from the Wireless page. */
+                s_wireless_page = true;
+                seq_state.menu_cursor = 0;
+                wireless_menu_reset();
+            } else
+#endif
+            {
+                seq_state.menu_cursor = s_main_cursor;
+            }
         } else if (idx == layermenu_menu_row_index(LM_UNISON) ||
                    idx == layermenu_menu_row_index(LM_PCM)) {
             /* Dive into the sub-page; Back finds the row again by id. */
@@ -858,6 +883,7 @@ bool synth_ui_menu_handle_button(void)
             case MI_LAYER_MENU:
                 /* Dive into the per-layer page; the menu stays open. */
                 s_main_cursor = seq_state.menu_cursor;
+                layermenu_menu_set_kind(VT_MELODIC);
                 s_layer_page = true;
                 seq_state.menu_cursor = 0;
                 layermenu_menu_reset();

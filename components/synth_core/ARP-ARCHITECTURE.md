@@ -103,6 +103,8 @@ typedef struct {
                                       // filter, LFO, amp trim — each
                                       // deferred-authority
     uint16_t   portamento_ms;         // glide between pitches, 0 = off
+    voice_unison_t unison;            // detuned copies per voice, count 0 =
+                                      // never set
 } arp_state_t;
 ```
 
@@ -229,6 +231,16 @@ The arp owns slot **1** in the static pool at the bottom of the slot map, so it 
 collides with a melodic layer's per-row block. The arp
 synth uses 4 voices to allow note overlap at fast rates.
 
+**Unison.** The slot can carry unison like a melodic track (Layer menu ARP
+entry, Unison sub-page; semantics in `sequencer_core.h`, "Melodic per-track
+unison"): raw-wave and wavetable patches only, KS excluded. The effective copy
+count goes through the rows' clamp, `sequencer_core_unison_copies_for()`, so
+the arp's voices x oscs per voice stay within `SEQ_TRACK_OSC_BUDGET`. A change
+of effective count rebuilds the slot through `sequencer_core_arp_configure()`;
+detune, spread and blend push live. The LFO map, the SCAN push and the
+distortion pushes address the unison oscs through
+`sequencer_core_voice_layout()`, as a row's do.
+
 ---
 
 ## Refresh Coalescing (performance)
@@ -304,7 +316,9 @@ uint8_t  sequencer_core_arp_voices(void);  // 4
 uint32_t sequencer_core_arp_tag_base(void);// 1320
 uint8_t  sequencer_core_clamp_melodic_note(int32_t);
 
-void sequencer_core_arp_configure(uint16_t patch_number, uint8_t num_voices);
+void sequencer_core_arp_configure(uint16_t patch_number, uint8_t num_voices,
+                                  bool filter_authored, float ks_feedback,
+                                  float ks_duty_ofs, const voice_unison_t *uni);
 void sequencer_core_arp_emit_note(uint32_t tag_base, uint8_t midi_note,
                                   float velocity, uint32_t tick_on,
                                   uint32_t gate_ticks, uint32_t period);
@@ -317,7 +331,7 @@ void sequencer_core_arp_clear_note(uint32_t tag_base);  // clears base & base+1
 
 ### Screen selection
 
-`ui_mode` is switched from the **menu overlay** ("Screen: Seq" / "Screen: Arp"
+`ui_mode` is switched from the **menu overlay** ("Sequencer" / "Arpeggiator"
 action items). The active view is resolved once per frame by
 `ui_view_resolve.c`; the overlay precedence is in
 [CONTROLS.md](../../CONTROLS.md#screen-and-overlay-precedence).
@@ -393,7 +407,7 @@ until enabled and at least one slot is filled.
 The arp is saved with the project (`TAG_ARP` section, `ser_arp()` /
 `parse_arp()` in `project/project_snapshot.c`): enable, patch, direction,
 octaves, rate, gate, scale, root, portamento, level, the slots, quant mode,
-and its EG0, EG1, filter, LFO and distortion blocks. Storage format and slots:
+its EG0, EG1, filter, LFO and distortion blocks, mute, solo and unison. Storage format and slots:
 [Project storage](../../README.md#project-storage).
 
 ---

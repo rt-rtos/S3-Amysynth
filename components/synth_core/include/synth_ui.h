@@ -138,11 +138,13 @@ bool synth_ui_menu_handle_button(void);        /* true if consumed */
  * from; ends value editing. No-op (false) while the menu is closed or already
  * on the main list. UI input task only. */
 bool synth_ui_menu_go_main(void);
-/* Layer-page shortcut. Menu closed: open it on the Layer page - on the row it
- * was left on if the menu was closed on that page, else on the Gate row, with
- * the main list's cursor on the Layer row. Menu open on the Layer page: close
- * it. Menu open on any other page, or the graph editor showing: no-op. UI
- * input task only. */
+/* Layer-page shortcut. Menu closed: open it on the Layer page's entry for the
+ * current screen (the active layer, or ARP on the arp screen) - on the row it
+ * was left on if the menu was closed on that same entry, else on Gate (layer)
+ * or Level (arp), with the main list's cursor on the Layer row. Menu open on
+ * the Layer page: close it. Menu open on the Wireless page: switch to the
+ * page's LIVE entry on Level. Menu open on any other page, or the graph editor
+ * showing: no-op. UI input task only. */
 void synth_ui_menu_toggle_layer_page(void);
 
 /* Projects-page rename editor hooks (buttons: CONTROLS.md). They live on the
@@ -179,7 +181,7 @@ void synth_ui_cycle_live_patch(int delta);
 bool synth_ui_drone_is_active(void);
 void synth_ui_drone_handle_encoder(long delta);
 void synth_ui_drone_handle_button(void);
-/* Cycle the drone's PATCH-mode preset (hold+turn gesture on the drone screen). */
+/* Cycle the stutter drone's patch (hold+turn gesture on its screen). */
 void synth_ui_drone_cycle_patch(int delta);
 
 /* ── Normal drone screen ─────────────────────────────────────────────────
@@ -327,13 +329,6 @@ bool synth_ui_lfo_handle_encoder(long delta);
 bool synth_ui_lfo_handle_button(bool is_long);
 bool synth_ui_lfo_close_commit(void);
 
-/* Flip the target checklist to the other tab. The panel shows five checkbox
- * rows, so the distortion targets live on a second tab. A cursor parked on a checkbox row of the tab
- * being hidden moves to the first row of the tab being shown; cursors on the
- * shared parameter rows are untouched. No-op when the editor is closed.
- * UI-task only. */
-void synth_ui_lfo_toggle_target_tab(void);
-
 /* ── Distortion editor (per-target waveshaper: CLIP / FOLD / CRUSH) ────────
  * The fourth tab in the same cycle. Type OFF is the bypass, so there is no
  * separate enable gesture. Applies to whatever the target's base osc is,
@@ -390,7 +385,6 @@ typedef enum {
     UI_VIEW_GRAPH,
     UI_VIEW_MENU,
     UI_VIEW_ARP,
-    UI_VIEW_DRONE_VIS,
     UI_VIEW_DRONE,
     UI_VIEW_DRONE_STD,
     UI_VIEW_PROG,

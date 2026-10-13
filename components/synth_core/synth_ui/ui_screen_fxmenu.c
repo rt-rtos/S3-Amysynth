@@ -398,7 +398,7 @@ void fx_menu_edit_value(uint8_t idx, int delta)
             break;
         case FXI_ECHO_NOTE:
             f->echo_div = (uint8_t)SEQ_CLAMP_INT((int)f->echo_div + dir,
-                                                 0, NOTE_DIV_COUNT - 1);
+                                                 0, NOTE_DIV_STD_COUNT - 1);
             fx_push_echo(bus);
             break;
         case FXI_ECHO_TIME:

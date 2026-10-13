@@ -6,6 +6,7 @@ amp_codec.encode_file() turns that into a Pnn.amp image. The firmware
 constants copied here are checked against their headers by gen_templates.py.
 """
 import copy
+import math
 import amp_codec as C
 
 # ── firmware / AMY enums ───────────────────────────────────────────────────
@@ -31,6 +32,7 @@ NOTE_DIV_4BAR, NOTE_DIV_2BAR, NOTE_DIV_1_1, NOTE_DIV_1_2, NOTE_DIV_1_4, NOTE_DIV
 NOTE_DIV_1_16, NOTE_DIV_1_32 = range(6, 8)
 NOTE_DIV_1_2T, NOTE_DIV_1_4T, NOTE_DIV_1_8T, NOTE_DIV_1_16T, NOTE_DIV_1_32T = range(8, 13)
 NOTE_DIV_1_2D, NOTE_DIV_1_4D, NOTE_DIV_1_8D, NOTE_DIV_1_16D, NOTE_DIV_1_32D = range(13, 18)
+NOTE_DIV_8BAR, NOTE_DIV_16BAR = range(18, 20)  # LFO rate only
 DIST_CLIP, DIST_FOLD, DIST_CRUSH = 1, 2, 4
 SEQ_LAYER_DRUM, SEQ_LAYER_MELODIC = 0, 1
 SCOPE_LAYER, SCOPE_TRACK = 0, 1
@@ -39,10 +41,8 @@ ARP_UP, ARP_DOWN, ARP_SLOT = 0, 1, 2
 ARP_QUANT_OWN, ARP_QUANT_GLOBAL, ARP_QUANT_CHORD = 0, 1, 2
 ARP_REST = -2
 ARP_EMPTY = -1
-DRONE_SRC_WAVE, DRONE_SRC_PATCH = 0, 1
 DRONE_PAT_FULL, DRONE_PAT_FOUR, DRONE_PAT_OFFBEAT, DRONE_PAT_GALLOP, DRONE_PAT_DUB = range(5)
 DRONE_FOLLOW_OFF, DRONE_FOLLOW_ROOT, DRONE_FOLLOW_CHORD = 0, 1, 2
-WAVE_SINE, WAVE_PULSE, WAVE_SAW_DOWN, WAVE_SAW_UP, WAVE_TRIANGLE = range(5)   # AMY wave, drone WAVE source
 
 # fx_group_t bits in GLOB split_flags: that group renders on its own bus
 SPLIT_DRUMS, SPLIT_DRONES, SPLIT_CLIPS = 0x02, 0x04, 0x08
@@ -251,22 +251,31 @@ def arp(enabled, patch, direction, rate, slots, octaves=1, gate=50, quant=ARP_QU
                 gate_pct=gate, scale=scale, root=root, portamento_ms=porta, amp_scale=amp,
                 slots=slots, env=amp_env or env(2, 160, 0, 120), env2=env(5, 300, 20, 300),
                 filter=flt or C.default_filter(), lfo=mod or C.default_lfo(),
-                quant_mode=quant, dist=C.default_dist())
+                quant_mode=quant, dist=C.default_dist(), muted=False, solo=False,
+                uni_count=1, uni_detune=12, uni_spread=50, uni_blend=100)
 
 
 def drone_off():
     return drone(False, CHORD_SUS4, 57)
 
 
-def drone(enabled, chord, root, wave=WAVE_SAW_DOWN, peak=0.6, duck=0.0, rate=NOTE_DIV_1_4,
+def drone(enabled, chord, root, patch=P_SAW_DOWN, peak=0.6, duck=0.0, rate=NOTE_DIV_1_4,
           sweep=(400.0, 1600.0), sweep_bars=8, res=1.2, pattern=DRONE_PAT_FULL,
           amp_env=None, sub=False, follow=DRONE_FOLLOW_OFF):
-    return dict(enabled=enabled, source=DRONE_SRC_WAVE, wave=wave, chord=chord, root=root,
-                patch=25, resonance=res, amp_peak=peak, amp_duck=duck,
-                rate=rate, sub_enabled=sub, sub_interval=-12, sweep_lo=float(sweep[0]),
-                sweep_hi=float(sweep[1]), sweep_bars=sweep_bars, gate_len=0.5, swing=0,
+    """sweep=(lo, hi) Hz over sweep_bars bars and res become the authored filter (LPF24 at
+    sqrt(lo*hi), resonance res) and LFO (sine on FILTER at the nearest of 4/8/16 bars,
+    swinging log2(hi/lo)/2 octaves each way, in quarter octaves)."""
+    lo, hi = float(sweep[0]), float(sweep[1])
+    bar_rates = {4: NOTE_DIV_4BAR, 8: NOTE_DIV_8BAR, 16: NOTE_DIV_16BAR}
+    lfo_rate = bar_rates[min(bar_rates, key=lambda b: abs(b - sweep_bars))]
+    oct_q = max(1, min(16, round(4.0 * math.log2(hi / lo) / 2.0)))
+    return dict(enabled=enabled, chord=chord, root=root,
+                patch=patch, amp_peak=peak, amp_duck=duck,
+                rate=rate, sub_enabled=sub, sub_interval=-12, gate_len=0.5, swing=0,
                 blip=0.0, pattern=pattern, follow=follow,
                 vp=vp(amp_env=amp_env or env(200, 300, 100, 600), eg1=env(15, 400, 25, 400),
+                      flt=filt(FILTER_LPF24, math.sqrt(lo * hi), res),
+                      mod=lfo(LFO_SINE, lfo_rate, LFO_TGT_FILTER, flt_oct_q=oct_q),
                       melodic=False))
 
 
@@ -276,9 +285,8 @@ def drone_std_off():
     v['env'] = env(200, 300, 100, 600); v['env1'] = env(15, 400, 25, 400)
     v['filter'].update(filter_type=FILTER_LPF, cutoff_hz=1200.0, resonance=1.0)
     v['lfo'].update(wave=LFO_SINE, rate=NOTE_DIV_1_1, depth=50, targets=LFO_TGT_FILTER)
-    return dict(enabled=False, source=DRONE_SRC_WAVE, wave=WAVE_SAW_DOWN, chord=CHORD_OFF,
-                root=45, follow=DRONE_FOLLOW_OFF, level=0.5, patch=25, sub_enabled=True,
-                sub_interval=-12, vp=v)
+    return dict(enabled=False, chord=CHORD_OFF, root=45, follow=DRONE_FOLLOW_OFF, level=0.5,
+                patch=P_SAW_DOWN, sub_enabled=True, sub_interval=-12, vp=v)
 
 
 def project(glob_, layers, arp_=None, drone_=None, progression=None, chords=None):

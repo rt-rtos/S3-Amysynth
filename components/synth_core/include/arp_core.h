@@ -68,9 +68,15 @@ void arp_set_enabled(bool enabled);
  * sequencer solo hook, so releasing solo restores whatever the user had set.
  * Kills the sounding voices and re-emits synchronously - call from the UI task. */
 void arp_set_solo_muted(bool muted);
+
+/* User mute, independent of arp_set_enabled() and of the solo mute. Muting
+ * clears the schedule and kills the sounding voices synchronously; unmuting
+ * requests a coalesced re-emit. UI task only. Persisted in the project. */
+void arp_set_muted(bool muted);
+bool arp_get_muted(void);
 void arp_set_direction(arp_dir_t dir);
 void arp_set_octaves(uint8_t octaves);        /* clamped 1..ARP_OCT_MAX */
-void arp_set_rate(note_div_t rate);           /* ids >= NOTE_DIV_COUNT ignored */
+void arp_set_rate(note_div_t rate);           /* ids >= NOTE_DIV_STD_COUNT ignored */
 void arp_set_gate_pct(uint8_t gate_pct);      /* clamped 10..100        */
 void arp_set_scale(uint8_t scale_index);
 void arp_set_root_note(uint8_t root_note);
@@ -133,15 +139,28 @@ void arp_set_dist(const seq_dist_t *d);
 void arp_reapply_dist(void);
 
 /* ── LFO (shared editor) ──
- * Native carrier or 20 Hz software stepper, chosen per patch as on melodic
- * rows (sequencer_core_lfo_native_layout). */
+ * As on melodic rows: with CONFIG_SEQ_LFO_SHARED a shared LFO synth
+ * (lfo_bank.h), the 20 Hz software stepper when none can be had; without it
+ * the native carrier on wave-topology patches (sequencer_core_lfo_native_layout)
+ * and the stepper on the rest. */
 void arp_get_lfo(seq_lfo_t *out);
 void arp_set_lfo(const seq_lfo_t *lfo);
 
+/* True while the arp's LFO runs on a shared LFO synth - the path on which
+ * WOBBLE exists. Always false without CONFIG_SEQ_LFO_SHARED. UI task. */
+bool arp_lfo_bound(void);
+
 /* Recompute and push the LFO carrier frequency at the current BPM.
  * Called by sequencer_core_set_bpm() after s_bpm is updated.
- * No-op unless lfo_authored and the patch has a native carrier pair. */
+ * No-op unless lfo_authored and the patch has a native carrier pair; always a
+ * no-op with CONFIG_SEQ_LFO_SHARED. */
 void arp_core_refresh_lfo_freq(void);
+
+/* Re-push the filter after the key-tracking pivot moved (the quantizer root,
+ * sequencer_core_filter_const_hz). Called by
+ * sequencer_core_set_quantizer_root_note(). No-op unless the filter is
+ * authored, enabled and key-tracked. */
+void arp_core_refresh_key_track(void);
 
 /* ── Getters (for UI display) ── */
 bool      arp_get_enabled(void);
@@ -173,6 +192,22 @@ uint16_t arp_get_portamento_ms(void);
 #define ARP_PORTAMENTO_MAX_MS 100u    /* glide ceiling, ms (1 ms/detent).
                                        * Matches the melodic layer Glide range;
                                        * longer saved glides clamp on load. */
+
+/* ── Unison (Layer menu ARP entry, Unison sub-page) ──
+ * One voice_unison_t for the arp slot, row semantics (sequencer_core.h
+ * "Melodic per-track unison"): raw-wave/wavetable patches only (KS excluded),
+ * effective count clamped by sequencer_core_unison_copies_for() at the arp's
+ * patch and voice count. get serves {1, 12, 50, 100} until first set and fills
+ * `.layout` with the global backend. set ignores `u->layout`, clamps count
+ * 1..VOICE_UNISON_MAX_COPIES, detune 0..VOICE_UNISON_MAX_DETUNE, spread/blend
+ * 0..100, and stores; a moved effective count rebuilds the arp slot (sounding
+ * notes stop, like a patch change), an unchanged one above 1 pushes
+ * detune/spread/blend live. unison_max: the highest effective count the
+ * current patch allows, 0 = it cannot carry unison. UI task only. Persisted
+ * in the project. */
+void    arp_get_unison(voice_unison_t *out);
+void    arp_set_unison(const voice_unison_t *u);
+uint8_t arp_unison_max(void);
 
 #define ARP_OCT_MAX 4
 

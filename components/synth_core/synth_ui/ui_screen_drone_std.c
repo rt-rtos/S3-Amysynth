@@ -1,8 +1,9 @@
 #include "synth_ui/synth_ui_internal.h"
 #include "synth_ui.h"
 #include "custompatches/drone_std_core.h"
+#include "custompatches/drone_common.h"   /* DRONE_ROOT_*, DRONE_SUB_INTERVAL_* */
+#include "patch_names.h"
 #include "seq_clamp.h"
-#include "amy.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -16,32 +17,24 @@
 static uint8_t s_dstd_cursor  = 0;
 static bool    s_dstd_editing = false;
 
-/* Logical rows (superset). visible_rows() filters by source each frame. */
+/* Rows, in screen order; all always visible. */
 typedef enum {
     DSROW_STUTTER = 0,  /* dive row: opens the stutter drone screen */
     DSROW_ENABLE,
-    DSROW_SOURCE,
-    DSROW_WAVE,         /* WAVE only  */
+    DSROW_PATCH,
     DSROW_ROOT,
     DSROW_CHORD,
-    DSROW_FOLLOW,       /* chord progression follow (both modes) */
+    DSROW_FOLLOW,       /* chord progression follow */
     DSROW_LEVEL,
     DSROW_SUB,
     DSROW_SUB_INTVL,
-    DSROW_PATCH,        /* PATCH only */
     DSROW_ALL_COUNT
 } drone_std_row_t;
 
 static uint8_t drone_std_visible_rows(drone_std_row_t out[DSROW_ALL_COUNT])
 {
-    bool wave = (drone_std_get_source() == DRONE_SRC_WAVE);
-    uint8_t n = 0;
-    for (drone_std_row_t r = 0; r < DSROW_ALL_COUNT; r++) {
-        if (wave && r == DSROW_PATCH) continue;
-        if (!wave && r == DSROW_WAVE) continue;
-        out[n++] = r;
-    }
-    return n;
+    for (drone_std_row_t r = 0; r < DSROW_ALL_COUNT; r++) out[r] = r;
+    return DSROW_ALL_COUNT;
 }
 
 static void drone_std_row_label_value(drone_std_row_t r,
@@ -59,16 +52,15 @@ static void drone_std_row_label_value(drone_std_row_t r,
             snprintf(value, DRONE_VALUE_LEN, "%s",
                      drone_std_get_enabled() ? "ON" : "OFF");
             break;
-        case DSROW_SOURCE:
-            snprintf(label, DRONE_LABEL_LEN, "SOURCE");
-            snprintf(value, DRONE_VALUE_LEN, "%s",
-                     drone_std_get_source() == DRONE_SRC_PATCH ? "PATCH" : "WAVE");
+        case DSROW_PATCH: {
+            /* The patch name where the table has one, else the number. */
+            uint16_t patch = drone_std_get_patch();
+            const char *name = patch_name_for(patch);
+            snprintf(label, DRONE_LABEL_LEN, "PATCH");
+            if (name) snprintf(value, DRONE_VALUE_LEN, "%s", name);
+            else      snprintf(value, DRONE_VALUE_LEN, "%u", (unsigned)patch);
             break;
-        case DSROW_WAVE:
-            snprintf(label, DRONE_LABEL_LEN, "WAVE");
-            snprintf(value, DRONE_VALUE_LEN, "%s",
-                     drone_wave_name(drone_std_get_wave()));
-            break;
+        }
         case DSROW_ROOT: {
             char nn[4];
             ui_note_name(drone_std_get_root_note(), nn);
@@ -106,11 +98,6 @@ static void drone_std_row_label_value(drone_std_row_t r,
             snprintf(value, DRONE_VALUE_LEN, "%d",
                      (int)drone_std_get_sub_interval());
             break;
-        case DSROW_PATCH:
-            snprintf(label, DRONE_LABEL_LEN, "PATCH");
-            snprintf(value, DRONE_VALUE_LEN, "%u",
-                     (unsigned)drone_std_get_patch());
-            break;
         default:
             label[0] = '\0'; value[0] = '\0';
             break;
@@ -141,25 +128,12 @@ static void drone_std_edit_row(drone_std_row_t r, int delta)
         case DSROW_ENABLE:
             if (dir != 0) drone_std_set_enabled(!drone_std_get_enabled());
             break;
-        case DSROW_SOURCE:
-            if (dir != 0)
-                drone_std_set_source(drone_std_get_source() == DRONE_SRC_WAVE
-                                     ? DRONE_SRC_PATCH : DRONE_SRC_WAVE);
+        case DSROW_PATCH:
+            synth_ui_drone_std_cycle_patch(dir);
             break;
-        case DSROW_WAVE: {
-            /* Same wave cycle as the stutter drone (NOISE/KS excluded). */
-            static const uint16_t waves[] = { SAW_DOWN, SAW_UP, PULSE, TRIANGLE, SINE };
-            const int wn = (int)(sizeof(waves) / sizeof(waves[0]));
-            int idx = 0;
-            for (int i = 0; i < wn; i++) {
-                if (waves[i] == drone_std_get_wave()) { idx = i; break; }
-            }
-            idx = (idx + dir + wn) % wn;
-            drone_std_set_wave(waves[idx]);
-            break;
-        }
         case DSROW_ROOT: {
-            int rv = SEQ_CLAMP_INT((int)drone_std_get_root_note() + dir, 24, 72);
+            int rv = SEQ_CLAMP_INT((int)drone_std_get_root_note() + dir,
+                                   DRONE_ROOT_MIN, DRONE_ROOT_MAX);
             drone_std_set_root_note((uint8_t)rv);
             break;
         }
@@ -184,10 +158,8 @@ static void drone_std_edit_row(drone_std_row_t r, int delta)
             break;
         case DSROW_SUB_INTVL:
             drone_std_set_sub_interval((int8_t)SEQ_CLAMP(
-                (int)drone_std_get_sub_interval() + dir, -36, 0));
-            break;
-        case DSROW_PATCH:
-            synth_ui_drone_std_cycle_patch(dir);
+                (int)drone_std_get_sub_interval() + dir,
+                DRONE_SUB_INTERVAL_MIN, DRONE_SUB_INTERVAL_MAX));
             break;
         case DSROW_STUTTER:
         default:
