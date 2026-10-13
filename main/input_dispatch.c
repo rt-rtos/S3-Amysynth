@@ -28,12 +28,12 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
     /* MY_BUTTON_SHOULDER, per view: SEQ toggles the step under the cursor
      * (two-handed tracker-style entry), GRAPH flips the routing depth's sign,
      * FM flips the editor page, WT cycles the focused keyframe, the mixer
-     * leaves a layer's track rows or opens the menu on its main list, MENU
+     * opens the menu on its main list (a dive stays open behind it), MENU
      * leaves a sub-page for the main list (button 3 reopens the last page, so
      * this is the way home); elsewhere (the LFO editor included) it does
      * nothing. Step entry, the polarity flip and the menu jump take PRESS_DOWN
      * for zero tap latency; the page and keyframe flips and the mixer's
-     * navigation are deliberate gestures, so they wait for the click. All
+     * menu jump are deliberate gestures, so they wait for the click. All
      * events consumed. */
     if (button_id == MY_BUTTON_SHOULDER) {
         ui_view_id_t sv = synth_ui_active_view();
@@ -60,10 +60,15 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
         return;
     }
 
-    /* MY_BUTTON_SHIFT: hold-modifier layer; a bare tap does nothing. */
+    /* MY_BUTTON_SHIFT: hold-modifier layer; a bare tap does nothing. The
+     * mixer records the hold on every page (its level bar inverts while
+     * held), so it never sees a stale SHIFT. */
     if (button_id == MY_BUTTON_SHIFT) {
         if (event == BUTTON_PRESS_DOWN)      s_shift_held = true;
         else if (event == BUTTON_PRESS_UP)   s_shift_held = false;
+        if (event == BUTTON_PRESS_DOWN || event == BUTTON_PRESS_UP) {
+            synth_ui_mixer_shift(s_shift_held);
+        }
         return;
     }
 
@@ -137,7 +142,10 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
         } else if (button_id == MY_BUTTON_2) {
             bool editor_open = (sv == UI_VIEW_GRAPH || sv == UI_VIEW_LFO ||
                                 sv == UI_VIEW_DIST  || sv == UI_VIEW_FILTER);
-            if (editor_open) {
+            if (sv == UI_VIEW_MIXER) {
+                /* Mixer: fade the cursor row (MAST included). */
+                synth_ui_mixer_fade();
+            } else if (editor_open) {
                 /* Inside an editor the chord hands the open tab back to the
                  * patch - chorded, like the source flip, so a stray press
                  * cannot drop an authored group. */
@@ -205,10 +213,10 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
     }
 #endif
 
-    /* Mixer screen: Button 1 toggles the cursor row's mute, Button 2 its
-     * fade; neither is a hold (the patch-select and pitch holds would
-     * edit the layer behind the screen). Clear both latches in case one was
-     * held when the screen switched. */
+    /* Mixer screen: Button 1 toggles the cursor row's mute, Button 2 flips
+     * between the row list and the row's quick cells; neither is a hold (the
+     * patch-select and pitch holds would edit the layer behind the screen).
+     * Clear both latches in case one was held when the screen switched. */
     if ((button_id == MY_BUTTON_1 || button_id == MY_BUTTON_2) &&
         synth_ui_active_view() == UI_VIEW_MIXER) {
         s_patch_held = false;
@@ -216,8 +224,8 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
         s_drum_select_held = false;
         synth_ui_set_drum_select_mode(false);
         if (event == BUTTON_PRESS_DOWN) {
-            if (button_id == MY_BUTTON_1) synth_ui_mixer_toggle_mute();
-            else                          synth_ui_mixer_toggle_fade();
+            if (button_id == MY_BUTTON_1) synth_ui_mixer_button1();
+            else                          synth_ui_mixer_button2();
         }
         return;
     }
@@ -371,7 +379,8 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
 
     // MY_BUTTON_3: inside an editor, click cycles editor pages (EG0 -> EG1 ->
     // filter -> LFO -> DIST); in STEPEDIT it closes; in FM link mode it ends
-    // linking; otherwise it is the menu toggle.
+    // linking; in the mixer's track rows it returns to the overview;
+    // otherwise it is the menu toggle.
     if (button_id == MY_BUTTON_3) {
 #if CONFIG_SYNTH_CUSTOM_FM
         if (v == UI_VIEW_FM && synth_ui_fm_link_active()) {
@@ -393,6 +402,7 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
             }
             return;
         }
+        if (v == UI_VIEW_MIXER && event == BUTTON_SINGLE_CLICK && synth_ui_mixer_back()) return;
         if (event == BUTTON_SINGLE_CLICK) {
             synth_ui_menu_toggle();
         }
@@ -561,8 +571,9 @@ void input_dispatch_encoder_steps(long steps)
         synth_ui_wt_handle_encoder((int)steps);
 #endif
     } else if (v == UI_VIEW_MIXER) {
-        // SHIFT has no layer here: the turn moves or edits either way.
-        synth_ui_mixer_handle_encoder((int)steps);
+        // SHIFT+Turn edits the cursor row's level (or the FADE length);
+        // a held Button 1 / 2 takes precedence (the page's quick cells).
+        synth_ui_mixer_handle_encoder((int)steps, s_shift_held);
     } else if (s_shift_held) {
         // SHIFT+Turn on the sequencer screen: step the active melodic
         // layer's FM algorithm live instead of moving the cursor.

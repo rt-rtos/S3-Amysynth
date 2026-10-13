@@ -35,7 +35,8 @@ only draws the flat view structs it is handed)
 | `display_drone.{c,h}` | drone parameter-list renderer (a row can carry an 8-step pattern glyph) |
 | `display_menu.{c,h}` | menu overlay renderer (scrollable label:value list, also reused by the FX and FM pages) |
 | `display_prog.{c,h}` | chord-progression screen renderer |
-| `display_mixer.{c,h}` | mixer screen renderer: rows of name, level bar and mute cell from a flat view struct |
+| `display_mixer.{c,h}` | mixer screen renderer: rows of name, level bar, mute cell and two 4-char quick cells from a flat view struct, each row underlined out to its last cell; the selected quick cell outlined, or filled while editing |
+| `display_text.{c,h}` | shared value-to-text formatters (`display_hz_label`: a frequency in four characters) |
 | `display_stepedit.{c,h}` | per-step probability / ratchet / conditional-trig popup |
 | `display_hint.{c,h}` | bottom hint-strip compositor (rows 57–63) |
 | `display_lfo.{c,h}` | LFO editor overlay renderer |

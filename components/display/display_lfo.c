@@ -1,4 +1,5 @@
 #include "display_lfo.h"
+#include "display_text.h"   /* display_hz_label */
 #include "voice_config.h"   /* WOBBLE dB authoring unit (shared with the editor) */
 #include "note_div.h"
 #include <math.h>
@@ -72,14 +73,6 @@ static void draw_wave_icon(u8g2_t *u8g2, uint8_t x0, uint8_t y_center,
     u8g2_SetDrawColor(u8g2, 1);
 }
 
-/* A cutoff in at most four characters: "550", "2.2k", "11k". */
-static void hz_label(char out[6], float hz)
-{
-    if (hz < 999.5f)        snprintf(out, 6, "%u", (unsigned)(hz + 0.5f));
-    else if (hz < 9950.0f)  snprintf(out, 6, "%.1fk", (double)(hz / 1000.0f));
-    else                    snprintf(out, 6, "%uk", (unsigned)(hz / 1000.0f + 0.5f));
-}
-
 /* Right-column parameter row ("Label  value"), inverted when selected, with a
  * caret at the far right while adjusting. `scroll` is '^'/'v' on the window's
  * edge rows when more parameters lie that way, or 0; drawn inside the row's
@@ -140,8 +133,8 @@ void lfo_view_draw(u8g2_t *u8g2, const lfo_view_t *v)
      * the small font; dropped when a long title leaves no room for it. */
     if (v->flt_lo_hz > 0.0f && (l->targets & LFO_TGT_BIT(LFO_TARGET_FILTER))) {
         char lo[6], hi[6], rng[14];
-        hz_label(lo, v->flt_lo_hz);
-        hz_label(hi, v->flt_hi_hz);
+        display_hz_label(lo, v->flt_lo_hz);
+        display_hz_label(hi, v->flt_hi_hz);
         snprintf(rng, sizeof(rng), "%s-%s", lo, hi);
         u8g2_SetFont(u8g2, u8g2_font_4x6_tr);
         int rx = (int)chip_x - 3 - (int)u8g2_GetStrWidth(u8g2, rng);

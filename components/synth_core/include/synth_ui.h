@@ -263,25 +263,35 @@ uint8_t synth_ui_wt_keyframe(void);
 
 /* Mixer page over the mixer model (mixer.h): one row per source, a layer row
  * dives into its track rows. Active when seq_state.ui_mode == UI_MODE_MIXER
- * and no overlay is up; the calls return false and do nothing otherwise.
- * handle_encoder moves the cursor, or steps the focused row's fader by 5 per
- * detent while its level is focused. handle_button (encoder click) cycles
- * the cursor row's focus, none -> level -> none, on a layer row
- * none -> level -> dive -> none, where the click from dive opens that
- * layer's track rows. toggle_mute (Button 1) flips the cursor row's mixer
- * mute, in any focus; nothing on MAST. toggle_fade (Button 2) starts or
- * turns around the cursor row's fade (mixer_fade_toggle()), in any focus,
- * MAST included. The overview's last row, FADE, sets the fade length: its
- * level focus steps 1, 2, 4, 8, 16, 32 bars one per detent, and Buttons 1
- * and 2 do nothing there. shoulder (SHOULDER click) leaves the
- * track rows for the overview on the row they were opened from, or on the
- * overview opens the menu on its main list. Controls: CONTROLS.md. All
- * UI/input task. */
+ * and no overlay is up; the calls return false and do nothing otherwise,
+ * except that shift still records the hold. Two modes: LIST, where the
+ * turn scrolls the rows, and PARAM, where the turn stays inside the cursor
+ * row's quick cells (synth_ui/ui_mixer_quick.h).
+ * handle_encoder: with `shift` (SHIFT held) steps the cursor row's fader by
+ * 5 per detent in either mode, MAST included, or on the overview's last
+ * row, FADE, the fade length (1, 2, 4, 8, 16, 32 bars, one per detent).
+ * Otherwise LIST moves the cursor; PARAM selects among the row's cells
+ * (clamped) or, while editing, steps the selected one. handle_button
+ * (encoder click): LIST opens a layer row's track rows (nothing on other
+ * rows); PARAM toggles editing of the selected cell. button1 flips the
+ * cursor row's mixer mute (nothing on MAST or FADE). button2 toggles LIST
+ * <-> PARAM; nothing on a row without quick cells; entering selects the
+ * first cell, not editing. fade starts or turns around the cursor row's
+ * fade (mixer_fade_toggle(), MAST included, nothing on FADE). back leaves
+ * the track rows for the overview on the row they were opened from, in
+ * LIST mode, and returns true; false (nothing done) outside a dive, so
+ * the caller falls through. shift records SHIFT for the view (the bar
+ * inverts while held); call it on every SHIFT press and release. shoulder
+ * opens the menu on its main list from anywhere on the page; an open dive
+ * stays. Controls: CONTROLS.md. All UI/input task. */
 bool    synth_ui_mixer_is_active(void);
-bool    synth_ui_mixer_handle_encoder(int steps);
+bool    synth_ui_mixer_handle_encoder(int steps, bool shift);
 bool    synth_ui_mixer_handle_button(void);
-bool    synth_ui_mixer_toggle_mute(void);
-bool    synth_ui_mixer_toggle_fade(void);
+bool    synth_ui_mixer_button1(void);
+bool    synth_ui_mixer_button2(void);
+bool    synth_ui_mixer_fade(void);
+bool    synth_ui_mixer_back(void);
+bool    synth_ui_mixer_shift(bool held);
 bool    synth_ui_mixer_shoulder(void);
 
 /* Global-FX reassert after a patch load (every Juno patch ends with global

@@ -631,7 +631,36 @@ scales a synth's output after its voices and leaves every Level, envelope and
 LFO setting as it is; an LFO tremolo keeps its depth under a lowered fader.
 Faders and mutes are saved with the project.
 
-`MY_BUTTON_2` fades the cursor row to silence over the FADE row's bar count,
+The page has two modes. In LIST mode the encoder moves the cursor and its
+click opens a layer row's track rows; Button 3 leaves them again. Button 2
+switches the cursor row to PARAM mode (on a row with quick cells): the turn
+then selects one of that row's cells, the click starts or stops editing it,
+and the turn steps it while editing. PARAM mode stays inside the row until
+Button 2 returns to LIST mode. In either mode SHIFT + turn sets the cursor
+row's fader in 5 % steps (on the FADE row, the fade length), Button 1
+toggles the mute and SHIFT + Button 2 fades the row. SHOULDER opens the
+menu's main list from anywhere on the page.
+
+Each overview row also carries up to two **quick cells**, a fixed pair of
+the source's own settings per row kind, edited in PARAM mode; the title
+shows the selected cell's name and the cell its value (outlined while
+selected, filled while editing). They edit the same settings as the source's own page,
+so a project saves them where that page's settings go (the live voice's are
+session-only).
+
+| Row | Q1 | Q2 |
+|---|---|---|
+| Melodic layer | CUT: every row's filter cutoff, one semitone per detent (rows at different cutoffs move by the same interval; 65-16000 Hz) | GAT: the layer gate, the Layer page's steps |
+| Drum layer | SWG: layer swing, 2 % per detent | - |
+| ARP | OCT: octaves, 1-4 | GLD: glide, 0-100 ms in 5 ms steps |
+| STUT | PAT: gate pattern | RT: root note |
+| DRON | RT: root note | CUT: filter cutoff, one semitone per detent |
+| LIVE | GLD: glide, 0-100 ms in 5 ms steps | CUT: filter cutoff, one semitone per detent |
+
+Track rows, MAST, the clips and FADE have none. CUT changes the stored
+cutoff also while that filter is off.
+
+SHIFT + `MY_BUTTON_2` fades the cursor row to silence over the FADE row's bar count,
 starting on the next bar line (at once while the transport is stopped); a
 second press fades it back to where it was. A second press before the fade has moved (while it waits for the
 bar line) cuts the row to silence at once and fades it in from 0 to where
@@ -642,8 +671,8 @@ turning the fader cancels the fade. On MAST it fades everything, clips and
 effect tails included. The FADE length is saved with the project; a fade in
 progress is not (the position is saved as it stands).
 
-Hint strip: `1:Mute 2:Fade 3:Menu`, plus `LB:Back` in a layer's track rows and
-`LB:Main` on the overview. Controls: [CONTROLS.md](CONTROLS.md#mixer-screen).
+Hint strip: `1:Mute 2:Param 3:Menu LB:Main`; `2:List` in PARAM mode and
+`3:Back` in a layer's track rows. Controls: [CONTROLS.md](CONTROLS.md#mixer-screen).
 
 ---
 

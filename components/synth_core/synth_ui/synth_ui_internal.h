@@ -72,6 +72,15 @@ void     synth_ui_request_layer_tracks(uint8_t li, uint8_t num_tracks);
 uint8_t  ui_swing_step(uint8_t swing_pct, int dir);
 void     ui_swing_format(char *buf, size_t len, uint8_t swing_pct);
 
+/* Layer gate editing, shared by the Layer page and the mixer's GAT cell
+ * (defined in ui_screen_layermenu.c). ui_gate_ladder_step moves gate_pct one
+ * detent on the ladder (5 % steps to 100, then 2, 3, 4, 6, 8 whole steps, then
+ * SEQ_GATE_HOLD), clamped at both ends; a value between detents moves to the
+ * nearest detent on the turn's side. ui_gate_format writes "92%", "2 st" or
+ * "Hold" into buf. Pure; any task. */
+uint16_t ui_gate_ladder_step(uint16_t gate_pct, int dir);
+void     ui_gate_format(char *buf, size_t len, uint16_t gate_pct);
+
 /* ─── View signatures (each defined in its screen/editor file) ──────────
  * CONTRACT: signature functions are side-effect-free. The redraw gate calls one
  * per frame and compares its hash against the previous frame's; any state
@@ -95,6 +104,9 @@ uint32_t wt_view_signature(wt_view_t *out);         /* CONFIG_SYNTH_CUSTOM_WT */
 uint32_t mixer_view_signature(mixer_view_t *out);
 /* Mixer page: true while a layer's track rows are shown (hint strip). */
 bool     mixer_page_in_dive(void);
+/* Mixer page: true in PARAM mode (the turn works the cursor row's quick
+ * cells), false in LIST mode (hint strip). */
+bool     mixer_page_mode_param(void);
 uint32_t dev_view_signature(dev_view_t *out);       /* CONFIG_SYNTH_DEV_MENU */
 bool     synth_ui_dev_is_active(void);
 

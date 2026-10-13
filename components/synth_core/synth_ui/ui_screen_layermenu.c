@@ -230,12 +230,8 @@ const menu_item_view_t *layermenu_menu_build_items(void)
                               ? "TRACK" : "LAYER");
             break;
         case LM_GATE: {
-            uint16_t gate = vt_get_gate_pct(s_lm_kind);
             snprintf(it->label, MENU_LABEL_LEN, "Gate");
-            if (gate == SEQ_GATE_HOLD) snprintf(it->value, MENU_VALUE_LEN, "Hold");
-            else if (gate > 100u)      snprintf(it->value, MENU_VALUE_LEN, "%u st",
-                                                (unsigned)(gate / 100u));
-            else snprintf(it->value, MENU_VALUE_LEN, "%u%%", (unsigned)gate);
+            ui_gate_format(it->value, MENU_VALUE_LEN, vt_get_gate_pct(s_lm_kind));
             break;
         }
         case LM_GLIDE:
@@ -422,7 +418,7 @@ static const uint16_t lm_gate_ladder[] = {
 
 /* Next gate on the ladder in the turn direction, clamped at both ends. A value
  * between detents moves to the nearest detent on the turn's side. */
-static uint16_t lm_gate_step(uint16_t pct, int dir)
+uint16_t ui_gate_ladder_step(uint16_t pct, int dir)
 {
     int n = (int)(sizeof(lm_gate_ladder) / sizeof(lm_gate_ladder[0]));
     if (dir == 0) return pct;
@@ -432,6 +428,13 @@ static uint16_t lm_gate_step(uint16_t pct, int dir)
     }
     for (int i = n - 1; i >= 0; i--) if (lm_gate_ladder[i] < pct) return lm_gate_ladder[i];
     return lm_gate_ladder[0];
+}
+
+void ui_gate_format(char *buf, size_t len, uint16_t gate_pct)
+{
+    if (gate_pct == SEQ_GATE_HOLD) snprintf(buf, len, "Hold");
+    else if (gate_pct > 100u)      snprintf(buf, len, "%u st", (unsigned)(gate_pct / 100u));
+    else                           snprintf(buf, len, "%u%%", (unsigned)gate_pct);
 }
 
 void layermenu_menu_edit_value(uint8_t idx, int delta)
@@ -466,7 +469,7 @@ void layermenu_menu_edit_value(uint8_t idx, int delta)
             int v = SEQ_CLAMP_INT((int)vt_get_gate_pct(s_lm_kind) + dir * 5, 10, 100);
             vt_set_gate_pct(s_lm_kind, (uint16_t)v);
         } else {
-            vt_set_gate_pct(s_lm_kind, lm_gate_step(vt_get_gate_pct(s_lm_kind), dir));
+            vt_set_gate_pct(s_lm_kind, ui_gate_ladder_step(vt_get_gate_pct(s_lm_kind), dir));
         }
         break;
     case LM_GLIDE: {

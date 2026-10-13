@@ -16,7 +16,7 @@ is right and this file is stale.
 | Button 1 | `MY_BUTTON_1` | Hold modifier (acts on press, released on release), or a press action in some views |
 | Button 2 | `MY_BUTTON_2` | Same as button 1 |
 | Button 3 | `MY_BUTTON_3` | Acts on tap |
-| SHOULDER (LB) | `MY_BUTTON_SHOULDER` | Left shoulder button. Acts on press, except the FM page flip, the WT keyframe cycle and the Mixer back/menu jump (tap) |
+| SHOULDER (LB) | `MY_BUTTON_SHOULDER` | Left shoulder button. Acts on press, except the FM page flip, the WT keyframe cycle and the Mixer menu jump (tap) |
 | SHIFT (RB) | `MY_BUTTON_SHIFT` | Right shoulder button. Hold modifier; a bare tap does nothing |
 
 Pin assignments: `components/my_buttons/my_buttons.c` (`s_button_gpios[]`).
@@ -56,8 +56,7 @@ preconditions are not met does nothing.
 
 The bottom line shows `1:<b1> 2:<b2> 3:<b3>` and, in the menu on a sub-page,
 ` LB:Main`; on the FM screen ` LB:Pg2` or ` LB:Pg1` (the page SHOULDER flips
-to); on the WT screen ` LB:Key`; on the Mixer screen ` LB:Main`, or ` LB:Back`
-in a layer's track rows. It is read from `ui_view_table[]` (`ui_view_resolve.c`) for the
+to); on the WT screen ` LB:Key`; on the Mixer screen ` LB:Main`. It is read from `ui_view_table[]` (`ui_view_resolve.c`) for the
 active view. SHIFT chords are not shown. The strip is hidden on the Prog
 screen; a DEV status bar replaces it on every screen while on.
 
@@ -67,7 +66,7 @@ screen; a DEV status bar replaces it on every screen while on.
 | Arp, Stutter, Normal drone | Patch | - | Menu |
 | FM | Link (page 1), - (page 2) | Mute | Menu (Done while linking) |
 | WT | Copy (- on HRM and the S tab) | Reset (Blend on keyframe M, off HRM; - on the S tab) | Menu |
-| Mixer | Mute | Fade | Menu |
+| Mixer | Mute | Param (List in PARAM mode) | Menu (Back in a layer's track rows) |
 | Menu | - (Save while naming) | - (Disc while naming) | Menu |
 | Prog | Del | +Add | Menu |
 | DEV | - | - | Menu |
@@ -247,18 +246,34 @@ fade length (overview only). A layer row dives
 into its track rows (the drum layer's by role, LOW..AUX; a melodic layer's
 T1..T5). Each row shows a bar (the fader position) and an M cell: `M` filled
 for the mixer's mute, `m` when only the Layer page's (or the arp's) own mute
-is on. While a row fades, a tick on its bar marks the target.
+is on. While a row fades, a tick on its bar marks the target. Two quick
+cells follow (overview source rows only), each a fixed setting of the row's
+source; the cell shows the value and, while it is selected in PARAM mode,
+the title shows its name (`MIXER  CUT`):
+
+| Row | Q1 | Q2 |
+|---|---|---|
+| Melodic layer | CUT: every row's filter cutoff, a semitone per detent | GAT: layer gate, the Layer page's Gate steps |
+| Drum layer | SWG: layer swing, 2 per detent, 0..66 | - |
+| ARP | OCT: octaves 1..4 | GLD: glide ms, 5 per detent, 0..100 |
+| STUT | PAT: gate pattern | RT: root note |
+| DRON | RT: root note | CUT: filter cutoff, a semitone per detent |
+| LIVE | GLD: glide ms, 5 per detent, 0..100 | CUT: filter cutoff, a semitone per detent |
 
 | Input | Action |
 |---|---|
-| Encoder turn, no focus | Move the cursor (clamped); five rows show at a time |
-| Encoder click | Cycle the focus on the cursor row: none -> LEVEL -> none; on a layer row none -> LEVEL -> DIVE, and a click with DIVE focused opens that layer's track rows |
-| Encoder turn, LEVEL focus | Fader position in 5 % steps, 0..100; cancels a fade on that row. FADE row: the fade length, one step per detent through 1, 2, 4, 8, 16, 32 bars |
-| Button 1 (press) | Toggle the mixer mute of the cursor row (not MAST, not FADE), in any focus |
-| Button 2 (press) | Fade the cursor row (MAST included, not FADE), in any focus: from above 0, to 0 over the FADE length from the next bar line (at once while stopped); from 0, back to where the last fade-out started (100 if none). During a fade that has not moved yet (waiting for the bar line): flip it, an out becomes a cut to silence and a fade in from 0 to the old level, an in becomes an out from that level; once it moves: turn it around from where it is, starting at once |
-| SHOULDER (tap) | In a layer's track rows: back to the overview, on the row it was opened from. Overview: open the menu on its main list |
+| Encoder turn | LIST mode: move the cursor (clamped); five rows show at a time. PARAM mode, not editing: select among the cursor row's quick cells (clamped, never leaves the row). PARAM mode, editing: step the selected cell (table above), clamped |
+| SHIFT hold + turn | Fader position of the cursor row in 5 % steps, 0..100 (MAST included), in either mode; cancels a fade on that row. FADE row: the fade length, one step per detent through 1, 2, 4, 8, 16, 32 bars. The bar is inverted while SHIFT is held |
+| Encoder click | LIST mode: on a layer row, open its track rows; other rows, nothing. PARAM mode: start / stop editing the selected cell (outlined while selected, filled while editing) |
+| Button 1 (press) | Toggle the mixer mute of the cursor row (not MAST, not FADE) |
+| Button 2 (press) | Toggle LIST <-> PARAM mode on the cursor row. Nothing on a row without quick cells (MAST, FADE, the clips, track rows). Entering selects the first cell, not editing |
+| SHIFT + Button 2 | Fade the cursor row (MAST included, not FADE): from above 0, to 0 over the FADE length from the next bar line (at once while stopped); from 0, back to where the last fade-out started (100 if none). During a fade that has not moved yet (waiting for the bar line): flip it, an out becomes a cut to silence and a fade in from 0 to the old level, an in becomes an out from that level; once it moves: turn it around from where it is, starting at once |
+| Button 3 (tap) | In a layer's track rows: back to the overview, on the row it was opened from, in LIST mode. Elsewhere: menu |
+| SHOULDER (tap) | Open the menu on its main list, from anywhere on the page; an open dive stays, so returning lands where you were |
 | Button 0 (tap / hold) | Cycle the active layer / play-stop |
-| Button 3 (tap) | Menu |
+
+PARAM mode stays inside the cursor row: the turn cannot move to another row
+until Button 2 returns to LIST mode.
 
 ## Arp screen
 

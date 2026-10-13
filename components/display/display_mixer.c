@@ -10,17 +10,17 @@
 #define MIX_ROW_Y0    17
 #define MIX_ROW_H     8
 #define MIX_NAME_W    21     /* cursor box x 0..20 */
-#define MIX_BAR_X     22     /* frame x 22..79, y + 1 .. y + 5 */
-#define MIX_BAR_W     58
+#define MIX_BAR_X     22     /* frame x 22..71, y + 1 .. y + 5 */
+#define MIX_BAR_W     50
 #define MIX_BAR_H     5
 #define MIX_FILL_X    23
-#define MIX_FILL_MAX  56
-#define MIX_M_X       84     /* M cell x 84..90 */
+#define MIX_FILL_MAX  48
+#define MIX_M_X       74     /* M cell x 74..80 */
 #define MIX_M_W       7
-#define MIX_Q1_X      94     /* quick cells x 94..108 and 110..124 */
-#define MIX_Q2_X      110
-#define MIX_Q_W       15
-#define MIX_SCROLL_X  124
+#define MIX_Q1_X      84     /* quick cells x 84..103 and 106..125, 4 chars */
+#define MIX_Q2_X      106
+#define MIX_Q_W       20
+#define MIX_SCROLL_X  125    /* 3 px triangles in x 125..127 */
 
 static uint8_t bar_px(uint8_t pos)
 {
@@ -62,8 +62,18 @@ static void draw_bar(u8g2_t *u8g2, uint8_t y, uint8_t pos, uint8_t fade_to,
     u8g2_SetDrawColor(u8g2, fg);
 }
 
+/* Quick cell at x: drawn when it has text or is selected; the selected
+ * cell is outlined, or filled while `editing`. */
+static void draw_quick(u8g2_t *u8g2, uint8_t x, uint8_t y, const char *s,
+                       bool selected, bool editing, uint8_t fg)
+{
+    if (s[0] == '\0' && !selected) return;
+    draw_cell(u8g2, x, y, MIX_Q_W, s, selected && editing, fg);
+    if (selected && !editing) u8g2_DrawFrame(u8g2, x, y, MIX_Q_W, MIX_ROW_H);
+}
+
 static void draw_row(u8g2_t *u8g2, const mixer_view_row_t *r, uint8_t y,
-                     bool cur, uint8_t focus)
+                     bool cur, uint8_t focus, bool editing)
 {
     uint8_t fg = 1;
     if (focus == MIXER_FOCUS_DIVE) {
@@ -94,10 +104,19 @@ static void draw_row(u8g2_t *u8g2, const mixer_view_row_t *r, uint8_t y,
         draw_cell(u8g2, MIX_M_X, y, MIX_M_W, "m", false, fg);
     }
 
-    if (r->q1[0] != '\0' || focus == MIXER_FOCUS_Q1)
-        draw_cell(u8g2, MIX_Q1_X, y, MIX_Q_W, r->q1, focus == MIXER_FOCUS_Q1, fg);
-    if (r->q2[0] != '\0' || focus == MIXER_FOCUS_Q2)
-        draw_cell(u8g2, MIX_Q2_X, y, MIX_Q_W, r->q2, focus == MIXER_FOCUS_Q2, fg);
+    draw_quick(u8g2, MIX_Q1_X, y, r->q1, focus == MIXER_FOCUS_Q1, editing, fg);
+    draw_quick(u8g2, MIX_Q2_X, y, r->q2, focus == MIXER_FOCUS_Q2, editing, fg);
+
+    /* Bottom border on the row's free line y + 7, out to its last cell. */
+    if (fg) {
+        uint8_t x1 = MIX_BAR_X + MIX_BAR_W - 1u;                        /* bar end, 71 */
+        if (r->has_level) {
+            if (r->q2[0] != '\0')      x1 = MIX_Q2_X + MIX_Q_W - 1u;    /* 125 */
+            else if (r->q1[0] != '\0') x1 = MIX_Q1_X + MIX_Q_W - 1u;    /* 103 */
+            else if (r->has_mute)      x1 = MIX_M_X + MIX_M_W - 1u;     /* 80 */
+        }
+        u8g2_DrawHLine(u8g2, 0, (uint8_t)(y + 7), (uint8_t)(x1 + 1u));
+    }
     u8g2_SetDrawColor(u8g2, 1);
 }
 
@@ -115,19 +134,19 @@ void display_mixer_draw_frame(u8g2_t *u8g2, const mixer_view_t *view)
     for (uint8_t i = 0; i < n; i++) {
         bool cur = (view->cursor == i);
         draw_row(u8g2, &view->rows[i], (uint8_t)(MIX_ROW_Y0 + MIX_ROW_H * i), cur,
-                 cur ? view->focus : (uint8_t)MIXER_FOCUS_NONE);
+                 cur ? view->focus : (uint8_t)MIXER_FOCUS_NONE, cur && view->editing);
     }
 
-    /* Scroll triangles, 4 px wide by 3 tall, in the right-edge column; the
+    /* Scroll triangles, 3 px wide by 3 tall, in the right-edge column; the
      * lower one is cut out of a fully inverted last row. */
     if (view->more_above) {
-        u8g2_DrawTriangle(u8g2, MIX_SCROLL_X, 3, MIX_SCROLL_X + 3, 3, MIX_SCROLL_X + 1, 1);
+        u8g2_DrawTriangle(u8g2, MIX_SCROLL_X, 3, MIX_SCROLL_X + 2, 3, MIX_SCROLL_X + 1, 1);
     }
     if (view->more_below) {
         bool dive_last = (n == MIXER_VIS_ROWS && view->cursor == MIXER_VIS_ROWS - 1u &&
                           view->focus == MIXER_FOCUS_DIVE);
         u8g2_SetDrawColor(u8g2, dive_last ? 0 : 1);
-        u8g2_DrawTriangle(u8g2, MIX_SCROLL_X, 50, MIX_SCROLL_X + 3, 50, MIX_SCROLL_X + 1, 52);
+        u8g2_DrawTriangle(u8g2, MIX_SCROLL_X, 50, MIX_SCROLL_X + 2, 50, MIX_SCROLL_X + 1, 52);
         u8g2_SetDrawColor(u8g2, 1);
     }
 }

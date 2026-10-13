@@ -136,10 +136,20 @@ static const char *hint_wt_bs(void)
 }
 #endif
 
-/* MIXER SHOULDER: out of a layer's track rows, else to the main menu. */
+/* MIXER button 2: flips between the row list and the row's quick cells. */
+static const char *hint_mixer_b2(void)
+{
+    return mixer_page_mode_param() ? "List" : "Param";
+}
+/* MIXER button 3: out of a layer's track rows, else the menu. */
+static const char *hint_mixer_b3(void)
+{
+    return mixer_page_in_dive() ? "Back" : "Menu";
+}
+/* MIXER SHOULDER: the main menu from anywhere on the page. */
 static const char *hint_mixer_bs(void)
 {
-    return mixer_page_in_dive() ? "Back" : "Main";
+    return "Main";
 }
 
 /* ─── The table: one row per view, indexed by ui_view_id_t ─────────────── */
@@ -176,7 +186,7 @@ const ui_view_desc_t ui_view_table[UI_VIEW_COUNT] = {
 #else
     [UI_VIEW_WT]        = { "WT",     NULL,          NULL,           "-",      "-",     "Menu",  .badge_x =   0 },
 #endif
-    [UI_VIEW_MIXER]     = { "MIXER",  sig_mixer,     draw_mixer,     "Mute",   "Fade",  "Menu",  .badge_x = 110,
-                            .bs_fn = hint_mixer_bs },
+    [UI_VIEW_MIXER]     = { "MIXER",  sig_mixer,     draw_mixer,     "Mute",   NULL,    NULL,    .badge_x = 110,
+                            .b2_fn = hint_mixer_b2, .b3_fn = hint_mixer_b3, .bs_fn = hint_mixer_bs },
     [UI_VIEW_SEQ]       = { "SEQ",    sig_seq,       draw_seq,       "Patch",  "Pitch", "Menu",  .badge_x =  44 },
 };
