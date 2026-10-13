@@ -531,6 +531,7 @@ is open, `MY_BUTTON_3` cycles editor pages instead of toggling the menu.
 | Menu action | Destination |
 |---|---|
 | Sequencer | Step sequencer grid (default at boot) |
+| Mixer | A fader and a mute per sound source (see [Mixer](#mixer)) |
 | Arpeggiator | Arpeggiator |
 | Drones | Free-running drone (the stutter drone is a dive row inside it) |
 | Progression | Chord progression editor |
@@ -613,13 +614,34 @@ whether the arp follows the global scale (GLOB) or plays its slots unsnapped
 
 ---
 
+### Mixer
+
+One row per sound source: master, the drum layer, each melodic layer, the
+arp, both drones, and the live voice and the clip slots while they exist.
+A layer row dives into its track rows. The bar is the fader position, 0-100;
+the gain is the position squared (50 = -12 dB), and a track's gain is its
+layer's times its own. MAST is the menu's **Volume** seen as a fader (100 =
+unity; a volume above unity shows as 100).
+
+The mixer's **M** is a soft mute: the source keeps playing at zero gain, so
+notes and tails run on and an unmute comes back mid-note. The Layer page's
+and the arp's own mutes stay separate and show as a lowercase `m`. The mixer
+scales a synth's output after its voices and leaves every Level, envelope and
+LFO setting as it is; an LFO tremolo keeps its depth under a lowered fader.
+Faders and mutes are saved with the project.
+
+Hint strip: `1:Mute 2:- 3:Menu`, plus `LB:Back` in a layer's track rows and
+`LB:Main` on the overview. Controls: [CONTROLS.md](CONTROLS.md#mixer-screen).
+
+---
+
 ### Menu - runtime parameters
 
 | Item | Range |
 |---|---|
 | DEV | Developer screen (with `CONFIG_SYNTH_DEV_MENU`) |
 | Layer | opens the active layer's page: first **Track**, the grid's selected track (turning it moves the cursor's row too), and the per-track level/key/repeat/mute/solo it drives, then the layer-wide steps, swing, patch scope, gate/glide/groove and chord. **Level** is the row's volume, 0-100 % in 5 % steps (50 % = -6 dB); the arp, live voice and drones set theirs with the envelope editor's AMP stop instead. **Key** (filter key tracking, 0-100 %, pivot = main menu Root in octave 4) moves the row's cutoff with the played note, 100 % one octave per octave; the filter's cutoff is then the cutoff at the pivot note. Melodic layers only. **Gate** from 10 to 100 % is a share of one step (drum layers start at 50 %, melodic at 92 %). Above that it is whole steps, `2 st` to `8 st`. `Hold` keeps the note until the row's next trig. At any setting a note ends at least one tick before the next active step on its row fires, even when that step's conditions keep it silent this loop. **Glide** (ms, AMY-native portamento) and **Groove** (0-100 % accent / humanize) are melodic only |
-| Sequencer / Arpeggiator / Drones / Progression / FM / Wavetable | Switch mode screen |
+| Sequencer / Mixer / Arpeggiator / Drones / Progression / FM / Wavetable | Switch mode screen |
 | BPM | 40-300 |
 | Quant | ON / OFF |
 | Scale | Chromatic, Major (Ionian), Natural Minor, Dorian, Phrygian, Lydian, Mixolydian, Minor Pentatonic, Major Pentatonic, Harmonic Minor, Locrian, Whole Tone |

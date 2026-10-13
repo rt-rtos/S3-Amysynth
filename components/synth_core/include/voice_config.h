@@ -19,8 +19,8 @@
  * on a +-1 carrier is a gain swing of 10^(+-3w), symmetric about the authored
  * level, so the loud half-cycle overshoots the unmodulated note. The shared
  * wire keeps the dip and removes the overshoot by pre-dropping the synth's
- * level (amy_event.synth_level, which nothing else in the app writes) by the
- * same 10^(-3w): the swing then runs from 10^(-6w) up to the unmodulated
+ * level (the LFO cap factor of amy_event.synth_level, owned by synth_level.h)
+ * by the same 10^(-3w): the swing then runs from 10^(-6w) up to the unmodulated
  * level, a 30 dB tremolo at 100 % depth that is never louder than the note.
  * The software stepper's AMP (lfo_push_amp) dips linearly from unity to
  * 1 - depth. */
@@ -359,9 +359,10 @@ void voice_lfo_source_set_rate(uint8_t synth, uint8_t carrier_osc,
  * and then writing each checked target's depth with the same law as
  * voice_apply_native_lfo_topo()'s COEF_MOD: PITCH on pitch_mask oscs, SCAN on
  * scan_mask oscs, FILTER, AMP, PAN (with pan CONST 0.5) and DIST on voice_mask
- * oscs. AMP also sends one synth-scoped event with synth_level =
- * 10^(-3 * depth * VOICE_LFO_DEPTH_AMP), the overshoot cap described at that
- * scalar; every other call writes synth_level 1.0 there, so an unwire or a
+ * oscs. AMP also sets the synth's LFO cap (synth_level_set_lfo_cap(),
+ * synth_level.h, which owns amy_event.synth_level and sends cap x mixer gain)
+ * to 10^(-3 * depth * VOICE_LFO_DEPTH_AMP), the overshoot cap described at
+ * that scalar; every other call sets the cap to 1.0, so an unwire or a
  * target change restores the level. NULL lfo, a disabled lfo, no targets or
  * lfo_synth == LFO_BANK_NONE unwire instead: mod_synth[1] = LFO_WIRE_UNSET
  * and every COEF_MOD1 rail 0.

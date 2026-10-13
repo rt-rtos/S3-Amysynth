@@ -1,7 +1,8 @@
 """Reader/writer for S3-Amysynth project files (Pnn.amp).
 
 Mirrors components/synth_core/project/project_snapshot.c field for field:
-GLOB v6, LAYR v25, ARP v16, DRON v6, DSTD v3, PROG v1, CHRD v1, CLIP v2, PGEN v1, WTCU v2, FMCU v1,
+GLOB v6, LAYR v25, ARP v16, DRON v6, DSTD v3, PROG v1, CHRD v1, CLIP v2, MIXR v1, PGEN v1,
+WTCU v2, FMCU v1,
 inside project_store.c's 32-byte header (magic "AMYP", fmt 1, name, len, CRC32).
 Field order IS the format; when the firmware bumps a section version, update
 the matching read_/write_ pair and VER here (gen_templates.py fails the build
@@ -18,10 +19,11 @@ FMT_VERSION = 1
 NAME_LEN = 16
 
 TAG = {k: struct.unpack('<I', k.encode())[0] for k in ('GLOB', 'LAYR', 'ARP ', 'DRON', 'DSTD', 'PROG', 'CHRD', 'CLIP',
-                                                       'PGEN', 'WTCU', 'FMCU')}
+                                                       'MIXR', 'PGEN', 'WTCU', 'FMCU')}
 VER = {'GLOB': 6, 'LAYR': 25, 'ARP ': 16, 'DRON': 6, 'DSTD': 3, 'PROG': 1, 'CHRD': 1, 'CLIP': 2,
-       'PGEN': 1, 'WTCU': 2, 'FMCU': 1}
+       'MIXR': 1, 'PGEN': 1, 'WTCU': 2, 'FMCU': 1}
 
+MAX_LAYERS = 4
 SEQ_TRACKS = 5
 SEQ_MAX_STEPS = 32
 FX_BUS_COUNT = 4
@@ -29,6 +31,7 @@ ARP_MAX_SLOTS = 8
 SEQ_CHORD_SLOTS = 8
 SEQ_CHORD_MAX_NOTES = 5
 CLIP_SLOT_COUNT = 2
+MIX_MISC_COUNT = 6   # ARP, DRONE_STD, DRONE_STUT, LIVE, CLIP0, CLIP1
 SEQ_EGT_COUNT = 5
 FX_PARAM_UNSET = -32768
 
@@ -413,6 +416,33 @@ def r_clip(r):
     return c
 
 
+def w_mixr(m):
+    """Mixer positions (0..100) and soft-mute bit masks, layer arrays MAX_LAYERS wide."""
+    w = W()
+    for L in range(MAX_LAYERS):
+        w.u8(m['layer_pos'][L])
+    w.u8(m['layer_mute'])
+    for L in range(MAX_LAYERS):
+        for t in range(SEQ_TRACKS):
+            w.u8(m['track_pos'][L][t])
+    for L in range(MAX_LAYERS):
+        w.u8(m['track_mute'][L])
+    for k in range(MIX_MISC_COUNT):
+        w.u8(m['misc_pos'][k])
+    w.u8(m['misc_mute'])
+    return bytes(w.b)
+
+
+def r_mixr(r):
+    m = dict(layer_pos=[r.u8() for _ in range(MAX_LAYERS)])
+    m['layer_mute'] = r.u8()
+    m['track_pos'] = [[r.u8() for _ in range(SEQ_TRACKS)] for _ in range(MAX_LAYERS)]
+    m['track_mute'] = [r.u8() for _ in range(MAX_LAYERS)]
+    m['misc_pos'] = [r.u8() for _ in range(MIX_MISC_COUNT)]
+    m['misc_mute'] = r.u8()
+    return m
+
+
 def w_pgen(g):
     w = W()
     for k in ('style', 'len', 'bars', 'ext', 'var'):
@@ -489,6 +519,8 @@ def encode_payload(p):
     w.section('PROG', w_prog(p['prog']))
     w.section('CHRD', w_chrd(p['chords']))
     w.section('CLIP', w_clip(p['clip']))
+    if 'mixr' in p:   # optional: a file without it loads every fader at unity
+        w.section('MIXR', w_mixr(p['mixr']))
     w.section('PGEN', w_pgen(p['pgen']))
     if 'wtcu' in p:   # optional: a file without it loads the builder defaults
         w.section('WTCU', w_wtcu(p['wtcu']))
@@ -518,7 +550,7 @@ def decode_file(data):
     readers = {'GLOB': ('glob', r_glob), 'ARP ': ('arp', r_arp), 'DRON': ('drone', r_dron),
                'DSTD': ('drone_std', r_dstd),
                'PROG': ('prog', r_prog), 'CHRD': ('chords', r_chrd), 'CLIP': ('clip', r_clip),
-               'PGEN': ('pgen', r_pgen), 'WTCU': ('wtcu', r_wtcu), 'FMCU': ('fmcu', r_fmcu)}
+               'MIXR': ('mixr', r_mixr), 'PGEN': ('pgen', r_pgen), 'WTCU': ('wtcu', r_wtcu), 'FMCU': ('fmcu', r_fmcu)}
     while not r.done():
         tag = r.u32(); ver = r.u8(); blen = r.u32(); body = R(r.raw(blen))
         name4 = struct.pack('<I', tag).decode(errors='replace')

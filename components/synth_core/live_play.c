@@ -280,6 +280,11 @@ static void live_rebuild(void)
     live_apply_authored();
 }
 
+bool live_play_is_ready(void)
+{
+    return s_ready;
+}
+
 void live_play_ensure_ready(void)
 {
     if (s_ready) return;

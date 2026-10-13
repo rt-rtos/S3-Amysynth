@@ -40,6 +40,7 @@ typedef enum {
     MI_LAYER_MENU,        /* dive row: everything scoped to the active layer.
                            * Near the top: the most-visited page (mute/solo). */
     MI_SCREEN_SEQ,
+    MI_SCREEN_MIXER,
     MI_SCREEN_ARP,
     MI_SCREEN_DRONE,
     MI_SCREEN_PROG,
@@ -234,6 +235,7 @@ void menu_build_view(menu_view_t *out)
     snprintf(s_menu_items[MI_DEV].label, MENU_LABEL_LEN, "DEV");
 #endif
     snprintf(s_menu_items[MI_SCREEN_SEQ].label, MENU_LABEL_LEN, "Sequencer");
+    snprintf(s_menu_items[MI_SCREEN_MIXER].label, MENU_LABEL_LEN, "Mixer");
     snprintf(s_menu_items[MI_SCREEN_ARP].label, MENU_LABEL_LEN, "Arpeggiator");
     snprintf(s_menu_items[MI_SCREEN_DRONE].label, MENU_LABEL_LEN, "Drones");
     snprintf(s_menu_items[MI_SCREEN_PROG].label, MENU_LABEL_LEN, "Progression");
@@ -837,6 +839,10 @@ bool synth_ui_menu_handle_button(void)
         switch (id) {
             case MI_SCREEN_SEQ:
                 seq_state.ui_mode = UI_MODE_SEQUENCER;
+                seq_state.menu_open = false;
+                break;
+            case MI_SCREEN_MIXER:
+                seq_state.ui_mode = UI_MODE_MIXER;
                 seq_state.menu_open = false;
                 break;
             case MI_SCREEN_ARP:

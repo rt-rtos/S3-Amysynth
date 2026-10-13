@@ -21,6 +21,7 @@ typedef enum {
     UI_MODE_DRONE_STD = 6,   /* normal (free-running) drone screen */
     UI_MODE_DEV       = 7,   /* DEV menu (CONFIG_SYNTH_DEV_MENU) */
     UI_MODE_WT        = 8,   /* custom wavetable editor (CONFIG_SYNTH_CUSTOM_WT) */
+    UI_MODE_MIXER     = 9,   /* mixer page */
 } ui_mode_t;
 
 /* algo_banner_value sentinel: Shift+Turn landed on a patch with no FM
@@ -64,6 +65,9 @@ typedef struct {
  * @param bpm  Current BPM value, passed explicitly (not stored in state).
  */
 void display_seq_draw_frame(u8g2_t *u8g2, const display_seq_state_t *state, uint16_t bpm);
+
+/* Role label of drum track t (LOW, MID, TOP, PERC, AUX); "" past SEQ_TRACKS. */
+const char *display_drum_track_label(uint8_t t);
 
 #ifdef __cplusplus
 }

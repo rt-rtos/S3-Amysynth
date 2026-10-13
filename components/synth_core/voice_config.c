@@ -3,6 +3,7 @@
 #include "amy_helpers.h"    /* shared scratch-event begin/send */
 #include "sequencer_core.h" /* lfo_rate_to_hz */
 #include "lfo_bank.h"       /* LFO_BANK_NONE */
+#include "synth_level.h"    /* synth_level_set_lfo_cap */
 #include "note_div.h"
 #include "seq_clamp.h"
 #include <math.h>           /* powf: wobble downward-only center offset */
@@ -646,10 +647,7 @@ void voice_lfo_wire(uint8_t synth, uint16_t voice_mask, uint16_t pitch_mask,
     /* AMP overshoot cap (VOICE_LFO_DEPTH_AMP): the pre-dropped synth level
      * while AMP is wired, unity on every other call. */
     bool amp = wired && voice_mask != 0u && LFO_HAS_TGT(lfo, LFO_TARGET_AMP);
-    amy_event *lv = amy_helpers_event_begin();
-    lv->synth       = synth;
-    lv->synth_level = amp ? powf(10.0f, -3.0f * d * VOICE_LFO_DEPTH_AMP) : 1.0f;
-    amy_helpers_event_send(lv);
+    synth_level_set_lfo_cap(synth, amp ? powf(10.0f, -3.0f * d * VOICE_LFO_DEPTH_AMP) : 1.0f);
 }
 
 #if !CONFIG_SEQ_LFO_SHARED
@@ -715,11 +713,8 @@ void voice_apply_native_lfo_topo(uint8_t synth, const seq_lfo_t *lfo,
         }
 
         /* AMP overshoot cap, as voice_lfo_wire(). */
-        e = amy_helpers_event_begin();
-        e->synth       = synth;
-        e->synth_level = (voice_mask != 0u && LFO_HAS_TGT(lfo, LFO_TARGET_AMP))
-                       ? powf(10.0f, -3.0f * d * VOICE_LFO_DEPTH_AMP) : 1.0f;
-        amy_helpers_event_send(e);
+        synth_level_set_lfo_cap(synth, (voice_mask != 0u && LFO_HAS_TGT(lfo, LFO_TARGET_AMP))
+                                       ? powf(10.0f, -3.0f * d * VOICE_LFO_DEPTH_AMP) : 1.0f);
 
         voice_lfo_source_apply(synth, carrier_osc, wobble_osc, lfo, bpm);
     } else {
@@ -740,10 +735,7 @@ void voice_apply_native_lfo_topo(uint8_t synth, const seq_lfo_t *lfo,
             e->dist_mix_coefs[COEF_MOD]    = 0.0f;
             amy_helpers_event_send(e);
         }
-        e = amy_helpers_event_begin();
-        e->synth       = synth;
-        e->synth_level = 1.0f;
-        amy_helpers_event_send(e);
+        synth_level_set_lfo_cap(synth, 1.0f);
 
         voice_lfo_source_apply(synth, carrier_osc, wobble_osc, NULL, bpm);
     }

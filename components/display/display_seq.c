@@ -12,6 +12,11 @@ static const char *const drum_track_labels[] = {
 _Static_assert(sizeof(drum_track_labels) / sizeof(drum_track_labels[0]) == SEQ_TRACKS,
                "one drum label per row");
 
+const char *display_drum_track_label(uint8_t t)
+{
+    return (t < SEQ_TRACKS) ? drum_track_labels[t] : "";
+}
+
 /* Grid geometry for a layer's row and step counts. The single place the grid
  * pitch lives: every row, separator and playhead coordinate derives from it. */
 typedef struct {

@@ -18,6 +18,12 @@ extern "C" {
  * synth_ui task (radio session_start hook), not from input/transport tasks. */
 void live_play_ensure_ready(void);
 
+/* True once live_play_ensure_ready() has configured the slot (it stays
+ * configured for the rest of the run). Compiled only under
+ * CONFIG_SYNTH_WIRELESS, like the rest of this module: callers guard the call
+ * with #if CONFIG_SYNTH_WIRELESS. Any task. */
+bool live_play_is_ready(void);
+
 /* midi_sink_t-compatible note entry points. Channel is ignored (omni). */
 void live_play_note_on(uint8_t channel, uint8_t note, uint8_t velocity);
 void live_play_note_off(uint8_t channel, uint8_t note);

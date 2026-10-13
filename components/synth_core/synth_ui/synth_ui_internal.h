@@ -11,6 +11,7 @@
 #include "display_stepedit.h"  /* stepedit_view_t */
 #include "display_fm.h"        /* fm_view_t (CONFIG_SYNTH_CUSTOM_FM) */
 #include "display_wt.h"        /* wt_view_t (CONFIG_SYNTH_CUSTOM_WT) */
+#include "display_mixer.h"     /* mixer_view_t */
 #include "u8g2.h"              /* u8g2_t */
 #include "synth_ui/ui_voice_target.h"   /* voice_target_kind_t */
 
@@ -91,6 +92,9 @@ uint32_t prog_view_signature(prog_view_t *out);
 uint32_t stepedit_view_signature(stepedit_view_t *out);
 uint32_t fm_view_signature(fm_view_t *out);
 uint32_t wt_view_signature(wt_view_t *out);         /* CONFIG_SYNTH_CUSTOM_WT */
+uint32_t mixer_view_signature(mixer_view_t *out);
+/* Mixer page: true while a layer's track rows are shown (hint strip). */
+bool     mixer_page_in_dive(void);
 uint32_t dev_view_signature(dev_view_t *out);       /* CONFIG_SYNTH_DEV_MENU */
 bool     synth_ui_dev_is_active(void);
 
@@ -130,6 +134,7 @@ typedef union {
     menu_view_t      menu;
     fm_view_t        fm;
     wt_view_t        wt;
+    mixer_view_t     mixer;
     arp_view_t       arp;
     drone_view_t     drone;      /* DRONE and DRONE_STD */
     prog_view_t      prog;
@@ -173,6 +178,7 @@ void     arp_build_view(arp_view_t *out);
 void     stepedit_build_view(stepedit_view_t *out);
 void     fm_build_view(fm_view_t *out);
 void     wt_build_view(wt_view_t *out);
+void     mixer_build_view(mixer_view_t *out);
 
 /* ─── FX hub: one dive row per AMY bus plus the settings that are not per-bus
  *     (item model in ui_screen_fxmenu.c; the page state and input routing

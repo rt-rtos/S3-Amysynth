@@ -27,12 +27,14 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
 {
     /* MY_BUTTON_SHOULDER, per view: SEQ toggles the step under the cursor
      * (two-handed tracker-style entry), GRAPH flips the routing depth's sign,
-     * FM flips the editor page, WT cycles the focused keyframe, MENU leaves a
-     * sub-page for the main list (button 3 reopens the last page, so this is
-     * the way home); elsewhere (the LFO editor included) it does nothing.
-     * Step entry, the polarity flip and the menu jump take PRESS_DOWN for zero
-     * tap latency; the page and keyframe flips are deliberate navigation
-     * gestures, so they wait for the click. All events consumed. */
+     * FM flips the editor page, WT cycles the focused keyframe, the mixer
+     * leaves a layer's track rows or opens the menu on its main list, MENU
+     * leaves a sub-page for the main list (button 3 reopens the last page, so
+     * this is the way home); elsewhere (the LFO editor included) it does
+     * nothing. Step entry, the polarity flip and the menu jump take PRESS_DOWN
+     * for zero tap latency; the page and keyframe flips and the mixer's
+     * navigation are deliberate gestures, so they wait for the click. All
+     * events consumed. */
     if (button_id == MY_BUTTON_SHOULDER) {
         ui_view_id_t sv = synth_ui_active_view();
         if (event == BUTTON_PRESS_DOWN) {
@@ -52,6 +54,8 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
         } else if (event == BUTTON_SINGLE_CLICK && sv == UI_VIEW_WT) {
             synth_ui_wt_next_keyframe();
 #endif
+        } else if (event == BUTTON_SINGLE_CLICK && sv == UI_VIEW_MIXER) {
+            synth_ui_mixer_shoulder();
         }
         return;
     }
@@ -200,6 +204,22 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
         return;
     }
 #endif
+
+    /* Mixer screen: Button 1 toggles the cursor row's mute, Button 2 does
+     * nothing; neither is a hold (the patch-select and pitch holds would
+     * edit the layer behind the screen). Clear both latches in case one was
+     * held when the screen switched. */
+    if ((button_id == MY_BUTTON_1 || button_id == MY_BUTTON_2) &&
+        synth_ui_active_view() == UI_VIEW_MIXER) {
+        s_patch_held = false;
+        synth_ui_set_patch_select_mode(false);
+        s_drum_select_held = false;
+        synth_ui_set_drum_select_mode(false);
+        if (event == BUTTON_PRESS_DOWN && button_id == MY_BUTTON_1) {
+            synth_ui_mixer_toggle_mute();
+        }
+        return;
+    }
 
     // MY_BUTTON_1, per editor: filter = enabled toggle, envelope = cycle EG
     // curve type, LFO = unused (source flip is SHIFT+3). Otherwise it is the
@@ -428,6 +448,9 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
                 if (event == BUTTON_PRESS_DOWN) synth_ui_wt_handle_button();
                 return;
 #endif
+            case UI_VIEW_MIXER:
+                if (event == BUTTON_PRESS_DOWN) synth_ui_mixer_handle_button();
+                return;
             default:  /* UI_VIEW_SEQ */
                 break;
         }
@@ -536,6 +559,9 @@ void input_dispatch_encoder_steps(long steps)
         // SHIFT has no layer here: the turn edits either way.
         synth_ui_wt_handle_encoder((int)steps);
 #endif
+    } else if (v == UI_VIEW_MIXER) {
+        // SHIFT has no layer here: the turn moves or edits either way.
+        synth_ui_mixer_handle_encoder((int)steps);
     } else if (s_shift_held) {
         // SHIFT+Turn on the sequencer screen: step the active melodic
         // layer's FM algorithm live instead of moving the cursor.

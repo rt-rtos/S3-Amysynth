@@ -42,6 +42,7 @@ if(CONFIG_SYNTH_DEV_MENU)
 endif()
 
 idf_component_register(SRCS "live_play.c" "amy_helpers.c" "amy_fx.c" "fx_bus.c" "arp_core.c" "note_div.c" "quantizer.c" "prog_gen.c" "voice_config.c"
+                            "synth_level.c" "mixer.c"
                             "lfo_bank.c" "lfo_targets.c"
                             "filter_scope.c"
                             "synth_ui/synth_ui_state.c"
@@ -63,6 +64,7 @@ idf_component_register(SRCS "live_play.c" "amy_helpers.c" "amy_fx.c" "fx_bus.c" 
                             "synth_ui/ui_screen_prog.c"
                             "synth_ui/ui_screen_chords.c"
                             "synth_ui/ui_screen_bounce.c"
+                            "synth_ui/ui_screen_mixer.c"
                             "synth_ui/ui_screen_proggen.c"
                             "synth_ui/ui_screen_wireless.c"
                             "synth_ui/ui_screen_stepedit.c"

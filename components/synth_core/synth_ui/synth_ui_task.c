@@ -26,6 +26,8 @@
 #include "usb_audio_watchdog.h"
 #include "amy_helpers.h"
 #include "lfo_bank.h"       /* lfo_bank_service */
+#include "synth_level.h"
+#include "mixer.h"
 #include "project_snapshot.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -98,6 +100,9 @@ static void ui_services(void)
     clip_bounce_service();
     clip_player_service();
     drum_cache_service();
+    /* Mixer: send marked levels, catch sources that turned present, re-send
+     * a few sub-unity levels a patch load may have reset. */
+    mixer_service();
 #if CONFIG_SEQ_OOM_RESYNC
     /* Re-emit schedules once an AMY OOM burst settles (dropped wire
      * events otherwise leave tracks mute); cheap counter poll otherwise. */
@@ -116,6 +121,7 @@ static void ui_services(void)
         s_layer_delete_pending = false;
         uint8_t del_idx = s_layer_delete_idx;
         if (sequencer_core_delete_layer(del_idx)) {
+            mixer_on_layer_deleted(del_idx);
             /* Mirror compaction in the UI-side seq_state. */
             uint8_t tail = (uint8_t)(seq_state.num_layers - del_idx - 1);
             if (tail > 0) {
@@ -349,6 +355,8 @@ void synth_ui_init(u8g2_t *u8g2)
 
     DIAG_HEAP_CHECK("ui_init: entry");
     amy_helpers_init();
+    synth_level_init();
+    mixer_init();
     sequencer_core_init();
     DIAG_HEAP_CHECK("ui_init: after sequencer_core_init");
     arp_core_init();
@@ -433,6 +441,7 @@ uint8_t synth_ui_add_layer(seq_layer_type_t type, uint8_t num_steps)
 {
     uint8_t li = sequencer_core_add_layer(type, num_steps);
     if (li == 0xFF) return 0xFF;
+    mixer_on_layer_added(li);
 
     seq_layer_t *layer = &seq_state.layers[li];
     memset(layer, 0, sizeof(seq_layer_t));

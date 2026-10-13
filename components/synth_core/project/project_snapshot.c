@@ -23,6 +23,7 @@
 #include "custompatches/drone_common.h"   /* DRONE_SUB_INTERVAL_MIN/MAX */
 #include "custompatches/clip_bounce.h"
 #include "custompatches/clip_player.h"
+#include "mixer.h"
 #include "amy_fx.h"
 #include "amy.h"               /* amy_num_algorithms - fm_algo_override clamp */
 #include "quantizer.h"
@@ -56,6 +57,7 @@ static const char *TAG = "project_snapshot";
 #define TAG_PGEN 0x4E454750u
 #define TAG_WTCU 0x55435457u
 #define TAG_FMCU 0x55434D46u
+#define TAG_MIXR 0x5258494Du
 
 #define PROJECT_SER_BUF_CAP (64 * 1024)
 
@@ -998,6 +1000,67 @@ static void apply_clip(const staged_clip_t *c)
     }
 }
 
+/* ── MIXR section ─────────────────────────────────────────────────────────── */
+
+/* Mixer positions and soft mutes (mixer.h). Layer arrays are index-aligned
+ * with the LAYR sections; master is GLOB's master volume, not stored here. */
+#define MIXR_VERSION 1
+
+typedef mixer_snapshot_t staged_mixr_t;
+
+static void ser_mixr(tlv_writer_t *w)
+{
+    mixer_snapshot_t m;
+    mixer_export(&m);
+    size_t h = tlv_begin_section(w, TAG_MIXR, MIXR_VERSION);
+    for (uint8_t L = 0; L < MAX_LAYERS; L++) tlv_put_u8(w, m.layer_pos[L]);
+    tlv_put_u8(w, m.layer_mute);
+    for (uint8_t L = 0; L < MAX_LAYERS; L++) {
+        for (uint8_t t = 0; t < SEQ_TRACKS; t++) tlv_put_u8(w, m.track_pos[L][t]);
+    }
+    for (uint8_t L = 0; L < MAX_LAYERS; L++) tlv_put_u8(w, m.track_mute[L]);
+    for (uint8_t k = 0; k < MIX_MISC_COUNT; k++) tlv_put_u8(w, m.misc_pos[k]);
+    tlv_put_u8(w, m.misc_mute);
+    tlv_end_section(w, h);
+}
+
+static bool parse_mixr_pos(tlv_reader_t *b, uint8_t *out)
+{
+    if (!tlv_get_u8(b, out)) return false;
+    if (*out > MIXER_POS_MAX) *out = MIXER_POS_MAX;
+    return true;
+}
+
+static bool parse_mixr(tlv_reader_t *b, staged_mixr_t *m)
+{
+    for (uint8_t L = 0; L < MAX_LAYERS; L++) {
+        if (!parse_mixr_pos(b, &m->layer_pos[L])) return false;
+    }
+    if (!tlv_get_u8(b, &m->layer_mute)) return false;
+    m->layer_mute &= (uint8_t)((1u << MAX_LAYERS) - 1u);
+    for (uint8_t L = 0; L < MAX_LAYERS; L++) {
+        for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
+            if (!parse_mixr_pos(b, &m->track_pos[L][t])) return false;
+        }
+    }
+    for (uint8_t L = 0; L < MAX_LAYERS; L++) {
+        if (!tlv_get_u8(b, &m->track_mute[L])) return false;
+        m->track_mute[L] &= (uint8_t)((1u << SEQ_TRACKS) - 1u);
+    }
+    for (uint8_t k = 0; k < MIX_MISC_COUNT; k++) {
+        if (!parse_mixr_pos(b, &m->misc_pos[k])) return false;
+    }
+    if (!tlv_get_u8(b, &m->misc_mute)) return false;
+    m->misc_mute &= (uint8_t)((1u << MIX_MISC_COUNT) - 1u);
+    return true;
+}
+
+/* After the layer imports: the importer resets layers past the live count. */
+static void apply_mixr(const staged_mixr_t *m)
+{
+    mixer_import(m);
+}
+
 /* ── PROG section ─────────────────────────────────────────────────────────── */
 
 /* Static cap for the staged array; the real ceiling is
@@ -1257,6 +1320,7 @@ bool project_snapshot_save(uint8_t slot, const char *name)
     ser_prog(&w);
     ser_chrd(&w);
     ser_clip(&w);
+    ser_mixr(&w);
     ser_pgen(&w);
 #if CONFIG_SYNTH_CUSTOM_WT
     ser_wtcu(&w);
@@ -1299,12 +1363,14 @@ bool project_snapshot_load_buffer(const uint8_t *payload, size_t len, const char
     staged_arp_t   staged_arp;   memset(&staged_arp, 0, sizeof staged_arp);
     staged_prog_t  staged_prog;  memset(&staged_prog, 0, sizeof staged_prog);
     staged_clip_t  staged_clip;  memset(&staged_clip, 0, sizeof staged_clip);
+    staged_mixr_t  staged_mixr;  memset(&staged_mixr, 0, sizeof staged_mixr);
     staged_pgen_t  staged_pgen;  memset(&staged_pgen, 0, sizeof staged_pgen);
     seq_chord_t    staged_chords[SEQ_CHORD_SLOTS];
     memset(staged_chords, 0, sizeof staged_chords);
     uint8_t staged_layer_count = 0;
     bool got_glob = false, got_arp = false, got_drone = false, got_prog = false;
     bool got_chrd = false, got_clip = false, got_pgen = false, got_dstd = false;
+    bool got_mixr = false;
 #if CONFIG_SYNTH_CUSTOM_WT
     wt_params_t staged_wtcu;
     bool got_wtcu = false;
@@ -1363,6 +1429,11 @@ bool project_snapshot_load_buffer(const uint8_t *payload, size_t len, const char
             if (got_clip || ver != 2) { ok = false; break; }
             ok = parse_clip(&body, &staged_clip);
             got_clip = ok;
+            break;
+        case TAG_MIXR:
+            if (got_mixr || ver != MIXR_VERSION) { ok = false; break; }
+            ok = parse_mixr(&body, &staged_mixr);
+            got_mixr = ok;
             break;
         case TAG_PGEN:
             if (got_pgen || ver != 1) { ok = false; break; }
@@ -1447,6 +1518,9 @@ bool project_snapshot_load_buffer(const uint8_t *payload, size_t len, const char
     if (got_prog)  apply_prog(&staged_prog);
     if (got_pgen)  apply_pgen(&staged_pgen);
     if (got_clip)  apply_clip(&staged_clip);
+    /* A file without the section loads at unity (templates, older saves). */
+    if (got_mixr)  apply_mixr(&staged_mixr);
+    else           mixer_reset_defaults();
 #if CONFIG_SYNTH_CUSTOM_WT
     /* A file without the section leaves the builder at its defaults, as for
      * the drones above. */

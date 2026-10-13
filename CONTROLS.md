@@ -16,7 +16,7 @@ is right and this file is stale.
 | Button 1 | `MY_BUTTON_1` | Hold modifier (acts on press, released on release), or a press action in some views |
 | Button 2 | `MY_BUTTON_2` | Same as button 1 |
 | Button 3 | `MY_BUTTON_3` | Acts on tap |
-| SHOULDER (LB) | `MY_BUTTON_SHOULDER` | Left shoulder button. Acts on press, except the FM page flip and the WT keyframe cycle (tap) |
+| SHOULDER (LB) | `MY_BUTTON_SHOULDER` | Left shoulder button. Acts on press, except the FM page flip, the WT keyframe cycle and the Mixer back/menu jump (tap) |
 | SHIFT (RB) | `MY_BUTTON_SHIFT` | Right shoulder button. Hold modifier; a bare tap does nothing |
 
 Pin assignments: `components/my_buttons/my_buttons.c` (`s_button_gpios[]`).
@@ -33,7 +33,7 @@ button input; the rest are mode screens. Resolved in one place,
 4. Step Trig popup
 5. ADSR (graph) editor
 6. Menu
-7. Mode screen: Arp, Stutter drone, Normal drone, Prog, FM, DEV, WT, Seq (default at boot)
+7. Mode screen: Arp, Stutter drone, Normal drone, Prog, FM, DEV, WT, Mixer, Seq (default at boot)
 
 Screens are changed only through the Menu.
 
@@ -56,7 +56,8 @@ preconditions are not met does nothing.
 
 The bottom line shows `1:<b1> 2:<b2> 3:<b3>` and, in the menu on a sub-page,
 ` LB:Main`; on the FM screen ` LB:Pg2` or ` LB:Pg1` (the page SHOULDER flips
-to); on the WT screen ` LB:Key`. It is read from `ui_view_table[]` (`ui_view_resolve.c`) for the
+to); on the WT screen ` LB:Key`; on the Mixer screen ` LB:Main`, or ` LB:Back`
+in a layer's track rows. It is read from `ui_view_table[]` (`ui_view_resolve.c`) for the
 active view. SHIFT chords are not shown. The strip is hidden on the Prog
 screen; a DEV status bar replaces it on every screen while on.
 
@@ -66,6 +67,7 @@ screen; a DEV status bar replaces it on every screen while on.
 | Arp, Stutter, Normal drone | Patch | - | Menu |
 | FM | Link (page 1), - (page 2) | Mute | Menu (Done while linking) |
 | WT | Copy (- on HRM and the S tab) | Reset (Blend on keyframe M, off HRM; - on the S tab) | Menu |
+| Mixer | Mute | - | Menu |
 | Menu | - (Save while naming) | - (Disc while naming) | Menu |
 | Prog | Del | +Add | Menu |
 | DEV | - | - | Menu |
@@ -235,6 +237,27 @@ Button 1 and SHOULDER do nothing here.
 | Encoder click | Enter / leave editing (every row is multi-value) |
 | Encoder turn, editing | Type: cycle the eight stage sets (OFF is the bypass). Others: one step per detent |
 | Button 3 (tap), Button 0 (tap / hold), SHIFT chords | As in the LFO editor |
+
+## Mixer screen
+
+One row per sound source: MAST (master volume), DRUM (layer 0), L2..L4 (the
+melodic layers), ARP, DRON (normal drone), STUT (stutter drone), and LIVE and
+CLP1 / CLP2 while the live voice and those clip slots exist. A layer row dives
+into its track rows (the drum layer's by role, LOW..AUX; a melodic layer's
+T1..T5). Each row shows a bar (the fader position) and an M cell: `M` filled
+for the mixer's mute, `m` when only the Layer page's (or the arp's) own mute
+is on.
+
+| Input | Action |
+|---|---|
+| Encoder turn, no focus | Move the cursor (clamped); five rows show at a time |
+| Encoder click | Cycle the focus on the cursor row: none -> LEVEL -> none; on a layer row none -> LEVEL -> DIVE, and a click with DIVE focused opens that layer's track rows |
+| Encoder turn, LEVEL focus | Fader position in 5 % steps, 0..100 |
+| Button 1 (press) | Toggle the mixer mute of the cursor row (not MAST), in any focus |
+| Button 2 | Ignored |
+| SHOULDER (tap) | In a layer's track rows: back to the overview, on the row it was opened from. Overview: open the menu on its main list |
+| Button 0 (tap / hold) | Cycle the active layer / play-stop |
+| Button 3 (tap) | Menu |
 
 ## Arp screen
 

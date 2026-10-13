@@ -261,6 +261,24 @@ bool    synth_ui_wt_reset_keyframe(void);
 bool    synth_ui_wt_on_harmonics(void);
 uint8_t synth_ui_wt_keyframe(void);
 
+/* Mixer page over the mixer model (mixer.h): one row per source, a layer row
+ * dives into its track rows. Active when seq_state.ui_mode == UI_MODE_MIXER
+ * and no overlay is up; the calls return false and do nothing otherwise.
+ * handle_encoder moves the cursor, or steps the focused row's fader by 5 per
+ * detent while its level is focused. handle_button (encoder click) cycles
+ * the cursor row's focus, none -> level -> none, on a layer row
+ * none -> level -> dive -> none, where the click from dive opens that
+ * layer's track rows. toggle_mute (Button 1) flips the cursor row's mixer
+ * mute, in any focus; nothing on MAST. shoulder (SHOULDER click) leaves the
+ * track rows for the overview on the row they were opened from, or on the
+ * overview opens the menu on its main list. Controls: CONTROLS.md. All
+ * UI/input task. */
+bool    synth_ui_mixer_is_active(void);
+bool    synth_ui_mixer_handle_encoder(int steps);
+bool    synth_ui_mixer_handle_button(void);
+bool    synth_ui_mixer_toggle_mute(void);
+bool    synth_ui_mixer_shoulder(void);
+
 /* Global-FX reassert after a patch load (every Juno patch ends with global
  * EQ/chorus commands) is declared in amy_fx.h - include that header. */
 
@@ -391,6 +409,7 @@ typedef enum {
     UI_VIEW_FM,
     UI_VIEW_DEV,
     UI_VIEW_WT,
+    UI_VIEW_MIXER,
     UI_VIEW_SEQ,
     UI_VIEW_COUNT
 } ui_view_id_t;

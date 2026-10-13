@@ -32,6 +32,7 @@ ui_view_id_t synth_ui_active_view(void)
 #if CONFIG_SYNTH_CUSTOM_WT
         case UI_MODE_WT:        return UI_VIEW_WT;
 #endif
+        case UI_MODE_MIXER:     return UI_VIEW_MIXER;
         default:                return UI_VIEW_SEQ;
     }
 }
@@ -47,6 +48,7 @@ static uint32_t sig_arp(ui_view_vw_t *vw)       { return arp_view_signature(&vw-
 static uint32_t sig_drone(ui_view_vw_t *vw)     { return drone_view_signature(&vw->drone); }
 static uint32_t sig_drone_std(ui_view_vw_t *vw) { return drone_std_view_signature(&vw->drone); }
 static uint32_t sig_prog(ui_view_vw_t *vw)      { return prog_view_signature(&vw->prog); }
+static uint32_t sig_mixer(ui_view_vw_t *vw)     { return mixer_view_signature(&vw->mixer); }
 static uint32_t sig_seq(ui_view_vw_t *vw)       { (void)vw; return seq_view_signature(); }
 
 /* ─── Draw thunks (reuse the vw the signature already built) ───────────── */
@@ -60,6 +62,7 @@ static void draw_arp(u8g2_t *g, ui_view_vw_t *vw)       { display_arp_draw_frame
 static void draw_drone(u8g2_t *g, ui_view_vw_t *vw)     { display_drone_draw_frame_titled(g, "STUTTER", &vw->drone); }
 static void draw_drone_std(u8g2_t *g, ui_view_vw_t *vw) { display_drone_draw_frame_titled(g, "DRONE", &vw->drone); }
 static void draw_prog(u8g2_t *g, ui_view_vw_t *vw)      { display_prog_draw_frame(g, &vw->prog); }
+static void draw_mixer(u8g2_t *g, ui_view_vw_t *vw)     { display_mixer_draw_frame(g, &vw->mixer); }
 static void draw_seq(u8g2_t *g, ui_view_vw_t *vw)       { (void)vw; display_seq_draw_frame(g, &seq_state, seq_get_bpm()); }
 
 #if CONFIG_SYNTH_CUSTOM_FM
@@ -133,6 +136,12 @@ static const char *hint_wt_bs(void)
 }
 #endif
 
+/* MIXER SHOULDER: out of a layer's track rows, else to the main menu. */
+static const char *hint_mixer_bs(void)
+{
+    return mixer_page_in_dive() ? "Back" : "Main";
+}
+
 /* ─── The table: one row per view, indexed by ui_view_id_t ─────────────── */
 /* Preferred x of the BLE badge per view; 0 lets display_badge_draw() choose.
  * The badge never draws over lit pixels, so these only need to be close.
@@ -167,5 +176,7 @@ const ui_view_desc_t ui_view_table[UI_VIEW_COUNT] = {
 #else
     [UI_VIEW_WT]        = { "WT",     NULL,          NULL,           "-",      "-",     "Menu",  .badge_x =   0 },
 #endif
+    [UI_VIEW_MIXER]     = { "MIXER",  sig_mixer,     draw_mixer,     "Mute",   "-",     "Menu",  .badge_x = 110,
+                            .bs_fn = hint_mixer_bs },
     [UI_VIEW_SEQ]       = { "SEQ",    sig_seq,       draw_seq,       "Patch",  "Pitch", "Menu",  .badge_x =  44 },
 };
