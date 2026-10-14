@@ -180,10 +180,12 @@ static void fill_start_params(amy_event *e, const clip_slot_t *s, uint32_t offse
 /* Schedule the slot's (re)start at bar_tick from the source position the
  * grid implies there (frame 0 when the tick re-anchors the clip). The aux
  * config entry primes the right-channel osc first; the note-on then starts
- * both through the chain. */
+ * both through the chain. A send to an AMY tag adds to what it holds, so a
+ * start still pending from an earlier call is cleared first. */
 static void schedule_start_at(uint8_t slot, uint32_t bar_tick, bool reanchor)
 {
     clip_slot_t *s = &s_slot[slot];
+    cancel_start(slot);
     uint32_t upt_now = us_per_tick_for_bpm(sequencer_core_get_bpm());
     uint32_t offset_ticks = 0;
     if (!reanchor && s->clip_ticks != 0) {

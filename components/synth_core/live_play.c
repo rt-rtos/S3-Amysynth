@@ -24,11 +24,6 @@ uint8_t live_play_synth_slot(void)
     return LIVE_SYNTH;
 }
 
-uint8_t live_play_num_voices(void)
-{
-    return LIVE_VOICES;
-}
-
 static uint16_t s_patch = SEQ_MEL_PATCH;
 static bool     s_ready = false;
 

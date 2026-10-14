@@ -73,77 +73,21 @@ static void uni_layout_adjust(int delta, int arg)
     sequencer_core_set_unison_layout((uint8_t)l);
 }
 
-/* Karplus-Strong loop controls: Tune (fractional-period allpass, ks_loop_set),
- * Stages/Stiff (dispersion allpasses; Stiff steps a 1-2-5 ladder, 0 = none),
- * Release (ks_release_set: note-off starts the amp release on KS voices) and
- * Voices (sequencer_core_set_ks_voices, up to CONFIG_SEQ_KS_VOICES_MAX; a
- * change rebuilds the layers holding KS rows). Volatile like everything here. */
-enum { KSL_TUNE, KSL_STAGES, KSL_STIFF, KSL_RELEASE, KSL_VOICES };
-
-static const float s_ksl_stiff[] = {
-    0.0f, 1e-5f, 2e-5f, 5e-5f, 1e-4f, 2e-4f, 5e-4f, 1e-3f, 2e-3f, 5e-3f,
-};
-static const char *const s_ksl_stiff_name[] = {
-    "0", "1e-5", "2e-5", "5e-5", "1e-4", "2e-4", "5e-4", "1e-3", "2e-3", "5e-3",
-};
-#define KSL_STIFF_COUNT (int)(sizeof s_ksl_stiff / sizeof *s_ksl_stiff)
-
-/* Ladder index nearest to B. */
-static int ksl_stiff_index(float b)
+/* Karplus-Strong voices per row (sequencer_core_set_ks_voices, up to
+ * CONFIG_SEQ_KS_VOICES_MAX; a change rebuilds the layers holding KS rows).
+ * Volatile like everything here. */
+static void ksv_fmt(char *buf, size_t n, int arg)
 {
-    int best = 0;
-    for (int i = 1; i < KSL_STIFF_COUNT; i++)
-        if (fabsf(s_ksl_stiff[i] - b) < fabsf(s_ksl_stiff[best] - b)) best = i;
-    return best;
+    (void)arg;
+    snprintf(buf, n, "%u/%u", (unsigned)sequencer_core_get_ks_voices(),
+             (unsigned)CONFIG_SEQ_KS_VOICES_MAX);
 }
 
-static void ksl_fmt(char *buf, size_t n, int arg)
+static void ksv_adjust(int delta, int arg)
 {
-    bool tune; uint8_t stages; float stiff;
-    ks_loop_get(&tune, &stages, &stiff);
-    switch (arg) {
-        case KSL_TUNE:   snprintf(buf, n, "%s", tune ? "on" : "off"); break;
-        case KSL_STAGES: snprintf(buf, n, "%u", (unsigned)stages);    break;
-        case KSL_STIFF:  snprintf(buf, n, "%s",
-                                  s_ksl_stiff_name[ksl_stiff_index(stiff)]); break;
-        case KSL_RELEASE: snprintf(buf, n, "%s", ks_release_get() ? "on" : "off"); break;
-        case KSL_VOICES: snprintf(buf, n, "%u/%u",
-                                  (unsigned)sequencer_core_get_ks_voices(),
-                                  (unsigned)CONFIG_SEQ_KS_VOICES_MAX);  break;
-        default:         buf[0] = '\0';                               break;
-    }
-}
-
-static void ksl_fire(int arg)
-{
-    bool tune; uint8_t stages; float stiff;
-    ks_loop_get(&tune, &stages, &stiff);
-    if (arg == KSL_TUNE) ks_loop_set(!tune, stages, stiff);
-    if (arg == KSL_RELEASE) ks_release_set(!ks_release_get());
-}
-
-static void ksl_adjust(int delta, int arg)
-{
-    if (arg == KSL_VOICES) {
-        int v = (int)sequencer_core_get_ks_voices() + delta;
-        sequencer_core_set_ks_voices((uint8_t)SEQ_CLAMP_INT(v, 1, CONFIG_SEQ_KS_VOICES_MAX));
-        return;
-    }
-    bool tune; uint8_t stages; float stiff;
-    ks_loop_get(&tune, &stages, &stiff);
-    switch (arg) {
-        case KSL_STAGES:
-            stages = (uint8_t)SEQ_CLAMP_INT((int)stages + delta,
-                                            0, KS_DISPERSION_MAX_STAGES);
-            break;
-        case KSL_STIFF:
-            stiff = s_ksl_stiff[SEQ_CLAMP_INT(ksl_stiff_index(stiff) + delta,
-                                              0, KSL_STIFF_COUNT - 1)];
-            break;
-        default:
-            return;
-    }
-    ks_loop_set(tune, stages, stiff);
+    (void)arg;
+    int v = (int)sequencer_core_get_ks_voices() + delta;
+    sequencer_core_set_ks_voices((uint8_t)SEQ_CLAMP_INT(v, 1, CONFIG_SEQ_KS_VOICES_MAX));
 }
 
 /* Row count of the active layer, melodic or drum
@@ -359,23 +303,19 @@ static const dev_page_t s_page_uni = { "UNISON", s_uni_items,
                                        sizeof s_uni_items / sizeof *s_uni_items };
 
 static const dev_item_t s_ksloop_items[] = {
-    { .label = "Tune",   .fmt = ksl_fmt, .fire   = ksl_fire,   .arg = KSL_TUNE   },
-    { .label = "Stages", .fmt = ksl_fmt, .adjust = ksl_adjust, .arg = KSL_STAGES },
-    { .label = "Stiff",  .fmt = ksl_fmt, .adjust = ksl_adjust, .arg = KSL_STIFF  },
-    { .label = "Release", .fmt = ksl_fmt, .fire  = ksl_fire,   .arg = KSL_RELEASE },
-    { .label = "Voices", .fmt = ksl_fmt, .adjust = ksl_adjust, .arg = KSL_VOICES },
+    { .label = "Voices", .fmt = ksv_fmt, .adjust = ksv_adjust },
     { .label = "Rows",   .fmt = rows_fmt, .adjust = rows_adjust },
     { .label = "A duty", .fmt = riff_fmt, .adjust = riff_adjust, .arg = 2 },
     { .label = "Riff A", .fmt = riff_fmt, .fire = riff_fire,     .arg = 0 },
     { .label = "Riff B", .fmt = riff_fmt, .fire = riff_fire,     .arg = 1 },
     { .label = "Dump",   .fmt = riff_fmt, .fire = riff_fire,     .arg = 3 },
 };
-static const dev_page_t s_page_ksloop = { "KS LOOP", s_ksloop_items,
+static const dev_page_t s_page_ksloop = { "KS", s_ksloop_items,
                                           sizeof s_ksloop_items / sizeof *s_ksloop_items };
 
 static const dev_item_t s_root_items[] = {
     { .label = "Unison",      .sub = &s_page_uni },
-    { .label = "KS loop",     .sub = &s_page_ksloop },
+    { .label = "KS",          .sub = &s_page_ksloop },
     { .label = "AMY OOM",     .fmt = oom_fmt },
     { .label = "Heap int",    .fmt = heap_fmt },
     { .label = "CPU c0/c1",   .fmt = cpu_fmt },

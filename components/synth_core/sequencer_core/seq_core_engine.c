@@ -477,8 +477,10 @@ uint32_t seq_step_hold_ticks(const seq_layer_t *layer, uint8_t track, uint8_t st
 
 /* Schedule (or cancel) one grid step as a pair of repeating AMY events: note-on
  * at the step's position in the bar, note-off seq_step_hold_ticks later, both
- * repeating every `period`. AMY keys events by tag, so re-emitting with the
- * same tag updates in place. */
+ * repeating every `period`. A send to an AMY tag adds to what the tag holds,
+ * so each tag is cleared before it is re-sent. Clear and add are two lock
+ * sections: a tick between them misses that step once if it is due in that
+ * block. */
 void sequencer_emit_step(uint8_t layer_idx, uint8_t track, uint8_t step)
 {
     seq_layer_t *layer  = &s_layers[layer_idx];
@@ -525,6 +527,7 @@ void sequencer_emit_step(uint8_t layer_idx, uint8_t track, uint8_t step)
     if (pofs != 0)
         note = (uint8_t)SEQ_CLAMP_INT((int)note + (int)pofs, 0, 127);
 
+    sequencer_emit_clear_tag(tag_on);
     /* The wavetable frame rides the note-on only (seq_track_frame_duty). */
     amy_helpers_note_send_duty(synth, note, note_velocity,
                                tag_on, tick_on, period,
@@ -537,9 +540,8 @@ void sequencer_emit_step(uint8_t layer_idx, uint8_t track, uint8_t step)
      * keeps every velocity-0 kill path (stop/mute/solo) fully effective -
      * unlike SYNTH_FLAGS_IGNORE_NOTE_OFFS, which swallows those too. SYNTH
      * mode keeps its note-offs: patch releases shape those tails on purpose. */
-    if (layer->type == SEQ_LAYER_DRUM && s_drum_engine == SEQ_DRUM_PCM) {
-        sequencer_emit_clear_tag(tag_off);
-    } else {
+    sequencer_emit_clear_tag(tag_off);
+    if (layer->type != SEQ_LAYER_DRUM || s_drum_engine != SEQ_DRUM_PCM) {
         amy_helpers_note_send(synth, note, 0.0f,
                             tag_off, tick_off, period);
     }

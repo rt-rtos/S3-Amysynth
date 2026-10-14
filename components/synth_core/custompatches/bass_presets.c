@@ -15,7 +15,7 @@
 /* Each preset's amp CONST on osc 0 and osc 1: the balance between its two
  * audible oscs. Indexed by patch - SEQ_PATCH_BASS_BASE. */
 static const float s_bass_osc_level[SEQ_PATCH_BASS_MAX - SEQ_PATCH_BASS_BASE + 1][2] = {
-    { 1.0f, 0.8f },   /* BASS_1: saw slightly quieter than the carrier */
+    { 0.8f, 1.0f },   /* BASS_1: saw head slightly quieter than the carrier */
     { 1.0f, 0.7f },   /* BASS_2 */
     { 1.0f, 0.7f },   /* BASS_3 */
 };
@@ -48,22 +48,41 @@ void bass_preset_configure_track(uint8_t synth_id, uint16_t patch,
         /* ─── Preset 264: Classic Sub-Heavy Detune Bass ─────────────────
          * PULSE carrier + SAW_DOWN detuned ~8.6 cents for thickness,
          * LPF24 on the carrier swept by EG1 (120 Hz -> ~2000 Hz at peak),
-         * settling slower than the EG0 amp decay. */
+         * settling slower than the EG0 amp decay. A chain renders tail
+         * first and a stage processes its own osc and everything chained
+         * after it, so the filtered carrier is the tail (osc 1) and the saw
+         * head passes unfiltered. */
 
-        /* osc 0: PULSE carrier with envelope-swept low-pass filter */
+        /* osc 0: SAW_DOWN, detuned +0.5% (~8.6 cents), tracking the note */
+        e = amy_helpers_event_begin();
+        e->synth                  = synth_id;
+        e->osc                    = 0;
+        e->wave                   = SAW_DOWN;
+        e->freq_coefs[COEF_NOTE]  = 1.0f;
+        e->freq_coefs[COEF_CONST] = ZERO_LOGFREQ_IN_HZ * 1.005f;
+        e->amp_coefs[COEF_CONST] = bass_preset_osc_level(patch, 0);
+        e->amp_coefs[COEF_VEL]   = 1.0f;
+        e->amp_coefs[COEF_EG0]   = 1.0f;
+        e->chained_osc           = 1;         /* voice-local osc 1 */
+        e->eg_type[0]            = ENVELOPE_NORMAL;
+        e->eg0_times[0]  = 5;    e->eg0_values[0] = 1.0f;
+        e->eg0_times[1]  = 250;  e->eg0_values[1] = 0.4f;
+        e->eg0_times[2]  = 150;  e->eg0_values[2] = 0.0f;
+        amy_helpers_event_send(e);
+
+        /* osc 1: PULSE carrier with envelope-swept low-pass filter */
         e = amy_helpers_event_begin();
         e->synth                          = synth_id;
-        e->osc                            = 0;
+        e->osc                            = 1;
         e->wave                           = PULSE;
         e->freq_coefs[COEF_NOTE]          = 1.0f;
-        e->amp_coefs[COEF_CONST]          = bass_preset_osc_level(patch, 0);
+        e->amp_coefs[COEF_CONST]          = bass_preset_osc_level(patch, 1);
         e->amp_coefs[COEF_VEL]            = 1.0f;
         e->amp_coefs[COEF_EG0]            = 1.0f;
         e->filter_type                    = FILTER_LPF24;
         e->resonance                      = 0.5f;
         e->filter_freq_coefs[COEF_CONST]  = 120.0f;   /* start low per spec */
         e->filter_freq_coefs[COEF_EG1]    = 4.06f;    /* EG1 sweeps 120→~2000 Hz at peak */
-        e->chained_osc                    = 1;         /* voice-local osc 1 */
         e->eg_type[0]                     = ENVELOPE_NORMAL;
         e->eg0_times[0]  = 5;    e->eg0_values[0] = 1.0f;   /* atk  5ms */
         e->eg0_times[1]  = 250;  e->eg0_values[1] = 0.4f;   /* dec 250ms, sus 40% */
@@ -74,68 +93,53 @@ void bass_preset_configure_track(uint8_t synth_id, uint16_t patch,
         e->eg1_times[2]  = 200;  e->eg1_values[2] = 0.0f;   /* rel 200ms, closes fully */
         amy_helpers_event_send(e);
 
-        /* osc 1: SAW_DOWN, detuned +0.5% (~8.6 cents), tracking the note */
-        e = amy_helpers_event_begin();
-        e->synth                  = synth_id;
-        e->osc                    = 1;
-        e->wave                   = SAW_DOWN;
-        e->freq_coefs[COEF_NOTE]  = 1.0f;
-        e->freq_coefs[COEF_CONST] = ZERO_LOGFREQ_IN_HZ * 1.005f;
-        e->amp_coefs[COEF_CONST] = bass_preset_osc_level(patch, 1);
-        e->amp_coefs[COEF_VEL]   = 1.0f;
-        e->amp_coefs[COEF_EG0]   = 1.0f;
-        e->eg_type[0]            = ENVELOPE_NORMAL;
-        e->eg0_times[0]  = 5;    e->eg0_values[0] = 1.0f;
-        e->eg0_times[1]  = 250;  e->eg0_values[1] = 0.4f;
-        e->eg0_times[2]  = 150;  e->eg0_values[2] = 0.0f;
-        amy_helpers_event_send(e);
-
     } else if (patch == SEQ_PATCH_BASS_2) {
         /* ─── Preset 265: Acid Pluck Bass ───────────────────────────────
-         * SINE fundamental + SAW_DOWN through a swept LPF24 on osc1, which
-         * runs on the accumulated osc0+osc1 buffer. Amp (EG0) and filter (EG1)
-         * are independent: 80 Hz at rest, ~1800 Hz at attack peak, settling
-         * slower/lower than the amp decay; resonance accentuates the crossover
-         * for the TB-303 squelch. */
+         * SINE fundamental + SAW_DOWN through a swept LPF24 on the head
+         * (osc 0), which processes the whole chain: osc1 renders first, then
+         * osc0 into the same buffer, then the filter. Amp (EG0) and filter
+         * (EG1) are independent: 80 Hz at rest, ~1800 Hz at attack peak,
+         * settling slower/lower than the amp decay; resonance accentuates
+         * the crossover for the TB-303 squelch. */
 
-        /* osc 0: SINE fundamental */
-        e = amy_helpers_event_begin();
-        e->synth                 = synth_id;
-        e->osc                   = 0;
-        e->wave                  = SINE;
-        e->freq_coefs[COEF_NOTE] = 1.0f;
-        e->amp_coefs[COEF_CONST] = bass_preset_osc_level(patch, 0);
-        e->amp_coefs[COEF_VEL]   = 1.0f;
-        e->amp_coefs[COEF_EG0]   = 1.0f;
-        e->chained_osc           = 1;         /* voice-local osc 1 */
-        e->eg_type[0]            = ENVELOPE_NORMAL;
-        e->eg0_times[0]  = 10;   e->eg0_values[0] = 1.0f;   /* atk 10ms */
-        e->eg0_times[1]  = 180;  e->eg0_values[1] = 0.5f;   /* dec 180ms, sus 50% */
-        e->eg0_times[2]  = 100;  e->eg0_values[2] = 0.0f;   /* rel 100ms */
-        amy_helpers_event_send(e);
-
-        /* osc 1: SAW_DOWN with envelope-swept LPF24 (acid squelch); the filter
-         * sees the accumulated osc0+osc1 signal, so both oscs pass through. */
+        /* osc 0: SINE fundamental with envelope-swept LPF24 (acid squelch)
+         * over both oscs. */
         e = amy_helpers_event_begin();
         e->synth                          = synth_id;
-        e->osc                            = 1;
-        e->wave                           = SAW_DOWN;
+        e->osc                            = 0;
+        e->wave                           = SINE;
         e->freq_coefs[COEF_NOTE]          = 1.0f;
-        e->amp_coefs[COEF_CONST]          = bass_preset_osc_level(patch, 1);
+        e->amp_coefs[COEF_CONST]          = bass_preset_osc_level(patch, 0);
         e->amp_coefs[COEF_VEL]            = 1.0f;
         e->amp_coefs[COEF_EG0]            = 1.0f;
+        e->chained_osc                    = 1;         /* voice-local osc 1 */
         e->filter_type                    = FILTER_LPF24;
         e->resonance                      = 1.5f;             /* squelch resonance */
         e->filter_freq_coefs[COEF_CONST]  = 80.0f;            /* rest cutoff: 80 Hz */
         e->filter_freq_coefs[COEF_EG1]    = 4.5f;             /* EG1 sweeps 80→~1800 Hz at peak */
         e->eg_type[0]                     = ENVELOPE_NORMAL;
-        e->eg0_times[0]  = 5;    e->eg0_values[0] = 1.0f;   /* atk  5ms (snappy) */
-        e->eg0_times[1]  = 120;  e->eg0_values[1] = 0.2f;   /* dec 120ms, sus 20% */
+        e->eg0_times[0]  = 10;   e->eg0_values[0] = 1.0f;   /* atk 10ms */
+        e->eg0_times[1]  = 180;  e->eg0_values[1] = 0.5f;   /* dec 180ms, sus 50% */
         e->eg0_times[2]  = 100;  e->eg0_values[2] = 0.0f;   /* rel 100ms */
         e->eg_type[1]                     = ENVELOPE_NORMAL;
         e->eg1_times[0]  = 5;    e->eg1_values[0] = 1.0f;   /* atk  5ms (snappy open) */
         e->eg1_times[1]  = 350;  e->eg1_values[1] = 0.1f;   /* dec 350ms, settles at 10% */
         e->eg1_times[2]  = 180;  e->eg1_values[2] = 0.0f;   /* rel 180ms, closes fully */
+        amy_helpers_event_send(e);
+
+        /* osc 1: SAW_DOWN */
+        e = amy_helpers_event_begin();
+        e->synth                 = synth_id;
+        e->osc                   = 1;
+        e->wave                  = SAW_DOWN;
+        e->freq_coefs[COEF_NOTE] = 1.0f;
+        e->amp_coefs[COEF_CONST] = bass_preset_osc_level(patch, 1);
+        e->amp_coefs[COEF_VEL]   = 1.0f;
+        e->amp_coefs[COEF_EG0]   = 1.0f;
+        e->eg_type[0]            = ENVELOPE_NORMAL;
+        e->eg0_times[0]  = 5;    e->eg0_values[0] = 1.0f;   /* atk  5ms (snappy) */
+        e->eg0_times[1]  = 120;  e->eg0_values[1] = 0.2f;   /* dec 120ms, sus 20% */
+        e->eg0_times[2]  = 100;  e->eg0_values[2] = 0.0f;   /* rel 100ms */
         amy_helpers_event_send(e);
 
     } else if (patch == SEQ_PATCH_BASS_3) {

@@ -200,6 +200,32 @@ int8_t dsps_biquad_gen_notch_f32(SAMPLE *coeffs, float f, float qFactor)
     return 0;
 }
 
+/* SMULR6 truncates both operands to 12 fractional bits.  At low cutoff the
+ * split-feedback corrections e = 2 + a1 and f = 1 - a2 are ~2^-10, so they keep
+ * only 2-3 significant bits and the pole lands well off target: HPF/BPF at
+ * Q >= 2 rings up into clipping or loses its resonance, and the LPF numerator
+ * rounds to zero.  Exact multiply, ~2 more instructions. */
+#ifdef AMY_HAS_MUL64
+#define FILT_MUL_SS(a, b) SMUL64R(a, b)
+#else
+#define FILT_MUL_SS(a, b) SMULR6(a, b)
+#endif
+
+// One sample through n first-order allpass stages sharing coefficient a;
+// w[0..n-1] are the per-stage memories.  Transposed direct form II of
+// H(z) = (a + z^-1)/(1 + a z^-1) with one state word per stage, so six stages
+// plus the feedback sample fit filter_delay.  The same a feeds both
+// multiplies, so each stage is exactly allpass for any representable |a| < 1 -
+// coefficient quantization moves the phase curve but never the gain.
+static inline SAMPLE allpass1_chain(SAMPLE x0, SAMPLE a, SAMPLE *w, int n) {
+    for (int k = 0; k < n; ++k) {
+        SAMPLE y0 = FILT_MUL_SS(a, x0) + w[k];
+        w[k] = x0 - FILT_MUL_SS(a, y0);
+        x0 = y0;
+    }
+    return x0;
+}
+
 #define PHASER_STAGES 6
 
 // 6-stage phaser: global feedback around the allpass chain, 50/50 dry mix,
@@ -650,12 +676,10 @@ void filters_init(uint16_t bus) {
             }
         }
     }
-    // LOCAL EDIT (S3-Amysynth): EQ coefficients follow the band gains.
     parametric_eq_update(bus);
 }
 
 
-// LOCAL EDIT (S3-Amysynth): shelving EQ, upstream PR candidate.
 // Three sections in series, each y = x + (G - 1) F(x): a first-order low
 // shelf at EQ_CENTER_LOW, a Q 1 peak at EQ_CENTER_MED and a first-order high
 // shelf at EQ_CENTER_HIGH.  F = (1 + A)/2 or (1 - A)/2 for an allpass A, so
@@ -665,14 +689,29 @@ void filters_init(uint16_t bus) {
 // point in dB and +n dB and -n dB mirror.  F runs in direct form 1 and the
 // stored state is the band output scaled down (by 2, or by 8 for the high
 // shelf), so each multiply is one high-word product.
-// Coefficients hold half their value (Q31 in fixed point), so
-// EQ_MULH(x, EQ_COEF(f)) = x * f / 2 in either build.
+// Coefficients hold half their value (Q31 in fixed point, Q15 without a
+// 32x32 -> 64 multiply), so EQ_MULH(x, EQ_COEF(f)) = x * f / 2 in every build.
 #ifdef AMY_USE_FIXEDPOINT
+#if defined(AMY_HAS_MUL64) && !defined(AMY_EQ_MUL32)
 #define EQ_MULH(x, k) ((SAMPLE)(((int64_t)(x) * (int64_t)(k)) >> 32))
 static SAMPLE EQ_COEF(float f) {
     f = MAX(-1.0f, MIN(0.99999994f, f));
     return (SAMPLE)lrintf(f * 2147483648.0f);
 }
+#else
+// ARMv6-M (RP2040) has only MULS, 32x32 -> low 32, so an int64_t product is an
+// __aeabi_lmul call.  With k in Q15, x * k >> 16 splits exactly into x's
+// signed high and unsigned low 16 bits, each product fitting in 32 bits
+// (|x_lo * k| < 2^31): two MULS, the same floor as the 64-bit form, at the
+// cost of Q15 coefs (output within ~-85 dB of it).  A macro, not a function:
+// at -Os (the RP2040 default) an inline function stays a call.  AMY_EQ_MUL32
+// selects this on any host, to check it.
+#define EQ_MULH(x, k) (((x) >> 16) * (k) + ((((x) & 0xffff) * (k)) >> 16))
+static SAMPLE EQ_COEF(float f) {
+    f = MAX(-1.0f, MIN(0.99996948f, f));
+    return (SAMPLE)lrintf(f * 32768.0f);
+}
+#endif
 #else
 #define EQ_MULH(x, k) ((x) * (k))
 static SAMPLE EQ_COEF(float f) { return 0.5f * f; }
@@ -727,7 +766,7 @@ void parametric_eq_update(uint16_t bus) {
 // Two samples per pass, so the state rotates by renaming (len is even).
 // noinline - inlined into the band loop they lose the hardware loop.
 // y1, y2 hold the band output / 2.
-static __attribute__((noinline)) AMY_IRAM_ATTR void dsps_lowshelf_f32_ansi(SAMPLE *block, int len, const SAMPLE *coef, SAMPLE *w) {
+static AMY_NOINLINE AMY_IRAM_ATTR void dsps_lowshelf_f32_ansi(SAMPLE *block, int len, const SAMPLE *coef, SAMPLE *w) {
     SAMPLE b0 = coef[0], fb1 = coef[1];
     SAMPLE x1 = w[0], y1 = w[1];
     for (int i = 0; i < len; i += 2) {
@@ -744,7 +783,7 @@ static __attribute__((noinline)) AMY_IRAM_ATTR void dsps_lowshelf_f32_ansi(SAMPL
     w[1] = y1;
 }
 
-static __attribute__((noinline)) AMY_IRAM_ATTR void dsps_peak_f32_ansi(SAMPLE *block, int len, const SAMPLE *coef, SAMPLE *w) {
+static AMY_NOINLINE AMY_IRAM_ATTR void dsps_peak_f32_ansi(SAMPLE *block, int len, const SAMPLE *coef, SAMPLE *w) {
     SAMPLE b0 = coef[0], fb1 = coef[1], fb2 = coef[2];
     SAMPLE x1 = w[0], x2 = w[1], y1 = w[2], y2 = w[3];
     for (int i = 0; i < len; i += 2) {
@@ -766,7 +805,7 @@ static __attribute__((noinline)) AMY_IRAM_ATTR void dsps_peak_f32_ansi(SAMPLE *b
 }
 
 // y1 holds the band output / 8.
-static __attribute__((noinline)) AMY_IRAM_ATTR void dsps_highshelf_f32_ansi(SAMPLE *block, int len, const SAMPLE *coef, SAMPLE *w) {
+static AMY_NOINLINE AMY_IRAM_ATTR void dsps_highshelf_f32_ansi(SAMPLE *block, int len, const SAMPLE *coef, SAMPLE *w) {
     SAMPLE b0 = coef[0], fb1 = coef[1];
     SAMPLE x1 = w[0], y1 = w[1];
     for (int i = 0; i < len; i += 2) {
@@ -1183,14 +1222,16 @@ AMY_IRAM_ATTR SAMPLE dist_process(SAMPLE * block, uint16_t osc) {
     // combined from their coef vectors once per block in hold_and_modify.
     // Composing the config here rather than storing one keeps modulated
     // state in msynth, where the rest of the per-block values live.
+    // Only called with synth[osc]->dist set (and stages nonzero).
+    osc_dist_t *dist = synth[osc]->dist;
     const dist_config_t cfg = {
-        .stages = synth[osc]->dist_stages,
+        .stages = dist->stages,
         .drive = msynth[osc]->dist_drive,
-        .bits = synth[osc]->dist_bits,
-        .rate = synth[osc]->dist_rate,
+        .bits = dist->bits,
+        .rate = dist->rate,
         .mix = msynth[osc]->dist_mix,
     };
-    return dist_block(block, AMY_BLOCK_SIZE, &cfg, &synth[osc]->dist_state);
+    return dist_block(block, AMY_BLOCK_SIZE, &cfg, &dist->state);
 }
 
 // Wrap guard: the bus sum is unbounded, and SMULR6's 32x32 fallback caps the

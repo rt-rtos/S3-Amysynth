@@ -46,7 +46,7 @@ extern "C" {
  * own envelope until the user authors one for the row. */
 #define SEQ_PATCH_BASS_BASE   264
 #define SEQ_PATCH_BASS_1      264   /* PULSE + detuned SAW_DOWN, LPF24 swept by EG1 */
-#define SEQ_PATCH_BASS_2      265   /* Acid pluck: SINE + SAW_DOWN, LPF24 on osc 1 */
+#define SEQ_PATCH_BASS_2      265   /* Acid pluck: SINE + SAW_DOWN, LPF24 on the head */
 #define SEQ_PATCH_BASS_3      266   /* Bright synth bass: PULSE + SAW_DOWN sub-octave, no filter */
 #define SEQ_PATCH_BASS_MAX    266
 
@@ -464,11 +464,6 @@ bool sequencer_core_voice_layout(uint16_t patch, uint8_t copies, seq_voice_layou
  * Volatile - not serialized. UI task only. */
 void    sequencer_core_set_ks_voices(uint8_t n);
 uint8_t sequencer_core_get_ks_voices(void);
-
-/* KS rings `layers` melodic layers need with every row KS at the voice
- * ceiling: layers x SEQ_TRACKS x CONFIG_SEQ_KS_VOICES_MAX. Pure; for sizing
- * amy_cfg.ks_oscs before amy_start(). */
-uint8_t sequencer_core_ks_row_demand(uint8_t layers);
 
 /* Step one drum track's PCM preset by `dir` through the combined drum sample
  * space: the ROM bank (0 .. pcm_wavetable_base-1) then the gamma9001 banks

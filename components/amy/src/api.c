@@ -5,6 +5,13 @@
 
 amy_config_t amy_default_config() {
     amy_config_t c;
+    // Zero the lot first, so a field added to amy_config_t and missed
+    // below reads as 0/NULL rather than as whatever was on the caller's
+    // stack. A hook left as garbage is a jump to a random address the
+    // first time AMY calls it (amy_external_cv_output_hook was exactly
+    // that: never initialised here, so a note output crashed any host
+    // that did not set it).
+    memset(&c, 0, sizeof(c));
     c.features.reverb = 1;
     c.features.echo = 1;
     c.features.chorus = 1;
@@ -22,6 +29,7 @@ amy_config_t amy_default_config() {
     c.amy_external_render_hook = NULL;
     c.amy_external_bus_postprocess_hook = NULL;
     c.amy_external_coef_hook = NULL;
+    c.amy_external_cv_output_hook = NULL;
     c.amy_external_block_done_hook = NULL;
     c.amy_external_midi_input_hook = NULL;
     c.amy_external_midi_output_hook = NULL;
@@ -75,9 +83,6 @@ amy_config_t amy_default_config() {
     c.ram_caps_sequencer = c.ram_caps_events;
     // Per-osc synth state follows the event pool unless a target overrides.
     c.ram_caps_oscs = c.ram_caps_events;
-    // LOCAL EDIT (S3-Amysynth): KS rings follow the synth pool unless a
-    // target overrides (see amy.h).
-    c.ram_caps_ks = c.ram_caps_synth;
 
     c.capture_device_id = -1;
     c.playback_device_id = -1;
@@ -256,9 +261,14 @@ void *amy_get_external_hook_context(void) {
 }
 
 output_sample_type * amy_simple_fill_buffer() {
+    // One block under the render lock: no patch load's frees or resets can
+    // run between this block's flush and the end of its mix.
+    amy_grab_render_lock();
     amy_execute_deltas();
     amy_render(0, AMY_OSCS, 0);
-    return amy_fill_buffer();
+    output_sample_type *block = amy_fill_buffer();
+    amy_release_render_lock();
+    return block;
 }
 
 

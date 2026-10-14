@@ -65,11 +65,35 @@
 i2s_chan_handle_t tx_handle;
 i2s_chan_handle_t rx_handle;
 
+// THE DMA RING IS SIZED IN BLOCKS. IDF's I2S_CHANNEL_DEFAULT_CONFIG is 6
+// descriptors of 240 frames: 33 ms of output latency at 44.1 kHz whatever
+// AMY_BLOCK_SIZE is, so a build that chose BLOCK_SIZE_BITS=6 for a 1.45 ms
+// block still sat behind 33 ms of DMA. #1118 measured 34 ms on an
+// ESP32-P4, "mainly the DMA buffer", and had to hand-edit this file to
+// get under it. Each descriptor now holds exactly one block -- a write
+// fills one descriptor, a read drains one -- and the ring holds
+// AMY_I2S_DMA_BLOCKS of them, so the latency follows the block: 6 x 256 at
+// the default block is the same ~35 ms as before, and 6 x 64 is 8.7 ms.
+// The depth is also the slack against a late render (a busy second core,
+// PSRAM contention), so a host that wants more of it raises the count:
+// -DAMY_I2S_DMA_BLOCKS=12. IDF needs at least 2. IDF also caps one
+// descriptor near 4 KB and rounds dma_frame_num down past it (a 512-sample
+// 32-bit stereo block is 4096 bytes), in which case a write straddles two
+// descriptors, which it always could.
+#ifndef AMY_I2S_DMA_BLOCKS
+#define AMY_I2S_DMA_BLOCKS 6
+#endif
+#if AMY_I2S_DMA_BLOCKS < 2
+#error "AMY_I2S_DMA_BLOCKS must be at least 2 (the IDF I2S driver's minimum)"
+#endif
+
 
 #if !defined(AMYBOARD) && !defined(AMYBOARD_ARDUINO)
 // default ESP setup i2s
 amy_err_t esp32_setup_i2s(void) {
     i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_AUTO, I2S_ROLE_MASTER);
+    chan_cfg.dma_desc_num = AMY_I2S_DMA_BLOCKS;
+    chan_cfg.dma_frame_num = AMY_BLOCK_SIZE;
     if(AMY_HAS_AUDIO_IN) {
         i2s_new_channel(&chan_cfg, &tx_handle, &rx_handle);
     } else {
@@ -127,6 +151,8 @@ amy_err_t esp32_setup_i2s(void) {
 // AMYBOARD or AMYBOARD_ARDUINO i2s setup, which uses two audio codecs, for audio in and SPDIF
 amy_err_t esp32_setup_i2s(void) {
     i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_AUTO, I2S_ROLE_SLAVE);  // ************* I2S_ROLE_SLAVE - needs external I2S clock input.
+    chan_cfg.dma_desc_num = AMY_I2S_DMA_BLOCKS;
+    chan_cfg.dma_frame_num = AMY_BLOCK_SIZE;
     i2s_new_channel(&chan_cfg, &tx_handle, &rx_handle);
 
 #define I2S_32BIT
@@ -343,6 +369,11 @@ void esp_fill_audio_buffer_task(void *pvParameters) {
 #ifdef ARDUINO_SPEEDTEST
         int64_t _rl_start_t = esp_timer_get_time();
 #endif // ARDUINO_SPEEDTEST
+        // The whole block, flush to mix, under the render lock (released
+        // before the i2s write, so a patch load gets in while we wait on the
+        // DMA). esp_render_task renders its half on the other core inside
+        // this hold without taking the lock itself.
+        amy_grab_render_lock();
         // Get ready to render
         amy_execute_deltas();
 
@@ -351,6 +382,7 @@ void esp_fill_audio_buffer_task(void *pvParameters) {
 
         // Write to i2s
         output_sample_type *block = amy_fill_buffer();
+        amy_release_render_lock();
         uint32_t busy_us = (uint32_t)(amy_get_us() - t);
 	AMY_PROFILE_STOP(AMY_ESP_FILL_BUFFER)
 
@@ -479,10 +511,13 @@ int16_t *amy_render_audio() {
             xTaskNotifyGive(amy_fill_buffer_handle);  // to esp_fill_audio_buffer_task:!AMY_HAS_I2S
         }
     } else {
-        // No multithread, we have to render here.
+        // No multithread, we have to render here. (amy_update_tasks()
+        // already flushed, under the render lock.)
         int64_t t0 = amy_get_us();
+        amy_grab_render_lock();
         esp_render_on_cores();
         buf = amy_fill_buffer();
+        amy_release_render_lock();
         amy_overload_check((uint32_t)(amy_get_us() - t0));
     }
     return buf;
@@ -544,13 +579,12 @@ volatile bool core1_running = true;
 uint32_t * my_core1_separate_stack_address = NULL;
 
 extern void on_pico_uart_rx();
+extern void pico_process_midi();
 
 void amy_update_tasks() {
     amy_execute_deltas();
     if(amy_global.config.midi & AMY_MIDI_IS_UART) on_pico_uart_rx();
-#ifdef TUD_USB_GADGET
-    if(amy_global.config.midi & AMY_MIDI_IS_USB_GADGET) on_pico_uart_rx();
-#endif
+    if(amy_global.config.midi & AMY_MIDI_IS_USB_GADGET) pico_process_midi();
 }
 
 #define USE_SECOND_CORE

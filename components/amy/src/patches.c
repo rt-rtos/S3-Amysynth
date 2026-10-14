@@ -190,6 +190,10 @@ void update_num_oscs_for_patch_number(int patch_number) {
 }
 
 void all_notes_off() {
+    // The note outputs first: a gate left high is a stuck note on
+    // whatever is patched to it, and this is the call every host reaches
+    // for when something is stuck.
+    note_output_all_gates_off();
     for(uint16_t i=0;i<AMY_OSCS;i++) {
         if (AMY_IS_SET(osc_to_voice[i])) {
             if(synth[i]->status == SYNTH_AUDIBLE) {
@@ -824,16 +828,6 @@ struct delta *deltas_to_event(struct delta *queue, struct amy_event *event) {
         }                                                                 \
     }
 
-#define EVENT_FROM_OSC_ARRAY_LOGDRIVE(SYNTH_FIELD, EVENT_FIELD, NUM_ELS)  \
-    for (int i = 0; i < NUM_ELS; ++i) {                                   \
-        if (synth[osc]->SYNTH_FIELD[i] != empty_synth.SYNTH_FIELD[i]) {   \
-            if (i == COEF_CONST)                                          \
-                event->EVENT_FIELD[i] = drive_of_logdrive(synth[osc]->SYNTH_FIELD[i]); \
-            else                                                          \
-                event->EVENT_FIELD[i] = synth[osc]->SYNTH_FIELD[i];       \
-        }                                                                 \
-    }
-
 void set_event_for_osc(int base_osc, int rel_osc, struct amy_event *event) {
     // Set fields in the event to configure the osc away from default.
     // We assume event has already been cleared.
@@ -858,6 +852,12 @@ void set_event_for_osc(int base_osc, int rel_osc, struct amy_event *event) {
         empty_synth.breakpoint_values[i] = values + i * MAX_BREAKPOINTS;
    }
     reset_osc_by_pointer(&empty_synth, /* msynth */ NULL);
+    // The wave-specific union compares against the defaults of the kind the
+    // osc holds; fields of any other kind are unset on this osc.
+    empty_synth.wave_kind = synth[osc]->wave_kind;
+    wave_kind_set_defaults(&empty_synth);
+    bool is_pcm_kind = (synth[osc]->wave_kind == WAVE_KIND_PCM);
+    bool is_algo_kind = (synth[osc]->wave_kind == WAVE_KIND_ALGO);
     // Go through parameter fields picking out the ones that are nondefault.
     EVENT_FROM_OSC(wave);
     EVENT_FROM_OSC(preset);
@@ -881,8 +881,10 @@ void set_event_for_osc(int base_osc, int rel_osc, struct amy_event *event) {
         event->unison_phase_step = synth[osc]->unison_phase_step;
     }
     EVENT_FROM_OSC(sample_offset);
-    EVENT_FROM_OSC(fit_ticks);
-    EVENT_FROM_OSC(fit_search);
+    if (is_pcm_kind) {
+        EVENT_FROM_OSC(fit_ticks);
+        EVENT_FROM_OSC(fit_search);
+    }
     EVENT_FROM_OSC_MAPPED(logratio, ratio, exp2f);
     EVENT_FROM_OSC(resonance);
     EVENT_FROM_OSC_MAPPED(portamento_alpha, portamento_ms, alpha_to_portamento_ms);
@@ -896,19 +898,33 @@ void set_event_for_osc(int base_osc, int rel_osc, struct amy_event *event) {
         else
             event->mod_source[i] = synth[osc]->mod_source[i] - base_osc;
     }
-    EVENT_FROM_OSC(algorithm);
+    if (is_algo_kind) {
+        EVENT_FROM_OSC(algorithm);
+    }
     EVENT_FROM_OSC(filter_type);
     // Distortion: one enable per stage that is on (a stage that is off is
     // the default, and saying so would put GC0GF0GH0 on every osc), and the
     // drive rail back in linear units, the way it was sent.
-    if (synth[osc]->dist_stages & DIST_CLIP)   event->dist_clip = 1;
-    if (synth[osc]->dist_stages & DIST_FOLD)   event->dist_fold = 1;
-    if (synth[osc]->dist_stages & DIST_CRUSH)  event->dist_crush = 1;
-    EVENT_FROM_OSC(dist_bits);
-    EVENT_FROM_OSC(dist_rate);
-    EVENT_FROM_OSC_ARRAY_LOGDRIVE(dist_logdrive_coefs, dist_drive_coefs, NUM_COMBO_COEFS);
-    EVENT_FROM_OSC_ARRAY2(dist_mix_coefs, dist_mix_coefs, NUM_COMBO_COEFS);
-    EVENT_FROM_OSC_ARRAY_BASEOSC(algo_source, MAX_ALGO_OPS);
+    // An osc with no dist block is at all the defaults: nothing to say.
+    const osc_dist_t *dist = synth[osc]->dist;
+    const osc_dist_t *def = &osc_dist_defaults;
+    if (dist != NULL) {
+        if (dist->stages & DIST_CLIP)   event->dist_clip = 1;
+        if (dist->stages & DIST_FOLD)   event->dist_fold = 1;
+        if (dist->stages & DIST_CRUSH)  event->dist_crush = 1;
+        if (dist->bits != def->bits) event->dist_bits = dist->bits;
+        if (dist->rate != def->rate) event->dist_rate = dist->rate;
+        for (int i = 0; i < NUM_COMBO_COEFS; ++i) {
+            if (dist->logdrive_coefs[i] != def->logdrive_coefs[i])
+                event->dist_drive_coefs[i] = (i == COEF_CONST) ? drive_of_logdrive(dist->logdrive_coefs[i])
+                                                               : dist->logdrive_coefs[i];
+            if (dist->mix_coefs[i] != def->mix_coefs[i])
+                event->dist_mix_coefs[i] = dist->mix_coefs[i];
+        }
+    }
+    if (is_algo_kind) {
+        EVENT_FROM_OSC_ARRAY_BASEOSC(algo_source, MAX_ALGO_OPS);
+    }
     EVENT_FROM_OSC_ARRAY_T(breakpoint_times[0], eg0_times, synth[osc]->max_num_breakpoints[0]);
     EVENT_FROM_OSC_ARRAY2(breakpoint_values[0], eg0_values, synth[osc]->max_num_breakpoints[0]);
     EVENT_FROM_OSC_ARRAY_T(breakpoint_times[1], eg1_times, synth[osc]->max_num_breakpoints[1]);
@@ -1021,28 +1037,42 @@ void *yield_synth_events(uint8_t instr_num, struct amy_event *event, bool includ
 }
 
 #define STATE_START_OF_MIDI_TPLT_CMDS 1024
+// One step between the event commands and the MIDI templates, for the
+// synth's note output (iG). A note output that did not survive a state
+// round trip would be a synth that came back silently pointed at
+// oscillators, which is a worse bug than never having saved it.
+#define STATE_NOTE_OUTPUT 1023
 
 void *yield_synth_commands(uint8_t instr_num, char *s, size_t len, bool include_fx, void *state) {
     // Generator to return multiple wirecode strings to reconfigure a synth.
     int state_val = (intptr_t)state;
     //fprintf(stderr, "yield_synth_commands: synth %d state %d\n", instr_num, state_val);
     s[0] = '\0';  // By default, return an empty string.
+    if (state_val == STATE_NOTE_OUTPUT) {
+        note_output_emit_command(instr_num, s, len);
+        return (void *)(intptr_t)STATE_START_OF_MIDI_TPLT_CMDS;
+    }
     if (state_val < STATE_START_OF_MIDI_TPLT_CMDS) {
         amy_event event = amy_default_event();
         state_val = (intptr_t)yield_synth_events(instr_num, &event, include_fx, (void *)(intptr_t)state_val);
         sprint_event(&event, s, len, /* wirecode= */ true);
         if (state_val == 0) {
-            // Push the state machine on to the MIDI codes
-            state_val = STATE_START_OF_MIDI_TPLT_CMDS;
+            // Push the state machine on to the note output, then the MIDI codes
+            state_val = STATE_NOTE_OUTPUT;
         }
     } else {
         // MIDI CC part
         bool found = false;
         int type = MIDI_MAP_TYPE_CC;
         int starting_code = state_val - STATE_START_OF_MIDI_TPLT_CMDS;
-        for (int next_code = starting_code; next_code < 256; ++next_code) {
+        // codes 0..127 are CC inputs (ic), 128..255 note commands (io),
+        // 256..383 CC outputs (iC).
+        for (int next_code = starting_code; next_code < 384; ++next_code) {
             int next_midi_code = next_code;
-            if (next_midi_code >= 128) {
+            if (next_midi_code >= 256) {
+                next_midi_code -= 256;
+                type = MIDI_MAP_TYPE_CC_OUT;
+            } else if (next_midi_code >= 128) {
                 next_midi_code -= 128;
                 type = MIDI_MAP_TYPE_NOTE;
             }
@@ -1334,6 +1364,16 @@ void patches_event_has_voices(amy_event *e, struct delta **queue) {
     // A pure pedal event doesn't strictly address oscs, but it can result in note-off events.
     if (!event_addresses_oscs(e) && AMY_IS_UNSET(e->pedal))
         return;  // Early exit.
+
+    // A note output is IN ADDITION to the synth's own voices, which play
+    // as they always did; a synth that should be silent inside AMY is
+    // simply one with no voices. That voiceless case is the only one
+    // with nothing further to do with the event, which is why it returns
+    // here -- and why the existence check passes a NULL tag, since
+    // "synth N not defined" three times per note would be noise about a
+    // deliberate arrangement.
+    if (note_output_handle_event(e, queue == &amy_global.delta_queue) && !instrument_number_exists(e->synth, NULL))
+        return;
 
     uint8_t synth = e->synth;
     int synth_flags = 0;

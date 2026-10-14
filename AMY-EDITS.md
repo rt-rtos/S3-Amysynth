@@ -1,22 +1,17 @@
 # AMY Local Edits
 
 Edits applied on top of the upstream `shorepine/amy` submodule.
-Upstream commit: `0fb0a00` (v1.2.163, vendored 2026-09-05). The vendor base is
-upstream `main` as is. Three of this repo's own upstream PRs merged after
-this base; their code is still carried and is listed under "Merged upstream,
-still carried until the next sync". The Karplus-Strong entries are an earlier
-shape of #1204, merged upstream on 2026-10-06 (1.2.191) and not yet vendored. Each active entry states its upstream status.
-Previous bases: v1.2.160 `a89df0c`, v1.2.145 `55e044d`, v1.2.121 `85a7025`,
-v1.2.104 `fd09bd2`, v1.2.31 `1e23c70`. The submodule tracks upstream `main`
-(`.gitmodules` `branch = main`; refresh with `git submodule update --remote amy`).
+Upstream commit: `c4433d4` (v1.2.200, vendored 2026-10-14). The vendor base is
+upstream `main` as is. Each active entry states its upstream status.
+Previous bases: v1.2.163 `0fb0a00`, v1.2.160 `a89df0c`, v1.2.145 `55e044d`,
+v1.2.121 `85a7025`, v1.2.104 `fd09bd2`, v1.2.31 `1e23c70`. The submodule tracks
+upstream `main` (`.gitmodules` `branch = main`; refresh with `git submodule update --remote amy`).
 
-Edits are marked `// LOCAL EDIT` in the source, except the Karplus-Strong rework
-(`oscillators.c`, `amy.h`, `amy.c`, `filters.c`), which is documented by its
-own comments (only the `render_ks` index loop and the `ram_caps_ks` field carry
-a marker). ESP32-S3-specific edits are
-permanent (upstream has no concept of IRAM/DRAM placement or FreeRTOS task
-signatures); the fixes listed under "Dropped" were merged upstream and are no
-longer carried here.
+Edits are marked `// LOCAL EDIT` in the source; the Karplus-Strong excitation
+shaping (`oscillators.c`, `amy.h`) is marked like the rest. ESP32-S3-specific
+edits are permanent (upstream has no concept of IRAM/DRAM placement or
+FreeRTOS task signatures); the fixes listed under "Dropped" were merged
+upstream and are no longer carried here.
 
 ```mermaid
 %%{init: {"theme": "base", "themeCSS": ".mindmap-node polygon { fill: #afb8c1 !important; }", "themeVariables": {
@@ -51,15 +46,8 @@ mindmap
     c3{{"`**Render path**`"}}
       Oscillator arithmetic
       Unison cluster
-      PCM retrig fade-restart
-    c4{{"`**Karplus-Strong, PR 1204**`"}}
-      Ring index and length
-      Ring per osc
-      Loop allpass
-      Pluck position
-      Gain ramp
-      Excitation shaping, local
-      Note-off release, local
+    c4{{"`**Karplus-Strong**`"}}
+      Excitation shaping
     c5{{"`**Accessors and API**`"}}
       PCM frame and shrink
       gamma9001 map and size
@@ -67,6 +55,7 @@ mindmap
       Patch oscs per voice
       Algorithm count
       Custom operator programs
+      Sequencer tag count
     c6{{"`**Behaviour fixes**`"}}
       Periodic-entry horizon
       reset_osc keeps the bus
@@ -98,7 +87,7 @@ mindmap
 | [#893](https://github.com/shorepine/amy/pull/893) (`a96d574`, v1.2.62) | FM scratch allocated as one flat 16-byte-aligned block via `malloc_caps_block` (algorithms.c) - supersedes the vendored per-pointer alignment; our three remaining `malloc_caps_block` call sites in amy.c stay local. |
 | [#1000](https://github.com/shorepine/amy/pull/1000) (v1.2.106) | `FILTER_NOTCH` type - our own PR (half-angle center recovery, `dsps_biquad_gen_notch_f32`), merged upstream with dpwe test coverage in #1005 (amy.h, filters.c). |
 | [#1020](https://github.com/shorepine/amy/pull/1020) | `FILTER_PHASER` type - our own PR (6-stage allpass chain, `allpass1_chain` + `dsps_phaser_f32_ansi`), merged 2026-08-01 (amy.h, filters.c). |
-| upstream sequencer rework (#1017 lineage, 1.2.104->1.2.121) | `SEQ_LOCK` mutex + active-tag dense index (sequencer.c) - superseded wholesale. Upstream rewrote the sequencer: entries store raw wire strings, all link/string mutations run under `amy_queue_lock` (taken inside `sequencer_add_wire` and the tick fire path, released around `amy_play_message` because the parser can re-enter), and the tick walk is lock-free over index links threaded through a fixed array (single aligned-store splices, ascending order - a stale link can skip/revisit one tick, never walk freed memory). That closes the same use-after-free our SEQ_LOCK guarded and replaces the O(highest_tag) sweep with an active-only list, so both local edits retire. The int16 index-array shrink retires with them. Upstream has reshaped the table again since this base (#1156, see "Deferred / needs porting"). |
+| upstream sequencer rework (#1017 lineage, 1.2.104->1.2.121) | `SEQ_LOCK` mutex + active-tag dense index (sequencer.c) - superseded wholesale. Upstream rewrote the sequencer: entries store raw wire strings, all link/string mutations run under `amy_queue_lock` (taken inside `sequencer_add_wire` and the tick fire path, released around `amy_play_message` because the parser can re-enter), and the tick walk is lock-free over index links threaded through a fixed array (single aligned-store splices, ascending order - a stale link can skip/revisit one tick, never walk freed memory). That closes the same use-after-free our SEQ_LOCK guarded and replaces the O(highest_tag) sweep with an active-only list, so both local edits retire. The int16 index-array shrink retires with them. Upstream reshaped the table again in #1156 (v1.2.166); see the 2026-10-14 history entry. |
 | upstream (1.2.104->1.2.121 interval) | UART MIDI poll guard in `amy_update_tasks()` (i2s.c) - upstream adopted the same `AMY_MIDI_IS_UART` gate with its own comment. |
 | upstream (1.2.104->1.2.121 interval) | `AMY_RENDER_TASK_PRIORITY`/`AMY_FILL_BUFFER_TASK_PRIORITY` = `ESP_TASK_PRIO_MAX - 1` (amy.h) - upstream now carries the fix (Arduino gets `- 5`), retiring the 2026-03-22 edit. |
 | [#1049](https://github.com/shorepine/amy/pull/1049) (v1.2.122) | Ingest/tick split: `flush_due_deltas()` settles due deltas without running the rendering-context-only sequencer tick service (amy.c) - our own PR, merged upstream. |
@@ -107,18 +96,20 @@ mindmap
 | [#1134](https://github.com/shorepine/amy/pull/1134) (v1.2.160) | Distortion follow-ups: stage stacking (`dist_stages` bitmask), drive/mix on the control-coef rail, the per-bus stage. Merged in its POST-review shape - one set of `dist_*` event fields serves both scopes and the event decides which (an osc named means that osc, none means the bus the event addresses), so the separate `bus_dist_*` event fields, the `J` bus wire letter and `DIST_OFF` are gone. `fx_push_dist()` (amy_fx.c) authors the shared fields with no osc named. |
 | [#1135](https://github.com/shorepine/amy/pull/1135) (v1.2.158) | `amy_update_handle` registered in `amy_platform_init()` gated on the audio config, fixing the multithread + non-I2S first-block deadlock. Contract: `amy_start()` must run on the task that calls `amy_update()`. Our config (`audio = AMY_AUDIO_IS_NONE`, `multithread = 0`) registers the init task's handle but nothing notifies it - benign. |
 | [#1137](https://github.com/shorepine/amy/pull/1137) (v1.2.158) | Second-core render-done semaphore in `i2s.c`'s fill task; dormant here (`multicore = 0`). |
+| [#1159](https://github.com/shorepine/amy/pull/1159) (v1.2.171) | `chorus_max_delay` bounds the chorus sweep: `delay_line_in_out()`, `config_chorus()`, `CHORUS_DEFAULT_MAX_DELAY` 320 -> 512 (delay.c, amy.c, amy.h) - our own PR. |
+| [#1163](https://github.com/shorepine/amy/pull/1163) (v1.2.169) | `play_delta` calls `reset_filter()` when a `FILTER_TYPE` delta changes the type (amy.c) - our own PR. |
+| [#1171](https://github.com/shorepine/amy/pull/1171) (v1.2.175) | `render_lut_cub_sized` with six size-specialised cubic kernels, and `render_lut_fm_256` for the FM sine table (oscillators.c). Upstream marks the kernels and the dispatcher `AMY_NOINLINE` and builds them only under `AMY_USE_FIXEDPOINT`. Our own PR. |
+| [#1204](https://github.com/shorepine/amy/pull/1204) (v1.2.191, 2026-10-06) | Karplus-Strong string, our own PR (oscillators.c, amy.h, amy.c): `ks_note_on()` zeroes `phase`, which `render_ks` reads as the ring index; `MAX_KS_BUFFER_LEN` derives from `AMY_SAMPLE_RATE`; the ring belongs to the osc (`synth[osc]->ks_ring`, allocated at its first KS note-on from `ram_caps_oscs`, freed with the osc); a first-order tuning allpass completes the loop period, its state in `synth[osc]->ks_tune_state`; pluck position from `duty` (`ks_pluck()`); gain ramp from `last_amp`; KS note-off takes the default release path. The vendored copy was an earlier shape of the same work (a ring pool with an owner table) and is retired with this base, see below. |
+| [#1217](https://github.com/shorepine/amy/pull/1217) (v1.2.193, 2026-10-13) | Shelving bus EQ: low shelf, Q 1 peak and high shelf in series replace the 800 Hz LPF + 2500 Hz BPF + 7000 Hz HPF sum, which had a 15-21 dB notch near 1 kHz at any non-zero setting (`parametric_eq_update()`, three `AMY_NOINLINE` kernels in filters.c; amy.c, amy.h). Our own PR. |
+| [#1223](https://github.com/shorepine/amy/pull/1223) (v1.2.199, 2026-10-14) | PCM retrigger crossfade: the old note fades out over `PCM_RETRIG_FADE_FRAMES` (64) frames under the new one, in `pcm_note_on()` / `render_pcm()` (pcm.c). Before it, a retrigger into a sounding PCM osc waited for the next zero crossing of the old tail (0..512 frames of latency, varying per hit); the crossfade has constant latency. Replaces the local fade-restart and its `AMY_PCM_RETRIG_ZERO_CROSS` gate. |
 
-### Merged upstream, still carried until the next sync
+### Retired without an upstream equivalent
 
-The vendor base (v1.2.163) predates these merges, so the code is still a
-local hunk in `components/amy/`. Upstream's version is the same code; the
-hunk is dropped at the next sync.
+Local Karplus-Strong code removed at the v1.2.200 sync. #1204 has no counterpart for it:
 
-| PR | Upstream | Local hunk |
-|----|----------|------------|
-| [#1159](https://github.com/shorepine/amy/pull/1159) | v1.2.171 | `chorus_max_delay` bounds the chorus sweep: `delay_line_in_out()`, `config_chorus()`, `CHORUS_DEFAULT_MAX_DELAY` 320 -> 512 (`delay.c`, `amy.c`, `amy.h`) |
-| [#1163](https://github.com/shorepine/amy/pull/1163) | v1.2.169 | `play_delta` calls `reset_filter()` when a `FILTER_TYPE` delta changes the type (`amy.c`) |
-| [#1171](https://github.com/shorepine/amy/pull/1171) | v1.2.175 | `render_lut_cub_sized` with six size-specialised cubic kernels, and `render_lut_fm_256` for the FM sine table (`oscillators.c`); upstream marks the kernels and the dispatcher `AMY_NOINLINE` and builds them only under `AMY_USE_FIXEDPOINT` |
+- KS dispersion stages and tuning-stage bypass: `ks_loop_set()` / `ks_loop_get()`, `ks_ap_state`, `ks_render_tuned()`, the index loop in `render_ks`, and the `amy.h` copy of `allpass1_chain` / `FILT_MUL_SS` (both are back in filters.c only).
+- KS note-off release knob: `ks_release_set()` / `ks_release_get()`, `ks_note_off()`.
+- Local KS ring pool: `ks_init()` / `ks_deinit()`, `ks_alloc_row()`, `ks_index`, `ks_row_owner`, `KS_NO_ROW`, `amy_config_t.ram_caps_ks`.
 
 ## Active local edits
 
@@ -178,7 +169,7 @@ hit the clip players on every transport stop (a bounce clip left the clip bus
 for bus 0) and a drum row on every PCM preset or mode change. A `BUS` delta
 allocates its osc at play time, so a reset aimed at a never-allocated osc of
 a bus > 0 synth now allocates it. Not posted upstream; upstream
-`patches_event_has_voices()` (v1.2.188) still leaves the reset osc on bus 0.
+`patches_event_has_voices()` (v1.2.200) still leaves the reset osc on bus 0.
 
 ### `amy.h` + `amy.c` + `oscillators.c` + `patches.c` + `api.c` — per-osc unison cluster (experimental, dev-only)
 
@@ -237,217 +228,38 @@ Codegen-driven edits from the per-function probe, each marked in place:
   cubic copy costs 20.6k cycles per block, a linear one 8.8k; going linear
   on copy 0 as well would save a further 11.6k per plain saw/pulse osc and
   was declined to keep plain voices unchanged.
-- `render_ks` keeps the ring index in a register for the block and wraps it
-  by compare (`if (next >= buflen) next = 0`) instead of the iterative
-  hardware `rems` twice per sample; `phase` is written once after the loop.
-  The peak tracker uses `|value|` for every sample; upstream's first-sample
-  special case took the signed value, a difference only when sample 0 is
-  negative and the reaper's threshold is at stake. With the tuning stage on
-  and no dispersion stages (the default), `ks_render_tuned` runs instead:
-  the block is split at the ring's wrap so the inner loop has no wrap test,
-  and with pointer walks for the ring and the output it is a 29-insn
-  hardware loop carrying the gain ramp (the index loop was 35). Its tuning
-  allpass is the one-multiply form; the index loop's tuning stage uses the
-  same form, so both read the allpass memory alike. Merged upstream PR #1204
-  renders KS with the same split-at-wrap loop and gain ramp, always tuned,
-  and keeps the allpass memory in `synth[osc]->ks_tune_state`; the index
-  loop is local.
 - Constant divides folded to reciprocal multiplies (`freq * (1.0f / X)`
   with X a compile-time constant): `freq / AMY_SAMPLE_RATE` in
   `render_fm_sine`, `render_partial`, `unison_prepare`; `freq / mod_sr` in
   all five `compute_mod_*`. The S3 FPU has no divide, so each was a
   `__divsf3` libcall per block per osc; the product differs from the
-  quotient by at most 1 ulp. Not posted upstream; upstream (v1.2.188)
+  quotient by at most 1 ulp. Not posted upstream; upstream (v1.2.200)
   still divides.
 - `render_wavetable`: `floor(interp)` -> `floorf(interp)`; the double
   promotion cost `__extendsfdf2` + `floor` + `__fixdfsi` per block per
   wavetable osc. Not posted upstream.
 
 - `render_lut_sized`: size-specialised linear kernels for the detuned unison
-  copies (2048..64-entry tables, `noinline` so each keeps its own loop;
+  copies (2048..64-entry tables; the kernels and the dispatcher are
+  `AMY_NOINLINE`, upstream's spelling, so each keeps its own loop;
   32 -> 28 instructions), byte-identical to the generic linear kernel in
   host-sim saw and pulse sweeps. Local only: it serves the unison cluster.
   Its cubic counterpart and the FM-256 kernel are upstream (#1171, see
-  "Merged upstream, still carried until the next sync").
-
-
-### `oscillators.c` — Karplus-Strong ring-index init + sample-rate-derived buffer length (merged upstream PR #1204)
-
-Two universal bugs, found 2026-08-25 while surveying the delay/comb machinery
-and measured with a host sim of the vendored tree (fixed-point build).
-Both are target-agnostic, so they belong upstream rather than here.
-
-1. **`ks_note_on()` now zeroes `synth[osc]->phase`.** `render_ks()` uses
-   `phase` as a plain integer ring index, but nothing initialised it and every
-   other wave leaves a fixed-point phasor there (`P_FRAC_BITS = 31`). Measured:
-   after 10 blocks of `SAW_DOWN`, `phase = 0x17fb6000`, so `(uint16_t)phase` =
-   **24576** into an 802-entry row - one read *and one write* ~94 KB past the
-   allocation per note-on, then back in range. It fired on every wave-to-KS
-   switch on a reused osc, which is what preset scrolling does.
-
-2. **`MAX_KS_BUFFER_LEN` derives from `AMY_SAMPLE_RATE`** (`AMY_SAMPLE_RATE /
-   KS_LOWEST_FREQ + 1`) instead of the literal 802 = 44100/55, and `render_ks()`
-   applies the same clamp `ks_note_on()` always had. The literal held one period
-   of 55 Hz only at 44.1 kHz; at our 48 kHz the true floor was 59.85 Hz while
-   the `freq >= 55` guard still admitted MIDI notes 33-34, overrunning the row
-   by up to 70 samples every block for the life of the note. `KS_LOWEST_FREQ`
-   also replaces the duplicated magic 55 in the render guard.
-   Verified: at 48 kHz, `MAX_KS_BUFFER_LEN` = 873 vs a worst-case `buflen` of
-   872. At 44.1 kHz the value is still exactly 802, so no behaviour changes there.
-
-The larger shared-ring defect these two sat next to is fixed by the entry
-below.
-
-Both are the first two commits of merged upstream PR
-[#1204](https://github.com/shorepine/amy/pull/1204). The PR's version also
-keeps `buflen >= 1` in `ks_note_on()` and skips notes at or above the sample
-rate in `render_ks()`; the vendored code has neither guard.
-
-### `oscillators.c` + `amy.h` + `amy.c` — per-osc Karplus-Strong ring binding (merged upstream PR #1204, different shape)
-
-`ks_buffer` is a pool of rings, but which ring an osc played was decided by a
-single module-global cursor (`ks_polyphony_index`) that every KS osc
-dereferenced at render time. Nothing recorded "this osc plays that ring", so
-all simultaneous KS voices landed on the same one. Measured consequences
-(host sim):
-
-- voices sharing a ring damp each other every sample, so three KS notes were as
-  loud as one (1.12x where independent voices give 1.73x) and decayed ~2.6x
-  faster;
-- `ks_note_on()` refilled the shared ring at full amplitude under every voice
-  still reading it - a note-on at velocity 0.01, inaudible on its own, raised
-  the voices already sounding by **+134%**;
-- `ks_oscs > 1` was unusable: note-on filled ring N and left the cursor at N+1,
-  which is the ring `render_ks()` then read, so a single note rendered silence.
-  `ks_oscs = 1` worked only because the wrap sent N+1 back to 0.
-
-**Fix.** `synth[].ks_index` (amy.h) records the ring, chosen in `ks_note_on()`
-and read by `render_ks()`. Ownership is a two-way claim - `ks_row_owner[r] ==
-osc` and `synth[osc]->ks_index == r` - so `reset_osc_state()` setting
-`ks_index = KS_NO_ROW` (amy.c) releases the ring with no explicit free path.
-`ks_alloc_row()` prefers the ring this osc already owns (a retrigger re-excites
-its own string and disturbs nobody), then any idle ring, then steals the
-quietest - the least audible collision. `ks_init()` also gained the OOM
-handling AMY's other allocators have: all-or-nothing, `amy_oom()`, KS silent
-rather than half-allocated. The ring pointer table, `ks_row_owner` and
-`ks_ap_state` come from `ram_caps_synth` and the rings from `ram_caps_ks`
-(below) instead of bare `malloc`; `ks_deinit()` is NULL-safe and frees all
-of them.
-
-After: 3 notes measure 1.48-1.65x (target 1.73x), a silent note-on moves the
-ringing voices +9.5% instead of +134%, and `ks_oscs = 4` renders correctly.
-
-`main/main.c` sizes `ks_oscs` from Kconfig (`SEQ_KS_RINGS`, or derived from
-`SEQ_KS_LAYERS` x rows x `SEQ_KS_VOICES_MAX` plus arp and live voices when the
-rings are in PSRAM); see the comment there.
-
-`amy.h` + `api.c` + `oscillators.c`: `amy_config.ram_caps_ks` gives the rings
-their own caps, defaulting to `ram_caps_synth` (`// LOCAL EDIT` in amy.h and
-api.c). Only the rings move; the owner table and allpass state are a few bytes
-per ring and stay in `ram_caps_synth`.
-
-Upstream status: merged PR [#1204](https://github.com/shorepine/amy/pull/1204)
-fixes the same defect in a different shape. The ring is owned by the osc
-(`synth[osc]->ks_ring`), allocated at its first KS note-on from
-`ram_caps_oscs` and freed in `free_osc()`; there is no pool, owner table or
-stealing, no `ks_init()`/`ks_deinit()`, and `ks_oscs` is only an on/off
-switch. The vendored pool (`ks_index`, `ks_row_owner`, `ks_alloc_row()`,
-`KS_NO_ROW`, `ram_caps_ks`) is an earlier design and goes away when the PR
-is adopted, together with the `ks_oscs` sizing in `main/main.c`.
-
-### `oscillators.c` + `amy.h` + `filters.c` - Karplus-Strong loop allpass: fractional period (merged upstream PR #1204) and dispersion trial knobs (local)
-
-`render_ks` dropped the fraction of `AMY_SAMPLE_RATE / freq`: `buflen = floor(P)`
-and the two-tap average is centred half a sample ahead, so the loop closed at
-`buflen - 0.5` samples and every KS note played sharp. Host sim
-(KS minus a SINE control at the same MIDI note, 48 kHz):
-+3.4 c at A2, +9.4 c at A4, +33.5 c at A5, +49.8 c at A6. A first-order allpass
-after the average now completes the period, `a = (1 - D)/(1 + D)` with
-`D = P + 0.5 - buflen` in [0.5, 1.5); `buflen` is unchanged. After: within
-0.4 c at every measurable note. A7 decays below the harness floor inside the
-first block (the average alone loses 2.7 % per pass there) and is unmeasured.
-One float divide per block per KS osc for `a`.
-
-Trial knobs, not for upstream: `ks_loop_set()` / `ks_loop_get()` (`amy.h`)
-bypass the tuning stage (off plus 0 stages is the old loop plus the gain
-ramp and `|value|` peak below, so bit for bit at constant gain) and
-add up to `KS_DISPERSION_MAX_STAGES` stages of `allpass1_chain` for a string
-stiffness B (0..`KS_STIFFNESS_MAX`, mode k at k f sqrt(1 + B k^2)). The
-stage coefficient follows the note: `ks_loop_set()` fits one per semitone
-(least squares on delay over modes 2..8 below about 4 kHz, golden-section
-search) into a static scratch before taking the render lock, and
-`ks_ring_len()`, which `ks_note_on` and `render_ks` share, interpolates it
-and takes the chain's exact phase delay at the fundamental out of the ring.
-Set from the app's DEV menu ("KS loop", Stages and Stiff); read once per
-block. Host-measured, 3 stages: the fundamental stays within 0.1 c, and at
-B = 1e-4 modes 2..6 land within 0.5 c of the stiff-string target from A2 to
-A5, at B = 1e-3 within about 3 c. At 5e-3 a first-order stage can no longer
-follow the curve and the low modes overshoot (mode 2 +21 c against +13 c).
-Per block per KS osc with stages on: one `log2f`, `sinf`, `cosf` and two
-`atan2f`.
-
-State: `ks_ap_state`, one row per ring sized for the maximum stage count,
-allocated in `ks_init()` from `ram_caps_synth` (all or nothing with the
-rings, which come from `ram_caps_ks`), cleared in `ks_note_on`.
-`allpass1_chain` and `FILT_MUL_SS` moved from `filters.c` to `amy.h`; the
-phaser is unchanged.
-
-Codegen (-O2 per TU): the index loop in `render_ks`, which runs with the
-tuning stage off or dispersion stages on, is a plain 35-instruction loop
-(upstream's was a plain 28-instruction span). The default path (tuning on,
-0 stages) is `ks_render_tuned`, a hardware loop (render-path arithmetic
-entry). The chain is unrolled so no nested loop sits inside it.
-
-Upstream status: the tuning stage is commit 5 of merged PR
-[#1204](https://github.com/shorepine/amy/pull/1204), same math and
-one-multiply form, always on and with its memory in
-`synth[osc]->ks_tune_state` (one `SAMPLE` per osc, cleared at note-on). The
-dispersion stages, `ks_loop_set()`/`ks_loop_get()`, `ks_ap_state` and the
-move of `allpass1_chain`/`FILT_MUL_SS` to `amy.h` are local only.
-
-### `oscillators.c` - Karplus-Strong pluck position from `duty` (merged upstream PR #1204)
-
-KS ignored `duty`; every note started from the same kind of burst, flat on
-average and random per pluck (host sim, A2: harmonic 2 at +12 dB against
-harmonic 1 on one pluck, -7 dB on the next). `ks_note_on` now reads
-`duty_coefs[COEF_CONST]` as a pluck position `b = |duty - 0.5|`: the burst
-becomes a mix of the noise, combed to notch the harmonics a pluck at b leaves
-out, and a zero-mean pulse b of the period wide (an ideal pluck's bridge
-force: the same notches on a 1/n slope, identical on every note). Pulse
-share and comb depth ease in over b < `KS_PICK_RAMP` (0.1) to
-`KS_PICK_MIX` (0.6), so the first step off 0.5 stays near the plain burst
-(A2, duty 0.49: within 3.1 dB of it at harmonics 1-16).
-
-Default unchanged: the osc reset leaves duty at 0.5, b = 0, and the old
-mean-removal loop runs; the burst is bit-exact, and the fill consumes the
-random stream exactly as before. `duty` and `1 - duty` give the same pluck.
-`M < buflen` keeps a one-sample ring (freq above half the sample rate) at
-duty 0 or 1 off `ks_pluck`, where the pulse duty would be 1 and its scale
-divides by zero.
-
-Cost: note-on only, `render_ks` untouched. `ks_pluck()` folds the mean
-removal, comb, rescale and pulse into the one pass that already removed the
-mean (two passes over the ring, as before), fixed point per sample
-(`FILT_MUL_SS` twice); scales come from the fill's expected RMS, three
-`sqrtf` and a few divides per note. Against a float prototype that measured
-RMS per note: whole-file difference -29 to -43 dB, per-note level within
-1 dB (the short A5 ring varies most). Reads the constant coefficient on
-purpose: the pluck is a patch setting, and `msynth->duty` would also be
-stale at note-on (it is refreshed only for sounding oscs, so a duty change
-made while the voice is silent would reach the note after next).
-
-Upstream status: commit 7 of merged PR
-[#1204](https://github.com/shorepine/amy/pull/1204) carries the same
-`ks_pluck()`, `KS_PICK_MIX` and `KS_PICK_RAMP`; the PR multiplies with
-`SMULR7` where the vendored copy uses `FILT_MUL_SS`.
+  the Dropped table).
+- Under LTO, upstream's `render_ks` is inlined into `render_osc_wave`; its
+  ring loop is a 45-instruction hardware loop with stack traffic in the
+  built ELF, against 28 instructions when the file is compiled alone. The
+  retired local `render_ks` was kept noinline to avoid this. Not acted on.
 
 ### `oscillators.c` + `amy.h` - Karplus-Strong excitation shaping (local trial)
 
-`ks_note_on` fills the ring with uniform noise and removes its mean; the
+`ks_note_on` fills the osc's ring (upstream's per-osc `synth[osc]->ks_ring`)
+with uniform noise and removes its mean, or applies the `duty` pluck; the
 burst's spectrum is random per note (host sim, A2: harmonic 2 at +12 dB
 against harmonic 1 on one pluck, -7 dB on the next) and does not follow
 velocity. Trial knobs `ks_excite_set()` / `ks_excite_get()` (`amy.h`) shape
-the burst once per note-on in `ks_shape_burst()`: a circular comb
+the burst once per note-on in `ks_shape_burst()`, called at the end of
+`ks_note_on`: a circular comb
 `x[i] - g x[i - M]` at the pick position, depth `g` 0..1 (in place, walking
 the gcd cycles of `i -> i - M`; a short M at full depth is close to a
 differentiator, so a shallow depth keeps a pick near 0 close to the unshaped
@@ -456,50 +268,17 @@ pluck's bridge force: the same notches on a 1/n slope, identical on every
 note), and a circular one-pole lowpass whose cutoff, in harmonics of the
 note, runs geometrically from `soft` at velocity 0 to `hard` at velocity 1.
 The result is rescaled to the unshaped burst's RMS. All zero skips the call,
-so the default is the old note-on bit for bit. Measured against theory on
+so the default is the unshaped note-on bit for bit. The comb multiplies with
+`SMULR7`, the multiply `ks_pluck()` uses; `FILT_MUL_SS` is file-local to
+filters.c. Measured against theory on
 A2: comb at 0.5 puts the even harmonics 25-38 dB down; the pulse at 0.2
 matches `sin(n pi b)/n` within 0.3 dB through harmonic 8.
 
 Cost: float, note-on only; about four passes over `buflen` (873 samples
 worst case) plus one `powf` and one `expf`. Nothing in `render_ks`.
-Written under the render lock, read by `ks_note_on`. Local only; not part
+Written under `amy_grab_lock()`, read by `ks_note_on`. Local only; not part
 of PR #1204, whose `duty` pluck covers the comb and pulse but not the
 velocity lowpass.
-
-### `oscillators.c` - Karplus-Strong gain ramp (merged upstream PR #1204)
-
-`render_ks` multiplied the whole block by `msynth->amp`, which
-`hold_and_modify()` has already advanced to the envelope's value at the end
-of the block, and never read or wrote `last_amp`. An amp envelope on a KS
-osc therefore moved in one step per block (187.5 Hz at 48 kHz, 256-sample
-blocks): a decay zippered and a note-on played its first block at the
-end-of-block level. The gain now ramps from `last_amp` to `amp` across the
-block with the `incremental_amp` idiom of `render_envelope()`, and
-`last_amp` advances at the end. A constant gain is bit-exact with before.
-Cost: one add per sample. Commit 6 of merged PR
-[#1204](https://github.com/shorepine/amy/pull/1204) carries the same ramp.
-
-### `oscillators.c` + `amy.h` + `amy.c` - Karplus-Strong note-off release (local trial)
-
-`play_delta`'s note-off sets `note_off_clock` only in its default case, and
-KS has its own case, so a KS note-off never started the amp envelope's
-release: the gate and the release time did nothing, the string rang on at
-the sustain level, and since `OSC_IN_RELEASE()` gates the silence check, a
-KS osc with a sustain above zero rendered its loop every block until reset.
-Upstream excludes KS on purpose (an osc with no envelope of its own would go
-silent at note-off under the default `bp0`). `ks_note_off()` now returns
-whether to release, and the KS case then starts the release as the default
-case does. Trial knob `ks_release_set()` / `ks_release_get()` (`amy.h`),
-default on; off is the upstream behaviour bit for bit. Set from the app's
-DEV menu ("KS loop > Release"); written under the lock.
-
-Upstream status: commit 3 of merged PR
-[#1204](https://github.com/shorepine/amy/pull/1204) takes a different rule.
-It deletes `ks_note_off()` and sends KS through the default release unless
-EG0 is still the key gate `reset_osc_params()` installs
-(`eg0_is_default_gate()`), so a KS osc on the default envelope rings out at
-note-off there and releases here. `ks_release_set()`/`ks_release_get()` are
-local only.
 
 ### `algorithms.c` + `amy.h` — `amy_num_algorithms` count export (upstream PR candidate)
 
@@ -559,47 +338,6 @@ calls `hold_and_modify` directly); not changed here. Not posted upstream.
 test in `render_algo`; `fm_voice.c` then has to send a nonzero level below
 `MAP_60DB_MIN_LIN` for a silent operator.
 
-### `pcm.c` — retrig fade-restart (gated; replaces the zero-cross defer by default)
-
-Upstream #1223 (merged 2026-10-14) replaced the zero-cross defer with its own
-retrig crossfade (`PCM_RETRIG_FADE_FRAMES`); this edit retires at the next
-sync. The text below describes the vendor base.
-
-Upstream's retrig-into-active-PCM path (#1070) defers the new onset to the
-next zero crossing of the old tail - a VARIABLE 0..512-frame latency that
-depends on the tail's phase at the retrig instant. On a steady bass-drum
-pattern whose sample outlasts the step spacing, every hit retrigs mid-tail
-and the onset lands with per-hit-varying delay: host-measured 27 ms of
-onset wander across 16 hits at 560 ms spacing (gamma9001 909 BD, note 39),
-audible as an inconsistent kick transient. Deep pitches are the worst case
-twice over: longer tails keep the osc active, and the LF cycle exceeds the
-512-frame search window so the fallback splices at the window's quietest
-sample instead of a true zero.
-
-The edit replaces the defer with a **fade-restart**: play `PCM_RETRIG_FADE_FRAMES`
-(64) more frames of the old tail under a linear ramp to zero (applied in
-`render_pcm`), then splice to the new note - same `PCM_LOOP_ONCE_INTERNAL`
-machinery, same click-free splice, but CONSTANT latency. Host A/B: onset
-spread 27.4 ms -> 5.4 ms (= pure block quantization, identical to an
-idle-start control); no click-energy regression.
-
-Placement: the gated block sits inside upstream's `want_stretch` /
-`fresh_start` restart branch of `pcm_note_on()`, so a `fit=` note never takes
-it - the fit engine renders through `render_pcm_stretch()`, whose grains are
-windowed and click-free by construction, and only the non-stretch branch arms
-`PCM_LOOP_ONCE_INTERNAL`. The `render_pcm()` gain ramp is likewise unreachable
-from a stretched note.
-
-Gate: `AMY_PCM_RETRIG_ZERO_CROSS` (pcm.c) - define to 1 to restore the
-upstream defer verbatim (host-verified to reproduce the pre-edit behavior
-exactly). Not posted upstream; upstream `pcm_note_on()` (v1.2.188) still
-defers to the zero crossing. The edit also rewords the comment at the top of
-the restart branch and drops a stray `;;` on the `loopstart` line.
-
-**Rollback:** build with `-DAMY_PCM_RETRIG_ZERO_CROSS=1`, or drop the three
-`LOCAL EDIT` blocks in `pcm.c` (gate defines, `pcm_note_on` retrig branch,
-`render_pcm` gain ramp).
-
 ### `algorithms.c` / `amy.c` — PIE block clears in `amy_render()` (local extension of upstream's kernel)
 
 Local: `amy_render()`'s block clears go through upstream's PIE `zero()`
@@ -649,47 +387,6 @@ Re-vendor note: done on the v1.2.104 sync - `zero()`/`copy()`,
 `malloc_caps_block`, and the aligned FM scratch all arrived with upstream;
 only the rows above remain ours.
 
-### `filters.c` + `amy.c` + `amy.h` - shelving bus EQ (merged upstream PR #1217)
-
-Upstream's EQ sums a negated 800 Hz LPF, a 2500 Hz BPF and a 7000 Hz HPF
-(`parametric_eq_process`), and `amy_fill_buffer` runs it only when a band is
-off 0 dB. The bands are not complementary: any non-zero setting, even one
-band at -1 dB, engages a response with a 15-21 dB notch near 1 kHz and about
-+/-1 dB of ripple above 2 kHz. Replaced by three sections in series, each
-`x + (G-1) F(x)` with F = (1 +/- A)/2 for an allpass A: a first-order low
-shelf, a Q 1 peak (F is the old RBJ band-pass) and a first-order high shelf.
-Flat at 0 dB, monotonic, and +n/-n dB mirror (the allpass corner moves by
-sqrt(G), so each `EQ_CENTER_*` is the half-gain point). `parametric_eq_update`
-derives the coefficients from `eq.eq[]`; `filters_init` and the `EQ_L/M/H`
-deltas call it (`config_eq` only runs from `bus_reset`, before `filters_init`).
-`eq.eq[]` keeps the requested gain; only the coefficients clamp. Gains are clamped to the documented -15..+15 dB, which
-keeps every coefficient inside Q31. A band at exactly 0 dB is skipped, and
-`parametric_eq_update` clears its state when its gain returns to 0 dB, so it
-starts clean when it comes back even if `amy_fill_buffer` skipped the whole EQ
-meanwhile (a band clearing itself inside `parametric_eq_process` missed that
-case and restarted from stale state: up to 10 dB louder clicks on re-entry). Each band is its own noinline IRAM kernel, two samples per
-iteration; multiplies are `int64 >> 32` high words feeding `addx2/4/8`, with
-the band state stored as output / 2 (high shelf / 8). One implementation
-serves both `AMY_HAS_MUL64` and float builds (`EQ_MULH`, `EQ_COEF`); the
-block-floating-point variant for 32x32->32 targets is gone, so an RP2040
-build would pay a 64-bit multiply libcall per product - the open question for
-the upstream PR. Host render through the real event path (fixed point, 48 kHz)
-matches the analytic response to 0.03 dB except a DC tail from truncating
-multiplies (0-140 LSB of s8.23 after an impulse; the old EQ leaves 86-116).
-Per sample per channel on esp-15.2.0 -O2 (shipped LTO ELF): 7.5 / 10.5 / 7.5
-insns for low / mid / high, all zero-overhead loops, vs 90 insns (18 mul, 25
-loads, 10 stores, no ZOL) for the old fused loop. On target (amy-bench EQ
-variant family, LTO, stereo block): 13,559 cycles with three bands active and
-4,265 with one, vs 48,560 for the old EQ at any setting; seven candidate
-shapes were priced in the same run and none was cheaper. Shelves are 6 dB/oct: +15 dB low still adds +1.9 dB at 2.5 kHz.
-Upstream PR #1217 (merged 2026-10-13, v1.2.193) carries the same code with
-`AMY_NOINLINE` (absent from this vendor base) and the regenerated `tests/ref`
-wavs; the local copy retires at the next sync.
-
-**Rollback:** restore upstream `parametric_eq_process` (both variants) and the
-three `dsps_biquad_gen_*` calls in `filters_init`; drop `parametric_eq_update`
-and its calls.
-
 ### `src/amy.c` — skip the dead dual-core bus sum
 
 `AMY_DUALCORE` is defined unconditionally for `ESP_PLATFORM`, but this build
@@ -698,7 +395,7 @@ runs `multicore = 0`, so `amy_render()` is only ever called with `core = 0` and
 therefore summing 512 int32 zeros per bus, every block, for nothing. Now
 guarded on `amy_global.config.platform.multicore` — a runtime test, not
 compile-time, so the sum reappears correctly if multicore is ever enabled.
-Local only; upstream (v1.2.188) still sums unconditionally under
+Local only; upstream (v1.2.200) still sums unconditionally under
 `AMY_DUALCORE`.
 
 ### `src/amy.h` — 48 kHz sample rate on ESP
@@ -752,10 +449,15 @@ producing a `LoadProhibited` fault (EXCVADDR=0x8). App code that takes
 (`custompatches/drum_cache.c`, `wavetable_bank.c`, `clip_player.c`,
 `sample_rec.c`) relies on this hold.
 
-Local only. Upstream has since added its own render lock (#1205, v1.2.188),
-a separate recursive lock taken before the queue lock, and stopped allocating
-oscs on the ingest path (#1190, v1.2.181); upstream's `amy_render()` still
-takes no lock. See "Deferred / needs porting".
+Local only. Upstream's render lock (#1205, v1.2.188) is a separate
+recursive lock, `amy_grab_render_lock()` / `amy_release_render_lock()`, taken
+before the queue lock; the fill and render paths hold it per block and
+`amy_settle_deltas()` holds it on ingest before a patch load or sample
+transfer. It coexists with this edit: on the render task the order is render
+lock, then queue lock (taken inside `amy_render()`). Upstream's `amy_render()`
+takes no queue lock itself. Since #1190 (v1.2.181) the ingest path no longer
+allocates oscs (`play_delta()` does, on the render thread), which removes the
+ingest-side `alloc_osc()` / `reset_osc()` race named above.
 
 ### `src/amy.c` — delta-pool PSRAM spill, no-abort cap
 
@@ -805,18 +507,19 @@ upstream in the 1.2.104->1.2.121 interval - see the Dropped table.)
 
 `run_midi_task()` → `run_midi_task(void *pvParameters)`. Same FreeRTOS
 `TaskFunction_t` fix as `i2s.c` above. Local only, like the `i2s.c` one:
-upstream's task functions (v1.2.188) still take no parameter.
+upstream's task functions (v1.2.200) still take no parameter.
 
 ### `src/sequencer.c` — `sequencer_init()` OOM guard
 
-Upstream's rewritten `sequencer_init()` (wire-string sequencer, v1.2.121)
-writes the whole table through an unchecked `malloc_caps()` result. On failure
-the guard now reports via `amy_oom()`, sets `max_sequences = 0` /
-`first_active = -1`, and returns - `sequencer_add_wire()` and
-`sequencer_check_and_fill()` already treat `sequences == NULL` as "not
-initialized", so the sequencer disables wholesale instead of crashing at boot.
-Same OOM-policy family as the #961 guards. Not posted upstream; upstream
-`sequencer_init()` (v1.2.188) still writes through the unchecked result.
+Upstream's `sequencer_init()` (wire-string sequencer, v1.2.121) writes the
+whole table through an unchecked `malloc_caps()` result. On failure the guard
+now reports via `amy_oom()`, sets `max_sequences = 0` / `first_active = -1`,
+and returns - `sequencer_add_wire()` and `sequencer_check_and_fill()` already
+treat `sequences == NULL` as "not initialized", so the sequencer disables
+wholesale instead of crashing at boot. `sequencer_reset()` carries the same
+early return when `sequences == NULL`. Same OOM-policy family as the #961
+guards. Not posted upstream; upstream `sequencer_init()` (v1.2.200) still
+writes through the unchecked result.
 
 (The former SEQ_LOCK mutex and active-tag dense index were superseded
 wholesale by upstream's sequencer rework - see the Dropped table for the
@@ -832,9 +535,19 @@ sequencer tracks' periodic tags and the arp's) stops on the bar line exactly,
 wherever the UI task is; the commit clears it after the mute flags are set.
 Generic enough for any host that freezes a loop on a beat.
 
-C-only setters, no wire form. Not posted upstream. Upstream's #1156
-(v1.2.166) has since reshaped the table this hooks into; see "Deferred /
-needs porting".
+C-only setters, no wire form. Not posted upstream. Since #1156 (v1.2.166)
+the tick walk indexes `sequences[slot]` (a slot pool with a `tag` field); the
+hook is unchanged apart from that rename.
+
+### `src/sequencer.c` + `src/sequencer.h` — `sequencer_tag_count()` read accessor
+
+`uint16_t sequencer_tag_count(uint32_t tag)` returns how many events are
+stored under a tag (0 for a tag past `max_sequences` or before
+`sequencer_init()`). It takes `amy_queue_lock` and scans the pool, so it is
+not for the render path. Since #1156 sends to a tag accumulate; the app's
+DEV-menu sequencer dump (`seq_core_dump.c`) calls it to flag tags holding more
+than one event, which names a re-send path that skipped the clear. Local
+diagnostic, not proposed upstream.
 
 ### `pcm.c` + `amy.h` — `pcm_osc_frame()` read accessor (upstream PR candidate)
 
@@ -896,7 +609,7 @@ only that window's `% wall` may read high). Benefits coarse and full modes.
 
 Kconfig also carries `AMY_PROFILE_INTERVAL_MS` (dump interval, default
 5000), read by the app (`components/diagnostics/diag_report.c`), not by AMY.
-Local only; upstream's `AMY_PROFILE_INIT` (v1.2.188) still zeroes `.start`,
+Local only; upstream's `AMY_PROFILE_INIT` (v1.2.200) still zeroes `.start`,
 and that fix is not posted.
 
 ### `Kconfig` + `CMakeLists.txt` — wavetable oscillator build flag
@@ -986,7 +699,7 @@ Each site falls back to `ram_caps_events` before it reports through
 `ram_caps_events` internal: the strings are control-path data parsed once
 per fire, and with them out of the internal pool, an exhausted internal heap
 no longer drops scheduled events and tag cancels. Not posted upstream;
-upstream (v1.2.188) still allocates all three from `ram_caps_events`.
+upstream (v1.2.200) still allocates all three from `ram_caps_events`.
 
 ### `patches.c` + `amy.h` - `amy_voice_base_osc()` read accessor
 
@@ -1015,7 +728,7 @@ and a configured instrument never exceeds it, but the filter scope calls this
 from the UI task without the queue lock while the render task can release
 the instrument; a torn `num_voices` read from freed memory would otherwise
 write past the caller's stack array. Not posted upstream; upstream's copy
-(v1.2.188) is unbounded.
+(v1.2.200) is unbounded.
 
 ### `CMakeLists.txt` - component build settings
 
@@ -1036,20 +749,46 @@ component files). Besides the Kconfig flags in the entries above it:
 |------|--------|
 | Block-processed ESP32 stereo reverb (`delay.c`, `#ifdef ESP_PLATFORM`) | **Not applied.** Upstream changed `stereo_reverb()` to take `reverb_params_t *rev` (all delay state inside struct); the block-processed optimization needs adapting to the new API before it can be reapplied. The locals-caching optimization (now upstream via #811) recovers part of the same win on the new API; re-evaluate whether full block processing is still worth it after hardware measurement. |
 
-### Upstream changes after v1.2.163 that meet local edits at the next sync
-
-Upstream `main` at v1.2.188:
-- #1159, #1163, #1171 (v1.2.171, v1.2.169, v1.2.175): carry the chorus sweep, the filter-type reset and the sized cubic / FM-256 kernels; those local copies retire.
-- Tail-first chain rendering (`7396b3c`, PR #1200, v1.2.186): `render_osc_wave()` renders the chained osc first, and an osc's distortion and filter now process everything chained below it, not only its own wave; the SILENT-head special case is gone. No local hunk touches `render_osc_wave()`.
-- Sequencer accumulate-on-tag (#1156, `0c05eba`, v1.2.166): events sent on a tag are added instead of replacing the tag's event, `ticks="0,0,<tag>"` (`sequencer_clear_tag()`) clears a tag, and `sequences[]` becomes a slot pool with a `tag` field. The periodic-entry horizon hunk and the `ram_caps_sequencer` per-fire hunk in `sequencer.c` index `sequences[tag]` and do not apply as written.
-- Render lock (#1205, `8e285d7`, v1.2.188): `amy_grab_render_lock()` / `amy_release_render_lock()`, recursive per thread and taken before the queue lock, held per block by `amy_simple_fill_buffer()` and the `i2s.c` render paths and around the flush in `amy_execute_deltas()` and before a patch load. Upstream's `amy_render()` takes no lock; the local render lock holds `amy_queue_lock` inside it.
-- No osc allocation on ingest (#1190, `b2f9928`, v1.2.181): `amy_event_to_deltas_queue()` no longer allocates oscs; `play_delta()` allocates them on the render thread under the queue lock. This removes the ingest-side `alloc_osc()` / `reset_osc()` race named in the render-lock entry.
-
 ---
 
 # AMY Local Edits
 
 Track local, project-specific changes made against the upstream AMY component here.
+
+## 2026-10-14 — Upstream sync v1.2.163 -> v1.2.200
+
+- **Vendor sync** of `components/amy` to upstream `c4433d4` (v1.2.200, 191
+  commits since v1.2.163); `amy/` submodule gitlink bumped to match.
+  - **Method:** overlay merge. Upstream `main` checked out, the vendored tree
+    merged in as one commit on `0fb0a00`: 31 conflict blocks in 10 files, 15
+    resolved to upstream, 12 re-placed, 4 (the KS dispersion trial) dropped.
+    Fixed by hand afterwards: the `pcm.c` retrig gain-ramp block (it used the
+    removed `PCM_LOOP_ONCE_INTERNAL`), `pcm_osc_frame()` (ported to
+    `pcm_stretch_active(osc)` / `synth[osc]->stretch->in_pos_q16`, since #1230
+    made `stretch` a pointer in the wave-kind union), and the removal of
+    `KS_NO_ROW`, `synthinfo.ks_index` and `ram_caps_ks`.
+  - **Upstream behavior new to this build:** #1156 (v1.2.166) makes
+    `sequences[]` a slot pool with a `tag` field and makes sends to a tag
+    accumulate instead of replace; the app now clears a tag before each
+    re-send. #1200 (v1.2.186) renders a chain tail-first: an osc's distortion
+    and filter process everything chained below it, and the SILENT-head
+    special case is gone; `BASS_1` / `BASS_2` were re-voiced in the app to
+    keep their sound. #1223 (v1.2.199) crossfades a PCM retrigger. #1208 adds
+    a PCM per-sample gain ramp. #1230 slims `synthinfo` and allocates `dist`
+    and `stretch` lazily. #1205 (v1.2.188) adds the render lock; #1190
+    (v1.2.181) stops osc allocation on ingest (`play_delta()` allocates on the
+    render thread).
+  - **Retired** (see the Dropped table): #1159, #1163, #1171, #1204, #1217,
+    #1223. Retired without an upstream equivalent: the KS dispersion stages
+    and tuning-stage bypass, the KS note-off release knob, the local KS ring
+    pool.
+  - **Kept:** everything in the diagram at the top of this file. The render
+    lock coexists with #1205 (render lock, then queue lock). The periodic-entry
+    horizon and `ram_caps_sequencer` per-fire hunks in `sequencer.c` moved to
+    `sequences[slot]`; `sequencer_reset()` got the `sequences == NULL` early
+    return.
+  - **New:** `sequencer_tag_count()`.
+  - **Verification:** `AMY_SAMPLE_RATE` ESP branch confirmed 48000.
 
 ## 2026-09-05 — Upstream sync v1.2.160 -> v1.2.163
 

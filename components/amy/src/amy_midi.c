@@ -18,10 +18,7 @@ extern void mp_usbd_task(void);
 #endif
 
 #if (defined ARDUINO_ARCH_RP2040) || (defined ARDUINO_ARCH_RP2350)
-//#define TUD_USB_GADGET
-#include "tusb.h"
-#include "class/midi/midi.h"
-#include "class/midi/midi_device.h"
+// USB MIDI gadget lives in pico_support.cpp (Adafruit TinyUSB, C++).
 #include "pico/stdlib.h"
 #include "hardware/uart.h"
 #include "hardware/irq.h"
@@ -114,33 +111,6 @@ static void debug_print_midi_hex(const uint8_t *data, uint32_t len, uint8_t syse
     fprintf(stderr, "\n");
 }
 #endif
-
-// Send a MIDI note on OUT
-void amy_send_midi_note_on(uint16_t osc) {
-    // don't forward on a note coming in through MIDI IN 
-    //fprintf(stderr, "amy_send_midi_note_on: osc %d source %d note %.1f vel %.3f\n",
-    //        osc, synth[osc]->s_note_source_channel, synth[osc]->midi_note, synth[osc]->velocity);
-    if(AMY_IS_UNSET(synth[osc]->s_note_source_channel)) {
-        uint8_t bytes[3];
-        bytes[0] = 0x90;
-        bytes[1] = (uint8_t)roundf(synth[osc]->midi_note);
-        bytes[2] = (uint8_t)roundf(synth[osc]->velocity*127.0f);
-        midi_out(bytes, 3);
-    }
-}
-
-// Send a MIDI note off OUT
-void amy_send_midi_note_off(uint16_t osc) {
-    // don't forward on a note coming in through MIDI IN 
-    if(AMY_IS_UNSET(synth[osc]->s_note_source_channel)) {
-        uint8_t bytes[3];
-        // Send note-off as a note-on with vel 0.
-        bytes[0] = 0x90;
-        bytes[1] = (uint8_t)roundf(synth[osc]->midi_note);
-        bytes[2] = 0;
-        midi_out(bytes, 3);
-    }
-}
 
 void amy_received_control_change(uint8_t channel, uint8_t control, uint8_t value) {
     if (control == 0) {
@@ -259,7 +229,7 @@ void amy_event_midi_message_received(uint8_t * data, uint32_t len, uint8_t sysex
             else if(status_byte == 0xFA) { if(external_midi_sync_mode == AMY_MIDI_SYNC_FOLLOW) sequencer_midi_start(); }
             else if(status_byte == 0xFC) { if(external_midi_sync_mode == AMY_MIDI_SYNC_FOLLOW) sequencer_midi_stop(); }
             // midi_message_handler_to_queue keeps its time parameter -- patches.c drives
-            // it with a real e->time for the wave=AMY_MIDI osc. Live MIDI has no time
+            // it with a real e->time for a note-output synth. Live MIDI has no time
             // of its own: it plays when it arrives.
             midi_message_handler_to_queue(status, channel, data + 1, (uint16_t)(len - 1), AMY_UNSET_VALUE((uint32_t)0), NULL, NULL);
         }
@@ -690,6 +660,7 @@ void on_pico_uart_rx() {
 
 extern void pico_setup_midi();
 extern void pico_teardown_midi();
+extern void pico_midi_out(uint8_t *bytes, uint16_t len);
 
 void run_midi() {
     if (sysex_buffer == NULL) {
@@ -706,7 +677,8 @@ void run_midi() {
             uart_set_hw_flow(rp_get_uart(amy_global.config.midi_uart), false, false);
             uart_set_format(rp_get_uart(amy_global.config.midi_uart), 8, 1, UART_PARITY_NONE);
             uart_set_fifo_enabled(rp_get_uart(amy_global.config.midi_uart), true);
-        } else if(amy_global.config.midi & AMY_MIDI_IS_USB_GADGET) {
+        }
+        if(amy_global.config.midi & AMY_MIDI_IS_USB_GADGET) {
             pico_setup_midi();
         }
     }
@@ -717,7 +689,8 @@ void stop_midi() {
         if(amy_global.config.midi & AMY_MIDI_IS_UART) {
             uart_set_fifo_enabled(rp_get_uart(amy_global.config.midi_uart), false);
             uart_deinit(rp_get_uart(amy_global.config.midi_uart));
-        } else if(amy_global.config.midi & AMY_MIDI_IS_USB_GADGET) {
+        }
+        if(amy_global.config.midi & AMY_MIDI_IS_USB_GADGET) {
             pico_teardown_midi();
         }
         free(sysex_buffer);
@@ -831,6 +804,7 @@ void midi_out(uint8_t * bytes, uint16_t len) {
         uart_write_bytes(esp_get_uart(amy_global.config.midi_uart), bytes, len);
     }
 #elif (defined ARDUINO_ARCH_RP2040) || (defined ARDUINO_ARCH_RP2350)
+    if(amy_global.config.midi & AMY_MIDI_IS_USB_GADGET) pico_midi_out(bytes, len);
     if(amy_global.config.midi & AMY_MIDI_IS_UART) uart_write_blocking(rp_get_uart(amy_global.config.midi_uart), bytes, len);
 #else
     // teensy

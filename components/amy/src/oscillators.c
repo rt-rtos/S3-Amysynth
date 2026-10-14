@@ -169,13 +169,11 @@ AMY_IRAM_ATTR PHASOR render_lut_fb(SAMPLE* buf,
     return phase;
 }
 
-// LOCAL EDIT (S3-Amysynth, upstream PR candidate): render_lut with the mod
-// input for the 256-entry sine table the FM operators always read; shifts
-// and mask are immediates, so the loop fits the Xtensa register window as
-// a hardware loop (32 insns, no spills; the generic body is a 65-insn plain
-// loop). Same expressions as RENDER_LUT_GUTS(MOD_PART_MOD, NOTHING,
-// INTERP_LINEAR) with lut_bits = 8.
-static __attribute__((noinline)) AMY_IRAM_ATTR PHASOR render_lut_fm_256(SAMPLE* buf,
+// render_lut with the mod input, for the 256-entry sine table the FM
+// operators always read: shifts and mask are immediates, so the loop fits
+// the Xtensa register window as a hardware loop.  Same expressions as
+// RENDER_LUT_GUTS(MOD_PART_MOD, NOTHING, INTERP_LINEAR) with lut_bits = 8.
+static AMY_NOINLINE AMY_IRAM_ATTR PHASOR render_lut_fm_256(SAMPLE* buf,
                      PHASOR phase,
                      PHASOR step,
                      SAMPLE incoming_amp, SAMPLE ending_amp,
@@ -451,17 +449,14 @@ void _pulse_note_on(uint16_t osc) {
     }
 }
 
-// LOCAL EDIT (S3-Amysynth): size-specialised cubic kernels. render_lut_cub
-// is generic over the table size, so its shift amounts and mask live in
-// registers; with the two SAR values, the counter, step and the amp
-// increment spilled, gcc demotes the loop to decrement-and-branch (74
-// insns per sample, 5 stack reloads). With the size a compile-time
-// constant the shifts and mask are immediates and the same arithmetic
-// compiles to a 63-insn hardware loop, output byte-identical. One
-// instantiation per saw table melodic notes reach (2048..64 entries,
-// fundamentals to ~4 kHz); smaller tables fall back to the generic kernel.
+#ifdef AMY_USE_FIXEDPOINT
+// render_lut_cub with the table size a compile-time constant, so the shifts
+// and mask are immediates and the loop fits the Xtensa register window as a
+// hardware loop.  Same arithmetic, bit-identical output: table values stay at
+// their 16-bit scale because MUL0_SS(L2S(x), f) == (x * (f >> 7)) >> 8.
+// noinline - the bodies inlined into one switch lose the hardware loop again.
 #define RENDER_LUT_CUB_SIZED(NAME, BITS) \
-static __attribute__((noinline)) AMY_IRAM_ATTR PHASOR NAME(SAMPLE* buf, PHASOR phase, PHASOR step, \
+static AMY_NOINLINE AMY_IRAM_ATTR PHASOR NAME(SAMPLE* buf, PHASOR phase, PHASOR step, \
                                  SAMPLE incoming_amp, SAMPLE ending_amp, \
                                  const LUTSAMPLE* table, SAMPLE* pmax_value) { \
     SAMPLE max_value = 0; \
@@ -499,7 +494,7 @@ RENDER_LUT_CUB_SIZED(render_lut_cub_8, 8)
 RENDER_LUT_CUB_SIZED(render_lut_cub_7, 7)
 RENDER_LUT_CUB_SIZED(render_lut_cub_6, 6)
 
-static AMY_IRAM_ATTR PHASOR render_lut_cub_sized(SAMPLE* buf, PHASOR phase, PHASOR step,
+static AMY_NOINLINE AMY_IRAM_ATTR PHASOR render_lut_cub_sized(SAMPLE* buf, PHASOR phase, PHASOR step,
         SAMPLE incoming_amp, SAMPLE ending_amp, const LUT* lut, SAMPLE* pmax_value) {
     if (lut == NULL) return phase;
     switch (lut->log_2_table_size) {
@@ -513,12 +508,11 @@ static AMY_IRAM_ATTR PHASOR render_lut_cub_sized(SAMPLE* buf, PHASOR phase, PHAS
     }
 }
 
-
 // LOCAL EDIT (S3-Amysynth): the same size specialisation for the linear
 // kernel the detuned unison copies render through (render_lut, 32-insn
 // hardware loop generic); INTERP_LINEAR at the 16-bit table scale.
 #define RENDER_LUT_LIN_SIZED(NAME, BITS) \
-static __attribute__((noinline)) AMY_IRAM_ATTR PHASOR NAME(SAMPLE* buf, PHASOR phase, PHASOR step, \
+static AMY_NOINLINE AMY_IRAM_ATTR PHASOR NAME(SAMPLE* buf, PHASOR phase, PHASOR step, \
                                  SAMPLE incoming_amp, SAMPLE ending_amp, \
                                  const LUTSAMPLE* table, SAMPLE* pmax_value) { \
     SAMPLE max_value = 0; \
@@ -547,7 +541,7 @@ RENDER_LUT_LIN_SIZED(render_lut_8, 8)
 RENDER_LUT_LIN_SIZED(render_lut_7, 7)
 RENDER_LUT_LIN_SIZED(render_lut_6, 6)
 
-static AMY_IRAM_ATTR PHASOR render_lut_sized(SAMPLE* buf, PHASOR phase, PHASOR step,
+static AMY_NOINLINE AMY_IRAM_ATTR PHASOR render_lut_sized(SAMPLE* buf, PHASOR phase, PHASOR step,
         SAMPLE incoming_amp, SAMPLE ending_amp, const LUT* lut, SAMPLE* pmax_value) {
     if (lut == NULL) return phase;
     switch (lut->log_2_table_size) {
@@ -560,6 +554,10 @@ static AMY_IRAM_ATTR PHASOR render_lut_sized(SAMPLE* buf, PHASOR phase, PHASOR s
     default: return render_lut(buf, phase, step, incoming_amp, ending_amp, lut, pmax_value);
     }
 }
+#else
+#define render_lut_cub_sized render_lut_cub
+#define render_lut_sized render_lut
+#endif
 
 AMY_IRAM_ATTR SAMPLE render_lpf_lut(SAMPLE* buf, uint16_t osc, int8_t is_square, int8_t direction, SAMPLE dc_offset) {
     AMY_PROFILE_START(RENDER_LPF_LUT)
@@ -996,41 +994,10 @@ void partial_note_off(uint16_t osc) {
 }
 
 
-#define KS_LOWEST_FREQ 55 // 55Hz (A1) lowest note we can play
-// One period of KS_LOWEST_FREQ, so the ring holds any note we admit at any
-// sample rate.  A literal sized for 44100 truncates the ring above it.
-#define MAX_KS_BUFFER_LEN (AMY_SAMPLE_RATE / KS_LOWEST_FREQ + 1)
-SAMPLE ** ks_buffer;
-// Loop-allpass memories, one row per ring, sized for the maximum stage count
-// so the count can change at runtime without an allocation.  Element 0 is the
-// tuning stage, 1..KS_DISPERSION_MAX_STAGES the dispersion chain.
-static SAMPLE *ks_ap_state;
-// Which osc each ring belongs to.  A ring is a physical string: two oscs
-// playing one ring damp each other's decay and re-excite each other on
-// note-on, so the mapping has to be per osc rather than a shared cursor.
-// The claim is two-way -- ks_row_owner[r] == osc AND synth[osc]->ks_index == r
-// -- so resetting or freeing an osc releases its ring with no explicit undo.
-static uint16_t *ks_row_owner;
-#define KS_ROW_UNOWNED 0xFFFF
+#define KS_LOWEST_FREQ 55  // A1, the lowest note KS plays
+#define MAX_KS_BUFFER_LEN (AMY_SAMPLE_RATE / KS_LOWEST_FREQ + 1)  // 802 at 44.1 kHz
 
-// The loop allpass, global to every string: one tuning stage completing the
-// fractional period, then `stages` stages sharing a coefficient g whose
-// phase delay falls with frequency, so the upper modes drift sharp of the
-// harmonic series the way a stiff string's do.  g follows the note:
-// ks_loop_set() designs one per semitone for the stiffness B (mode k of a
-// stiff string sits at k f sqrt(1 + B k^2)), and the string interpolates it.
-// Written by ks_loop_set() under the lock, read once per block.
-#define KS_DISP_NOTES 97        // semitones up from KS_LOWEST_FREQ
-#define KS_DISP_G_MIN -0.95f    // design limit; stiffer notes saturate here
-static struct {
-    bool tune;          // run the fractional-period tuning stage
-    uint8_t stages;     // dispersion stages, 0..KS_DISPERSION_MAX_STAGES
-    float stiffness;    // inharmonicity B; 0 runs no dispersion stage
-    float g[KS_DISP_NOTES];  // stage coefficient per semitone
-} ks_loop = { true, 0, 1e-3f, { 0 } };
-_Static_assert(KS_DISPERSION_MAX_STAGES == 3, "render_ks unrolls the chain to three stages");
-
-// Excitation shaping, global to every string.  The burst is a mix of the
+// LOCAL EDIT (S3-Amysynth): excitation shaping, global to every string.  The burst is a mix of the
 // noise, combed (to depth `comb`) to notch the harmonics a pluck at `pick` of
 // the string length leaves out, and a pulse `pick` of the period wide -- the force an ideal
 // pluck puts on the bridge, whose spectrum is the same notches on a 1/n
@@ -1049,271 +1016,80 @@ static struct {
 
 /* karplus-strong */
 
-// True if nothing is currently sounding on ring r.
-static bool ks_row_is_free(uint8_t r) {
-    uint16_t owner = ks_row_owner[r];
-    if (owner == KS_ROW_UNOWNED) return true;
-    if (synth[owner] == NULL) return true;            // osc was freed
-    if (synth[owner]->ks_index != r) return true;     // osc reset, or took another ring
-    if (synth[owner]->wave != KS) return true;        // osc switched wave
-    if (synth[owner]->status == SYNTH_OFF) return true;
-    return false;
-}
-
-// Pick the ring this note will play.  In order: the one this osc already owns
-// (a retrigger re-excites its own string, which is the common case and never
-// disturbs anyone else), then any idle ring, then -- only if every ring is
-// sounding -- the quietest one, because that is the collision least likely to
-// be heard.
-static uint8_t ks_alloc_row(uint16_t osc) {
-    uint8_t own = synth[osc]->ks_index;
-    if (own < AMY_KS_OSCS && ks_row_owner[own] == osc) return own;
-    for (uint8_t r = 0; r < AMY_KS_OSCS; ++r) {
-        if (ks_row_is_free(r)) return r;
-    }
-    uint8_t quietest = 0;
-    float lowest = msynth[ks_row_owner[0]]->amp;
-    for (uint8_t r = 1; r < AMY_KS_OSCS; ++r) {
-        float amp = msynth[ks_row_owner[r]]->amp;
-        if (amp < lowest) { lowest = amp; quietest = r; }
-    }
-    return quietest;
-}
-
-// Phase delay in samples of the allpass (g + z^-1)/(1 + g z^-1) at w
-// radians per sample, 0 < w < pi, with s and c its sine and cosine.
-static float ks_ap_delay_sc(float g, float w, float s, float c) {
-    return (atan2f(-g * s, 1.0f + g * c) - atan2f(-s, g + c)) / w;
-}
-
-static float ks_ap_delay(float g, float w) {
-    return ks_ap_delay_sc(g, w, sinf(w), cosf(w));
-}
-
-// Modes 1..n of one note, where a string of the design stiffness has them,
-// and the delay one stage must lose from mode 1 to each to put it there.
-#define KS_DISP_FIT_MODES 8
-typedef struct {
-    int n;
-    float w[KS_DISP_FIT_MODES], s[KS_DISP_FIT_MODES], c[KS_DISP_FIT_MODES];
-    float need[KS_DISP_FIT_MODES];
-} ks_disp_fit_t;
-
-static float ks_disp_misfit(float g, const ks_disp_fit_t *t) {
-    float d1 = ks_ap_delay_sc(g, t->w[0], t->s[0], t->c[0]);
-    float e = 0.0f;
-    for(int k = 1; k < t->n; k++) {
-        float d = d1 - ks_ap_delay_sc(g, t->w[k], t->s[k], t->c[k]) - t->need[k];
-        e += d * d;
-    }
-    return e;
-}
-
-// The coefficient of `stages` equal stages that best places modes 2..8 of a
-// note at f where a string of stiffness B has them, relative to the
-// fundamental (least squares on delay, which weighs every mode's cents about
-// equally).  Modes above about 4 kHz are left out: the loop's own lowpass
-// leaves little of them to hear.  A first-order stage cannot follow the
-// stiff-string curve far, so past B of a few 1e-3 the fit overshoots the low
-// modes, and at KS_DISP_G_MIN low notes saturate.
-static float ks_disp_design(float f, float B, uint8_t stages) {
-    ks_disp_fit_t t;
-    int K = (int)(4000.0f / f);
-    if(K > KS_DISP_FIT_MODES) K = KS_DISP_FIT_MODES;
-    if(K < 2) K = 2;
-    float P = (float)AMY_SAMPLE_RATE / f;
-    t.n = 0;
-    for(int k = 1; k <= K; k++) {
-        float stretch = sqrtf((1.0f + B * (float)(k * k)) / (1.0f + B));
-        float w = 2.0f * (float)M_PI * f * (float)k * stretch / (float)AMY_SAMPLE_RATE;
-        if(w >= (float)M_PI) break;
-        t.w[t.n] = w;
-        t.s[t.n] = sinf(w);
-        t.c[t.n] = cosf(w);
-        t.need[t.n] = P * (1.0f - 1.0f / stretch) / (float)stages;
-        t.n++;
-    }
-    if(t.n < 2) return 0.0f;
-    // Golden-section search over [KS_DISP_G_MIN, 0].
-    const float r = 0.618034f;
-    float a = KS_DISP_G_MIN, b = 0.0f;
-    float x1 = b - r * (b - a), x2 = a + r * (b - a);
-    float e1 = ks_disp_misfit(x1, &t), e2 = ks_disp_misfit(x2, &t);
-    for(int i = 0; i < 20; i++) {
-        if(e1 < e2) {
-            b = x2; x2 = x1; e2 = e1;
-            x1 = b - r * (b - a); e1 = ks_disp_misfit(x1, &t);
-        } else {
-            a = x1; x1 = x2; e1 = e2;
-            x2 = a + r * (b - a); e2 = ks_disp_misfit(x2, &t);
-        }
-    }
-    return 0.5f * (a + b);
-}
-
-// Ring length for freq with the dispersion chain's delay at the fundamental
-// taken out of the ring, so the loop still closes at one period.  *frac_period
-// receives what is left, the length the tuning stage completes, and *coef the
-// chain's coefficient for this note.  If the chain would leave fewer than two
-// ring samples, or the stiffness is 0, the chain is dropped for this call
-// (*stages = 0) and the ring holds the whole period.
-static uint16_t ks_ring_len(float freq, uint8_t *stages, float *frac_period, SAMPLE *coef) {
-    float P = (float)AMY_SAMPLE_RATE / freq;
-    float Pr = P;
-    *coef = 0;
-    if(ks_loop.stiffness <= 0.0f) *stages = 0;
-    if(*stages > 0) {
-        float s = 12.0f * log2f(freq / (float)KS_LOWEST_FREQ);
-        if(s < 0.0f) s = 0.0f;
-        if(s > (float)(KS_DISP_NOTES - 1)) s = (float)(KS_DISP_NOTES - 1);
-        int i = (int)s;
-        if(i > KS_DISP_NOTES - 2) i = KS_DISP_NOTES - 2;
-        float g = ks_loop.g[i] + (s - (float)i) * (ks_loop.g[i + 1] - ks_loop.g[i]);
-        Pr = P - (float)*stages * ks_ap_delay(g, 2.0f * (float)M_PI * freq / (float)AMY_SAMPLE_RATE);
-        if(Pr < 2.0f) { *stages = 0; Pr = P; }
-        else *coef = F2S(g);
-    }
-    uint16_t buflen = (uint16_t)Pr;
-    if(buflen > MAX_KS_BUFFER_LEN) buflen = MAX_KS_BUFFER_LEN;
-    *frac_period = Pr;
-    return buflen;
-}
-
-
-// The default KS loop: tuning allpass, no dispersion. The block is split at
-// the ring's wrap, so the inner loop needs no wrap test: with the ring
-// pointer, output pointer and gain ramp it fits the registers and compiles to
-// a hardware loop. Kept out of render_ks so the other loop's state does not
-// crowd its registers. The sample after the wrap takes ring[0] as its
-// neighbour; a read position past a shrunk ring makes stop < o, skips the run
-// and wraps at once, as the index form does. *w0p is the allpass memory.
-static __attribute__((noinline)) SAMPLE ks_render_tuned(SAMPLE *buf, uint16_t osc,
-        SAMPLE *ring, uint16_t buflen, SAMPLE a, SAMPLE *w0p) {
-    SAMPLE half = MUL0_SS(F2S(0.5f), F2S(synth[osc]->feedback));
-    SAMPLE current_amp = F2S(msynth[osc]->last_amp);
-    SAMPLE incremental_amp = SHIFTR(F2S(msynth[osc]->amp) - current_amp, BLOCK_SIZE_BITS);
-    SAMPLE max_value = 0;
-    SAMPLE w0 = *w0p;
-    SAMPLE *p = ring + (uint16_t)synth[osc]->phase;
-    SAMPLE *last = ring + buflen - 1;
-    SAMPLE *o = buf, *bend = buf + AMY_BLOCK_SIZE;
-    while (o < bend) {
-        SAMPLE *stop = o + (last - p);
-        if (stop > bend) stop = bend;
-        while (o < stop) {
-            SAMPLE sample = p[0];
-            SAMPLE v = SMULR7((sample + p[1]), half);
-            // One-multiply allpass, (a + z^-1) / (1 + a z^-1).
-            SAMPLE m = SMULR7(a, v - w0);
-            p[0] = m + w0;
-            w0 = v + m;
-            p++;
-            SAMPLE value = SMULR7(sample, current_amp);
-            current_amp += incremental_amp;
-            *o++ += value;
-            if (value < 0) value = -value;
-            if (value > max_value) max_value = value;
-        }
-        if (o < bend) {
-            SAMPLE sample = *p;
-            SAMPLE v = SMULR7((sample + ring[0]), half);
-            SAMPLE m = SMULR7(a, v - w0);
-            *p = m + w0;
-            w0 = v + m;
-            p = ring;
-            SAMPLE value = SMULR7(sample, current_amp);
-            current_amp += incremental_amp;
-            *o++ += value;
-            if (value < 0) value = -value;
-            if (value > max_value) max_value = value;
-        }
-    }
-    synth[osc]->phase = (PHASOR)(p - ring);
-    *w0p = w0;
-    msynth[osc]->last_amp = msynth[osc]->amp;
-    return max_value;
-}
-
 SAMPLE render_ks(SAMPLE * buf, uint16_t osc) {
     SAMPLE half = MUL0_SS(F2S(0.5f), F2S(synth[osc]->feedback));
-    // Ramp the gain across the block from the envelope's value at its start
-    // to its value at the end, as the other oscillators do; one step per block
-    // zippers an envelope and cuts a still-ringing string at note-off.
-    SAMPLE incoming_amp = F2S(msynth[osc]->last_amp);
-    SAMPLE ending_amp = F2S(msynth[osc]->amp);
-    SAMPLE current_amp = incoming_amp;
-    SAMPLE incremental_amp = SHIFTR(ending_amp - incoming_amp, BLOCK_SIZE_BITS);
+    // Ramp the gain across the block from last_amp to amp, as the other
+    // oscillators do.
+    SAMPLE current_amp = F2S(msynth[osc]->last_amp);
+    SAMPLE incremental_amp = SHIFTR(F2S(msynth[osc]->amp) - current_amp, BLOCK_SIZE_BITS);
     float freq = freq_of_logfreq(msynth[osc]->logfreq);
     SAMPLE max_value = 0;
-    if(freq >= KS_LOWEST_FREQ && synth[osc]->ks_index < AMY_KS_OSCS) {
-        // ks_loop is written under the lock the render body already holds, so
-        // one read here fixes the settings for the whole block.
-        bool tune = ks_loop.tune;
-        uint8_t n = ks_loop.stages;
-        SAMPLE g;
-        float Pr;
-        uint16_t buflen = ks_ring_len(freq, &n, &Pr, &g);
-        SAMPLE *ring = ks_buffer[synth[osc]->ks_index];
-        // The ring plus the two-tap average is buflen - 0.5 samples of delay,
-        // dropping the fraction of the period.  The tuning stage adds back
-        // D = Pr + 0.5 - buflen, in [0.5, 1.5) by construction, so the loop
-        // closes at Pr; a = (1 - D)/(1 + D) is its phase delay at DC.
-        SAMPLE a = 0;
-        if(tune) {
-            float D = Pr + 0.5f - (float)buflen;
-            a = F2S((1.0f - D) / (1.0f + D));
-        }
-        SAMPLE *w = ks_ap_state + synth[osc]->ks_index * (1 + KS_DISPERSION_MAX_STAGES);
-        SAMPLE w0 = w[0];
-        if(tune && n == 0) return ks_render_tuned(buf, osc, ring, buflen, a, w);
-        // Tune off or dispersion stages on (DEV > KS loop).
-        // LOCAL EDIT (S3-Amysynth): the ring index stays in a register for
-        // the block and wraps by compare instead of the iterative hardware
-        // remainder; an index past a shrunk buflen wraps to 0 as before.
-        uint16_t index = (uint16_t)synth[osc]->phase;
-        for(uint16_t i = 0; i < AMY_BLOCK_SIZE; i++) {
-            uint16_t next = index + 1;
-            if (next >= buflen) next = 0;
-            SAMPLE sample = ring[index];
-            SAMPLE v = SMULR7((sample + ring[next]), half);
-            if(tune) {
-                // Same one-multiply form as the default loop, so the state in
-                // w0 means the same thing to both.
-                SAMPLE m = SMULR7(a, v - w0);
-                SAMPLE y = m + w0;
-                w0 = v + m;
-                v = y;
+    // Another kind can own the union if config for it reached this KS osc.
+    SAMPLE *ring = (synth[osc]->wave_kind == WAVE_KIND_KS) ? synth[osc]->ks_ring : NULL;
+    // Outside this range the ring would need more than MAX_KS_BUFFER_LEN
+    // samples, or less than one.
+    if(freq >= KS_LOWEST_FREQ && freq < AMY_SAMPLE_RATE && ring != NULL) {
+        float period = AMY_SAMPLE_RATE / freq;
+        uint16_t buflen = (uint16_t)period;
+        if(buflen > MAX_KS_BUFFER_LEN) buflen = MAX_KS_BUFFER_LEN;
+        // The ring plus the two-tap average is buflen - 0.5 samples of delay.
+        // A first-order allpass (Jaffe and Smith's tuning filter) adds the
+        // missing d = period + 0.5 - buflen, in [0.5, 1.5), as its delay at
+        // low frequencies.
+        float d = period + 0.5f - (float)buflen;
+        SAMPLE a = F2S((1.0f - d) / (1.0f + d));
+        SAMPLE w = synth[osc]->ks_tune_state;
+        // The block is split where the ring wraps, so the inner loop needs no
+        // wrap test; the sample at the wrap takes ring[0] as its neighbour.
+        // A position left past a shrunk ring by a pitch step makes stop < o,
+        // so that sample goes straight to the wrap.
+        SAMPLE *p = ring + (uint16_t)synth[osc]->phase;
+        SAMPLE *last = ring + buflen - 1;
+        SAMPLE *o = buf, *bend = buf + AMY_BLOCK_SIZE;
+        while (o < bend) {
+            SAMPLE *stop = o + (last - p);
+            if (stop > bend) stop = bend;
+            while (o < stop) {
+                SAMPLE sample = p[0];
+                SAMPLE v = SMULR7((sample + p[1]), half);
+                // One-multiply allpass, (a + z^-1) / (1 + a z^-1).
+                SAMPLE m = SMULR7(a, v - w);
+                p[0] = m + w;
+                w = v + m;
+                p++;
+                SAMPLE value = SMULR7(sample, current_amp);
+                current_amp += incremental_amp;
+                *o++ += value;
+                if (value < 0) value = -value;
+                if (value > max_value) max_value = value;
             }
-            // Unrolled: a nested loop here costs the sample loop its
-            // hardware-loop form.
-            if(n) {
-                v = allpass1_chain(v, g, w + 1, 1);
-                if(n > 1) v = allpass1_chain(v, g, w + 2, 1);
-                if(n > 2) v = allpass1_chain(v, g, w + 3, 1);
+            if (o < bend) {
+                SAMPLE sample = *p;
+                SAMPLE v = SMULR7((sample + ring[0]), half);
+                SAMPLE m = SMULR7(a, v - w);
+                *p = m + w;
+                w = v + m;
+                p = ring;
+                SAMPLE value = SMULR7(sample, current_amp);
+                current_amp += incremental_amp;
+                *o++ += value;
+                if (value < 0) value = -value;
+                if (value > max_value) max_value = value;
             }
-            ring[index] = v;
-            index = next;
-            SAMPLE value = SMULR7(sample, current_amp);
-            current_amp += incremental_amp;
-            buf[i] += value;
-            if (value < 0) value = -value;
-            if (value > max_value) max_value = value;
         }
-        synth[osc]->phase = (PHASOR)index;
-        w[0] = w0;
+        synth[osc]->phase = (PHASOR)(p - ring);
+        synth[osc]->ks_tune_state = w;
     }
     msynth[osc]->last_amp = msynth[osc]->amp;
-    //fprintf(stderr, "render_ks time %u osc %d freq %.1f amp %.3f maxval %.3f\n", amy_global.total_blocks*AMY_BLOCK_SIZE, osc, freq, S2F(amp), S2F(max_value));
+    //fprintf(stderr, "render_ks time %u osc %d freq %.1f amp %.3f maxval %.3f\n", amy_global.total_blocks*AMY_BLOCK_SIZE, osc, freq, msynth[osc]->amp, S2F(max_value));
     return max_value;
 }
 
-// Pluck position from duty's constant coefficient, read at note-on.
-// b = |duty - 0.5| is the pluck point as a fraction of the string; duty and
-// 1 - duty pluck the same point from either end, and the reset default 0.5
-// leaves the plain noise burst.  The burst becomes the noise, combed to notch
-// the harmonics a pluck at b leaves out, mixed with a pulse b of the period
-// wide (an ideal pluck's force on the bridge: the same notches on a 1/n
-// slope, identical on every note).  Both ease in below KS_PICK_RAMP.
+// Pluck position from duty's constant coefficient, read at note-on:
+// b = |duty - 0.5| is the pluck point as a fraction of the string, and the
+// reset default 0.5 keeps the plain noise burst.  The burst becomes the noise
+// combed to notch the harmonics a pluck at b leaves out, mixed with a pulse
+// b of the period wide (an ideal pluck's force on the bridge).
 #define KS_PICK_MIX  0.6f   // pulse share of the burst once eased in
 #define KS_PICK_RAMP 0.1f   // pick position below which pulse and comb ease in
 
@@ -1336,7 +1112,7 @@ static void ks_pluck(SAMPLE *ring, uint16_t buflen, uint16_t M, float b, SAMPLE 
     SAMPLE kn_s = F2S(kn), g_s = F2S(g);
     SAMPLE hi = F2S(kp * (1.0f - p)), lo = F2S(-kp * p);
     // (x[i] - mean) - g (x[i - M] - mean), with the mean term folded.
-    SAMPLE dc = FILT_MUL_SS(F2S(1.0f - g), mean);
+    SAMPLE dc = SMULR7(F2S(1.0f - g), mean);
     uint16_t cycles = buflen, t = M;
     while(t) { uint16_t u = cycles % t; cycles = t; t = u; }   // gcd
     for(uint16_t c = 0; c < cycles; c++) {
@@ -1345,15 +1121,15 @@ static void ks_pluck(SAMPLE *ring, uint16_t buflen, uint16_t M, float b, SAMPLE 
         for(;;) {
             uint16_t k = (j >= M) ? j - M : j + buflen - M;
             SAMPLE prev = (k == c) ? first : ring[k];
-            SAMPLE v = ring[j] - FILT_MUL_SS(g_s, prev) - dc;
-            ring[j] = FILT_MUL_SS(kn_s, v) + ((j < M) ? hi : lo);
+            SAMPLE v = ring[j] - SMULR7(g_s, prev) - dc;
+            ring[j] = SMULR7(kn_s, v) + ((j < M) ? hi : lo);
             if(k == c) break;
             j = k;
         }
     }
 }
 
-// Shape a freshly filled zero-mean burst in place per ks_excite, then restore
+// LOCAL EDIT (S3-Amysynth): shape a freshly filled zero-mean burst in place per ks_excite, then restore
 // its RMS so the shaping changes the spectrum and not the level; velocity
 // still scales the output tap.  Once per note-on, in float.
 static void ks_shape_burst(SAMPLE *ring, uint16_t buflen, float freq, float velocity) {
@@ -1375,8 +1151,8 @@ static void ks_shape_burst(SAMPLE *ring, uint16_t buflen, float freq, float velo
             uint16_t j = s;
             for(;;) {
                 uint16_t k = (j >= M) ? j - M : j + buflen - M;
-                if(k == s) { ring[j] -= FILT_MUL_SS(g, first); break; }
-                ring[j] -= FILT_MUL_SS(g, ring[k]);
+                if(k == s) { ring[j] -= SMULR7(g, first); break; }
+                ring[j] -= SMULR7(g, ring[k]);
                 j = k;
             }
         }
@@ -1416,26 +1192,30 @@ static void ks_shape_burst(SAMPLE *ring, uint16_t buflen, float freq, float velo
 }
 
 void ks_note_on(uint16_t osc, float freq) {
-    // render_ks reads phase as a plain ring index, so start it at the bottom
-    // of the ring.  Any other wave leaves a fixed-point phasor here, whose
-    // low 16 bits index far past the buffer.
+    uint16_t buflen = (uint16_t)(AMY_SAMPLE_RATE / freq);
+    if(buflen > MAX_KS_BUFFER_LEN) buflen = MAX_KS_BUFFER_LEN;
+    if(buflen < 1) buflen = 1;  // a note above the sample rate
+    // render_ks reads phase as the ring index, and a note-on keeps the phase
+    // the osc had: after another wave it is that wave's phasor, far past the
+    // ring.
     synth[osc]->phase = 0;
-    if(ks_buffer == NULL) { synth[osc]->ks_index = KS_NO_ROW; return; }
-    uint8_t row = ks_alloc_row(osc);
-    synth[osc]->ks_index = row;
-    ks_row_owner[row] = osc;
-    SAMPLE *ring = ks_buffer[row];
-    // A retrigger re-excites the string from clean state, so the loop allpass
-    // memories are cleared with the ring, including any stage the current
-    // setting does not run.
-    SAMPLE *w = ks_ap_state + row * (1 + KS_DISPERSION_MAX_STAGES);
-    for(uint8_t k = 0; k < 1 + KS_DISPERSION_MAX_STAGES; k++) w[k] = 0;
-    // ks_note_on runs on the render task under the lock, so a plain read of
-    // ks_loop agrees with the one render_ks makes for this block.
-    uint8_t n = ks_loop.stages;
-    float Pr;
-    SAMPLE g;
-    uint16_t buflen = ks_ring_len(freq, &n, &Pr, &g);
+    // The ring belongs to the osc: allocated at its first KS note-on, freed
+    // by free_osc() (or when another wave kind claims the union).
+    osc_set_wave_kind(osc, WAVE_KIND_KS);
+    SAMPLE *ring = synth[osc]->ks_ring;
+    if(ring == NULL) {
+        ring = (SAMPLE*)malloc_caps(sizeof(SAMPLE)*MAX_KS_BUFFER_LEN, amy_global.config.ram_caps_oscs);
+        if(ring == NULL) {
+            // The osc stays silent: render_ks skips an osc with no ring.
+            amy_oom("ks_note_on: out of memory allocating the ring for osc %d\n", osc);
+            return;
+        }
+        // Zeroed: a pitch drop after the note-on lengthens the loop past
+        // what the burst filled.
+        memset(ring, 0, sizeof(SAMPLE)*MAX_KS_BUFFER_LEN);
+        synth[osc]->ks_ring = ring;
+    }
+    synth[osc]->ks_tune_state = 0;
     // init KS buffer with noise up to max
     SAMPLE sum = 0;
     for(uint16_t i = 0; i < buflen; i++) {
@@ -1455,115 +1235,10 @@ void ks_note_on(uint16_t osc, float freq) {
             ring[i] -= mean;
         }
     }
+    // LOCAL EDIT (S3-Amysynth): excitation shaping, see ks_excite_set().
     if(ks_excite.soft > 0.0f || ks_excite.pick > 0.0f || ks_excite.shape > 0.0f)
         ks_shape_burst(ring, buflen, freq, synth[osc]->velocity);
-    //fprintf(stderr, "ks_note_on: osc %d buflen %d row %d\n", osc, buflen, row);
-}
-
-// Whether a KS note-off starts the amp envelope's release, as it does for
-// the other waves.  Off, note-off leaves the string ringing on the sustain
-// level and the osc never stops rendering.  Written by ks_release_set()
-// under the lock, read by ks_note_off.
-static bool ks_release = true;
-
-// Returns true when the caller should start the release.
-bool ks_note_off(uint16_t osc) {
-    msynth[osc]->amp = 0;
-    return ks_release;
-}
-
-void ks_release_set(bool on) {
-    amy_grab_lock();
-    ks_release = on;
-    amy_release_lock();
-}
-
-bool ks_release_get(void) {
-    return ks_release;
-}
-
-
-void ks_init(void) {
-    // One ring per simultaneously sounding KS osc; ks_oscs is the polyphony
-    // ceiling, past which ks_alloc_row() steals the quietest ring.
-    ks_buffer = (SAMPLE**) malloc_caps(sizeof(SAMPLE*)*AMY_KS_OSCS, amy_global.config.ram_caps_synth);
-    if(ks_buffer == NULL) {
-        amy_oom("unable to alloc %d KS rings\n", (int)AMY_KS_OSCS);
-        return;
-    }
-    // Before anything else can fail: ks_deinit() walks this array.
-    for(int i=0;i<AMY_KS_OSCS;i++) ks_buffer[i] = NULL;
-    ks_row_owner = (uint16_t*) malloc_caps(sizeof(uint16_t)*AMY_KS_OSCS, amy_global.config.ram_caps_synth);
-    if(ks_row_owner == NULL) {
-        amy_oom("unable to alloc %d KS ring owners\n", (int)AMY_KS_OSCS);
-        ks_deinit();
-        return;
-    }
-    for(int i=0;i<AMY_KS_OSCS;i++) ks_row_owner[i] = KS_ROW_UNOWNED;
-    ks_ap_state = (SAMPLE*) malloc_caps(sizeof(SAMPLE)*AMY_KS_OSCS*(1 + KS_DISPERSION_MAX_STAGES), amy_global.config.ram_caps_synth);
-    if(ks_ap_state == NULL) {
-        amy_oom("unable to alloc %d KS loop allpass states\n", (int)(AMY_KS_OSCS*(1 + KS_DISPERSION_MAX_STAGES)));
-        ks_deinit();
-        return;
-    }
-    for(int i=0;i<AMY_KS_OSCS*(1 + KS_DISPERSION_MAX_STAGES);i++) ks_ap_state[i] = 0;
-    // The rings are the bulk of KS memory and get their own caps; the tables
-    // above are a few bytes per ring and stay with ram_caps_synth.
-    for(int i=0;i<AMY_KS_OSCS;i++) {
-        ks_buffer[i] = (SAMPLE*)malloc_caps(sizeof(SAMPLE)*MAX_KS_BUFFER_LEN, amy_global.config.ram_caps_ks);
-        if(ks_buffer[i] == NULL) {
-            // All or nothing: a partly-filled table would let ks_alloc_row()
-            // hand out a NULL ring, so KS goes silent instead of half-working.
-            // ks_note_on's NULL check and render_ks's ks_index guard are what
-            // make silence safe.
-            amy_oom("unable to alloc KS ring of %d samples\n", (int)MAX_KS_BUFFER_LEN);
-            ks_deinit();
-            return;
-        }
-    }
-}
-
-void ks_deinit(void) {
-    if(ks_buffer != NULL) {
-        for(int i=0;i<AMY_KS_OSCS;i++) free(ks_buffer[i]);
-        free(ks_buffer);
-        ks_buffer = NULL;
-    }
-    free(ks_row_owner);
-    ks_row_owner = NULL;
-    free(ks_ap_state);
-    ks_ap_state = NULL;
-}
-
-// Set the loop allpass.  Call from a control task, never from the render path:
-// the render body holds the lock this takes.  The settings take effect on the
-// next block.  Changing the stage count or stiffness while a string sounds
-// moves its ring length, so the note steps in pitch; the stage memories the
-// change frees are cleared at the next note-on, not here.  The per-semitone
-// design is milliseconds of float work, so it runs into a static scratch
-// before the lock is taken: callers must be a single control task.
-void ks_loop_set(bool tune, uint8_t stages, float stiffness) {
-    static float g[KS_DISP_NOTES];
-    if(stages > KS_DISPERSION_MAX_STAGES) stages = KS_DISPERSION_MAX_STAGES;
-    if(stiffness < 0.0f) stiffness = 0.0f;
-    if(stiffness > KS_STIFFNESS_MAX) stiffness = KS_STIFFNESS_MAX;
-    for(int i = 0; i < KS_DISP_NOTES; i++) {
-        g[i] = (stages > 0 && stiffness > 0.0f)
-            ? ks_disp_design((float)KS_LOWEST_FREQ * exp2f((float)i / 12.0f), stiffness, stages)
-            : 0.0f;
-    }
-    amy_grab_lock();
-    ks_loop.tune = tune;
-    ks_loop.stages = stages;
-    ks_loop.stiffness = stiffness;
-    memcpy(ks_loop.g, g, sizeof(g));
-    amy_release_lock();
-}
-
-void ks_loop_get(bool *tune, uint8_t *stages, float *stiffness) {
-    *tune = ks_loop.tune;
-    *stages = ks_loop.stages;
-    *stiffness = ks_loop.stiffness;
+    //fprintf(stderr, "ks_note_on: osc %d buflen %d\n", osc, buflen);
 }
 
 void ks_excite_set(float soft, float hard, float pick, float shape, float comb) {

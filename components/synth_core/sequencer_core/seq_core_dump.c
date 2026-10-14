@@ -13,6 +13,7 @@
 #include "seq_core_internal.h"
 #include "sequencer_core.h"
 #include "esp_app_desc.h"
+#include "sequencer.h"          /* sequencer_tag_count (AMY) */
 #include <stdio.h>
 
 /* One printed line per call site, counted for the END marker. */
@@ -204,6 +205,18 @@ void sequencer_core_dump_state(void)
             n_lines += dump_vp("LB", lv);
         }
     }
+
+    /* A send to an AMY tag adds to it, so every app tag holds at most one
+     * event; a tag holding more names a re-send path that skips the clear. */
+    unsigned stacked = 0;
+    for (uint32_t tag = 0; tag <= SEQ_CLIP_TAG_MAX; tag++) {
+        uint16_t n = sequencer_tag_count(tag);
+        if (n > 1) {
+            DP("STACKED tag=%u events=%u", (unsigned)tag, (unsigned)n);
+            stacked++;
+        }
+    }
+    DP("tags holding more than one event: %u", stacked);
 
     DP("==== SEQDUMP END layers=%u lines=%u ====",
        (unsigned)s_num_layers, n_lines + 1u);

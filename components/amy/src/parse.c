@@ -346,6 +346,8 @@ int parse_midi_mapping_payload(char *message, int32_t *p_code, int32_t *p_is_log
 int midi_mapping_from_message(char *message, char cmd, int instr_num, int skip_chars) {
     // MIDI CC mapping ic<C>,<L>,<N>,<X>,<O>,<CODE>, see https://github.com/shorepine/amy/issues/524
     // ic255 clears all MIDI CC mappings for this synth (short form, no extra fields needed).
+    // iC<C>,<L>,<N>,<X>,<O>,<P>[,<OSC>]... is the converse, midi_cc_output (#1175): changes
+    // to P are sent out as CC C.  iC<C> alone clears it, iC255 clears them all.
     size_t pos = 0;
     size_t mlen = strlen(message);
     // An empty payload ("ic"/"io" at end of message) would return -1 below,
@@ -369,7 +371,7 @@ int midi_mapping_from_message(char *message, char cmd, int instr_num, int skip_c
         // Parse the fragment.
         int32_t code, is_log;
         float min_val = 0, max_val = 0, offset_val = 0;
-        int type = (cmd == 'c') ? MIDI_MAP_TYPE_CC : MIDI_MAP_TYPE_NOTE;
+        int type = (cmd == 'c') ? MIDI_MAP_TYPE_CC : ((cmd == 'C') ? MIDI_MAP_TYPE_CC_OUT : MIDI_MAP_TYPE_NOTE);
         AMY_UNSET(code);
         AMY_UNSET(is_log);
         skip_chars = parse_midi_mapping_payload(message + pos, &code, &is_log, &min_val, &max_val, &offset_val);
@@ -415,6 +417,44 @@ int parse_cv_trigger_payload(char *message, int32_t *p_gate_cv, float *p_thresh_
     m += parse_val_float(m, p_pitch_offset);
  end:
     return m - message;
+}
+
+// Parser for 'iG': where a synth's NOTE EVENTS go. See note_output.c.
+//
+//   iG<mode>[,<arg>...]
+//     CV_GATE  1,<pitch_cv>,<gate_cv>[,<vel_cv>[,<scale>[,<offset>[,<gate_v>]]]]
+//     MIDI_OUT 2,<channel 1..16>[,<forward_midi_in>]
+//     OFF      0
+//
+// THE PAYLOAD IS NUMERIC AND THAT IS NOT A STYLE CHOICE. The outer
+// parser delimits a command's argument with _next_alpha(), so a payload
+// containing letters would run into the next command unless this
+// function counted every character of it by hand. The friendly spelling
+// -- note_output='CV_GATE,0,2' -- lives in the Python layer, which is
+// where every other friendly spelling in AMY lives.
+int note_output_from_message(char *message, int synth) {
+    // A MODE THAT IS NOT A NUMBER IS REFUSED OUT LOUD. The friendly
+    // spelling is a Python convenience; the generated JS and GDScript
+    // tables carry this as an ordinary comma string, so a caller there
+    // who types the name sends it through unmapped -- and atoff() would
+    // read "CV_GATE" as 0, which is OFF. That is silence, with nothing
+    // said anywhere, which is the worst answer this command could give.
+    const char *first = message;
+    while (*first == ' ') ++first;
+    if (*first < '0' || *first > '9') {
+        fprintf(stderr, "note_output: mode must be a number (%d=OFF, %d=CV_GATE, "
+                "%d=MIDI_OUT), got \"%s\"\n", NOTE_OUTPUT_OFF,
+                NOTE_OUTPUT_CV_GATE, NOTE_OUTPUT_MIDI_OUT, message);
+        return 0;
+    }
+    float vals[8];
+    int num_vals = parse_list_float(message, vals, 8, AMY_UNSET_FLOAT);
+    if (num_vals < 1 || AMY_IS_UNSET(vals[0])) {
+        fprintf(stderr, "note_output: no mode in \"%s\"\n", message);
+        return 0;
+    }
+    note_output_config((uint8_t)synth, (int)vals[0], vals + 1, num_vals - 1);
+    return 0;
 }
 
 int cv_trigger_from_message(char *message, int instr_num, int skip_chars) {
@@ -463,6 +503,10 @@ int amy_parse_synth_layer_message(char *message, amy_event *e) {
     if (cmd == 'd')  e->synth_delay_ms = atoi(message);
     else if (cmd == 'f')  e->synth_flags = atoi(message);
     else if (cmd == 'g')  skip_chars = cv_trigger_from_message(message, e->synth, skip_chars);
+    else if (cmd == 'G') {  // note output: cv_trigger's mirror, hence the case pairing
+        if (AMY_IS_UNSET(e->synth)) fprintf(stderr, "note_output: iG needs a synth, as i<n>iG...\n");
+        else note_output_from_message(message, e->synth);
+    }
     else if (cmd == 'm')  e->grab_midi_notes = atoi(message);
     else if (cmd == 'M')  e->note_source_channel = atoi(message);  // To mark MIDI-in notes.
     else if (cmd == 'n')  e->oscs_per_voice = atoi(message);
@@ -471,7 +515,7 @@ int amy_parse_synth_layer_message(char *message, amy_event *e) {
     else if (cmd == 'v')  e->num_voices = atoi(message);
     else if (cmd == 'V')  e->synth_level = atoff(message);  // Per-instrument level, default 1.
     else if (cmd == 'y')  e->bus = atoi(message);  // 'i1iy1' is the same as 'i1y1'.
-    else if (cmd == 'c' || cmd == 'o') skip_chars = midi_mapping_from_message(message, cmd, e->synth, skip_chars);
+    else if (cmd == 'c' || cmd == 'o' || cmd == 'C') skip_chars = midi_mapping_from_message(message, cmd, e->synth, skip_chars);  // C: midi_cc_output
     else fprintf(stderr, "Unrecognized synth-level command '%s'\n", message - 1);
     return skip_chars;
 }
@@ -544,7 +588,11 @@ uint16_t amy_parse_transfer_layer_message(char *message) {
         if(sm[1]==0) { // remove preset
             pcm_unload_preset(sm[0]);
         } else {
-            amy_execute_deltas();
+            // A queued reset must land before the load, or amy_reset_oscs()
+            // unloads the new sample when it plays (pcm_unload_all_presets).
+            // Only the flush: this runs on the sending thread, and advancing
+            // the sequencer here would race the render thread's own tick.
+            amy_settle_deltas();
             int16_t * ram = pcm_load(sm[0], sm[1], sm[2], 1, midinote, sm[4], sm[5]);
             start_receiving_transfer(sm[1]*2, (uint8_t*)ram);
         }

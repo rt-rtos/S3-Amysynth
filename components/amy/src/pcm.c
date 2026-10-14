@@ -3,6 +3,10 @@
 #include "amy.h"
 #include "transfer.h"
 
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 #ifdef __EMSCRIPTEN__
 #include "emscripten.h"
 #endif
@@ -163,6 +167,27 @@ const int16_t *pcm_get_sample_ram_for_preset(uint16_t preset_number, uint32_t *l
     return preset->sample_ram;
 }
 
+// Read back an in-memory PCM preset -- one filled by load_sample or recorded by
+// start_sample -- so an embedder can save it.  Unlike the lookup above there is
+// no ROM fallback: returns NULL unless preset_number is a memory preset (ROM,
+// gamma and file-streamed presets all return NULL).  The returned RAM holds
+// frames * channels interleaved samples and is only valid until the preset is
+// unloaded or reloaded.  Any out-pointer may be NULL.
+const int16_t *pcm_get_memory_preset(uint16_t preset_number, uint32_t *frames, uint8_t *channels,
+                                     uint32_t *samplerate, float *midinote) {
+    for (memorypcm_ll_t *p = memorypcm_ll_start; p != NULL; p = p->next) {
+        if (p->preset_number != preset_number) continue;
+        memorypcm_preset_t *preset = p->preset;
+        if (preset->type != AMY_PCM_TYPE_MEMORY || preset->sample_ram == NULL) return NULL;
+        if (frames != NULL) *frames = preset->length;
+        if (channels != NULL) *channels = preset->channels;
+        if (samplerate != NULL) *samplerate = preset->samplerate;
+        if (midinote != NULL) *midinote = preset->midinote;
+        return preset->sample_ram;
+    }
+    return NULL;
+}
+
 
 // Hann window for the granular time-stretcher, Q15.  At 50% overlap Hann
 // windows sum to exactly 1.0 (COLA), so two overlapping grains reconstruct
@@ -251,74 +276,11 @@ bool pcm_loop_config_allowed(uint16_t osc, uint16_t mode, uint16_t preset_number
     return false;
 }
 
-// Sample value close enough to zero to stop sample
-#define PCM_ZERO_THRESH 16
-// How far forward to search for a zero crossing
-#define PCM_MAX_ZERO_SEARCH_LEN 512
-
-// LOCAL EDIT: retrig-behavior gate. 0 (default) = fade-restart: ramp the old
-// tail to zero over a FIXED PCM_RETRIG_FADE_FRAMES span, then splice to the
-// new note - click-free with constant onset latency. 1 = upstream behavior:
-// defer the restart to the next zero crossing, which costs a VARIABLE
-// 0..PCM_MAX_ZERO_SEARCH_LEN-frame latency per hit (audible as an
-// inconsistent transient on steady retrigs into a long low-frequency tail,
-// e.g. a bass-drum four-on-floor).
-#ifndef AMY_PCM_RETRIG_ZERO_CROSS
-#define AMY_PCM_RETRIG_ZERO_CROSS 0
-#endif
-// Old-tail fade length in sample-table frames; 64 pairs with the >>6 in the
-// per-sample gain (render_pcm).
-#define PCM_RETRIG_FADE_FRAMES 64
-
-int pcm_find_next_zero_crossing(uint16_t osc, uint32_t base_index) {
-    // Find next zero or zero crossing beyond base_index in PCM under osc.
-    int index = -1;
-    if(AMY_IS_SET(synth[osc]->preset)) {
-        memorypcm_preset_t rom_local;
-        memorypcm_preset_t *preset =
-            get_preset_for_preset_number(synth[osc]->preset, &rom_local);
-        uint32_t sample_length = preset->length;
-        const LUTSAMPLE* table = preset->sample_ram;
-        int last_sign = 0;
-        int sign;
-        if (preset->type != AMY_PCM_TYPE_FILE
-            && table != NULL
-            && sample_length != 0) {
-            const LUTSAMPLE* table = preset->sample_ram;
-            //uint32_t start_index = base_index;  // for debug only
-            LUTSAMPLE min_val = SAMPLE_MAX;
-            LUTSAMPLE val;
-            for(uint16_t i=0; i < PCM_MAX_ZERO_SEARCH_LEN; i++) {
-                // For non-file samples, we have to check for end of sample/looping.
-                if (base_index >= sample_length) break;
-                if (preset->channels == 2) {
-                    if (synth[osc]->wave == PCM_LEFT) {
-                        val = table[base_index * 2];
-                    } else if (synth[osc]->wave == PCM_RIGHT) {
-                        val = table[base_index * 2 + 1];
-                    } else { // PCM or PCM_MIX
-                        val = (LUTSAMPLE)(((int32_t)table[base_index * 2] + (int32_t)table[base_index * 2 + 1]) / 2);
-                    }
-                } else {
-                    val = table[base_index];
-                }
-                sign = 1;
-                if (val < 0) {sign = -1; val = -val;}
-                if (val < min_val) {
-                    min_val = val;
-                    index = base_index;
-                }
-                if ((val <= PCM_ZERO_THRESH) || ((sign * last_sign) == -1))
-                    break;
-                last_sign = sign;
-                ++base_index;
-            }
-            //fprintf(stderr, "time %.3f: pcm_find_zero: osc %d start %d base %d len %d min_val %d index %d sign %d last %d\n",
-            //        amy_global.time, osc, start_index, base_index, sample_length, min_val, index, sign, last_sign);
-        }
-    }
-    return index;
-}
+// Source frames over which the note a retrigger replaces fades out under the
+// new one: gain 1 at the note-on, 0 at the end.  Fixed, so the new note starts
+// on its note-on whatever the old waveform's phase.
+#define PCM_RETRIG_FADE_SHIFT 6
+#define PCM_RETRIG_FADE_FRAMES (1 << PCM_RETRIG_FADE_SHIFT)
 
 ///////////////////////////////////////////////////////////////////////////
 // "fit": real-time pitch-invariant time stretch / time-invariant pitch shift.
@@ -353,9 +315,26 @@ static inline LUTSAMPLE pcm_stretch_read(const LUTSAMPLE *table, uint8_t channel
     return table[idx];
 }
 
+// Is the osc's granular stretcher running?  Only a PCM-kind osc has one.
+static inline bool pcm_stretch_active(uint16_t osc) {
+    return synth[osc]->wave_kind == WAVE_KIND_PCM && synth[osc]->stretch != NULL
+        && synth[osc]->stretch->active;
+}
+
 // Configure the stretcher at note-on.  preset must be in-memory (not FILE).
-static void pcm_stretch_note_on(uint16_t osc, memorypcm_preset_t *preset) {
-    pcm_stretch_t *st = &synth[osc]->stretch;
+// The stretcher is allocated at the osc's first fit note-on and kept (see
+// osc_release_allocs()).  Returns false on OOM: the note plays unstretched.
+static bool pcm_stretch_note_on(uint16_t osc, memorypcm_preset_t *preset) {
+    pcm_stretch_t *st = synth[osc]->stretch;
+    if (st == NULL) {
+        st = (pcm_stretch_t *)malloc_caps(sizeof(pcm_stretch_t), amy_global.config.ram_caps_oscs);
+        if (st == NULL) {
+            amy_oom("pcm_stretch_note_on: out of memory for osc %d\n", osc);
+            return false;
+        }
+        memset(st, 0, sizeof(*st));
+        synth[osc]->stretch = st;
+    }
     uint32_t start_frame = INT_OF_P(synth[osc]->phase, PCM_INDEX_BITS);
     if (start_frame >= preset->length) start_frame = 0;
     uint32_t remaining = preset->length - start_frame;
@@ -386,6 +365,7 @@ static void pcm_stretch_note_on(uint16_t osc, memorypcm_preset_t *preset) {
     st->us_per_tick_ref = (synth[osc]->fit_ticks > 0) ? amy_global.us_per_tick : 0;
     st->ended = 0;
     st->active = 1;
+    return true;
 }
 
 // WSOLA-style spawn alignment: search this many frames either side of the
@@ -506,7 +486,7 @@ static void pcm_stretch_spawn(pcm_stretch_t *st, memorypcm_preset_t *preset, uin
 }
 
 static SAMPLE render_pcm_stretch(SAMPLE *buf, uint16_t osc, memorypcm_preset_t *preset) {
-    pcm_stretch_t *st = &synth[osc]->stretch;
+    pcm_stretch_t *st = synth[osc]->stretch;  // pcm_stretch_active() checked it
     // A tempo change has to reach notes that are ALREADY sounding: fit= locks
     // a note to a number of ticks, and a tick just got longer or shorter, so
     // a note left alone would run on at the old tempo and land off the grid.
@@ -536,7 +516,10 @@ static SAMPLE render_pcm_stretch(SAMPLE *buf, uint16_t osc, memorypcm_preset_t *
     // Per-sample read step within a grain: the pitch, recomputed per block so
     // envelopes/LFOs on freq keep working.
     uint32_t pitch_step_q16 = (uint32_t)((playback_freq / (float)AMY_SAMPLE_RATE) * 65536.0f);
-    SAMPLE amp = F2S(msynth[osc]->amp);
+    // Ramp the gain across the block, as render_pcm does.
+    SAMPLE amp = F2S(msynth[osc]->last_amp);
+    SAMPLE amp_step = SHIFTR(F2S(msynth[osc]->amp) - amp, BLOCK_SIZE_BITS);
+    msynth[osc]->last_amp = msynth[osc]->amp;
     const LUTSAMPLE *table = preset->sample_ram;
     uint32_t length = preset->length;
     // Re-read each block, so 'pS' can be swept while the note is sounding.
@@ -550,6 +533,7 @@ static SAMPLE render_pcm_stretch(SAMPLE *buf, uint16_t osc, memorypcm_preset_t *
         i = msynth[osc]->pcm_delay;
         msynth[osc]->pcm_delay = 0;
     }
+    amp += amp_step * i;
     for (; i < AMY_BLOCK_SIZE; i++) {
         if (st->hop_counter == 0)
             pcm_stretch_spawn(st, preset, synth[osc]->wave, looping, loopstart, loopend, search);
@@ -580,6 +564,7 @@ static SAMPLE render_pcm_stretch(SAMPLE *buf, uint16_t osc, memorypcm_preset_t *
             break;
         }
         SAMPLE value = buf[i] + MUL4_SS(amp, out);
+        amp += amp_step;
         buf[i] = value;
         if (value < 0) value = -value;
         if (value > max_value) max_value = value;
@@ -593,7 +578,7 @@ static SAMPLE render_pcm_stretch(SAMPLE *buf, uint16_t osc, memorypcm_preset_t *
 // only; 0 for an osc that is out of range or not allocated. See AMY-EDITS.md.
 uint32_t pcm_osc_frame(uint16_t osc) {
     if (osc >= AMY_OSCS || synth[osc] == NULL) return 0;
-    if (synth[osc]->stretch.active) return (uint32_t)(synth[osc]->stretch.in_pos_q16 >> 16);
+    if (pcm_stretch_active(osc)) return (uint32_t)(synth[osc]->stretch->in_pos_q16 >> 16);
     return (uint32_t)INT_OF_P(synth[osc]->phase, PCM_INDEX_BITS);
 }
 
@@ -630,50 +615,43 @@ void pcm_note_on(uint16_t osc) {
         }
         // Does this note-on want the granular fit engine?  Only for in-memory
         // presets: it needs random access, which a streamed file can't give.
+        // Normally a no-op: WAVE set the kind.  But config for another kind
+        // can have claimed the union since, and fit is read below.
+        osc_set_wave_kind(osc, WAVE_KIND_PCM);
         bool want_stretch = AMY_IS_SET(synth[osc]->fit_ticks)
             && preset->type != AMY_PCM_TYPE_FILE
             && preset->sample_ram != NULL && preset->length > 0;
-        bool fresh_start = true;
-        if (synth[osc]->status == SYNTH_AUDIBLE && preset->type != AMY_PCM_TYPE_FILE
-            && !want_stretch && !synth[osc]->stretch.active) {
-            // Restarting a currently-playing (non-file) PCM, splice the reonset
-            // onto the old tail to avoid a click (mechanism per the gate below).
-            // (Not for the fit engine: its grains are windowed, so a restart is click-free by construction.)
-            fresh_start = false;
-            uint32_t base_index = INT_OF_P(synth[osc]->phase, PCM_INDEX_BITS);
-#if AMY_PCM_RETRIG_ZERO_CROSS
-            // Restarting a currently-playing (non-file) PCM, delay reonset to next zero crossing to avoid click.
-            msynth[osc]->loopend = pcm_find_next_zero_crossing(osc, base_index);
-#else
-            // LOCAL EDIT: fade-restart - play PCM_RETRIG_FADE_FRAMES more of
-            // the old tail under a linear ramp to zero (applied in render_pcm),
-            // then splice. Constant latency where the zero-cross defer's is
-            // tail-phase-dependent; see the gate comment above.
-            uint32_t fade_end = base_index + PCM_RETRIG_FADE_FRAMES;
-            if (preset->length && fade_end >= preset->length)
-                fade_end = preset->length - 1;
-            msynth[osc]->loopend = fade_end;
-#endif
-            msynth[osc]->loopstart = INT_OF_P(phase, PCM_INDEX_BITS);
-            msynth[osc]->state = PCM_LOOP_ONCE_INTERNAL;
-            msynth[osc]->next_state = synth[osc]->mode;
-            //fprintf(stderr, "time %.3f osc %d RESTART amp %.3f last_amp %.3f\n", amy_global.time, osc, msynth[osc]->amp, msynth[osc]->last_amp);
-        } else {
-            synth[osc]->phase = phase;
-            msynth[osc]->loopstart = preset->loopstart;
-            msynth[osc]->loopend = preset->loopend;
-            // Copy the looping mode from the wave mode field.  Can be updated on note_off.
-            msynth[osc]->state = synth[osc]->mode;
+        uint32_t base_index = INT_OF_P(synth[osc]->phase, PCM_INDEX_BITS);
+        // A note-on repeated before its note has rendered (the position is still the start) has
+        // nothing to fade; it keeps whatever fade is running.  Any other note-on ends one.
+        bool unrendered = synth[osc]->status == SYNTH_AUDIBLE && synth[osc]->phase == phase;
+        if (!unrendered) msynth[osc]->fade_end = 0;
+        if (synth[osc]->status == SYNTH_AUDIBLE && !unrendered && preset->type != AMY_PCM_TYPE_FILE
+            && !want_stretch && !pcm_stretch_active(osc) && base_index < preset->length
+            && msynth[osc]->amp > AMP_THRESH_PLUS) {
+            // Restarting a currently-playing (non-file) PCM: the old note keeps playing from where it
+            // is, fading out over PCM_RETRIG_FADE_FRAMES under the new one (render_pcm), to avoid a click.
+            // (Not for the fit engine: its grains are windowed, so a restart is click-free by construction.
+            // Not past the end of the preset either, e.g. after a switch to a shorter one, and not when the
+            // envelope has already faded the old note to silence: nothing to fade in either case.)
+            msynth[osc]->fade_phase = synth[osc]->phase;
+            PHASOR fade_end = synth[osc]->phase + I2P(PCM_RETRIG_FADE_FRAMES, PCM_INDEX_BITS);
+            if (fade_end > I2P(preset->length, PCM_INDEX_BITS)) fade_end = I2P(preset->length, PCM_INDEX_BITS);
+            msynth[osc]->fade_end = fade_end;
         }
+        synth[osc]->phase = phase;
+        msynth[osc]->loopstart = preset->loopstart;
+        msynth[osc]->loopend = preset->loopend;
+        // Copy the looping mode from the wave mode field.  Can be updated on note_off.
+        msynth[osc]->state = synth[osc]->mode;
         // sample_offset (po): begin this note-on partway into its render
         // block, so slices of arbitrary length can butt-join sample-
-        // accurately.  Only meaningful on a fresh start; a zero-crossing
-        // restart already has fuzzy timing by design.
+        // accurately.
         msynth[osc]->pcm_delay = 0;
-        if (fresh_start && AMY_IS_SET(synth[osc]->sample_offset))
+        if (AMY_IS_SET(synth[osc]->sample_offset))
             msynth[osc]->pcm_delay = synth[osc]->sample_offset % AMY_BLOCK_SIZE;
-        if (want_stretch) pcm_stretch_note_on(osc, preset);
-        else synth[osc]->stretch.active = 0;
+        if (!(want_stretch && pcm_stretch_note_on(osc, preset)) && synth[osc]->stretch != NULL)
+            synth[osc]->stretch->active = 0;
         // Make sure PCM waveforms are excluded from auto-termination, so we don't cut-off samples with silent gaps.  May be modified by note_off.
         synth[osc]->terminate_on_silence = 0;
     }
@@ -740,7 +718,7 @@ SAMPLE render_pcm(SAMPLE* buf, uint16_t osc) {
         memorypcm_preset_t *preset =
             get_preset_for_preset_number(synth[osc]->preset, &rom_local);
         // fit= notes render through the granular stretch engine instead.
-        if (synth[osc]->stretch.active && preset->type != AMY_PCM_TYPE_FILE
+        if (pcm_stretch_active(osc) && preset->type != AMY_PCM_TYPE_FILE
             && preset->sample_ram != NULL && preset->length > 0) {
             return render_pcm_stretch(buf, osc, preset);
         }
@@ -777,12 +755,46 @@ SAMPLE render_pcm(SAMPLE* buf, uint16_t osc) {
             return 0;
         }
 
-        SAMPLE amp = F2S(msynth[osc]->amp);
+        // msynth amp is the envelope at the end of this block, last_amp where the previous block ended;
+        // ramp between them across the block, as render_lut does, so an envelope change is a slope
+        // rather than a once-per-block step in the gain.
+        SAMPLE amp = F2S(msynth[osc]->last_amp);
+        SAMPLE amp_step = SHIFTR(F2S(msynth[osc]->amp) - amp, BLOCK_SIZE_BITS);
         PHASOR step = F2P((playback_freq / (float)AMY_SAMPLE_RATE) / (float)(1 << (PCM_INDEX_BITS - PCM_INDEX_STEP_EXTRA_BITS)));
         const LUTSAMPLE* table = preset->sample_ram;
         uint32_t base_index_base = INT_OF_P(synth[osc]->phase, PCM_INDEX_BITS);
         uint32_t base_index = base_index_base;
         PHASOR phase = (synth[osc]->phase - (base_index_base << PCM_INDEX_FRAC_BITS)) << PCM_INDEX_STEP_EXTRA_BITS;
+        if (msynth[osc]->fade_end) {
+            // The note this one retriggered, fading out under it (see pcm_note_on): the same table
+            // and step, from its own position, gain = (distance left to fade_end) / PCM_RETRIG_FADE_FRAMES,
+            // 1 where it was armed and 0 at the end, through the same amp ramp.  Bounded by the
+            // table as it is now, in case the preset changed under a running fade.
+            if (msynth[osc]->fade_end > I2P(sample_length, PCM_INDEX_BITS))
+                msynth[osc]->fade_end = I2P(sample_length, PCM_INDEX_BITS);
+            uint32_t fbase = INT_OF_P(msynth[osc]->fade_phase, PCM_INDEX_BITS);
+            PHASOR fphase = (msynth[osc]->fade_phase - (fbase << PCM_INDEX_FRAC_BITS)) << PCM_INDEX_STEP_EXTRA_BITS;
+            uint32_t findex = fbase;
+            PHASOR fpos = msynth[osc]->fade_phase;
+            SAMPLE famp = amp;
+            for (uint16_t i = 0; i < AMY_BLOCK_SIZE && fpos < msynth[osc]->fade_end; i++) {
+                SAMPLE frac = S_FRAC_OF_P(fphase, PCM_INDEX_BITS - PCM_INDEX_STEP_EXTRA_BITS);
+                LUTSAMPLE b = pcm_stretch_read(table, preset->channels, synth[osc]->wave, findex);
+                LUTSAMPLE c = (findex + 1 < sample_length) ? pcm_stretch_read(table, preset->channels, synth[osc]->wave, findex + 1) : b;
+                SAMPLE sample = L2S(b) + MUL4_SS(L2S(c - b), frac);
+                SAMPLE gain = SHIFTL((SAMPLE)(msynth[osc]->fade_end - fpos), S_FRAC_BITS - PCM_INDEX_FRAC_BITS - PCM_RETRIG_FADE_SHIFT);
+                SAMPLE value = buf[i] + MUL4_SS(famp, MUL0_SS(sample, gain));
+                famp += amp_step;
+                buf[i] = value;
+                if (value < 0) value = -value;
+                if (value > max_value) max_value = value;
+                fphase = P_WRAPPED_SUM(fphase, step);
+                findex = fbase + INT_OF_P(fphase, PCM_INDEX_BITS - PCM_INDEX_STEP_EXTRA_BITS);
+                fpos = I2P(findex, PCM_INDEX_BITS) + (S_FRAC_OF_P(fphase, PCM_INDEX_BITS - PCM_INDEX_STEP_EXTRA_BITS) >> (S_FRAC_BITS - (PCM_INDEX_FRAC_BITS)));
+            }
+            if (fpos >= msynth[osc]->fade_end) msynth[osc]->fade_end = 0;
+            else msynth[osc]->fade_phase = fpos;
+        }
         // sample_offset (po): a fresh note-on starts partway into this block,
         // leaving the head silent, so slices can butt-join sample-accurately.
         uint16_t start_i = 0;
@@ -790,6 +802,7 @@ SAMPLE render_pcm(SAMPLE* buf, uint16_t osc) {
             start_i = msynth[osc]->pcm_delay;
             msynth[osc]->pcm_delay = 0;
         }
+        amp += amp_step * start_i;
         for(uint16_t i=start_i; i < AMY_BLOCK_SIZE; i++) {
             SAMPLE frac = S_FRAC_OF_P(phase, PCM_INDEX_BITS - PCM_INDEX_STEP_EXTRA_BITS);
             LUTSAMPLE b = 0;
@@ -798,7 +811,6 @@ SAMPLE render_pcm(SAMPLE* buf, uint16_t osc) {
             // For non-file samples, we have to check for end of sample/looping.
             if(preset->type != AMY_PCM_TYPE_FILE) {
                 if ((msynth[osc]->state == PCM_LOOP
-                     || msynth[osc]->state == PCM_LOOP_ONCE_INTERNAL
                      || msynth[osc]->state == PCM_LOOP_STOP
                      || msynth[osc]->state == PCM_LOOP_FOREVER)
                     && base_index >= msynth[osc]->loopend) { // loopend
@@ -806,11 +818,6 @@ SAMPLE render_pcm(SAMPLE* buf, uint16_t osc) {
                     // back to loopstart
                     phase &= ((1L << (PCM_INDEX_FRAC_BITS + PCM_INDEX_STEP_EXTRA_BITS)) - 1);
                     base_index_base = msynth[osc]->loopstart + (base_index - msynth[osc]->loopend);
-                    if (msynth[osc]->state == PCM_LOOP_ONCE_INTERNAL) {
-                        msynth[osc]->state = msynth[osc]->next_state;  // Only loops once.
-                        msynth[osc]->loopstart = preset->loopstart;
-                        msynth[osc]->loopend = preset->loopend;
-                    }
                     //fprintf(stderr, "time %.3f sample %d LOOP: old_index %d new_index %d phase 0x%lx\n", amy_global.time, i, base_index, base_index_base, phase);
                     base_index = base_index_base;
                 } else if(base_index >= sample_length) { // end
@@ -845,24 +852,15 @@ SAMPLE render_pcm(SAMPLE* buf, uint16_t osc) {
                 c = (next_index < sample_length) ? table[next_index] : b;
             }
             SAMPLE sample = L2S(b) + MUL4_SS(L2S(c - b), frac);
-#if !AMY_PCM_RETRIG_ZERO_CROSS
-            // LOCAL EDIT: retrig fade - gain ramps 1 -> 0 across the fade span
-            // armed in pcm_note_on. After the splice the state has already
-            // advanced to next_state, so new-note samples pass unscaled.
-            if (preset->type != AMY_PCM_TYPE_FILE
-                && msynth[osc]->state == PCM_LOOP_ONCE_INTERNAL) {
-                uint32_t rem = msynth[osc]->loopend - base_index;
-                if (rem > PCM_RETRIG_FADE_FRAMES) rem = PCM_RETRIG_FADE_FRAMES;
-                sample = MUL4_SS(sample, (SAMPLE)(int32_t)rem * SHIFTR(F2S(1.0f), 6));
-            }
-#endif
             SAMPLE value = buf[i] + MUL4_SS(amp, sample);
+            amp += amp_step;
             buf[i] = value;   
             if (value < 0) value = -value;
             if (value > max_value) max_value = value;  
             phase = P_WRAPPED_SUM(phase, step);
             base_index = base_index_base + INT_OF_P(phase, PCM_INDEX_BITS - PCM_INDEX_STEP_EXTRA_BITS);
         }
+        msynth[osc]->last_amp = msynth[osc]->amp;
         //synth[osc]->phase = phase;
         synth[osc]->phase = I2P(base_index, PCM_INDEX_BITS) + (S_FRAC_OF_P(phase, PCM_INDEX_BITS - PCM_INDEX_STEP_EXTRA_BITS) >> (S_FRAC_BITS - (PCM_INDEX_FRAC_BITS)) ); //  + PCM_INDEX_STEP_EXTRA_BITS
         //fprintf(stderr, "\rtime %.3f osc %d render_pcm7: preset %d len %d base_ix 0x%lx phase 0x%lx sfracofp 0x%lx step 0x%lx synthphase 0x%lx amp %.3f\n",

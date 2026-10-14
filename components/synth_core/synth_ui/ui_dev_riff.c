@@ -199,13 +199,12 @@ static void riff_dump_synth(uint8_t slot)
         if (AMY_IS_UNSET(base)) continue;
         for (uint16_t o = base; o < AMY_OSCS && osc_to_voice[o] == voices[v]; o++) {
             print_osc_debug(o, true);
-            /* Fields print_osc_debug leaves out: the dist stage, and the KS
-             * ring (two sounding oscs on one ring = stealing). */
-            if (synth[o] != NULL)
-                fprintf(stderr, "  voice %u dist stages=%u bits=%u rate=%u ks_index=%u\n",
-                        (unsigned)voices[v], (unsigned)synth[o]->dist_stages,
-                        (unsigned)synth[o]->dist_bits, (unsigned)synth[o]->dist_rate,
-                        (unsigned)synth[o]->ks_index);
+            /* Fields print_osc_debug leaves out: the dist stage (allocated
+             * on first use, NULL until then). */
+            if (synth[o] != NULL && synth[o]->dist != NULL)
+                fprintf(stderr, "  voice %u dist stages=%u bits=%u rate=%u\n",
+                        (unsigned)voices[v], (unsigned)synth[o]->dist->stages,
+                        (unsigned)synth[o]->dist->bits, (unsigned)synth[o]->dist->rate);
         }
     }
 }
@@ -217,13 +216,9 @@ static void riff_dump_synth(uint8_t slot)
  * does is print a torn value. */
 void synth_ui_dev_riff_dump(void)
 {
-    bool tune; uint8_t stages; float stiff;
     float soft, hard, pick, shape, comb;
-    ks_loop_get(&tune, &stages, &stiff);
     ks_excite_get(&soft, &hard, &pick, &shape, &comb);
-    fprintf(stderr, "==== RIFF AMY DUMP ks: tune=%d stages=%u stiff=%g release=%d "
-            "excite soft=%g hard=%g pick=%g shape=%g comb=%g ====\n",
-            tune, (unsigned)stages, (double)stiff, ks_release_get(),
+    fprintf(stderr, "==== RIFF AMY DUMP ks excite soft=%g hard=%g pick=%g shape=%g comb=%g ====\n",
             (double)soft, (double)hard, (double)pick, (double)shape, (double)comb);
     int li = riff_first_melodic_layer();
     if (li >= 0) {

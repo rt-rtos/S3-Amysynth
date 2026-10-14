@@ -290,9 +290,9 @@ void sequencer_release_synth(uint8_t synth_id)
  * (seq_core_state.c) can shift it with the other per-layer parallel arrays. */
 uint8_t s_voices_applied[MAX_LAYERS][SEQ_TRACKS];
 
-/* KS voices per row (DEV menu, volatile). Bounded by CONFIG_SEQ_KS_VOICES_MAX,
- * which is what main.c sizes amy_cfg.ks_oscs for. Two by default, so a note's
- * tail rings under the next note on the same row. */
+/* KS voices per row (DEV menu, volatile). Bounded by CONFIG_SEQ_KS_VOICES_MAX.
+ * Two by default, so a note's tail rings under the next note on the same
+ * row. */
 static uint8_t s_ks_voices = (CONFIG_SEQ_KS_VOICES_MAX < 2) ? CONFIG_SEQ_KS_VOICES_MAX : 2;
 
 uint8_t seq_track_num_voices(const seq_layer_t *layer, uint8_t track)
@@ -343,10 +343,6 @@ void sequencer_core_set_ks_voices(uint8_t n)
     }
 }
 
-uint8_t sequencer_core_ks_row_demand(uint8_t layers)
-{
-    return (uint8_t)(layers * SEQ_TRACKS * CONFIG_SEQ_KS_VOICES_MAX);
-}
 
 /* ── Melodic per-track unison ──────────────────────────────────────────────
  * Contract in sequencer_core.h. Storage is seq_layer_t.track_unison[] (count

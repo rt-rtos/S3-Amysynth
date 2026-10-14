@@ -436,37 +436,9 @@ void app_main(void)
      * only while its Split toggle is on, but the tables are preallocated
      * either way, so this is a fixed cost, not a per-split one. */
     amy_cfg.max_buses = FX_BUS_COUNT;
-    /* Karplus-Strong rings. One ring is one physical string: two voices on a
-     * ring damp each other's decay, and a note-on refills the ring under any
-     * voice still reading it (a silent note-on measured +134% on the voices
-     * already sounding). So ks_oscs is the count of KS voices that can sound
-     * at once before ks_alloc_row() starts stealing the quietest ring. All
-     * rings are allocated in amy_start() and held for the life of AMY; a
-     * ring is AMY_SAMPLE_RATE/55+1 SAMPLEs, ~3.5 KB at 48 kHz.
-     * CONFIG_SEQ_KS_RINGS overrides; 0 sizes for SEQ_KS_LAYERS melodic layers
-     * with every row at the SEQ_KS_VOICES_MAX ceiling, plus - in PSRAM,
-     * where the room is - the arp's and the live voice's KS voices. */
-#if CONFIG_SEQ_KS_RINGS_IN_PSRAM
-    amy_cfg.ram_caps_ks = MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT;
-#else
-    amy_cfg.ram_caps_ks = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
-#endif
-#if CONFIG_SEQ_KS_RINGS > 0
-    amy_cfg.ks_oscs = CONFIG_SEQ_KS_RINGS;
-#else
-    {
-        uint16_t rings = sequencer_core_ks_row_demand(CONFIG_SEQ_KS_LAYERS);
-#if CONFIG_SEQ_KS_RINGS_IN_PSRAM
-        rings += sequencer_core_arp_voices();
-#if CONFIG_SYNTH_WIRELESS
-        rings += live_play_num_voices();
-#endif
-#endif
-        amy_cfg.ks_oscs = (uint8_t)rings;
-    }
-#endif
-    ESP_LOGI(TAG, "KS rings: %u in %s", (unsigned)amy_cfg.ks_oscs,
-             (amy_cfg.ram_caps_ks & MALLOC_CAP_SPIRAM) ? "PSRAM" : "internal");
+    /* Karplus-Strong: amy_default_config() leaves ks_oscs on, and each KS osc
+     * gets its own ring (AMY_SAMPLE_RATE/55+1 SAMPLEs, ~3.5 KB at 48 kHz) at
+     * its first KS note-on, from ram_caps_oscs, freed with the osc. */
     /* Disable AMY's CPU-overload failsafe (v1.2.121+): its per-block timing
      * span wraps amy_render(), whose body holds amy_queue_lock, so time the
      * render task spends BLOCKED on the lock while the ingest pump applies

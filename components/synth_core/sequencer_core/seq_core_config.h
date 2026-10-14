@@ -148,7 +148,9 @@
  * then arp, ratchet, chord, chord preview, clip.
  *
  * AMY's sequencer_add_wire rejects `tag >= max_sequences`, so sequences[]
- * needs at least (highest_tag + 1) user-addressable entries. main.c derives
+ * needs at least (highest_tag + 1) user-addressable entries. The same count
+ * is the event pool: sends to a tag add to it, so the app clears a tag before
+ * re-sending and each tag holds at most one event. main.c derives
  * amy_cfg.max_sequencer_tags from SEQ_CLIP_TAG_MAX + 2 (the top block), so
  * appending a block means moving that reference. */
 #define SEQ_STEP_TAG_COUNT    (MAX_LAYERS * SEQ_TRACKS * SEQ_MAX_STEPS * 2u) /* 1280 */

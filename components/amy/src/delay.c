@@ -110,9 +110,6 @@ void delay_line_in_out(SAMPLE *in, SAMPLE *out, int n_samples, SAMPLE* mod_in, S
     int index_feedback = (index_in - delay_line->fixed_delay) & index_mask;
 
     SAMPLE *delay = delay_line->samples;
-    // LOCAL EDIT (S3-Amysynth): sweep centered on fixed_delay so chorus_max_delay
-    // bounds it (upstream PR candidate; the port to fixed point had pinned the
-    // center to half the line).
     // Tap center and modulation span as fractions of the line length.
     SAMPLE center = AMY_I2S(delay_line->fixed_delay, index_bits);
     SAMPLE span = MUL8_SS(center, mod_scale);
