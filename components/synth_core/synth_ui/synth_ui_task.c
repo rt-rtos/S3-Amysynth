@@ -598,6 +598,26 @@ bool synth_ui_toggle_step_at_cursor(void)
     return true;
 }
 
+/* SHIFT+0 on the SEQ screen: contract in synth_ui.h. */
+void synth_ui_seq_solo_chord(bool long_press)
+{
+    uint8_t li = seq_state.active_layer_idx;
+    uint8_t t  = seq_state.selected_track;
+    if (long_press) {
+        sequencer_core_clear_all_solos();
+        seq_state.algo_banner_value = DISPLAY_SEQ_BANNER_SOLO_CLR;
+        ESP_LOGI(TAG_TASK, "solos cleared");
+    } else {
+        bool on = !sequencer_core_get_track_solo(li, t);
+        sequencer_core_set_track_solo(li, t, on);
+        seq_state.algo_banner_value = on ? DISPLAY_SEQ_BANNER_SOLO_ON
+                                         : DISPLAY_SEQ_BANNER_SOLO_OFF;
+        ESP_LOGI(TAG_TASK, "solo L%u T%u %s", li + 1u, t + 1u, on ? "on" : "off");
+    }
+    seq_state.algo_banner_ticks = 24;   /* ~1.2 s at the 20 Hz UI rate */
+    s_force_redraw = true;
+}
+
 /* Encoder push: in edit mode toggles the step under the cursor on/off;
  * otherwise it acts as a play/pause toggle. */
 void synth_ui_handle_button(void)

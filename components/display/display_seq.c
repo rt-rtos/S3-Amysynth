@@ -230,7 +230,7 @@ void display_seq_draw_frame(u8g2_t *u8g2, const display_seq_state_t *state, uint
         }
     }
 
-    /* === FM-ALGORITHM BANNER (Shift+Turn feedback) ===
+    /* === TIMED BANNER (Shift+Turn FM algorithm, SHIFT+0 solo) ===
      * Same overlay shape as the patch-name banner above; timed rather than
      * hold-gated, so it outlives the detent by ~a second. Drawn last: if both
      * banners are up (patch hold + shift turn) this one wins. */
@@ -240,6 +240,12 @@ void display_seq_draw_frame(u8g2_t *u8g2, const display_seq_state_t *state, uint
             snprintf(abuf, sizeof(abuf), "NOT FM");
         } else if (state->algo_banner_value == DISPLAY_ALGO_BANNER_CUSTOM) {
             snprintf(abuf, sizeof(abuf), "ALGO CUST");
+        } else if (state->algo_banner_value == DISPLAY_SEQ_BANNER_SOLO_ON) {
+            snprintf(abuf, sizeof(abuf), "SOLO");
+        } else if (state->algo_banner_value == DISPLAY_SEQ_BANNER_SOLO_OFF) {
+            snprintf(abuf, sizeof(abuf), "SOLO OFF");
+        } else if (state->algo_banner_value == DISPLAY_SEQ_BANNER_SOLO_CLR) {
+            snprintf(abuf, sizeof(abuf), "SOLO CLR");
         } else {
             snprintf(abuf, sizeof(abuf), "ALGO %u",
                      (unsigned)state->algo_banner_value);

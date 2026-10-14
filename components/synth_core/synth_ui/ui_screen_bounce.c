@@ -449,9 +449,9 @@ void bounce_menu_service(void)
     if (changed) s_force_redraw = true;
 }
 
-/* SHIFT+0 from any screen (the gesture dispatcher). The bounce module does
- * the transport; the redraw request is for the REC badge and, if open, the
- * page. */
+/* SHIFT+0 from any screen but the sequencer's (the gesture dispatcher). The
+ * bounce module does the transport; the redraw request is for the REC badge
+ * and, if open, the page. */
 void synth_ui_bounce_chord(bool long_press)
 {
     clip_bounce_chord(long_press);

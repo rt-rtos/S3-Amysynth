@@ -41,8 +41,8 @@ Screens are changed only through the Menu.
 
 | Gesture | Action |
 |---|---|
-| SHIFT + Button 0 (press) | Loop bounce: start into the first empty clip slot, cancel one still waiting for its bar line, or stop a running one at the next pattern-period boundary. Works from any screen |
-| SHIFT + Button 0 (hold) | Discard a running bounce |
+| SHIFT + Button 0 (press) | Sequencer screen, no menu: toggle solo on the selected track (a SOLO / SOLO OFF banner). Every other screen: loop bounce - start into the first empty clip slot, cancel one still waiting for its bar line, or stop a running one at the next pattern-period boundary |
+| SHIFT + Button 0 (hold) | Sequencer screen, no menu: clear every solo, the arp's included (SOLO CLR banner). Every other screen: discard a running bounce |
 | SHIFT + Button 1 | Open the ADSR editor on the current instrument (Seq, Arp, Drone screens, or the Wireless menu page). With an editor open: commit and close it |
 | SHIFT + Button 2 | Sequencer screen, no menu: open the Step Trig popup. Popup open: close it. Filter/LFO/DIST/ADSR editor open: release the open tab to the patch |
 | SHIFT + Button 3 | Sequencer screen, no menu: open the menu on the Layer page, on the row it was left on if the menu was closed on that page's layer entry, else on Gate. Arpeggiator screen, no menu: the same on the page's ARP entry, else on Level. Menu open on the Wireless page: switch to the Layer page's LIVE entry, on Level. Menu open on the Layer page: close it. Filter/LFO/DIST/ADSR editor open on a melodic row: flip the row between its own voice block and the layer's shared block |
@@ -88,6 +88,7 @@ screen; a DEV status bar replaces it on every screen while on.
 | Button 1 hold + turn | Cycle the patch of the selected track (drum layer: that drum track's patch) |
 | Button 2 hold + turn | Transpose the selected track. Melodic: step through C1..C7 then the defined chord presets. Drum: semitones, clamped 0..127 |
 | SHIFT + turn | Step the active melodic layer's FM algorithm live; a non-FM patch shows a NOT FM banner; drum layers ignore it. Button 1 hold or Button 2 hold take precedence |
+| SHIFT + Button 0 (press / hold) | Toggle solo on the selected track / clear every solo (Global gestures) |
 | Button 3 (tap) | Menu |
 
 ## Step Trig popup

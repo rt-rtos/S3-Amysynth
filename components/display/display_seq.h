@@ -29,6 +29,11 @@ typedef enum {
 #define DISPLAY_ALGO_BANNER_NOFM   0xFF
 /* The FM_CUSTOM voice is on its authored (custom) topology. */
 #define DISPLAY_ALGO_BANNER_CUSTOM 0xFE
+/* SHIFT+0 solo chord: the selected track was soloed, unsoloed, or every solo
+ * was cleared. */
+#define DISPLAY_SEQ_BANNER_SOLO_ON  0xFD
+#define DISPLAY_SEQ_BANNER_SOLO_OFF 0xFC
+#define DISPLAY_SEQ_BANNER_SOLO_CLR 0xFB
 
 /* ── Global sequencer display/UI state ── */
 typedef struct {
@@ -46,12 +51,13 @@ typedef struct {
                                        labels/banner show PCM presets, not
                                        patches. Mirror of the core engine,
                                        refreshed by seq_view_signature().  */
-    uint8_t     algo_banner_ticks;  /* SEQ screen "ALGO n" banner: UI frames
-                                       left to show it (Shift+Turn feedback,
-                                       decayed by synth_ui_task); 0 = hidden */
-    uint8_t     algo_banner_value;  /* algorithm index shown by the banner;
-                                       DISPLAY_ALGO_BANNER_NOFM = the active
-                                       patch has no FM algorithm            */
+    uint8_t     algo_banner_ticks;  /* SEQ screen timed banner ("ALGO n" for
+                                       Shift+Turn, SOLO for SHIFT+0): UI
+                                       frames left to show it (decayed by
+                                       synth_ui_task); 0 = hidden           */
+    uint8_t     algo_banner_value;  /* algorithm index shown by the banner,
+                                       or one of the DISPLAY_*_BANNER_*
+                                       sentinels above                      */
 
     /* ── Screen + menu overlay ── */
     ui_mode_t   ui_mode;            /* which top-level screen is active   */

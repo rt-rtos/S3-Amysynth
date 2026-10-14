@@ -313,11 +313,18 @@ bool synth_ui_graph_is_active(void);
 /* Open the curve editor seeded from the current melodic ADSR envelope. */
 void synth_ui_graph_open_envelope(void);
 
-/* SHIFT+0 loop-bounce chord (the gesture dispatcher): a press starts a bounce
- * into the first empty slot, cancels one still waiting for its bar line, or
- * stops a running one on the next pattern-period boundary; a long press
- * discards a running one. */
+/* SHIFT+0 loop-bounce chord (the gesture dispatcher, every screen but the
+ * sequencer's): a press starts a bounce into the first empty slot, cancels
+ * one still waiting for its bar line, or stops a running one on the next
+ * pattern-period boundary; a long press discards a running one. */
 void synth_ui_bounce_chord(bool long_press);
+
+/* SHIFT+0 on the SEQ screen (the gesture dispatcher): a press toggles solo on
+ * the selected track of the active layer, a long press clears every solo
+ * (sequencer_core_clear_all_solos()). Solo semantics: sequencer_core.h,
+ * "Per-track mute / solo". Shows the SEQ screen banner. Core 0 input path
+ * only. */
+void synth_ui_seq_solo_chord(bool long_press);
 
 /* Route input to the pop-up while it is active. Each returns true if the
  * pop-up consumed the event (caller should then skip normal sequencer input).
