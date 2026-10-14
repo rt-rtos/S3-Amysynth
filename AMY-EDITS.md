@@ -246,10 +246,12 @@ Codegen-driven edits from the per-function probe, each marked in place:
   host-sim saw and pulse sweeps. Local only: it serves the unison cluster.
   Its cubic counterpart and the FM-256 kernel are upstream (#1171, see
   the Dropped table).
-- Under LTO, upstream's `render_ks` is inlined into `render_osc_wave`; its
-  ring loop is a 45-instruction hardware loop with stack traffic in the
-  built ELF, against 28 instructions when the file is compiled alone. The
-  retired local `render_ks` was kept noinline to avoid this. Not acted on.
+- `render_ks` is `AMY_NOINLINE`. Under LTO it was inlined into
+  `render_osc_wave`, whose live state spilled the ring loop: a 45-instruction
+  hardware loop with stack traffic in the built ELF. Kept out of line it is
+  the 28-instruction hardware loop the file gives compiled alone; one stack
+  load per sample remains (the gain-ramp step; the three 32x32->64 multiplies
+  take the other registers). Not posted upstream.
 
 ### `oscillators.c` + `amy.h` - Karplus-Strong excitation shaping (local trial)
 

@@ -1016,7 +1016,10 @@ static struct {
 
 /* karplus-strong */
 
-SAMPLE render_ks(SAMPLE * buf, uint16_t osc) {
+// LOCAL EDIT (S3-Amysynth): noinline. Under LTO render_ks inlines into
+// render_osc_wave, whose live state spills the ring loop's registers: the loop
+// stays a hardware loop but grows from 28 to 45 insns with stack traffic.
+AMY_NOINLINE SAMPLE render_ks(SAMPLE * buf, uint16_t osc) {
     SAMPLE half = MUL0_SS(F2S(0.5f), F2S(synth[osc]->feedback));
     // Ramp the gain across the block from last_amp to amp, as the other
     // oscillators do.
