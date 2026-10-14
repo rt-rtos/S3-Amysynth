@@ -76,7 +76,7 @@ static bool undo_save_layers(void)
     uint8_t n = sequencer_core_get_num_layers();
     seq_layer_t *buf = heap_caps_malloc((size_t)n * sizeof(seq_layer_t), MALLOC_CAP_SPIRAM);
     if (buf == NULL) return false;
-    for (uint8_t i = 0; i < n; i++) sequencer_core_export_layer(i, &buf[i]);
+    for (uint8_t i = 0; i < n; i++) sequencer_core_export_layer_authored(i, &buf[i]);
     s_undo.layers      = buf;
     s_undo.layer_count = n;
     return true;

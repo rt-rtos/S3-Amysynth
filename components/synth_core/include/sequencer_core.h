@@ -694,13 +694,25 @@ seq_layer_type_t sequencer_core_get_layer_type(uint8_t layer_idx);
  * (components/project_store) need not go through per-field setters.
  * Applier-task only - same single-writer contract as add/delete_layer. */
 
-/* Copy layer layer_idx's persistable state into *out. False if out of range. */
+/* Copy layer layer_idx's persistable state into *out. False if out of range.
+ * The pitch lane (track_base_note, step_note) holds the resolved notes, as
+ * the UI mirror shows them. */
 bool sequencer_core_export_layer(uint8_t layer_idx, seq_layer_t *out);
+
+/* sequencer_core_export_layer, with the pitch lane holding each track's
+ * authored source note instead of its resolved one. This is the form to
+ * persist or to hand back to import_layer later: under a progression the
+ * resolved note depends on the chord current at export time, the source
+ * note does not. */
+bool sequencer_core_export_layer_authored(uint8_t layer_idx, seq_layer_t *out);
 
 /* Overwrite the layer's persistable fields from *src, re-push
  * patches/envelopes/filters/LFO, and resync scheduled steps. synth_id keeps
  * its live values; num_tracks is taken from *src, clamped to
- * SEQ_TRACKS_DEFAULT..SEQ_TRACKS. Applier-task only. */
+ * SEQ_TRACKS_DEFAULT..SEQ_TRACKS. src's track_base_note is taken as each
+ * track's source note and re-resolved against the imported chord and the
+ * current quantizer, so both export forms load (a resolved note resolves to
+ * itself). Applier-task only. */
 bool sequencer_core_import_layer(uint8_t layer_idx, const seq_layer_t *src);
 
 /* ── Per-layer step / note control ── */

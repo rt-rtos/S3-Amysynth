@@ -30,6 +30,31 @@ bool sequencer_core_export_layer(uint8_t layer_idx, seq_layer_t *out)
     return true;
 }
 
+/* Rewrite a track's pitch lane from one note to another over the layer's
+ * active steps, the range seq_apply_track_note writes; steps above num_steps
+ * and steps holding a different note keep theirs. */
+static void seq_relabel_track_note(seq_layer_t *layer, uint8_t t,
+                                   uint8_t from, uint8_t to)
+{
+    if (from == to) return;
+    layer->track_base_note[t] = to;
+    uint8_t n = layer->num_steps;
+    if (n > SEQ_MAX_STEPS) n = SEQ_MAX_STEPS;
+    for (uint8_t s = 0; s < n; s++) {
+        if (layer->step_note[t][s] == from) layer->step_note[t][s] = to;
+    }
+}
+
+bool sequencer_core_export_layer_authored(uint8_t layer_idx, seq_layer_t *out)
+{
+    if (!sequencer_core_export_layer(layer_idx, out)) return false;
+    for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
+        seq_relabel_track_note(out, t, out->track_base_note[t],
+                               s_track_source_note[layer_idx][t]);
+    }
+    return true;
+}
+
 bool sequencer_core_import_layer(uint8_t layer_idx, const seq_layer_t *src)
 {
     if (layer_idx >= s_num_layers || !src) return false;
@@ -56,11 +81,10 @@ bool sequencer_core_import_layer(uint8_t layer_idx, const seq_layer_t *src)
     memcpy(dst->synth_id, synth_id, sizeof synth_id);
     dst->num_tracks = num_tracks;
 
-    /* Rebuild the per-track source notes from the loaded resolved notes.
-     * s_track_source_note is not persisted, and keeping the pre-load values
-     * makes the first re-resolve after load snap every track back to stale
-     * pitches - and strips a loaded chord sentinel entirely. The resolved note
-     * re-resolves to itself (idempotent snap), so it is a faithful source.
+    /* The loaded pitch lane is the source (export_layer_authored), then
+     * resolved here so the resync below emits the resolved pitches. Keeping
+     * the pre-load sources instead would snap every track back to stale
+     * pitches on the first re-resolve and strip a loaded chord sentinel.
      * Chord sentinels double as their own source; plain notes also seed the
      * chord-delete fallback. */
     for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
@@ -69,6 +93,11 @@ bool sequencer_core_import_layer(uint8_t layer_idx, const seq_layer_t *src)
         if (!SEQ_NOTE_IS_CHORD(n)) {
             s_track_prev_plain[layer_idx][t] = n;
         }
+    }
+    uint8_t rows[SEQ_TRACKS];
+    seq_resolve_layer_rows(layer_idx, dst->chord_root, dst->chord_type, rows);
+    for (uint8_t t = 0; t < num_tracks; t++) {
+        seq_relabel_track_note(dst, t, dst->track_base_note[t], rows[t]);
     }
 
     /* Re-push the full sound config. The public patch setters dedup against the

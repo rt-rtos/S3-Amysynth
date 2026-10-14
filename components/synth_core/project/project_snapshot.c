@@ -1316,7 +1316,7 @@ bool project_snapshot_save(uint8_t slot, const char *name)
     ser_glob(&w);
     uint8_t n = sequencer_core_get_num_layers();
     for (uint8_t i = 0; i < n; i++) {
-        if (sequencer_core_export_layer(i, scratch)) ser_layer(&w, scratch);
+        if (sequencer_core_export_layer_authored(i, scratch)) ser_layer(&w, scratch);
     }
     ser_arp(&w);
     ser_drone(&w);
