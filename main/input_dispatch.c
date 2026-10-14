@@ -19,10 +19,11 @@ static volatile bool s_drum_select_held = false;
 // task reads it for the Shift+Turn gesture (same as s_patch_held).
 static volatile bool s_shift_held = false;
 static bool s_shift_chord_latched[MY_BUTTON_MAX] = { false };
-/* SHIFT+0 chord in flight: PRESS_DOWN seen with SHIFT held, waiting for the
- * release (press) or the long-press threshold. Which action it runs is fixed
- * at the press: solo on the sequencer screen, loop bounce everywhere else. */
-static enum { CHORD0_NONE, CHORD0_BOUNCE, CHORD0_SOLO } s_chord0 = CHORD0_NONE;
+/* SHIFT+0 solo chord in flight: PRESS_DOWN seen with SHIFT held, waiting for
+ * the release (press) or the long-press threshold. The target is fixed at the
+ * press: the selected track on the sequencer screen, the arp on its screen. */
+typedef enum { CHORD0_NONE, CHORD0_SEQ, CHORD0_ARP } chord0_t;
+static chord0_t s_chord0 = CHORD0_NONE;
 
 void input_dispatch_button(my_button_id_t button_id, button_event_t event)
 {
@@ -73,20 +74,18 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
         return;
     }
 
-    /* SHIFT+0 chord: latched on PRESS_DOWN like the others, but it acts on
-     * the release (a press) or on LONG_PRESS_START (a hold). On the sequencer
-     * screen it is solo (press: toggle the selected track, hold: clear every
-     * solo); elsewhere the loop bounce (press: start / cancel / quantized
-     * stop, hold: discard a running take), so one hand runs the bounce from
-     * any other screen. The latch below swallows the SINGLE_CLICK that
-     * follows the release, so button 0's own tap gesture never fires. */
+    /* SHIFT+0 solo chord: latched on PRESS_DOWN like the others, but it acts
+     * on the release (a press: toggle the target's solo) or on
+     * LONG_PRESS_START (a hold: clear every solo). The latch below swallows
+     * the SINGLE_CLICK that follows the release, so button 0's own tap
+     * gesture never fires. */
     if (button_id == MY_BUTTON_0 && s_chord0 != CHORD0_NONE) {
-        bool solo = (s_chord0 == CHORD0_SOLO);
         if (event == BUTTON_LONG_PRESS_START || event == BUTTON_PRESS_UP) {
             bool hold = (event == BUTTON_LONG_PRESS_START);
+            chord0_t c = s_chord0;
             s_chord0 = CHORD0_NONE;
-            if (solo) synth_ui_seq_solo_chord(hold);
-            else      synth_ui_bounce_chord(hold);
+            if (c == CHORD0_ARP) synth_ui_arp_solo_chord(hold);
+            else                 synth_ui_seq_solo_chord(hold);
             return;
         }
         if (event != BUTTON_PRESS_DOWN) return;
@@ -94,7 +93,8 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
     }
 
     /* SHIFT chords, fired on the digit's PRESS_DOWN:
-     *   SHIFT+0 -> solo on the sequencer screen, else loop bounce (above)
+     *   SHIFT+0 -> solo on the sequencer and arp screens (above); latched
+     *              but inert elsewhere
      *   SHIFT+1 -> open the ADSR/graph editor, or close+commit an open one
      *   SHIFT+2 -> toggle the step probability/trig editor; inside an
      *              effects editor: release the open tab to the patch
@@ -112,8 +112,9 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
     }
     if (s_shift_held && event == BUTTON_PRESS_DOWN && button_id == MY_BUTTON_0) {
         s_shift_chord_latched[MY_BUTTON_0] = true;
-        s_chord0 = (synth_ui_active_view() == UI_VIEW_SEQ) ? CHORD0_SOLO
-                                                           : CHORD0_BOUNCE;
+        ui_view_id_t sv = synth_ui_active_view();
+        s_chord0 = (sv == UI_VIEW_SEQ) ? CHORD0_SEQ
+                 : (sv == UI_VIEW_ARP) ? CHORD0_ARP : CHORD0_NONE;
         return;
     }
     if (s_shift_held && event == BUTTON_PRESS_DOWN &&

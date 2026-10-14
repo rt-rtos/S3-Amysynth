@@ -53,6 +53,18 @@ void arp_build_view(arp_view_t *out)
     out->patch        = arp_get_patch();
     out->patch_select = seq_state.patch_select_mode;
     out->patch_name   = patch_name_for(out->patch);
+
+    /* SHIFT+0 solo feedback: the SEQ screen's timed banner state, solo
+     * values only (the ALGO values are the sequencer's Shift+Turn). */
+    out->banner = NULL;
+    if (seq_state.algo_banner_ticks > 0) {
+        switch (seq_state.algo_banner_value) {
+            case DISPLAY_SEQ_BANNER_SOLO_ON:  out->banner = "SOLO";     break;
+            case DISPLAY_SEQ_BANNER_SOLO_OFF: out->banner = "SOLO OFF"; break;
+            case DISPLAY_SEQ_BANNER_SOLO_CLR: out->banner = "SOLO CLR"; break;
+            default: break;
+        }
+    }
 }
 
 /* Builds the view into *out so the caller can draw from it without rebuilding. */
@@ -69,6 +81,7 @@ uint32_t arp_view_signature(arp_view_t *out)
     h = fnv1a_bytes(h, &out->patch_select, sizeof(out->patch_select));
     h = fnv1a_bytes(h, &out->portamento_ms, sizeof(out->portamento_ms));
     h = fnv1a_bytes(h, &out->quant_mode, sizeof(out->quant_mode));
+    h = fnv1a_bytes(h, &out->banner, sizeof(out->banner));   /* static strings */
     uint8_t rate = (uint8_t)arp_get_rate();
     h = fnv1a_bytes(h, &rate, sizeof(rate));
     h = fnv1a_bytes(h, out->mode_str, 4);

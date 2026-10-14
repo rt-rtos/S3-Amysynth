@@ -121,11 +121,6 @@ bool     clip_bounce_stop(void);
  * at their next due tick. No-op when IDLE. */
 void     clip_bounce_cancel(void);
 
-/* The one-button transport: IDLE starts (auto slot), ARMED cancels (nothing
- * recorded yet), RECORDING stops - or discards when long is set. TAIL and
- * READY ignore it. */
-void     clip_bounce_chord(bool long_press);
-
 /* Undo the last committed bounce: restore the mute and enable flags the
  * commit replaced and, after a Clear, the layers as they were (import per
  * layer; one whose type changed since is skipped), then clear its slot. One

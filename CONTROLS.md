@@ -41,8 +41,8 @@ Screens are changed only through the Menu.
 
 | Gesture | Action |
 |---|---|
-| SHIFT + Button 0 (press) | Sequencer screen, no menu: toggle solo on the selected track (a SOLO / SOLO OFF banner). Every other screen: loop bounce - start into the first empty clip slot, cancel one still waiting for its bar line, or stop a running one at the next pattern-period boundary |
-| SHIFT + Button 0 (hold) | Sequencer screen, no menu: clear every solo, the arp's included (SOLO CLR banner). Every other screen: discard a running bounce |
+| SHIFT + Button 0 (press) | Sequencer screen, no menu: toggle solo on the selected track. Arpeggiator screen, no menu: toggle the arp's solo. A SOLO / SOLO OFF banner shows the result. Elsewhere: nothing |
+| SHIFT + Button 0 (hold) | Sequencer or Arpeggiator screen, no menu: clear every solo, the arp's included (SOLO CLR banner). Elsewhere: nothing |
 | SHIFT + Button 1 | Open the ADSR editor on the current instrument (Seq, Arp, Drone screens, or the Wireless menu page). With an editor open: commit and close it |
 | SHIFT + Button 2 | Sequencer screen, no menu: open the Step Trig popup. Popup open: close it. Filter/LFO/DIST/ADSR editor open: release the open tab to the patch |
 | SHIFT + Button 3 | Sequencer screen, no menu: open the menu on the Layer page, on the row it was left on if the menu was closed on that page's layer entry, else on Gate. Arpeggiator screen, no menu: the same on the page's ARP entry, else on Level. Menu open on the Wireless page: switch to the Layer page's LIVE entry, on Level. Menu open on the Layer page: close it. Filter/LFO/DIST/ADSR editor open on a melodic row: flip the row between its own voice block and the layer's shared block |
@@ -308,6 +308,7 @@ until Button 2 returns to LIST mode.
 | Button 0 (hold) | Play / stop. A tap does nothing |
 | Button 2 | Ignored |
 | Button 3 (tap) | Menu |
+| SHIFT + Button 0 (press / hold) | Toggle the arp's solo / clear every solo (Global gestures) |
 | SHIFT + Button 1 | Open the ADSR editor on the arp |
 
 ## Drone screens

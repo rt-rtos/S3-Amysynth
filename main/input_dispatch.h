@@ -10,7 +10,7 @@ extern "C" {
 /* Gesture dispatcher: turns button events and encoder steps into synth_ui
  * calls for the active view (synth_ui_active_view()), and owns the hold state
  * the gestures share: patch hold, pitch hold, SHIFT with its per-button chord
- * latches, and the SHIFT+0 chord (solo or bounce). Which gesture does what on
+ * latches, and the SHIFT+0 solo chord. Which gesture does what on
  * which screen is CONTROLS.md.
  *
  * Execution context, both functions: task context on Core 0, after

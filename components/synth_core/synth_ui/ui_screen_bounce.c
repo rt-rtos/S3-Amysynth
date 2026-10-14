@@ -13,8 +13,9 @@
  * ════════════════════════════════════════════════════════════════════════
  * Item model for the loop-bounce recorder and the clip players; page state
  * and input routing live in ui_screen_menu.c. Rows: the next bounce's shape,
- * Rec (the SHIFT+0 chord's transport, on the page's slot instead of the first
- * empty one), Cancel, Undo, four rows per clip slot, then the runtime sampler
+ * Rec (start into the page's slot, cancel one still waiting for its bar
+ * line, or stop a running one at the next pattern-period boundary), Cancel,
+ * Undo, four rows per clip slot, then the runtime sampler
  * (sample_rec: the same mix capture into one drum pad). The shape survives
  * leaving the page; only the failure text is per-visit, shown inline in the
  * Rec row's value until the next arm. */
@@ -447,13 +448,4 @@ void bounce_menu_service(void)
     }
 
     if (changed) s_force_redraw = true;
-}
-
-/* SHIFT+0 from any screen but the sequencer's (the gesture dispatcher). The
- * bounce module does the transport; the redraw request is for the REC badge
- * and, if open, the page. */
-void synth_ui_bounce_chord(bool long_press)
-{
-    clip_bounce_chord(long_press);
-    s_force_redraw = true;
 }

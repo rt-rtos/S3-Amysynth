@@ -29,8 +29,8 @@ typedef enum {
 #define DISPLAY_ALGO_BANNER_NOFM   0xFF
 /* The FM_CUSTOM voice is on its authored (custom) topology. */
 #define DISPLAY_ALGO_BANNER_CUSTOM 0xFE
-/* SHIFT+0 solo chord: the selected track was soloed, unsoloed, or every solo
- * was cleared. */
+/* SHIFT+0 solo chord: the selected track (on the ARP screen, the arp) was
+ * soloed, unsoloed, or every solo was cleared. The arp view shows these too. */
 #define DISPLAY_SEQ_BANNER_SOLO_ON  0xFD
 #define DISPLAY_SEQ_BANNER_SOLO_OFF 0xFC
 #define DISPLAY_SEQ_BANNER_SOLO_CLR 0xFB

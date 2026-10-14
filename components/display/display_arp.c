@@ -147,4 +147,17 @@ void display_arp_draw_frame(u8g2_t *u8g2, const arp_view_t *view)
         u8g2_DrawRFrame(u8g2, bx, by, (uint8_t)(nw + 4), 13, 2);
         u8g2_DrawStr(u8g2, (uint8_t)(bx + 2), (uint8_t)(by + 9), view->patch_name);
     }
+
+    /* Timed banner, same shape and spot; drawn last so it wins. */
+    if (view->banner) {
+        u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
+        uint8_t nw = (uint8_t)u8g2_GetStrWidth(u8g2, view->banner);
+        uint8_t bx = (uint8_t)((128 - (nw + 4)) / 2);
+        uint8_t by = 34;
+        u8g2_SetDrawColor(u8g2, 0);
+        u8g2_DrawBox(u8g2, bx, by, (uint8_t)(nw + 4), 13);
+        u8g2_SetDrawColor(u8g2, 1);
+        u8g2_DrawRFrame(u8g2, bx, by, (uint8_t)(nw + 4), 13, 2);
+        u8g2_DrawStr(u8g2, (uint8_t)(bx + 2), (uint8_t)(by + 9), view->banner);
+    }
 }

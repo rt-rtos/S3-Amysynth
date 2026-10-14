@@ -278,24 +278,6 @@ void clip_bounce_cancel(void)
     ESP_LOGI(TAG, "cancelled");
 }
 
-void clip_bounce_chord(bool long_press)
-{
-    switch (clip_bounce_get_state()) {
-        case CLIP_BOUNCE_IDLE:
-            if (!long_press) clip_bounce_start(CLIP_SLOT_AUTO);
-            break;
-        case CLIP_BOUNCE_ARMED:
-            clip_bounce_cancel();
-            break;
-        case CLIP_BOUNCE_RECORDING:
-            if (long_press) clip_bounce_cancel();
-            else            clip_bounce_stop();
-            break;
-        default:
-            break;
-    }
-}
-
 void clip_bounce_undo(void)
 {
     if (!s_undo.valid) return;

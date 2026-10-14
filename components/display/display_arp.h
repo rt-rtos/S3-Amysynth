@@ -60,6 +60,9 @@ typedef struct {
     uint16_t    patch;
     bool        patch_select; /* true while the patch hold+turn gesture is active */
     const char *patch_name;   /* human-readable name or NULL (table excluded)     */
+    /* Timed banner text (SHIFT+0 solo feedback) or NULL; drawn over the patch
+     * banner when both are up. */
+    const char *banner;
 } arp_view_t;
 
 void display_arp_draw_frame(u8g2_t *u8g2, const arp_view_t *view);
