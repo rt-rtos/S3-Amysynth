@@ -320,15 +320,16 @@ config SEQ_LFO_SHARED
 
 config LFO_SYNTH_MAX
 	int "Shared LFO synths at once"
-	default 16
+	default 32
 	range 1 32
 	depends on SEQ_LFO_SHARED
 	help
 		Most distinct LFO settings that can run as shared LFO synths at the
-		same time. Each one takes an AMY synth number above the slot map,
-		one AMY voice and two oscs (carrier and wobble) while in use; an
-		unused number costs a table entry. An LFO past this count falls
-		back to the software stepper.
+		same time, counting every voice's LFO1 and LFO2. Each one takes an
+		AMY synth number above the slot map, one AMY voice and two oscs
+		(carrier and wobble) while in use; an unused number costs a table
+		entry. An LFO1 past this count falls back to the software stepper;
+		an LFO2 past it does not run.
 
 config SYNTH_CUSTOM_FM
 	bool "Custom FM/DX7 6-operator voices (WIP)"

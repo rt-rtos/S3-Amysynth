@@ -276,7 +276,7 @@ static void drone_apply_lfo(void)
         mapped = lfo_targets_of_patch(s_d.patch, &map);
     }
     if (mapped)
-        (void)lfo_bank_bind(DRONE_SYNTH_MAIN, &map, lfo, bpm, &s_d_lfo_ref);
+        (void)lfo_bank_bind(DRONE_SYNTH_MAIN, VOICE_LFO_SLOT_LFO1, &map, lfo, bpm, &s_d_lfo_ref);
     else
         lfo_bank_unbind(&s_d_lfo_ref);   /* the patch re-apply unwired it */
 #else

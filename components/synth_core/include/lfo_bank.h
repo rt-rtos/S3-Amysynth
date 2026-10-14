@@ -2,15 +2,16 @@
 
 /* ── Shared LFO bank ─────────────────────────────────────────────────────
  * One AMY synth per unique LFO source, shared by every consumer voice that
- * uses the same source settings and wired to it through mod slot 1
- * (voice_lfo_wire() in voice_config.h). The bank owns synth numbers
+ * uses the same source settings and wired to it through a mod slot
+ * (voice_lfo_wire() in voice_config.h: slot 1 for a voice's LFO1, slot 0 for
+ * its LFO2). The bank owns synth numbers
  * LFO_SYNTH_BASE .. LFO_SYNTH_BASE + LFO_SYNTH_MAX - 1 (synth_slots.h), which
  * are no consumer's slot. Each LFO synth is one voice of two oscs: osc 0 the
  * carrier, osc 1 the wobble, configured by voice_lfo_source_apply().
  *
  * Key: the seq_lfo_t fields that configure the source - wave, rate,
  * wob_rate, wob_depth, wob_reach. depth, flt_oct_q, targets and mode stay
- * per consumer (they become that consumer's COEF_MOD1 depths).
+ * per consumer (they become that consumer's depths on its slot's rails).
  *
  * Contract:
  * - Execution context: UI task (Core 0) only, every function but
@@ -83,14 +84,17 @@ typedef enum {
 } lfo_bind_t;
 
 /* Bind `synth` to the LFO synth for lfo's source at bpm and wire the oscs in
- * `map` through voice_lfo_wire(). For an enabled lfo with targets: acquire,
+ * `map` through voice_lfo_wire() on mod slot `slot` (VOICE_LFO_SLOT_*); the
+ * other slot is never touched. A consumer with two LFOs keeps one *ref per
+ * slot. For an enabled lfo with targets: acquire,
  * wire, then release the previous *ref (acquire before release, so an
  * unchanged source keeps its synth and phase). Otherwise, or when the bank is
  * full: unwire the oscs in `map` and release *ref. Execution context as the
  * bank (UI task only). With CONFIG_SEQ_LFO_SHARED off: sends nothing, sets
  * *ref to LFO_BANK_NONE and returns LFO_BIND_FULL. */
-lfo_bind_t lfo_bank_bind(uint8_t synth, const lfo_target_map_t *map,
-                         const seq_lfo_t *lfo, uint16_t bpm, uint8_t *ref);
+lfo_bind_t lfo_bank_bind(uint8_t synth, uint8_t slot,
+                         const lfo_target_map_t *map, const seq_lfo_t *lfo,
+                         uint16_t bpm, uint8_t *ref);
 
 /* Release *ref and set it to LFO_BANK_NONE. Sends no AMY event: for a
  * consumer whose wiring is already gone (patch re-apply, synth released) or

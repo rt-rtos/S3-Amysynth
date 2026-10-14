@@ -236,8 +236,8 @@ static void live_apply_lfo(void)
         mapped = lfo_targets_of_patch(s_patch, &map);
     }
     if (mapped)
-        (void)lfo_bank_bind(LIVE_SYNTH, &map, on ? &s_vp.lfo : NULL, bpm,
-                            &s_live_lfo_ref);
+        (void)lfo_bank_bind(LIVE_SYNTH, VOICE_LFO_SLOT_LFO1, &map,
+                            on ? &s_vp.lfo : NULL, bpm, &s_live_lfo_ref);
     else
         lfo_bank_unbind(&s_live_lfo_ref);   /* the patch re-apply unwired it */
 #else

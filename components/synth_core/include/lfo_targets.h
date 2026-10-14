@@ -30,3 +30,10 @@ typedef struct {
 /* True with *out filled for a mapped family, false for any other patch (*out
  * untouched). out may be NULL to ask only. Pure; any task. */
 bool lfo_targets_of_patch(uint16_t patch, lfo_target_map_t *out);
+
+/* True when the patch string wires mod slot 0 of the oscs in its target map
+ * to its own LFO osc (osc 1, `L1`): Juno (all mapped oscs) and the DX7 bank
+ * (the ALGO osc; the operators keep their own L1, which LFO2 never touches).
+ * Wiring LFO2 there replaces that patch LFO, and only a patch re-apply
+ * brings it back (voice_lfo_wire(), voice_config.h). Pure; any task. */
+bool lfo_targets_patch_owns_slot0(uint16_t patch);

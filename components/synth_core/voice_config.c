@@ -6,6 +6,7 @@
 #include "synth_level.h"    /* synth_level_set_lfo_cap */
 #include "note_div.h"
 #include "seq_clamp.h"
+#include <assert.h>
 #include <math.h>           /* powf: wobble downward-only center offset */
 #include <string.h>
 
@@ -600,10 +601,13 @@ void voice_lfo_source_set_rate(uint8_t synth, uint8_t carrier_osc,
 }
 
 /* Shared-LFO wiring: contract in voice_config.h. Same depth laws as the
- * COEF_MOD (slot 0) rails of voice_apply_native_lfo_topo, on slot 1. */
-void voice_lfo_wire(uint8_t synth, uint16_t voice_mask, uint16_t pitch_mask,
-                    uint16_t scan_mask, const seq_lfo_t *lfo, uint8_t lfo_synth)
+ * COEF_MOD rails of voice_apply_native_lfo_topo, on the given slot. */
+void voice_lfo_wire(uint8_t synth, uint8_t slot, uint16_t voice_mask,
+                    uint16_t pitch_mask, uint16_t scan_mask,
+                    const seq_lfo_t *lfo, uint8_t lfo_synth)
 {
+    assert(slot < NUM_MOD_SOURCES);
+    const int c    = slot ? COEF_MOD1 : COEF_MOD0;
     uint16_t all   = (uint16_t)(voice_mask | pitch_mask | scan_mask);
     bool     wired = lfo && lfo->enabled && lfo->targets &&
                      lfo_synth != LFO_BANK_NONE;
@@ -612,32 +616,32 @@ void voice_lfo_wire(uint8_t synth, uint16_t voice_mask, uint16_t pitch_mask,
         uint16_t bit = (uint16_t)(1u << o);
         if (!(all & bit)) continue;
         amy_event *e = amy_helpers_event_begin();
-        e->synth        = synth;
-        e->osc          = o;
-        e->mod_synth[1] = wired ? lfo_synth : LFO_WIRE_UNSET;
-        e->filter_freq_coefs[COEF_MOD1] = 0.0f;
-        e->amp_coefs[COEF_MOD1]         = 0.0f;
-        e->freq_coefs[COEF_MOD1]        = 0.0f;
-        e->duty_coefs[COEF_MOD1]        = 0.0f;
-        e->pan_coefs[COEF_MOD1]         = 0.0f;
-        e->dist_drive_coefs[COEF_MOD1]  = 0.0f;
-        e->dist_mix_coefs[COEF_MOD1]    = 0.0f;
+        e->synth           = synth;
+        e->osc             = o;
+        e->mod_synth[slot] = wired ? lfo_synth : LFO_WIRE_UNSET;
+        e->filter_freq_coefs[c] = 0.0f;
+        e->amp_coefs[c]         = 0.0f;
+        e->freq_coefs[c]        = 0.0f;
+        e->duty_coefs[c]        = 0.0f;
+        e->pan_coefs[c]         = 0.0f;
+        e->dist_drive_coefs[c]  = 0.0f;
+        e->dist_mix_coefs[c]    = 0.0f;
         if (wired) {
             if ((pitch_mask & bit) && LFO_HAS_TGT(lfo, LFO_TARGET_PITCH))
-                e->freq_coefs[COEF_MOD1] = d * VOICE_LFO_DEPTH_PITCH;
+                e->freq_coefs[c] = d * VOICE_LFO_DEPTH_PITCH;
             if ((scan_mask & bit) && LFO_HAS_TGT(lfo, LFO_TARGET_SCAN))
-                e->duty_coefs[COEF_MOD1] = d * VOICE_LFO_DEPTH_SCAN;
+                e->duty_coefs[c] = d * VOICE_LFO_DEPTH_SCAN;
             if (voice_mask & bit) {
-                if (LFO_HAS_TGT(lfo, LFO_TARGET_FILTER)) e->filter_freq_coefs[COEF_MOD1] = voice_lfo_filter_octaves(lfo);
-                if (LFO_HAS_TGT(lfo, LFO_TARGET_AMP))    e->amp_coefs[COEF_MOD1]         = d * VOICE_LFO_DEPTH_AMP;
+                if (LFO_HAS_TGT(lfo, LFO_TARGET_FILTER)) e->filter_freq_coefs[c] = voice_lfo_filter_octaves(lfo);
+                if (LFO_HAS_TGT(lfo, LFO_TARGET_AMP))    e->amp_coefs[c]         = d * VOICE_LFO_DEPTH_AMP;
                 if (LFO_HAS_TGT(lfo, LFO_TARGET_DIST_DRIVE))
-                    e->dist_drive_coefs[COEF_MOD1] = d * VOICE_LFO_DEPTH_DIST_OCT;
+                    e->dist_drive_coefs[c] = d * VOICE_LFO_DEPTH_DIST_OCT;
                 if (LFO_HAS_TGT(lfo, LFO_TARGET_DIST_MIX))
-                    e->dist_mix_coefs[COEF_MOD1]   = d * VOICE_LFO_DEPTH_DIST_MIX;
+                    e->dist_mix_coefs[c]   = d * VOICE_LFO_DEPTH_DIST_MIX;
                 if (LFO_HAS_TGT(lfo, LFO_TARGET_PAN)) {
-                    /* Center baseline in the same event, as the slot-0 path. */
+                    /* Center baseline in the same event, as the native path. */
                     e->pan_coefs[COEF_CONST] = 0.5f;
-                    e->pan_coefs[COEF_MOD1]  = d * VOICE_LFO_DEPTH_PAN;
+                    e->pan_coefs[c]          = d * VOICE_LFO_DEPTH_PAN;
                 }
             }
         }
@@ -645,9 +649,10 @@ void voice_lfo_wire(uint8_t synth, uint16_t voice_mask, uint16_t pitch_mask,
     }
 
     /* AMP overshoot cap (VOICE_LFO_DEPTH_AMP): the pre-dropped synth level
-     * while AMP is wired, unity on every other call. */
+     * while AMP is wired on this slot, unity on every other call. */
     bool amp = wired && voice_mask != 0u && LFO_HAS_TGT(lfo, LFO_TARGET_AMP);
-    synth_level_set_lfo_cap(synth, amp ? powf(10.0f, -3.0f * d * VOICE_LFO_DEPTH_AMP) : 1.0f);
+    synth_level_set_lfo_cap(synth, slot,
+                            amp ? powf(10.0f, -3.0f * d * VOICE_LFO_DEPTH_AMP) : 1.0f);
 }
 
 #if !CONFIG_SEQ_LFO_SHARED
@@ -713,8 +718,8 @@ void voice_apply_native_lfo_topo(uint8_t synth, const seq_lfo_t *lfo,
         }
 
         /* AMP overshoot cap, as voice_lfo_wire(). */
-        synth_level_set_lfo_cap(synth, (voice_mask != 0u && LFO_HAS_TGT(lfo, LFO_TARGET_AMP))
-                                       ? powf(10.0f, -3.0f * d * VOICE_LFO_DEPTH_AMP) : 1.0f);
+        synth_level_set_lfo_cap(synth, 0, (voice_mask != 0u && LFO_HAS_TGT(lfo, LFO_TARGET_AMP))
+                                          ? powf(10.0f, -3.0f * d * VOICE_LFO_DEPTH_AMP) : 1.0f);
 
         voice_lfo_source_apply(synth, carrier_osc, wobble_osc, lfo, bpm);
     } else {
@@ -735,7 +740,7 @@ void voice_apply_native_lfo_topo(uint8_t synth, const seq_lfo_t *lfo,
             e->dist_mix_coefs[COEF_MOD]    = 0.0f;
             amy_helpers_event_send(e);
         }
-        synth_level_set_lfo_cap(synth, 1.0f);
+        synth_level_set_lfo_cap(synth, 0, 1.0f);
 
         voice_lfo_source_apply(synth, carrier_osc, wobble_osc, NULL, bpm);
     }

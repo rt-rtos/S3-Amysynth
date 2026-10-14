@@ -760,7 +760,7 @@ static void melodic_lfo_apply_runtime(uint8_t layer_idx, uint8_t track,
         mapped = lfo_targets_of_patch(layer->track_patch[track], &tm);
     }
     if (mapped &&
-        lfo_bank_bind(layer->synth_id[track], &tm, lfo, s_bpm,
+        lfo_bank_bind(layer->synth_id[track], VOICE_LFO_SLOT_LFO1, &tm, lfo, s_bpm,
                       &s_lfo_synth[layer_idx][track]) == LFO_BIND_BANK) {
         /* The stepper was driving this row: put its last CONST writes back
          * to their static values. */

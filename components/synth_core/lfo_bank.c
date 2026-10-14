@@ -209,14 +209,15 @@ void lfo_bank_set_bpm(uint16_t bpm)
     }
 }
 
-lfo_bind_t lfo_bank_bind(uint8_t synth, const lfo_target_map_t *map,
-                         const seq_lfo_t *lfo, uint16_t bpm, uint8_t *ref)
+lfo_bind_t lfo_bank_bind(uint8_t synth, uint8_t slot,
+                         const lfo_target_map_t *map, const seq_lfo_t *lfo,
+                         uint16_t bpm, uint8_t *ref)
 {
     lfo_bind_t r = LFO_BIND_OFF;
     if (lfo && lfo->enabled && lfo->targets) {
         uint8_t n = lfo_bank_acquire(lfo, bpm);
         if (n != LFO_BANK_NONE) {
-            voice_lfo_wire(synth, map->voice_mask, map->pitch_mask,
+            voice_lfo_wire(synth, slot, map->voice_mask, map->pitch_mask,
                            map->scan_mask, lfo, n);
             lfo_bank_release(*ref);   /* after the acquire: see lfo_bank.h */
             *ref = n;
@@ -224,8 +225,8 @@ lfo_bind_t lfo_bank_bind(uint8_t synth, const lfo_target_map_t *map,
         }
         r = LFO_BIND_FULL;
     }
-    voice_lfo_wire(synth, map->voice_mask, map->pitch_mask, map->scan_mask,
-                   NULL, LFO_BANK_NONE);
+    voice_lfo_wire(synth, slot, map->voice_mask, map->pitch_mask,
+                   map->scan_mask, NULL, LFO_BANK_NONE);
     lfo_bank_unbind(ref);
     return r;
 }
@@ -261,10 +262,11 @@ void lfo_bank_service(void) {}
 
 void lfo_bank_set_bpm(uint16_t bpm) { (void)bpm; }
 
-lfo_bind_t lfo_bank_bind(uint8_t synth, const lfo_target_map_t *map,
-                         const seq_lfo_t *lfo, uint16_t bpm, uint8_t *ref)
+lfo_bind_t lfo_bank_bind(uint8_t synth, uint8_t slot,
+                         const lfo_target_map_t *map, const seq_lfo_t *lfo,
+                         uint16_t bpm, uint8_t *ref)
 {
-    (void)synth; (void)map; (void)lfo; (void)bpm;
+    (void)synth; (void)slot; (void)map; (void)lfo; (void)bpm;
     *ref = LFO_BANK_NONE;
     return LFO_BIND_FULL;
 }

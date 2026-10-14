@@ -272,7 +272,7 @@ static void arp_apply_lfo(const seq_lfo_t *lfo)
         mapped = lfo_targets_of_patch(s_arp.patch, &map);
     }
     if (mapped)
-        (void)lfo_bank_bind(synth, &map, lfo, bpm, &s_arp_lfo_ref);
+        (void)lfo_bank_bind(synth, VOICE_LFO_SLOT_LFO1, &map, lfo, bpm, &s_arp_lfo_ref);
     else
         lfo_bank_unbind(&s_arp_lfo_ref);   /* the patch re-apply unwired it */
 #else

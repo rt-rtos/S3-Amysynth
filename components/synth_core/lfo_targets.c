@@ -28,3 +28,8 @@ bool lfo_targets_of_patch(uint16_t patch, lfo_target_map_t *out)
     if (out) *out = m;
     return true;
 }
+
+bool lfo_targets_patch_owns_slot0(uint16_t patch)
+{
+    return patch <= SEQ_PATCH_DX7_MAX;   /* Juno 0..127, DX7 bank */
+}

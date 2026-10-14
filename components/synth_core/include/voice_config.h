@@ -352,22 +352,34 @@ void voice_lfo_source_set_rate(uint8_t synth, uint8_t carrier_osc,
  * reads as "no change", so the unwire value sits one below it. */
 #define LFO_WIRE_UNSET 0xFFFEu
 
+/* AMY mod slot of each per-voice LFO under CONFIG_SEQ_LFO_SHARED. LFO1
+ * (voice_params_t.lfo) rides slot 1; LFO2 (voice_params_t.lfo2) rides slot 0,
+ * which Juno and DX7 patch strings use for their own LFO
+ * (lfo_targets_patch_owns_slot0(), lfo_targets.h). */
+#define VOICE_LFO_SLOT_LFO1 1u
+#define VOICE_LFO_SLOT_LFO2 0u
+
 /* Wire one consumer synth to a shared LFO synth (lfo_bank_acquire()) through
- * mod slot 1: one synth-addressed event per osc in voice_mask | pitch_mask |
- * scan_mask (bit n = voice-relative osc n, so it reaches osc n of every
- * voice), setting mod_synth[1] = lfo_synth, clearing all seven COEF_MOD1 rails
- * and then writing each checked target's depth with the same law as
+ * mod slot `slot` (0 or 1; VOICE_LFO_SLOT_*): one synth-addressed event per
+ * osc in voice_mask | pitch_mask | scan_mask (bit n = voice-relative osc n,
+ * so it reaches osc n of every voice), setting mod_synth[slot] = lfo_synth,
+ * clearing that slot's seven rails (COEF_MOD0 or COEF_MOD1) and then writing
+ * each checked target's depth with the same law as
  * voice_apply_native_lfo_topo()'s COEF_MOD: PITCH on pitch_mask oscs, SCAN on
  * scan_mask oscs, FILTER, AMP, PAN (with pan CONST 0.5) and DIST on voice_mask
- * oscs. AMP also sets the synth's LFO cap (synth_level_set_lfo_cap(),
- * synth_level.h, which owns amy_event.synth_level and sends cap x mixer gain)
- * to 10^(-3 * depth * VOICE_LFO_DEPTH_AMP), the overshoot cap described at
- * that scalar; every other call sets the cap to 1.0, so an unwire or a
- * target change restores the level. NULL lfo, a disabled lfo, no targets or
- * lfo_synth == LFO_BANK_NONE unwire instead: mod_synth[1] = LFO_WIRE_UNSET
- * and every COEF_MOD1 rail 0.
+ * oscs. AMP also sets the slot's LFO cap (synth_level_set_lfo_cap(),
+ * synth_level.h, which owns amy_event.synth_level and sends the slot caps x
+ * mixer gain) to 10^(-3 * depth * VOICE_LFO_DEPTH_AMP), the overshoot cap
+ * described at that scalar; every other call sets that slot's cap to 1.0, so
+ * an unwire or a target change restores the level. The other slot's rails
+ * and cap are never touched. NULL lfo, a disabled lfo, no targets or
+ * lfo_synth == LFO_BANK_NONE unwire instead: mod_synth[slot] =
+ * LFO_WIRE_UNSET and every rail of the slot 0. Unwiring slot 0 also clears a
+ * patch string's own slot-0 wiring (mod_synth and mod_source share the
+ * stored field); only a patch re-apply restores it.
  * Idempotent and state-clean, like the native applier. Masks come from
  * lfo_targets_of_patch() or the consumer's own layout.
  * Core-0 / UI-task only; pushes through amy_helpers (never amy_queue_lock). */
-void voice_lfo_wire(uint8_t synth, uint16_t voice_mask, uint16_t pitch_mask,
-                    uint16_t scan_mask, const seq_lfo_t *lfo, uint8_t lfo_synth);
+void voice_lfo_wire(uint8_t synth, uint8_t slot, uint16_t voice_mask,
+                    uint16_t pitch_mask, uint16_t scan_mask,
+                    const seq_lfo_t *lfo, uint8_t lfo_synth);
