@@ -43,10 +43,9 @@ endif()
 if(CONFIG_AMY_PCM_GAMMA808)
     target_compile_definitions(${COMPONENT_LIB} PUBLIC GAMMA9001)
 
-    # Gamma9001 sample blob for the 'drums' data partition (regenerate with
-    # tools/gen-gamma9001-drums.py, or upstream
-    # amy.headers.generate_gamma9001_headers()). Missing blob is not an
-    # error - boot then leaves presets 256+ disabled.
+    # Gamma9001 sample blob for the 'drums' data partition, tracked in the
+    # repo (regenerate with upstream amy.headers.generate_gamma9001_headers()).
+    # Missing blob is not an error - boot then leaves presets 256+ disabled.
     set(AMY_DRUMS_BIN "${CMAKE_CURRENT_LIST_DIR}/drums.bin")
     if(EXISTS ${AMY_DRUMS_BIN})
         # Deliberately NOT part of the default flash target: the blob only

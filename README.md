@@ -1123,9 +1123,10 @@ idf.py flash monitor
 
 `sdkconfig.defaults` carries the project configuration (48 kHz UAC, PSRAM
 XIP, LTO, the custom partition table). The Gamma9001 drum blob
-(`components/amy/drums.bin`, built from the AMY sample library) is flashed to the `drums` partition by the
-normal `flash` target when present; without it the firmware boots with the
-808 bank only. Flashing over USB from a Windows host uses USBIPD passthrough.
+(`components/amy/drums.bin`, built from the AMY sample library and shipped in
+the repo) goes to the `drums` partition with `idf.py drums-flash`, once and
+again only after it changes; the normal `flash` target leaves it alone. With a
+blank partition the firmware boots with the 808 bank only. Flashing over USB from a Windows host uses USBIPD passthrough.
 
 ## Project context
 

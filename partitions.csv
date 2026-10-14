@@ -5,7 +5,7 @@ phy_init, data, phy,     0xf000,  4K,
 factory,  app,  factory, 0x10000, 4M,
 # Raw int16 PCM blob for the AMY gamma9001 drum banks (presets 256-391),
 # generated from the amy submodule's sample library and mmapped read-only at
-# boot. Flashed by the amy component's CMake when components/amy/drums.bin
-# exists; a blank partition just disables those presets.
+# boot. Written from components/amy/drums.bin by `idf.py drums-flash`, not by
+# the normal flash target; a blank partition just disables those presets.
 drums,    data, 0x40,    0x410000, 4M,
 storage,  data, littlefs, 0x810000, 0x7F0000,
