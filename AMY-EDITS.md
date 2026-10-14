@@ -561,6 +561,10 @@ test in `render_algo`; `fm_voice.c` then has to send a nonzero level below
 
 ### `pcm.c` — retrig fade-restart (gated; replaces the zero-cross defer by default)
 
+Upstream #1223 (merged 2026-10-14) replaced the zero-cross defer with its own
+retrig crossfade (`PCM_RETRIG_FADE_FRAMES`); this edit retires at the next
+sync. The text below describes the vendor base.
+
 Upstream's retrig-into-active-PCM path (#1070) defers the new onset to the
 next zero crossing of the old tail - a VARIABLE 0..512-frame latency that
 depends on the tail's phase at the retrig instant. On a steady bass-drum
@@ -645,7 +649,7 @@ Re-vendor note: done on the v1.2.104 sync - `zero()`/`copy()`,
 `malloc_caps_block`, and the aligned FM scratch all arrived with upstream;
 only the rows above remain ours.
 
-### `filters.c` + `amy.c` + `amy.h` - shelving bus EQ (upstream PR #1217, open)
+### `filters.c` + `amy.c` + `amy.h` - shelving bus EQ (merged upstream PR #1217)
 
 Upstream's EQ sums a negated 800 Hz LPF, a 2500 Hz BPF and a 7000 Hz HPF
 (`parametric_eq_process`), and `amy_fill_buffer` runs it only when a band is
@@ -678,8 +682,9 @@ loads, 10 stores, no ZOL) for the old fused loop. On target (amy-bench EQ
 variant family, LTO, stereo block): 13,559 cycles with three bands active and
 4,265 with one, vs 48,560 for the old EQ at any setting; seven candidate
 shapes were priced in the same run and none was cheaper. Shelves are 6 dB/oct: +15 dB low still adds +1.9 dB at 2.5 kHz.
-Upstream PR #1217 carries the same code with `AMY_NOINLINE` (absent from this
-vendor base) and the regenerated `tests/ref` wavs.
+Upstream PR #1217 (merged 2026-10-13, v1.2.193) carries the same code with
+`AMY_NOINLINE` (absent from this vendor base) and the regenerated `tests/ref`
+wavs; the local copy retires at the next sync.
 
 **Rollback:** restore upstream `parametric_eq_process` (both variants) and the
 three `dsps_biquad_gen_*` calls in `filters_init`; drop `parametric_eq_update`
