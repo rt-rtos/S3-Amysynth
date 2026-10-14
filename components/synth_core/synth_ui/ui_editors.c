@@ -2834,9 +2834,9 @@ static void graph_build_view(env_view_t *v)
                  (int)(s_graph_amp_edit * 100.0f + 0.5f));
     }
 
-    /* While a target stop is up, mark which targets the SHOWN envelope drives:
-     * one letter per nonzero depth. */
-    if (s_graph_eg_tgt >= 0) {
+    /* Mark which targets the SHOWN envelope drives: one letter per nonzero
+     * depth, on every target that carries the depth matrix. */
+    if (graph_eg_targets_available()) {
         static const char act_ch[SEQ_EGT_COUNT] = { 'P', 'C', 'D', 'M', 'S' };
         _Static_assert(SEQ_EGT_COUNT < sizeof(v->active), "env_view_t.active too small");
         uint8_t na = 0;
