@@ -199,8 +199,10 @@ extern float          s_lfo_rnd[][SEQ_TRACKS];
 extern uint32_t       s_lfo_rng_state;
 #if CONFIG_SEQ_LFO_SHARED
 /* Shared LFO synth (lfo_bank.h) a melodic row holds a reference to;
- * LFO_BANK_NONE = none. Parallel to s_lfo_hz: compacted by delete_layer. */
+ * LFO_BANK_NONE = none. Parallel to s_lfo_hz: compacted by delete_layer.
+ * s_lfo2_synth is the same for the row's LFO2 (mod slot 0). */
 extern uint8_t        s_lfo_synth[][SEQ_TRACKS];
+extern uint8_t        s_lfo2_synth[][SEQ_TRACKS];
 #endif
 
 /* Owned by seq_core_progression.c */
@@ -316,10 +318,11 @@ float seq_track_frame_duty(const seq_layer_t *layer, uint8_t track, uint8_t step
 void sequencer_configure_melodic_dist_track(uint8_t layer_idx, uint8_t track);
 void sequencer_configure_melodic_lfo(uint8_t layer_idx, uint8_t rows);
 void melodic_lfo_refresh_native_freq(void);
-/* Release every row's shared-LFO reference of a layer (s_lfo_synth back to
- * LFO_BANK_NONE). Sends no AMY event. No-op without CONFIG_SEQ_LFO_SHARED. */
+/* Release every row's shared-LFO references of a layer (s_lfo_synth and
+ * s_lfo2_synth back to LFO_BANK_NONE). Sends no AMY event. No-op without
+ * CONFIG_SEQ_LFO_SHARED. */
 void melodic_lfo_bank_drop_layer(uint8_t layer_idx);
-/* The same for one row (s_lfo_synth[layer_idx][track] back to LFO_BANK_NONE),
+/* The same for one row (both references of [layer_idx][track] back to LFO_BANK_NONE),
  * for a row whose synth goes away (layer shrink). Sends no AMY event; UI task
  * (the layers applier). No-op without CONFIG_SEQ_LFO_SHARED. */
 void melodic_lfo_bank_drop_row(uint8_t layer_idx, uint8_t track);

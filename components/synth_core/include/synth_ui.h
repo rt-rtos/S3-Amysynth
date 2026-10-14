@@ -355,12 +355,24 @@ bool synth_ui_filter_close_commit(void);
 void synth_ui_filter_toggle_enabled(void);
 
 /* ── LFO editor (per-track tempo-synced modulator) ─────────────────────────
- * The third tab in the ADSR -> Filter -> LFO -> DIST cycle (synth_ui_cycle_editor). */
+ * The third tab in the ADSR -> Filter -> LFO -> DIST cycle (synth_ui_cycle_editor):
+ * an LFO1 page, plus an LFO2 page while LFO2 is open. Opens on LFO1. */
 bool synth_ui_lfo_is_active(void);
 void synth_ui_lfo_open(void);
 bool synth_ui_lfo_handle_encoder(long delta);
 bool synth_ui_lfo_handle_button(bool is_long);
 bool synth_ui_lfo_close_commit(void);
+
+/* Button 1: toggle the shown page's LFO on/off (the EN chip's toggle).
+ * No-op when closed. */
+void synth_ui_lfo_toggle_enabled(void);
+
+/* Button 2: open or collapse LFO2. On the LFO1 page a collapsed LFO2 opens
+ * (and turns on, its fields kept) and the page stays; an open one collapses.
+ * On the LFO2 page it commits and collapses LFO2 and returns to LFO1.
+ * Collapse is release to patch (SEQ_VP_GROUP_LFO2). No-op when closed or
+ * where LFO2 is unavailable (a patch without a target map). */
+void synth_ui_lfo_button2(void);
 
 /* ── Distortion editor (per-target waveshaper: CLIP / FOLD / CRUSH) ────────
  * The fourth tab in the same cycle. Type OFF is the bypass, so there is no
@@ -380,14 +392,15 @@ bool synth_ui_dist_close_commit(void);
  * have no track scope and drum layers no layer block. */
 bool synth_ui_toggle_editor_source(void);
 
-/* Hand the open editor's tab (EG0 or EG1 page, filter, LFO, DIST) back to the
- * patch: the group's authored flag is cleared on the block the row reads, the
- * layer reloads so the patch's own values sound, and the editor re-seeds
- * showing the P badge. Same gating as the flip. */
+/* Hand the open editor's tab (EG0 or EG1 page, filter, LFO1 or LFO2 page,
+ * DIST) back to the patch: the group's authored flag is cleared on the block
+ * the row reads, the layer reloads so the patch's own values sound, and the
+ * editor re-seeds showing the P badge (released LFO2 is collapsed, so the
+ * editor re-seeds on LFO1). Same gating as the flip. */
 bool synth_ui_editor_release_to_patch(void);
 
-/* Cycle ADSR (EG0, EG1) -> Filter -> LFO -> DIST -> ADSR. Commits the
- * departing editor and opens the next. */
+/* Cycle ADSR (EG0, EG1) -> Filter -> LFO (LFO1, LFO2 while open) -> DIST ->
+ * ADSR. Commits the departing editor or page and opens the next. */
 void synth_ui_cycle_editor(void);
 
 /* ── Step Trig editor (per-step pitch / probability / ratchet / conditional) ─

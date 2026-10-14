@@ -116,8 +116,9 @@ static drone_state_t s_d;
 #if CONFIG_SEQ_LFO_SHARED
 /* The shared LFO synth the main synth holds (lfo_bank.h); LFO_BANK_NONE
  * while it has no LFO. Kept outside s_d, which init clears. The sub holds
- * none. */
+ * none. s_d_lfo2_ref is LFO2's (mod slot 0). */
 static uint8_t s_d_lfo_ref = LFO_BANK_NONE;
+static uint8_t s_d_lfo2_ref = LFO_BANK_NONE;
 #endif
 
 /* Setters only record and raise a flag; drone_core_service() drains once per
@@ -260,22 +261,28 @@ static inline bool drone_lfo_on(void)
  * LFO (drones have no stepper). Without it the native carriers on a wave
  * layout (NULL clears a stale COEF_MOD - voice_config.h); a patch string has
  * no LFO. The LFO rides COEF_MOD1, apart from the gate's amp CONST. */
+#if CONFIG_SEQ_LFO_SHARED
+/* The oscs the main synth's shared LFO synths reach: a wave layout's coupled
+ * oscs or a patch string's lfo_targets map. False for an unmapped patch. */
+static bool drone_lfo_target_map(lfo_target_map_t *map)
+{
+    uint8_t coupled;
+    if (sequencer_core_lfo_wave_layout(s_d.patch, &coupled)) {
+        *map = (lfo_target_map_t){ .voice_mask = coupled, .pitch_mask = coupled,
+                                   .scan_mask  = coupled };
+        return true;
+    }
+    return lfo_targets_of_patch(s_d.patch, map);
+}
+#endif
+
 static void drone_apply_lfo(void)
 {
     const seq_lfo_t *lfo = drone_lfo_on() ? &s_d.vp.lfo : NULL;
     uint16_t bpm = seq_get_bpm();
 #if CONFIG_SEQ_LFO_SHARED
     lfo_target_map_t map;
-    uint8_t coupled;
-    bool mapped;
-    if (sequencer_core_lfo_wave_layout(s_d.patch, &coupled)) {
-        map = (lfo_target_map_t){ .voice_mask = coupled, .pitch_mask = coupled,
-                                  .scan_mask  = coupled };
-        mapped = true;
-    } else {
-        mapped = lfo_targets_of_patch(s_d.patch, &map);
-    }
-    if (mapped)
+    if (drone_lfo_target_map(&map))
         (void)lfo_bank_bind(DRONE_SYNTH_MAIN, VOICE_LFO_SLOT_LFO1, &map, lfo, bpm, &s_d_lfo_ref);
     else
         lfo_bank_unbind(&s_d_lfo_ref);   /* the patch re-apply unwired it */
@@ -284,6 +291,36 @@ static void drone_apply_lfo(void)
     if (!sequencer_core_lfo_native_layout(s_d.patch, &carrier, &coupled)) return;
     voice_apply_native_lfo_topo(DRONE_SYNTH_MAIN, lfo, bpm, carrier,
                                 coupled, coupled);
+#endif
+}
+
+/* Send `lfo` (NULL = unwire) to the main synth's mod slot 0 where the patch
+ * has a target map; drop LFO2's reference otherwise. */
+static void drone_wire_lfo2(const seq_lfo_t *lfo)
+{
+#if CONFIG_SEQ_LFO_SHARED
+    lfo_target_map_t map;
+    if (drone_lfo_target_map(&map))
+        (void)lfo_bank_bind(DRONE_SYNTH_MAIN, VOICE_LFO_SLOT_LFO2, &map, lfo,
+                            seq_get_bpm(), &s_d_lfo2_ref);
+    else
+        lfo_bank_unbind(&s_d_lfo2_ref);
+#else
+    (void)lfo;
+#endif
+}
+
+/* LFO2 by the slot-0 rule (ENGINE-SEMANTICS.md, "LFO: native carrier vs
+ * software stepper"): open, wired or unwired with the stored LFO2; collapsed,
+ * no send, so a Juno/DX7 patch keeps its own LFO. Main only. */
+static void drone_apply_lfo2(void)
+{
+    if (s_d.vp.lfo2_authored) {
+        drone_wire_lfo2(&s_d.vp.lfo2);
+        return;
+    }
+#if CONFIG_SEQ_LFO_SHARED
+    lfo_bank_unbind(&s_d_lfo2_ref);
 #endif
 }
 
@@ -315,6 +352,7 @@ static void drone_rebuild(void)
     if (s_d.vp.filter_authored) drone_push_filter(&s_d.vp.filter);
     drone_reapply_dist();
     drone_apply_lfo();
+    drone_apply_lfo2();
 
     if (s_d.sub_enabled) {
         sequencer_core_configure_synth_slot(DRONE_SYNTH_SUB, SEQ_PATCH_SINE,
@@ -914,6 +952,10 @@ void drone_set_lfo(const seq_lfo_t *lfo)
     if (!lfo) return;
     s_d.vp.lfo = *lfo;
     s_d.vp.lfo_authored = true;
+    /* One LFO per target (seq_model.h): LFO1 keeps a shared one. */
+    uint8_t shared = s_d.vp.lfo2.targets & s_d.vp.lfo.targets;
+    s_d.vp.lfo2.targets &= (uint8_t)~shared;
+    if (shared) drone_apply_lfo2();
     drone_apply_lfo();
 }
 
@@ -921,6 +963,39 @@ bool drone_lfo_bound(void)
 {
 #if CONFIG_SEQ_LFO_SHARED
     return s_d_lfo_ref != LFO_BANK_NONE;
+#else
+    return false;
+#endif
+}
+
+bool drone_get_lfo2(seq_lfo_t *out)
+{
+    if (out) *out = s_d.vp.lfo2;
+    return s_d.vp.lfo2_authored;
+}
+
+void drone_set_lfo2(const seq_lfo_t *lfo, bool open)
+{
+    if (!lfo) return;
+    bool collapse = s_d.vp.lfo2_authored && !open;
+    s_d.vp.lfo2 = *lfo;
+    s_d.vp.lfo2.targets &= (uint8_t)~s_d.vp.lfo.targets;   /* one LFO per target */
+    if (collapse && lfo_targets_patch_owns_slot0(s_d.patch)) {
+        /* Only a patch re-apply brings the patch's own LFO back: the rebuild
+         * drain (drone_core_service()), which waits out queued gate edges. */
+        s_d.vp.lfo2_authored = false;
+        drone_mark_rebuild();
+        return;
+    }
+    if (collapse) drone_wire_lfo2(NULL);   /* plain unwire: the patch leaves slot 0 free */
+    s_d.vp.lfo2_authored = open;
+    drone_apply_lfo2();
+}
+
+bool drone_lfo2_bound(void)
+{
+#if CONFIG_SEQ_LFO_SHARED
+    return s_d_lfo2_ref != LFO_BANK_NONE;
 #else
     return false;
 #endif
@@ -935,6 +1010,7 @@ void drone_set_voice_params(const voice_params_t *vp)
 {
     if (!vp) return;
     s_d.vp = *vp;
+    s_d.vp.lfo2.targets &= (uint8_t)~s_d.vp.lfo.targets;   /* one LFO per target */
     drone_env_floor_vp(&s_d.vp);
     voice_dist_clamp(&s_d.vp.dist);
     s_d.vp.amp_trim = SEQ_CLAMP_F32(s_d.vp.amp_trim, 0.0f, 1.0f);

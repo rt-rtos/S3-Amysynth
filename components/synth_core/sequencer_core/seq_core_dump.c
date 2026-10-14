@@ -77,6 +77,11 @@ static unsigned dump_vp(const char *tag, const voice_params_t *vp)
            vp->dist.drive, vp->dist.bits, vp->dist.rate, vp->dist.mix,
            (unsigned)vp->lfo_authored);
     }
+    if (vp->lfo2_authored) {
+        DP("  %s lfo2 en=%u wave=%u rate=%u depth=%u tgt=0x%02x",
+           tag, (unsigned)vp->lfo2.enabled, (unsigned)vp->lfo2.wave,
+           (unsigned)vp->lfo2.rate, vp->lfo2.depth, vp->lfo2.targets);
+    }
     if (vp->amp_trim != 1.0f) {
         DP("  %s trim=%.2f", tag, (double)vp->amp_trim);
     }
@@ -192,10 +197,10 @@ void sequencer_core_dump_state(void)
          * the patch). */
         if (!drum) {
             const voice_params_t *lv = &L->vp_layer;
-            DP("  LAYER-BLK eg0=%u eg1=%u flt=%u lfo=%u dist=%u",
+            DP("  LAYER-BLK eg0=%u eg1=%u flt=%u lfo=%u lfo2=%u dist=%u",
                (unsigned)lv->env_authored, (unsigned)lv->env1_authored,
                (unsigned)lv->filter_authored, (unsigned)lv->lfo_authored,
-               (unsigned)lv->dist_authored);
+               (unsigned)lv->lfo2_authored, (unsigned)lv->dist_authored);
             n_lines += dump_vp("LB", lv);
         }
     }

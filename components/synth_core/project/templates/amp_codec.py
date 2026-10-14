@@ -1,7 +1,7 @@
 """Reader/writer for S3-Amysynth project files (Pnn.amp).
 
 Mirrors components/synth_core/project/project_snapshot.c field for field:
-GLOB v6, LAYR v25, ARP v16, DRON v6, DSTD v3, PROG v1, CHRD v1, CLIP v2, MIXR v2, PGEN v1,
+GLOB v6, LAYR v26, ARP v17, DRON v7, DSTD v4, PROG v1, CHRD v1, CLIP v2, MIXR v2, PGEN v1,
 WTCU v2, FMCU v1,
 inside project_store.c's 32-byte header (magic "AMYP", fmt 1, name, len, CRC32).
 Field order IS the format; when the firmware bumps a section version, update
@@ -20,7 +20,7 @@ NAME_LEN = 16
 
 TAG = {k: struct.unpack('<I', k.encode())[0] for k in ('GLOB', 'LAYR', 'ARP ', 'DRON', 'DSTD', 'PROG', 'CHRD', 'CLIP',
                                                        'MIXR', 'PGEN', 'WTCU', 'FMCU')}
-VER = {'GLOB': 6, 'LAYR': 25, 'ARP ': 16, 'DRON': 6, 'DSTD': 3, 'PROG': 1, 'CHRD': 1, 'CLIP': 2,
+VER = {'GLOB': 6, 'LAYR': 26, 'ARP ': 17, 'DRON': 7, 'DSTD': 4, 'PROG': 1, 'CHRD': 1, 'CLIP': 2,
        'MIXR': 2, 'PGEN': 1, 'WTCU': 2, 'FMCU': 1}
 
 MAX_LAYERS = 4
@@ -103,6 +103,11 @@ def default_lfo():
                 wob_rate=ECHO_DIV['1/8'], wob_depth=0, wob_reach=0, flt_oct_q=0)
 
 
+def default_lfo2():
+    """LFO2's seed in voice_params_init_defaults(): sine, 1/1, depth 50, off, no targets."""
+    return dict(default_lfo(), rate=ECHO_DIV['1/1'], depth=50)
+
+
 def default_dist():
     return dict(type=0, drive=2, bits=8, rate=8, mix=100)
 
@@ -110,8 +115,9 @@ def default_dist():
 def default_vp():
     """voice_params_init_defaults(): zeroed, unity amp_trim, LFO rates 1/8, audible dist spare."""
     return dict(env=default_env(), env1=default_env(), filter=default_filter(), lfo=default_lfo(),
+                lfo2=default_lfo2(),
                 env_authored=False, env1_authored=False, filter_authored=False, lfo_authored=False,
-                amp_trim=1.0, dist=default_dist(), dist_authored=False)
+                lfo2_authored=False, amp_trim=1.0, dist=default_dist(), dist_authored=False)
 
 
 def grid(fill=0):
@@ -201,14 +207,15 @@ def r_dist(r):
 
 def w_vp(w, vp):
     w_env(w, vp['env']); w_env(w, vp['env1']); w_filter(w, vp['filter']); w_lfo(w, vp['lfo'])
-    for k in ('env_authored', 'env1_authored', 'filter_authored', 'lfo_authored'):
+    w_lfo(w, vp['lfo2'])
+    for k in ('env_authored', 'env1_authored', 'filter_authored', 'lfo_authored', 'lfo2_authored'):
         w.u8(1 if vp[k] else 0)
     w.f32(vp['amp_trim']); w_dist(w, vp['dist']); w.u8(1 if vp['dist_authored'] else 0)
 
 
 def r_vp(r):
-    vp = dict(env=r_env(r), env1=r_env(r), filter=r_filter(r), lfo=r_lfo(r))
-    for k in ('env_authored', 'env1_authored', 'filter_authored', 'lfo_authored'):
+    vp = dict(env=r_env(r), env1=r_env(r), filter=r_filter(r), lfo=r_lfo(r), lfo2=r_lfo(r))
+    for k in ('env_authored', 'env1_authored', 'filter_authored', 'lfo_authored', 'lfo2_authored'):
         vp[k] = r.u8() != 0
     vp['amp_trim'] = r.f32(); vp['dist'] = r_dist(r); vp['dist_authored'] = r.u8() != 0
     return vp
@@ -305,6 +312,7 @@ def w_arp(a):
     for i in range(ARP_MAX_SLOTS):
         w.i16(a['slots'][i])
     w_env(w, a['env']); w_env(w, a['env2']); w_filter(w, a['filter']); w_lfo(w, a['lfo'])
+    w_lfo(w, a['lfo2']); w.u8(1 if a['lfo2_authored'] else 0)
     w.u8(a['quant_mode']); w_dist(w, a['dist'])
     w.u8(1 if a['muted'] else 0); w.u8(1 if a['solo'] else 0)
     w.u8(a['uni_count']); w.u8(a['uni_detune']); w.u8(a['uni_spread']); w.u8(a['uni_blend'])
@@ -316,6 +324,7 @@ def r_arp(r):
              gate_pct=r.u8(), scale=r.u8(), root=r.u8(), portamento_ms=r.u16(), amp_scale=r.f32())
     a['slots'] = [r.i16() for _ in range(ARP_MAX_SLOTS)]
     a['env'] = r_env(r); a['env2'] = r_env(r); a['filter'] = r_filter(r); a['lfo'] = r_lfo(r)
+    a['lfo2'] = r_lfo(r); a['lfo2_authored'] = r.u8() != 0
     a['quant_mode'] = r.u8(); a['dist'] = r_dist(r)
     a['muted'] = r.u8() != 0; a['solo'] = r.u8() != 0
     a['uni_count'] = r.u8(); a['uni_detune'] = r.u8(); a['uni_spread'] = r.u8()

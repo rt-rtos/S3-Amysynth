@@ -150,6 +150,18 @@ void arp_set_lfo(const seq_lfo_t *lfo);
  * WOBBLE exists. Always false without CONFIG_SEQ_LFO_SHARED. UI task. */
 bool arp_lfo_bound(void);
 
+/* ── LFO2 (second LFO, mod slot 0) ──
+ * Semantics as the melodic LFO2 (sequencer_core_set_melodic_lfo2(),
+ * sequencer_core.h). get fills *out and returns whether LFO2 is open. set
+ * stores the fields (targets minus LFO1's) and opens or collapses it;
+ * collapsing an open LFO2 on a patch whose string owns slot 0
+ * (lfo_targets_patch_owns_slot0()) rebuilds the arp so the patch LFO
+ * returns. arp_set_lfo() takes a shared target away from LFO2. bound: as
+ * arp_lfo_bound() for LFO2. UI task. */
+bool arp_get_lfo2(seq_lfo_t *out);
+void arp_set_lfo2(const seq_lfo_t *lfo, bool open);
+bool arp_lfo2_bound(void);
+
 /* Recompute and push the LFO carrier frequency at the current BPM.
  * Called by sequencer_core_set_bpm() after s_bpm is updated.
  * No-op unless lfo_authored and the patch has a native carrier pair; always a

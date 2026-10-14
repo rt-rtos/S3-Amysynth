@@ -317,11 +317,16 @@ typedef struct {
     seq_env_t    env1;            /* second envelope (EG1)                  */
     seq_filter_t filter;
     seq_lfo_t    lfo;
+    seq_lfo_t    lfo2;            /* second LFO (mod slot 0). Invariant:
+                                     (lfo.targets & lfo2.targets) == 0, each
+                                     target driven by at most one LFO.     */
     seq_dist_t   dist;
     bool         env_authored;
     bool         env1_authored;
     bool         filter_authored;
     bool         lfo_authored;
+    bool         lfo2_authored;   /* LFO2 open: its editor page exists and it
+                                     owns mod slot 0 (lfo2.enabled = on/off) */
     bool         dist_authored;
     float        amp_trim;        /* output trim 0..1, unity default        */
 } voice_params_t;
@@ -378,6 +383,7 @@ typedef enum {
     SEQ_VP_GROUP_ENV1,
     SEQ_VP_GROUP_FILTER,
     SEQ_VP_GROUP_LFO,
+    SEQ_VP_GROUP_LFO2,
     SEQ_VP_GROUP_DIST,
     SEQ_VP_GROUP_COUNT,
 } seq_vp_group_t;

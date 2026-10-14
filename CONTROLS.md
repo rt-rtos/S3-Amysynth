@@ -72,7 +72,8 @@ screen; a DEV status bar replaces it on every screen while on.
 | DEV | - | - | Menu |
 | ADSR editor | Type | Amp / Swg / Pit / Cut / Drv / Mix / Off (the next stop) | Next |
 | Filter editor | On/Off | - | Next |
-| LFO, DIST editor | - | - | Next |
+| LFO editor | On/Off | +LFO2 while LFO2 is collapsed, -LFO2 while it is open (- where LFO2 is unavailable) | Next |
+| DIST editor | - | - | Next |
 | Step Trig popup | - | - | Close |
 
 ## Sequencer screen (Seq)
@@ -190,7 +191,7 @@ selected and adjusted with the encoder.
 | Button 1 (press) | Cycle the shown envelope's curve type: Normal, Linear, DX7, TrueExp |
 | Button 2 (press) | Cycle the sub-mode: off, AMP (amplitude trim, 5 % steps; live voice and drones only - a sequencer row sets its level on the Layer page's Level row, the arp on the ARP entry's Level row), SWG (layer swing; melodic rows reading the layer block, EG0 page only), then one stop per routing target PIT / CUT / DRV / MIX on rows carrying the depth matrix. The EG1 page starts straight on the target stops |
 | SHOULDER (press) | Target stop up: flip the sign of that depth |
-| Button 3 (tap) | Next editor: EG0, EG1, Filter, LFO, DIST, back to EG0. Targets without an EG1 page skip it |
+| Button 3 (tap) | Next editor: EG0, EG1, Filter, LFO1, LFO2 (while open), DIST, back to EG0. Targets without an EG1 page skip it |
 | Button 0 (tap) | Commit and close |
 | Button 0 (hold) | Cancel (restores the stored state) and close |
 | SHIFT + Button 1 | Commit and close |
@@ -214,19 +215,39 @@ Live preview: edits sound at once; cancel restores.
 
 ## LFO editor
 
+Every voice has two LFOs. The editor opens on LFO1. LFO2 is collapsed by
+default; Button 2 opens it, which adds an LFO2 page after LFO1 (Button 3
+steps LFO1, LFO2, then DIST). Open and on are separate: Button 2 opens and
+collapses LFO2, Button 1 or the EN chip turns the shown LFO on and off. A
+collapsed LFO2 keeps its settings, and both LFOs are saved with the project.
+LFO2 needs a patch with an LFO target map (not the piano); elsewhere Button 2
+does nothing.
+
 While FILTER is a checked target and the surface's filter is on, the header
 shows the cutoff range the LFO sweeps, as low-high Hz (e.g. "550-2.2k").
+While LFO2 is open, the LFO1 header shows a "2" chip left of EN: inverted
+while LFO2 runs (on, with targets), outlined while it is off. The LFO2 page
+has the same layout under the title LFO2. On a Juno or DX7 patch, whose own
+LFO uses the slot LFO2 takes, the LFO2 page shows a struck "P" chip: LFO2
+replaces the patch LFO while it is open, also while it is off. Collapsing
+LFO2 gives the patch LFO back (a sequencer row reloads its layer for it).
+
+Each target belongs to one LFO. A target the other LFO drives shows that
+LFO's number ("1" or "2") instead of its checkbox; checking it moves the
+target to this LFO.
 
 | Input | Action |
 |---|---|
 | Encoder turn, browsing | Move the cursor (wraps) over the seven target checkboxes (Filter, Amp, Pitch, Pan, Scan, Drive, Mix; the list scrolls, five rows at a time), then Wave, Rate, Depth, Flt oct, Wobble rate, Wobble depth, Wobble mode, Enable |
 | Encoder click | Checkbox, Enable, Wobble mode: toggle / cycle directly. Other rows: enter / leave editing |
 | Encoder turn, editing | Wave and Rate: cycle. Depth: 1 % steps up to 10, then 5 %. Flt oct: quarter octaves. Wobble depth: whole dB |
-| Button 3 (tap) | Next editor |
+| Button 1 (press) | Turn the shown LFO on / off |
+| Button 2 (press) | LFO1 page: open LFO2 (it turns on; its settings are kept) or collapse it. LFO2 page: collapse LFO2 and return to LFO1 |
+| Button 3 (tap) | Next page or editor: LFO1, LFO2 while open, then DIST |
 | Button 0 (tap / hold) | Commit / cancel and close |
-| SHIFT + Button 1 / 2 / 3 | Commit and close / release to patch / flip source |
+| SHIFT + Button 1 / 2 / 3 | Commit and close / release to patch (on the LFO2 page: collapse LFO2) / flip source |
 
-Button 1 and SHOULDER do nothing here.
+SHOULDER does nothing here.
 
 ## DIST editor
 
@@ -301,7 +322,7 @@ Both are a scrollable parameter list.
 | Button 0 (hold) | Play / stop. A tap does nothing |
 | Button 2 | Ignored |
 | Button 3 (tap) | Menu (the way back to the normal drone from the stutter drone) |
-| SHIFT + Button 1 | Open the ADSR editor on the drone. Editors then cycle EG0, EG1, Filter, LFO, DIST |
+| SHIFT + Button 1 | Open the ADSR editor on the drone. Editors then cycle EG0, EG1, Filter, LFO1, LFO2 (while open), DIST |
 
 Each drone's PATCH row names its patch and, while editing, cycles the same
 patch list as Button 1 hold + turn. On the stutter drone, LEVEL and DUCK set

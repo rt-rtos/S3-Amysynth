@@ -207,8 +207,25 @@ static void live_push_glide(void)
 
 #if CONFIG_SEQ_LFO_SHARED
 /* The shared LFO synth LIVE_SYNTH holds (lfo_bank.h); LFO_BANK_NONE while the
- * software stepper serves it, or nothing does. */
+ * software stepper serves it, or nothing does. s_live_lfo2_ref is LFO2's (mod
+ * slot 0), which has no stepper. */
 static uint8_t s_live_lfo_ref = LFO_BANK_NONE;
+static uint8_t s_live_lfo2_ref = LFO_BANK_NONE;
+
+/* The oscs the voice's shared LFO synths reach: the wave-topology coupled
+ * oscs (SCAN rides the pitch mask, as on a row) or a patch string's
+ * lfo_targets map. False for an unmapped patch. */
+static bool live_lfo_target_map(lfo_target_map_t *map)
+{
+    seq_voice_layout_t vl;
+    if (live_voice_layout(&vl)) {
+        *map = (lfo_target_map_t){ .voice_mask = vl.voice_mask,
+                                   .pitch_mask = vl.pitch_mask,
+                                   .scan_mask  = vl.pitch_mask };
+        return true;
+    }
+    return lfo_targets_of_patch(s_patch, map);
+}
 #endif
 
 /* With CONFIG_SEQ_LFO_SHARED: a shared LFO synth over the wave-topology
@@ -224,18 +241,7 @@ static void live_apply_lfo(void)
     uint16_t bpm = sequencer_core_get_bpm();
 #if CONFIG_SEQ_LFO_SHARED
     lfo_target_map_t map;
-    seq_voice_layout_t vl;
-    bool mapped;
-    if (live_voice_layout(&vl)) {
-        /* SCAN rides the pitch mask, as on a row (melodic_lfo_apply_runtime). */
-        map = (lfo_target_map_t){ .voice_mask = vl.voice_mask,
-                                  .pitch_mask = vl.pitch_mask,
-                                  .scan_mask  = vl.pitch_mask };
-        mapped = true;
-    } else {
-        mapped = lfo_targets_of_patch(s_patch, &map);
-    }
-    if (mapped)
+    if (live_lfo_target_map(&map))
         (void)lfo_bank_bind(LIVE_SYNTH, VOICE_LFO_SLOT_LFO1, &map,
                             on ? &s_vp.lfo : NULL, bpm, &s_live_lfo_ref);
     else
@@ -246,6 +252,36 @@ static void live_apply_lfo(void)
         return;
     voice_apply_native_lfo_topo(LIVE_SYNTH, on ? &s_vp.lfo : NULL,
                                 bpm, vl.carrier, vl.pitch_mask, vl.voice_mask);
+#endif
+}
+
+/* Send `lfo` (NULL = unwire) to LIVE_SYNTH's mod slot 0 where the patch has a
+ * target map; drop LFO2's reference otherwise. */
+static void live_wire_lfo2(const seq_lfo_t *lfo)
+{
+#if CONFIG_SEQ_LFO_SHARED
+    lfo_target_map_t map;
+    if (live_lfo_target_map(&map))
+        (void)lfo_bank_bind(LIVE_SYNTH, VOICE_LFO_SLOT_LFO2, &map, lfo,
+                            sequencer_core_get_bpm(), &s_live_lfo2_ref);
+    else
+        lfo_bank_unbind(&s_live_lfo2_ref);
+#else
+    (void)lfo;
+#endif
+}
+
+/* LFO2 by the slot-0 rule (ENGINE-SEMANTICS.md, "LFO: native carrier vs
+ * software stepper"): open, wired or unwired with the stored LFO2; collapsed,
+ * no send, so a Juno/DX7 patch keeps its own LFO. */
+static void live_apply_lfo2(void)
+{
+    if (s_vp.lfo2_authored) {
+        live_wire_lfo2(&s_vp.lfo2);
+        return;
+    }
+#if CONFIG_SEQ_LFO_SHARED
+    lfo_bank_unbind(&s_live_lfo2_ref);
 #endif
 }
 
@@ -262,6 +298,7 @@ static void live_apply_authored(void)
     if (s_vp.filter_authored) live_apply_filter(&s_vp.filter);
     if (s_vp.dist_authored)   live_push_dist(&s_vp.dist);
     live_apply_lfo();   /* internal layout guard: patch strings bank or stepper */
+    live_apply_lfo2();  /* after LFO1, as at every rebuild site */
     /* Patch loads reset per-osc portamento_alpha; reassert unconditionally
      * (0 is a valid "off" reassert) - the arp_rebuild discipline. */
     live_push_glide();
@@ -660,7 +697,50 @@ void live_play_set_lfo(const seq_lfo_t *lfo)
     voice_params_t *vp = live_vp();
     vp->lfo = *lfo;
     vp->lfo_authored = true;
-    if (s_ready) live_apply_lfo();
+    /* One LFO per target (seq_model.h): LFO1 keeps a shared one. */
+    uint8_t shared = vp->lfo2.targets & vp->lfo.targets;
+    vp->lfo2.targets &= (uint8_t)~shared;
+    if (!s_ready) return;
+    if (shared) live_apply_lfo2();
+    live_apply_lfo();
+}
+
+bool live_play_get_lfo2(seq_lfo_t *out)
+{
+    voice_params_t *vp = live_vp();
+    if (out) *out = vp->lfo2;
+    return vp->lfo2_authored;
+}
+
+void live_play_set_lfo2(const seq_lfo_t *lfo, bool open)
+{
+    if (!lfo) return;
+    voice_params_t *vp = live_vp();
+    bool collapse = vp->lfo2_authored && !open;
+    vp->lfo2 = *lfo;
+    vp->lfo2.targets &= (uint8_t)~vp->lfo.targets;   /* one LFO per target */
+    if (!s_ready) {   /* live_play_ensure_ready() binds it */
+        vp->lfo2_authored = open;
+        return;
+    }
+    if (collapse && lfo_targets_patch_owns_slot0(s_patch)) {
+        /* Only a patch re-apply brings the patch's own LFO back. */
+        vp->lfo2_authored = false;
+        live_rebuild();
+        return;
+    }
+    if (collapse) live_wire_lfo2(NULL);   /* plain unwire: the patch leaves slot 0 free */
+    vp->lfo2_authored = open;
+    live_apply_lfo2();
+}
+
+bool live_play_lfo2_bound(void)
+{
+#if CONFIG_SEQ_LFO_SHARED
+    return s_live_lfo2_ref != LFO_BANK_NONE;
+#else
+    return false;
+#endif
 }
 
 float live_play_get_amp_scale(void)

@@ -193,6 +193,12 @@ void drone_set_lfo(const seq_lfo_t *lfo);
 /* True while the main synth's LFO runs on a shared LFO synth - the path on
  * which WOBBLE exists. Always false without CONFIG_SEQ_LFO_SHARED. UI task. */
 bool drone_lfo_bound(void);
+/* LFO2, main only: the arp's contract (arp_core.h, arp_set_lfo2), except that
+ * the collapse which hands slot 0 back to the patch rebuilds at the next
+ * drone_core_service() frame. UI task. */
+bool drone_get_lfo2(seq_lfo_t *out);
+void drone_set_lfo2(const seq_lfo_t *lfo, bool open);
+bool drone_lfo2_bound(void);
 
 /* ── Whole voice-params block (project store) ──
  * The block with its authored flags, so a load restores an unauthored

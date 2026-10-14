@@ -13,6 +13,7 @@
 #include "filter_graph.h"
 #include "display_lfo.h"
 #include "display_dist.h"
+#include "lfo_targets.h"      /* LFO2 availability and the patch-LFO note */
 #include "seq_defaults.h"
 #include "amy_helpers.h"
 #include "filter_scope.h"
@@ -1444,6 +1445,18 @@ static bool s_lfo_live_target = false;
 /* The surface's committed filter cutoff at open, for the FILTER swing
  * readout; 0 when its filter is off. */
 static float s_lfo_filter_hz = 0.0f;
+/* LFO2 page (a second page of this view, as EG1 is of the graph editor).
+ * s_lfo_index: the page shown, 0 = LFO1, 1 = LFO2; s_lfo_view.lfo is that
+ * page's working copy. s_lfo_other: the working copy of the LFO not shown,
+ * always equal to its store. s_lfo2_open: LFO2 open (its lfo2_authored),
+ * committed on every Button 2 press. s_lfo_other_entry: the other LFO as at
+ * page entry; a long-press cancel restores it when a target move changed it
+ * (s_lfo_other_dirty). */
+static uint8_t   s_lfo_index = 0;
+static seq_lfo_t s_lfo_other;
+static bool      s_lfo2_open = false;
+static seq_lfo_t s_lfo_other_entry;
+static bool      s_lfo_other_dirty = false;
 
 /* Normalisation helpers shared between open and commit. */
 static float filter_hz_to_norm(float hz)
@@ -2056,6 +2069,59 @@ void synth_ui_editors_live_service(void)
 
 /* ── LFO editor ──────────────────────────────────────────────────────────── */
 
+/* True when the editor targets a sequencer row (melodic preview, authority
+ * badges); false for the live voice, the arp and the drones, which have no
+ * preview and commit on every exit. */
+static bool lfo_surface_is_track(void)
+{
+#if CONFIG_SYNTH_WIRELESS
+    if (s_lfo_live_target) return false;
+#endif
+    return seq_state.ui_mode != UI_MODE_ARP && seq_state.ui_mode != UI_MODE_DRONE &&
+           seq_state.ui_mode != UI_MODE_DRONE_STD;
+}
+
+/* The patch the edited surface plays. */
+static uint16_t lfo_surface_patch(void)
+{
+#if CONFIG_SYNTH_WIRELESS
+    if (s_lfo_live_target) return live_play_get_patch();
+#endif
+    if (seq_state.ui_mode == UI_MODE_ARP)       return arp_get_patch();
+    if (seq_state.ui_mode == UI_MODE_DRONE)     return drone_get_patch();
+    if (seq_state.ui_mode == UI_MODE_DRONE_STD) return drone_std_get_patch();
+    return sequencer_core_get_melodic_track_patch(s_lfo_view.layer_idx,
+                                                  s_lfo_view.track_idx);
+}
+
+/* LFO2 can run here: shared LFO synths built in and a patch with a target
+ * map (a wave layout or an lfo_targets family; not the piano), on a melodic
+ * row for a track surface. Button 2 does nothing otherwise. */
+static bool lfo2_available(void)
+{
+#if CONFIG_SEQ_LFO_SHARED
+    if (lfo_surface_is_track() &&
+        sequencer_core_get_layer_type(s_lfo_view.layer_idx) != SEQ_LAYER_MELODIC)
+        return false;
+    uint16_t patch = lfo_surface_patch();
+    return lfo_targets_of_patch(patch, NULL) || sequencer_core_lfo_wave_layout(patch, NULL);
+#else
+    return false;
+#endif
+}
+
+/* True while the surface's LFO2 is wired to a shared LFO synth. */
+static bool lfo2_bound(void)
+{
+#if CONFIG_SYNTH_WIRELESS
+    if (s_lfo_live_target) return live_play_lfo2_bound();
+#endif
+    if (seq_state.ui_mode == UI_MODE_ARP)       return arp_lfo2_bound();
+    if (seq_state.ui_mode == UI_MODE_DRONE)     return drone_lfo2_bound();
+    if (seq_state.ui_mode == UI_MODE_DRONE_STD) return drone_std_lfo2_bound();
+    return sequencer_core_track_lfo2_bound(s_lfo_view.layer_idx, s_lfo_view.track_idx);
+}
+
 uint32_t lfo_view_signature(void)
 {
     /* The wobble-inert marker is re-derived every frame (one cheap query of
@@ -2064,8 +2130,11 @@ uint32_t lfo_view_signature(void)
      * open-time snapshot to go stale. WOBBLE only exists on a modulator osc:
      * a shared LFO synth with CONFIG_SEQ_LFO_SHARED, the native carrier
      * without it (voice_config.c); the software steppers never implemented
-     * it. */
+     * it. LFO2 has only the shared LFO synth. */
     bool native;
+    if (s_lfo_index == 1u)
+        native = lfo2_bound();
+    else
 #if CONFIG_SYNTH_WIRELESS
     if (s_lfo_live_target)
         native = live_play_lfo_native_eligible();
@@ -2104,17 +2173,37 @@ uint32_t lfo_view_signature(void)
      * struct and is never set. */
     s_lfo_view.dist_inert = false;
 
+    /* LFO2 state for the header chips and the target marks, re-derived like
+     * the wobble marker. */
+    s_lfo_view.index         = s_lfo_index;
+    s_lfo_view.other_targets = s_lfo_other.targets;
+    s_lfo_view.lfo2_open     = s_lfo2_open;
+    s_lfo_view.lfo2_on       = (s_lfo_index == 1u) ? s_lfo_view.lfo.enabled
+                                                    : s_lfo_other.enabled;
+    s_lfo_view.lfo2_avail    = lfo2_available();
+    s_lfo_view.patch_lfo_replaced =
+        s_lfo2_open && lfo_targets_patch_owns_slot0(lfo_surface_patch());
+
     const seq_lfo_t *l = &s_lfo_view.lfo;
     const uint8_t fields[] = {
         l->enabled, (uint8_t)l->mode, (uint8_t)l->wave, (uint8_t)l->rate,
         l->depth, l->targets, l->wob_rate, l->wob_depth, l->wob_reach,
         l->flt_oct_q, s_lfo_view.cursor, s_lfo_view.editing, native,
-        s_lfo_view.tgt_first,
+        s_lfo_view.tgt_first, s_lfo_view.index, s_lfo_view.other_targets,
+        s_lfo_view.lfo2_open, s_lfo_view.lfo2_on, s_lfo_view.lfo2_avail,
+        s_lfo_view.patch_lfo_replaced,
     };
     return fnv1a_bytes(FNV1A_OFFSET, fields, sizeof(fields));
 }
 
 bool synth_ui_lfo_is_active(void) { return s_lfo_active; }
+
+/* Hint-strip b2 label: what the next Button 2 press does to LFO2. */
+const char *synth_ui_lfo_hint_b2(void)
+{
+    if (!lfo2_available()) return "-";
+    return s_lfo2_open ? "-LFO2" : "+LFO2";
+}
 
 /* The FILTER swing readout: the open surface's committed cutoff swung by the
  * edited LFO's +/-octaves (voice_lfo_filter_octaves), while FILTER is a
@@ -2130,6 +2219,16 @@ static void lfo_view_update_range(void)
     float k = exp2f(voice_lfo_filter_octaves(&s_lfo_view.lfo));
     s_lfo_view.flt_lo_hz = s_lfo_filter_hz / k;
     s_lfo_view.flt_hi_hz = s_lfo_filter_hz * k;
+}
+
+/* Header badge for the shown page's group. */
+static void lfo_view_update_badge(void)
+{
+    s_lfo_view.src_badge[0] = '\0';
+    if (s_lfo_view.target_label == NULL)
+        editor_src_badge(s_lfo_view.layer_idx, s_lfo_view.track_idx,
+                         (s_lfo_index == 1u) ? SEQ_VP_GROUP_LFO2 : SEQ_VP_GROUP_LFO,
+                         s_lfo_view.src_badge);
 }
 
 void synth_ui_lfo_open(void)
@@ -2150,19 +2249,31 @@ void synth_ui_lfo_open(void)
         .targets = LFO_TGT_BIT(LFO_TARGET_FILTER),
         .wob_rate = NOTE_DIV_1_8,
     };
+    /* LFO2: every getter fills it from the store (seeded by
+     * voice_params_init_defaults()). */
+    seq_lfo_t lfo2 = existing;
+    lfo2.targets = 0;
+    bool lfo2_open;
 #if CONFIG_SYNTH_WIRELESS
-    if (s_lfo_live_target)
+    if (s_lfo_live_target) {
         live_play_get_lfo(&existing);
-    else
+        lfo2_open = live_play_get_lfo2(&lfo2);
+    } else
 #endif
-    if (seq_state.ui_mode == UI_MODE_ARP)
+    if (seq_state.ui_mode == UI_MODE_ARP) {
         arp_get_lfo(&existing);
-    else if (seq_state.ui_mode == UI_MODE_DRONE)
+        lfo2_open = arp_get_lfo2(&lfo2);
+    } else if (seq_state.ui_mode == UI_MODE_DRONE) {
         drone_get_lfo(&existing);
-    else if (seq_state.ui_mode == UI_MODE_DRONE_STD)
+        lfo2_open = drone_get_lfo2(&lfo2);
+    } else if (seq_state.ui_mode == UI_MODE_DRONE_STD) {
         drone_std_get_lfo(&existing);
-    else
+        lfo2_open = drone_std_get_lfo2(&lfo2);
+    } else {
         sequencer_core_get_melodic_lfo(li, tr, &existing);
+        sequencer_core_get_melodic_lfo2(li, tr, &lfo2);
+        lfo2_open = sequencer_core_melodic_group_authored(li, tr, SEQ_VP_GROUP_LFO2);
+    }
     /* The same surface's committed filter, for the swing readout. */
     seq_filter_t flt = {0};
 #if CONFIG_SYNTH_WIRELESS
@@ -2179,6 +2290,11 @@ void synth_ui_lfo_open(void)
     else
         (void)sequencer_core_get_melodic_filter(li, tr, &flt);
     s_lfo_filter_hz = flt.enabled ? flt.cutoff_hz : 0.0f;
+    s_lfo_index       = 0;
+    s_lfo_other       = lfo2;
+    s_lfo2_open       = lfo2_open;
+    s_lfo_other_entry = lfo2;
+    s_lfo_other_dirty = false;
     s_lfo_view.lfo          = existing;
     s_lfo_view.cursor       = 0;
     s_lfo_view.tgt_first    = 0;
@@ -2192,14 +2308,13 @@ void synth_ui_lfo_open(void)
 #if CONFIG_SYNTH_WIRELESS
     if (s_lfo_live_target) s_lfo_view.target_label = "LIVE";
 #endif
-    s_lfo_view.src_badge[0] = '\0';
-    if (s_lfo_view.target_label == NULL)
-        editor_src_badge(li, tr, SEQ_VP_GROUP_LFO, s_lfo_view.src_badge);
+    lfo_view_update_badge();
     lfo_view_update_range();
     s_lfo_dirty    = false;
     s_lfo_active   = true;
     s_force_redraw = true;
-    ESP_LOGI(TAG, "LFO editor open L%u T%u", li + 1u, tr + 1u);
+    ESP_LOGI(TAG, "LFO editor open L%u T%u (LFO2 %s)", li + 1u, tr + 1u,
+             lfo2_open ? "open" : "collapsed");
 }
 
 /* Live audition for the LFO editor - melodic tracks only (arp/drone/live
@@ -2210,28 +2325,86 @@ void synth_ui_lfo_open(void)
 static void lfo_live_push_preview(void)
 {
     lfo_view_update_range();
-#if CONFIG_SYNTH_WIRELESS
-    if (s_lfo_live_target) return;
-#endif
-    if (seq_state.ui_mode == UI_MODE_ARP || seq_state.ui_mode == UI_MODE_DRONE ||
-        seq_state.ui_mode == UI_MODE_DRONE_STD)
-        return;
-    sequencer_core_preview_melodic_lfo(s_lfo_view.layer_idx,
-                                       s_lfo_view.track_idx,
-                                       &s_lfo_view.lfo);
+    if (!lfo_surface_is_track()) return;
+    if (s_lfo_index == 1u)
+        sequencer_core_preview_melodic_lfo2(s_lfo_view.layer_idx,
+                                            s_lfo_view.track_idx,
+                                            &s_lfo_view.lfo);
+    else
+        sequencer_core_preview_melodic_lfo(s_lfo_view.layer_idx,
+                                           s_lfo_view.track_idx,
+                                           &s_lfo_view.lfo);
 }
 
-/* Cancel path: drop the preview slot and re-push the committed state. */
+/* Cancel path: drop the preview slot and re-push the shown page's committed
+ * state. */
 static void lfo_preview_cancel_restore(void)
 {
     sequencer_core_preview_melodic_clear();
+    if (!lfo_surface_is_track()) return;
+    if (s_lfo_index == 1u)
+        sequencer_core_reapply_melodic_lfo2(s_lfo_view.layer_idx, s_lfo_view.track_idx);
+    else
+        sequencer_core_reapply_melodic_lfo(s_lfo_view.layer_idx, s_lfo_view.track_idx);
+}
+
+/* Store LFO `idx` (0 = LFO1, 1 = LFO2, with LFO2 open per `open`) through the
+ * surface's setter. */
+static void lfo_store(uint8_t idx, const seq_lfo_t *l, bool open)
+{
 #if CONFIG_SYNTH_WIRELESS
-    if (s_lfo_live_target) return;
-#endif
-    if (seq_state.ui_mode == UI_MODE_ARP || seq_state.ui_mode == UI_MODE_DRONE ||
-        seq_state.ui_mode == UI_MODE_DRONE_STD)
+    /* Before the mode ladder: the Wireless page is an overlay. */
+    if (s_lfo_live_target) {
+        if (idx) live_play_set_lfo2(l, open); else live_play_set_lfo(l);
         return;
-    sequencer_core_reapply_melodic_lfo(s_lfo_view.layer_idx, s_lfo_view.track_idx);
+    }
+#endif
+    if (seq_state.ui_mode == UI_MODE_ARP) {
+        if (idx) arp_set_lfo2(l, open); else arp_set_lfo(l);
+    } else if (seq_state.ui_mode == UI_MODE_DRONE) {
+        if (idx) drone_set_lfo2(l, open); else drone_set_lfo(l);
+    } else if (seq_state.ui_mode == UI_MODE_DRONE_STD) {
+        if (idx) drone_std_set_lfo2(l, open); else drone_std_set_lfo(l);
+    } else if (idx) {
+        sequencer_core_set_melodic_lfo2(s_lfo_view.layer_idx, s_lfo_view.track_idx,
+                                        l, open);
+    } else {
+        sequencer_core_set_melodic_lfo(s_lfo_view.layer_idx, s_lfo_view.track_idx, l);
+    }
+}
+
+/* Leave the shown page: commit it through its setter (a row only when
+ * edited, so an untouched page takes no authority; every other surface on
+ * every exit), then drop the preview slot so the stepper service never
+ * sweeps a stale scratch. */
+static void lfo_page_commit(void)
+{
+    if (!lfo_surface_is_track() || s_lfo_dirty)
+        lfo_store(s_lfo_index, &s_lfo_view.lfo, s_lfo2_open);
+    else
+        lfo_preview_cancel_restore();
+    sequencer_core_preview_melodic_clear();
+}
+
+/* Show page `idx` (0 = LFO1, 1 = LFO2) after the shown one was committed or
+ * collapsed: the working copies swap, and the cursor starts at the top. */
+static void lfo_show_page(uint8_t idx)
+{
+    if (idx == s_lfo_index) return;
+    seq_lfo_t shown = s_lfo_view.lfo;
+    s_lfo_view.lfo    = s_lfo_other;
+    s_lfo_other       = shown;
+    s_lfo_index       = idx;
+    s_lfo_other_entry = s_lfo_other;
+    s_lfo_other_dirty = false;
+    s_lfo_view.cursor    = 0;
+    s_lfo_view.tgt_first = 0;
+    s_lfo_view.editing   = false;
+    s_lfo_dirty          = false;
+    lfo_view_update_badge();
+    lfo_view_update_range();
+    s_force_redraw = true;
+    ESP_LOGI(TAG, "LFO editor page LFO%u", idx + 1u);
 }
 
 /* Drag the target checklist's window along with a cursor on a target row,
@@ -2247,7 +2420,6 @@ static void lfo_tgt_window_follow(void)
         s_lfo_view.tgt_first = (uint8_t)(c - LFO_TGT_SLOTS + 1u);
     }
 }
-
 bool synth_ui_lfo_handle_encoder(long delta)
 {
     if (!s_lfo_active) return false;
@@ -2323,6 +2495,10 @@ bool synth_ui_lfo_handle_button(bool is_long)
     if (!s_lfo_active) return false;
     if (is_long) {
         lfo_preview_cancel_restore();
+        /* A target move wrote the other LFO through its setter: put it back
+         * after this page's restore, so no target is on both slots. */
+        if (s_lfo_other_dirty)
+            lfo_store((uint8_t)(s_lfo_index ^ 1u), &s_lfo_other_entry, s_lfo2_open);
         s_lfo_active   = false;
         s_force_redraw = true;
         ESP_LOGI(TAG, "LFO editor cancelled");
@@ -2331,7 +2507,15 @@ bool synth_ui_lfo_handle_button(bool is_long)
     seq_lfo_t *l = &s_lfo_view.lfo;
     uint8_t c = s_lfo_view.cursor;
     if (c < LFO_TARGET_COUNT) {
-        l->targets ^= LFO_TGT_BIT(c);          /* toggle this target in/out of the set */
+        uint8_t bit = LFO_TGT_BIT(c);
+        if (!(l->targets & bit) && (s_lfo_other.targets & bit)) {
+            /* Each target belongs to one LFO: the other gives it up through
+             * its setter first, then this page previews it. */
+            s_lfo_other.targets &= (uint8_t)~bit;
+            lfo_store((uint8_t)(s_lfo_index ^ 1u), &s_lfo_other, s_lfo2_open);
+            s_lfo_other_dirty = true;
+        }
+        l->targets ^= bit;                     /* toggle this target in/out of the set */
         s_lfo_view.editing = false;
         s_lfo_dirty = true;
         lfo_live_push_preview();
@@ -2353,37 +2537,47 @@ bool synth_ui_lfo_handle_button(bool is_long)
     return true;
 }
 
+void synth_ui_lfo_toggle_enabled(void)
+{
+    if (!s_lfo_active) return;
+    s_lfo_view.lfo.enabled = !s_lfo_view.lfo.enabled;
+    s_lfo_view.editing = false;
+    s_lfo_dirty = true;
+    lfo_live_push_preview();
+    s_force_redraw = true;
+}
+
+void synth_ui_lfo_button2(void)
+{
+    if (!s_lfo_active || !lfo2_available()) return;
+    if (s_lfo_index == 1u) {
+        /* Collapse from the LFO2 page: one setter call stores the page and
+         * collapses it (release to patch on a row), after the preview slot
+         * is dropped so the reload cannot rebind the previewed LFO2. */
+        sequencer_core_preview_melodic_clear();
+        s_lfo2_open = false;
+        lfo_store(1u, &s_lfo_view.lfo, false);
+        lfo_show_page(0u);
+        ESP_LOGI(TAG, "LFO2 collapsed");
+        return;
+    }
+    if (!s_lfo2_open) s_lfo_other.enabled = true;   /* open = on, fields kept */
+    s_lfo2_open = !s_lfo2_open;
+    lfo_store(1u, &s_lfo_other, s_lfo2_open);
+    s_lfo_other_entry = s_lfo_other;   /* the committed baseline for a cancel */
+    s_lfo_other_dirty = false;
+    s_force_redraw = true;
+    ESP_LOGI(TAG, "LFO2 %s", s_lfo2_open ? "opened" : "collapsed");
+}
+
 bool synth_ui_lfo_close_commit(void)
 {
     if (!s_lfo_active) return false;
-#if CONFIG_SYNTH_WIRELESS
-    /* Before the mode ladder: the Wireless page is an overlay. */
-    if (s_lfo_live_target) {
-        live_play_set_lfo(&s_lfo_view.lfo);
-        s_lfo_active   = false;
-        s_force_redraw = true;
-        ESP_LOGI(TAG, "LFO editor committed (live voice)");
-        return true;
-    }
-#endif
-    if (seq_state.ui_mode == UI_MODE_ARP) {
-        arp_set_lfo(&s_lfo_view.lfo);
-    } else if (seq_state.ui_mode == UI_MODE_DRONE) {
-        drone_set_lfo(&s_lfo_view.lfo);
-    } else if (seq_state.ui_mode == UI_MODE_DRONE_STD) {
-        drone_std_set_lfo(&s_lfo_view.lfo);
-    } else if (s_lfo_dirty) {
-        sequencer_core_set_melodic_lfo(s_lfo_view.layer_idx,
-                                       s_lfo_view.track_idx,
-                                       &s_lfo_view.lfo);
-    } else {
-        /* Untouched: no authority taken; drop any preview arming. */
-        lfo_preview_cancel_restore();
-    }
-    sequencer_core_preview_melodic_clear();
+    lfo_page_commit();
     s_lfo_active   = false;
     s_force_redraw = true;
-    ESP_LOGI(TAG, "LFO editor committed (dirty=%d)", (int)s_lfo_dirty);
+    ESP_LOGI(TAG, "LFO%u editor committed (dirty=%d)", s_lfo_index + 1u,
+             (int)s_lfo_dirty);
     return true;
 }
 
@@ -2633,9 +2827,11 @@ static void editor_reseed_around(editor_id_t ed, void (*change)(void))
         }
         case EDITOR_LFO: {
             uint8_t cursor = s_lfo_view.cursor, first = s_lfo_view.tgt_first;
+            uint8_t page = s_lfo_index;
             synth_ui_lfo_close_commit();
             change();
             synth_ui_lfo_open();
+            if (page == 1u && s_lfo2_open) lfo_show_page(1u);   /* clean reseed */
             s_lfo_view.tgt_first = first;
             s_lfo_view.cursor    = cursor;
             break;
@@ -2694,7 +2890,8 @@ bool synth_ui_editor_release_to_patch(void)
         case EDITOR_GRAPH:  s_release_group = (s_graph_eg_index == 1) ? SEQ_VP_GROUP_ENV1
                                                                       : SEQ_VP_GROUP_ENV; break;
         case EDITOR_FILTER: s_release_group = SEQ_VP_GROUP_FILTER; break;
-        case EDITOR_LFO:    s_release_group = SEQ_VP_GROUP_LFO;    break;
+        case EDITOR_LFO:    s_release_group = (s_lfo_index == 1u) ? SEQ_VP_GROUP_LFO2
+                                                                  : SEQ_VP_GROUP_LFO; break;
         case EDITOR_DIST:   s_release_group = SEQ_VP_GROUP_DIST;   break;
         default: return false;
     }
@@ -2703,8 +2900,8 @@ bool synth_ui_editor_release_to_patch(void)
     return true;
 }
 
-/* Cycle ADSR → Filter → LFO → DIST → ADSR (MY_BUTTON_3 while any editor is
- * open). */
+/* Cycle ADSR → Filter → LFO (LFO1, then LFO2 while open) → DIST → ADSR
+ * (MY_BUTTON_3 while any editor is open). */
 void synth_ui_cycle_editor(void)
 {
     if (graph_popup_is_active(&s_graph_popup)) {
@@ -2720,6 +2917,12 @@ void synth_ui_cycle_editor(void)
         synth_ui_filter_close_commit();
         synth_ui_lfo_open();
     } else if (s_lfo_active) {
+        if (s_lfo_index == 0 && s_lfo2_open) {
+            /* LFO1 -> LFO2: same view, next page. */
+            lfo_page_commit();
+            lfo_show_page(1u);
+            return;
+        }
         synth_ui_lfo_close_commit();
         synth_ui_dist_open();
     } else if (s_dist_active) {

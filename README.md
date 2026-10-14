@@ -949,7 +949,7 @@ patch-hold or pitch-hold gesture does not survive the switch.
 
 Four modal editors - envelope, filter, LFO, distortion - reachable from any
 instrument screen with `MY_BUTTON_SHIFT` + `MY_BUTTON_1` and cycled with
-`MY_BUTTON_3` (EG0, EG1, Filter, LFO, DIST). They bind to whichever
+`MY_BUTTON_3` (EG0, EG1, Filter, LFO1, LFO2 while open, DIST). They bind to whichever
 instrument opened them (a melodic row, the arp, either drone, or the BLE
 live voice) and audition every change live. Inputs:
 [CONTROLS.md](CONTROLS.md#adsr-graph-editor).

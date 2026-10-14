@@ -243,8 +243,25 @@ static void arp_apply_filter(const seq_filter_t *f)
 
 #if CONFIG_SEQ_LFO_SHARED
 /* The shared LFO synth the arp synth holds (lfo_bank.h); LFO_BANK_NONE while
- * the software stepper serves it, or nothing does. */
+ * the software stepper serves it, or nothing does. s_arp_lfo2_ref is LFO2's
+ * (mod slot 0), which has no stepper. */
 static uint8_t s_arp_lfo_ref = LFO_BANK_NONE;
+static uint8_t s_arp_lfo2_ref = LFO_BANK_NONE;
+
+/* The oscs the arp's shared LFO synths reach: the wave-topology coupled oscs
+ * (SCAN rides the pitch mask, as on a row) or the lfo_targets map. False for
+ * an unmapped patch. */
+static bool arp_lfo_target_map(lfo_target_map_t *map)
+{
+    seq_voice_layout_t vl;
+    if (arp_voice_layout(&vl)) {
+        *map = (lfo_target_map_t){ .voice_mask = vl.voice_mask,
+                                   .pitch_mask = vl.pitch_mask,
+                                   .scan_mask  = vl.pitch_mask };
+        return true;
+    }
+    return lfo_targets_of_patch(s_arp.patch, map);
+}
 #endif
 
 /* Apply the arp's LFO (`lfo`, or NULL for none) to its synth. Sent after every
@@ -260,18 +277,7 @@ static void arp_apply_lfo(const seq_lfo_t *lfo)
     uint16_t bpm  = sequencer_core_get_bpm();
 #if CONFIG_SEQ_LFO_SHARED
     lfo_target_map_t map;
-    seq_voice_layout_t vl;
-    bool mapped;
-    if (arp_voice_layout(&vl)) {
-        /* SCAN rides the pitch mask, as on a row (melodic_lfo_apply_runtime). */
-        map = (lfo_target_map_t){ .voice_mask = vl.voice_mask,
-                                  .pitch_mask = vl.pitch_mask,
-                                  .scan_mask  = vl.pitch_mask };
-        mapped = true;
-    } else {
-        mapped = lfo_targets_of_patch(s_arp.patch, &map);
-    }
-    if (mapped)
+    if (arp_lfo_target_map(&map))
         (void)lfo_bank_bind(synth, VOICE_LFO_SLOT_LFO1, &map, lfo, bpm, &s_arp_lfo_ref);
     else
         lfo_bank_unbind(&s_arp_lfo_ref);   /* the patch re-apply unwired it */
@@ -287,6 +293,46 @@ bool arp_lfo_bound(void)
 {
 #if CONFIG_SEQ_LFO_SHARED
     return s_arp_lfo_ref != LFO_BANK_NONE;
+#else
+    return false;
+#endif
+}
+
+/* Send `lfo` (NULL = unwire) to the arp synth's mod slot 0 where the patch
+ * has a target map; drop LFO2's reference otherwise. */
+static void arp_wire_lfo2(const seq_lfo_t *lfo)
+{
+#if CONFIG_SEQ_LFO_SHARED
+    lfo_target_map_t map;
+    if (arp_lfo_target_map(&map))
+        (void)lfo_bank_bind(sequencer_core_arp_synth(), VOICE_LFO_SLOT_LFO2, &map,
+                            lfo, sequencer_core_get_bpm(), &s_arp_lfo2_ref);
+    else
+        lfo_bank_unbind(&s_arp_lfo2_ref);
+#else
+    (void)lfo;
+#endif
+}
+
+/* LFO2 by the slot-0 rule (ENGINE-SEMANTICS.md, "LFO: native carrier vs
+ * software stepper"): open, wired or unwired with the stored LFO2; collapsed,
+ * no send, so a Juno/DX7 patch keeps its own LFO. After arp_apply_lfo() at
+ * every rebuild. */
+static void arp_apply_lfo2(void)
+{
+    if (s_arp.vp.lfo2_authored) {
+        arp_wire_lfo2(&s_arp.vp.lfo2);
+        return;
+    }
+#if CONFIG_SEQ_LFO_SHARED
+    lfo_bank_unbind(&s_arp_lfo2_ref);
+#endif
+}
+
+bool arp_lfo2_bound(void)
+{
+#if CONFIG_SEQ_LFO_SHARED
+    return s_arp_lfo2_ref != LFO_BANK_NONE;
 #else
     return false;
 #endif
@@ -366,6 +412,7 @@ static void arp_rebuild(void)
      * skips them. */
     bool lfo_on = s_arp.vp.lfo_authored && s_arp.vp.lfo.enabled;
     arp_apply_lfo(lfo_on ? &s_arp.vp.lfo : NULL);
+    arp_apply_lfo2();
     /* arp_apply_filter also pushes the routing matrix, and the EG1 breakpoints
      * whenever an EG1 rail is live. */
     if (s_arp.vp.filter_authored) {
@@ -806,6 +853,10 @@ void arp_set_lfo(const seq_lfo_t *lfo)
     if (!lfo) return;
     s_arp.vp.lfo = *lfo;
     s_arp.vp.lfo_authored = true;
+    /* One LFO per target (seq_model.h): LFO1 keeps a shared one. */
+    uint8_t shared = s_arp.vp.lfo2.targets & s_arp.vp.lfo.targets;
+    s_arp.vp.lfo2.targets &= (uint8_t)~shared;
+    if (shared) arp_apply_lfo2();
     /* A shared LFO synth or the native carriers take the edit immediately
      * (arp_apply_lfo; mirrors the melodic editor path); software-stepper
      * patches read s_arp.vp.lfo live each frame. */
@@ -813,6 +864,33 @@ void arp_set_lfo(const seq_lfo_t *lfo)
     ESP_LOGI(TAG, "arp LFO -> en=%d wave=%u rate=%u depth=%u tgt=0x%02x",
              lfo->enabled, (unsigned)lfo->wave, (unsigned)lfo->rate,
              (unsigned)lfo->depth, (unsigned)lfo->targets);
+}
+
+bool arp_get_lfo2(seq_lfo_t *out)
+{
+    if (out) *out = s_arp.vp.lfo2;
+    return s_arp.vp.lfo2_authored;
+}
+
+void arp_set_lfo2(const seq_lfo_t *lfo, bool open)
+{
+    if (!lfo) return;
+    bool collapse = s_arp.vp.lfo2_authored && !open;
+    s_arp.vp.lfo2 = *lfo;
+    s_arp.vp.lfo2.targets &= (uint8_t)~s_arp.vp.lfo.targets;   /* one LFO per target */
+    ESP_LOGI(TAG, "arp LFO2 -> %s en=%d wave=%u rate=%u depth=%u tgt=0x%02x",
+             open ? "open" : "collapsed", lfo->enabled, (unsigned)lfo->wave,
+             (unsigned)lfo->rate, (unsigned)lfo->depth,
+             (unsigned)s_arp.vp.lfo2.targets);
+    if (collapse && lfo_targets_patch_owns_slot0(s_arp.patch)) {
+        /* Only a patch re-apply brings the patch's own LFO back. */
+        s_arp.vp.lfo2_authored = false;
+        arp_rebuild();
+        return;
+    }
+    if (collapse) arp_wire_lfo2(NULL);   /* plain unwire: the patch leaves slot 0 free */
+    s_arp.vp.lfo2_authored = open;
+    arp_apply_lfo2();
 }
 
 void arp_set_slot(uint8_t idx, int16_t chromatic_note)

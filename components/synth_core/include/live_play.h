@@ -105,6 +105,12 @@ void live_play_reapply_dist(void);
 
 void live_play_get_lfo(seq_lfo_t *out);
 void live_play_set_lfo(const seq_lfo_t *lfo);
+/* LFO2: the arp's contract (arp_core.h, arp_set_lfo2); a collapse that hands
+ * slot 0 back to the patch rebuilds the slot once it is up. bound: true while
+ * LFO2 is wired to a shared LFO synth. */
+bool live_play_get_lfo2(seq_lfo_t *out);
+void live_play_set_lfo2(const seq_lfo_t *lfo, bool open);
+bool live_play_lfo2_bound(void);
 
 float live_play_get_amp_scale(void);
 void  live_play_set_amp_scale(float v);

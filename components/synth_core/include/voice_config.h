@@ -139,8 +139,10 @@ uint8_t voice_wob_db_to_depth(uint8_t db);
 #define VOICE_KS_FEEDBACK_DEFAULT 0.998f
 
 /* Reset a voice_params_t (seq_model.h) to defaults: zeroed/unauthored, with
- * amp_trim at unity and both LFO rates at 1/8. The single place those get
- * their non-zero defaults - use it instead of re-setting them after a memset. */
+ * amp_trim at unity, LFO1's rate and wobble rate at 1/8, and LFO2 at the LFO
+ * editor's seed (sine, 1/1, depth 50) with enabled false and no targets. The
+ * single place those get their non-zero defaults - use it instead of
+ * re-setting them after a memset. */
 void voice_params_init_defaults(voice_params_t *vp);
 
 /* lfo_wave_t -> AMY wave constant. RANDOM maps to NOISE: compute_mod_noise

@@ -17,6 +17,15 @@ void voice_params_init_defaults(voice_params_t *vp)
     vp->amp_trim = 1.0f;   /* unity */
     vp->lfo.rate     = NOTE_DIV_1_8;
     vp->lfo.wob_rate = NOTE_DIV_1_8;
+    /* LFO2 starts from the LFO editor's seed, off and with no targets, so
+     * opening it never takes a target from LFO1. */
+    vp->lfo2 = (seq_lfo_t){
+        .mode     = LFO_MODE_FREE,
+        .wave     = LFO_WAVE_SINE,
+        .rate     = NOTE_DIV_1_1,
+        .depth    = 50,
+        .wob_rate = NOTE_DIV_1_8,
+    };
     /* Distortion off, but with the secondary parameters already in audible
      * territory: the first TYPE flip should be heard, not land on a no-op. */
     vp->dist = (seq_dist_t){ .type = 0, .drive = 2, .bits = 8, .rate = 8, .mix = 100 };

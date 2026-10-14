@@ -111,7 +111,7 @@ Kconfig defaults ──seed──> layer->vp[track].env ──push──> AMY sy
    `vp[track].env` struct, marks the row **authored**, and immediately
    re-pushes to AMY. The EG1 breakpoint set follows the same path via its own
    store (`vp[track].env1`), switched in the editor with a MY_BUTTON_3
-   tap (EG0, EG1, Filter, LFO, DIST).
+   tap (EG0, EG1, Filter, LFO1, LFO2 while open, DIST).
 
 ### Deferred authority over patches
 

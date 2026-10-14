@@ -634,6 +634,29 @@ void sequencer_core_lfo_service(void);
  * out of range. UI task. */
 bool sequencer_core_track_lfo_bound(uint8_t layer_idx, uint8_t track);
 
+/* ── Per-track melodic LFO2 (second LFO, mod slot 0) ──
+ * A shared LFO synth only (CONFIG_SEQ_LFO_SHARED; without it the fields are
+ * stored and do nothing): no stepper, and a full bank leaves it inert. Open
+ * (SEQ_VP_GROUP_LFO2 authored) and on (lfo2.enabled) are separate states;
+ * the slot-0 rule for each is in ENGINE-SEMANTICS.md, "LFO: native carrier
+ * vs software stepper". Each target belongs to at most one LFO: set_lfo2
+ * stores lfo2.targets minus LFO1's, set_melodic_lfo takes a shared target
+ * away from LFO2.
+ * set_lfo2 stores the fields into the block the row reads and, with open,
+ * authors LFO2 and rebinds every reader; without open it collapses an open
+ * LFO2 through release to patch (sequencer_core_release_melodic_group(),
+ * which reloads the layer) and otherwise only stores. get returns false for
+ * out-of-range. preview/reapply as the LFO1 pair below. bound: as
+ * sequencer_core_track_lfo_bound() for LFO2. UI task only. */
+void sequencer_core_set_melodic_lfo2(uint8_t layer_idx, uint8_t track,
+                                     const seq_lfo_t *lfo, bool open);
+bool sequencer_core_get_melodic_lfo2(uint8_t layer_idx, uint8_t track,
+                                     seq_lfo_t *out);
+void sequencer_core_preview_melodic_lfo2(uint8_t layer_idx, uint8_t track,
+                                         const seq_lfo_t *lfo);
+void sequencer_core_reapply_melodic_lfo2(uint8_t layer_idx, uint8_t track);
+bool sequencer_core_track_lfo2_bound(uint8_t layer_idx, uint8_t track);
+
 #if CONFIG_SEQ_OOM_RESYNC
 /* Self-heal service (UI task, same cadence as the LFO service): once an AMY
  * OOM burst stops growing, re-emit every layer's schedule and re-arm the arp.

@@ -63,7 +63,7 @@ static const char *TAG = "project_snapshot";
 
 /* LAYR section version: the writer's tag and the loader's only accepted
  * value. */
-#define LAYR_VERSION 25
+#define LAYR_VERSION 26
 
 _Static_assert(SEQ_TRACKS == 5 && SEQ_MAX_STEPS == 32,
                "LAYR format assumes 5x32; bump LAYR_VERSION");
@@ -233,10 +233,12 @@ static void ser_vp(tlv_writer_t *w, const voice_params_t *vp)
     ser_env(w, &vp->env1);
     ser_filter(w, &vp->filter);
     ser_lfo(w, &vp->lfo);
+    ser_lfo(w, &vp->lfo2);
     tlv_put_u8(w, vp->env_authored ? 1 : 0);
     tlv_put_u8(w, vp->env1_authored ? 1 : 0);
     tlv_put_u8(w, vp->filter_authored ? 1 : 0);
     tlv_put_u8(w, vp->lfo_authored ? 1 : 0);
+    tlv_put_u8(w, vp->lfo2_authored ? 1 : 0);
     tlv_put_f32(w, vp->amp_trim);
     ser_dist(w, &vp->dist);
     tlv_put_u8(w, vp->dist_authored ? 1 : 0);
@@ -249,15 +251,20 @@ static bool de_vp(tlv_reader_t *r, voice_params_t *vp)
     if (!de_env(r, &vp->env1))      return false;
     if (!de_filter(r, &vp->filter)) return false;
     if (!de_lfo(r, &vp->lfo))       return false;
-    uint8_t ea, e1a, fa, la;
+    if (!de_lfo(r, &vp->lfo2))      return false;
+    /* Each target on at most one LFO (seq_model.h); LFO1 keeps a shared one. */
+    vp->lfo2.targets &= (uint8_t)~vp->lfo.targets;
+    uint8_t ea, e1a, fa, la, l2a;
     if (!tlv_get_u8(r, &ea))  return false;
     if (!tlv_get_u8(r, &e1a)) return false;
     if (!tlv_get_u8(r, &fa))  return false;
     if (!tlv_get_u8(r, &la))  return false;
+    if (!tlv_get_u8(r, &l2a)) return false;
     vp->env_authored    = ea  != 0;
     vp->env1_authored   = e1a != 0;
     vp->filter_authored = fa  != 0;
     vp->lfo_authored    = la  != 0;
+    vp->lfo2_authored   = l2a != 0;
     if (!tlv_get_f32(r, &vp->amp_trim)) return false;
     vp->amp_trim = SEQ_CLAMP_F32(vp->amp_trim, 0.0f, 1.0f);
     if (!de_dist(r, &vp->dist)) return false;
@@ -657,6 +664,8 @@ typedef struct {
     seq_env_t    env, env2;
     seq_filter_t filter;
     seq_lfo_t    lfo;
+    seq_lfo_t    lfo2;
+    bool         lfo2_authored;
     seq_dist_t   dist;
     bool         muted;
     bool         solo;
@@ -666,7 +675,7 @@ typedef struct {
 static void ser_arp(tlv_writer_t *w)
 {
     /* One fixed shape per version, as for LAYR. Field history: git log. */
-    size_t h = tlv_begin_section(w, TAG_ARP, 16);
+    size_t h = tlv_begin_section(w, TAG_ARP, 17);
     tlv_put_u8(w, arp_get_enabled() ? 1 : 0);
     tlv_put_u16(w, arp_get_patch());
     tlv_put_u8(w, (uint8_t)arp_get_direction());
@@ -682,6 +691,8 @@ static void ser_arp(tlv_writer_t *w)
     seq_env_t e2; arp_get_envelope2(&e2); ser_env(w, &e2);
     seq_filter_t f; arp_get_filter(&f);  ser_filter(w, &f);
     seq_lfo_t l; arp_get_lfo(&l);        ser_lfo(w, &l);
+    seq_lfo_t l2; bool l2a = arp_get_lfo2(&l2); ser_lfo(w, &l2);
+    tlv_put_u8(w, l2a ? 1 : 0);
     tlv_put_u8(w, (uint8_t)arp_get_quant_mode());
     seq_dist_t d; arp_get_dist(&d);      ser_dist(w, &d);
     tlv_put_u8(w, arp_get_muted() ? 1 : 0);
@@ -724,6 +735,10 @@ static bool parse_arp(tlv_reader_t *b, staged_arp_t *a)
     if (!de_env(b, &a->env2))      return false;
     if (!de_filter(b, &a->filter)) return false;
     if (!de_lfo(b, &a->lfo))       return false;
+    if (!de_lfo(b, &a->lfo2))      return false;
+    a->lfo2.targets &= (uint8_t)~a->lfo.targets;   /* as de_vp */
+    if (!tlv_get_u8(b, &v)) return false;
+    a->lfo2_authored = v != 0;
     /* Scale source (arp_quant_mode_t). */
     if (!tlv_get_u8(b, &v)) return false;
     a->quant_mode = (v >= ARP_QUANT_COUNT) ? ARP_QUANT_CHORD : v;
@@ -766,6 +781,7 @@ static void apply_arp(const staged_arp_t *a)
     arp_set_envelope2(&a->env2);
     arp_set_filter(&a->filter);
     arp_set_lfo(&a->lfo);
+    arp_set_lfo2(&a->lfo2, a->lfo2_authored);
     arp_set_dist(&a->dist);
     arp_set_enabled(a->enabled);
     arp_set_muted(a->muted);
@@ -794,7 +810,7 @@ typedef struct {
 
 static void ser_drone(tlv_writer_t *w)
 {
-    size_t h = tlv_begin_section(w, TAG_DRON, 6);
+    size_t h = tlv_begin_section(w, TAG_DRON, 7);
     tlv_put_u8(w, drone_get_enabled() ? 1 : 0);
     tlv_put_u8(w, (uint8_t)drone_get_chord());
     tlv_put_u8(w, drone_get_root_note());
@@ -884,7 +900,7 @@ typedef struct {
 
 static void ser_drone_std(tlv_writer_t *w)
 {
-    size_t h = tlv_begin_section(w, TAG_DSTD, 3);
+    size_t h = tlv_begin_section(w, TAG_DSTD, 4);
     tlv_put_u8(w, drone_std_get_enabled() ? 1 : 0);
     tlv_put_u8(w, (uint8_t)drone_std_get_chord());
     tlv_put_u8(w, drone_std_get_root_note());
@@ -1405,17 +1421,17 @@ bool project_snapshot_load_buffer(const uint8_t *payload, size_t len, const char
             break;
         case TAG_ARP:
             /* Exactly ser_arp()'s version (see TAG_LAYR). */
-            if (got_arp || ver != 16) { ok = false; break; }
+            if (got_arp || ver != 17) { ok = false; break; }
             ok = parse_arp(&body, &staged_arp);
             got_arp = ok;
             break;
         case TAG_DRON:
-            if (got_drone || ver != 6) { ok = false; break; }
+            if (got_drone || ver != 7) { ok = false; break; }
             ok = parse_drone(&body, &sd->drone);
             got_drone = ok;
             break;
         case TAG_DSTD:
-            if (got_dstd || ver != 3) { ok = false; break; }
+            if (got_dstd || ver != 4) { ok = false; break; }
             ok = parse_drone_std(&body, &sd->dstd);
             got_dstd = ok;
             break;

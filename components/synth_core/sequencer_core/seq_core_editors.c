@@ -12,6 +12,7 @@ float    s_lfo_rnd[MAX_LAYERS][SEQ_TRACKS];   /* S&H held value   */
 uint32_t s_lfo_rng_state = 0xDEADBEEFu;
 #if CONFIG_SEQ_LFO_SHARED
 uint8_t  s_lfo_synth[MAX_LAYERS][SEQ_TRACKS]; /* bank reference; LFO_BANK_NONE = none */
+uint8_t  s_lfo2_synth[MAX_LAYERS][SEQ_TRACKS]; /* the same for LFO2 (mod slot 0) */
 
 /* Release the row's bank reference, if any. Sends no AMY event: callers reach
  * it after a patch re-apply (which cleared the row's mod slot 1) or after
@@ -20,12 +21,22 @@ static void melodic_lfo_bank_drop(uint8_t layer_idx, uint8_t track)
 {
     lfo_bank_unbind(&s_lfo_synth[layer_idx][track]);
 }
+
+/* The same for LFO2's reference. Also the collapsed-LFO2 path: it sends
+ * nothing, so a patch's own slot-0 wiring stays. */
+static void melodic_lfo2_bank_drop(uint8_t layer_idx, uint8_t track)
+{
+    lfo_bank_unbind(&s_lfo2_synth[layer_idx][track]);
+}
 #endif
 
 void melodic_lfo_bank_drop_layer(uint8_t layer_idx)
 {
 #if CONFIG_SEQ_LFO_SHARED
-    for (uint8_t t = 0; t < SEQ_TRACKS; t++) melodic_lfo_bank_drop(layer_idx, t);
+    for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
+        melodic_lfo_bank_drop(layer_idx, t);
+        melodic_lfo2_bank_drop(layer_idx, t);
+    }
 #else
     (void)layer_idx;
 #endif
@@ -43,10 +54,23 @@ bool sequencer_core_track_lfo_bound(uint8_t layer_idx, uint8_t track)
 #endif
 }
 
+bool sequencer_core_track_lfo2_bound(uint8_t layer_idx, uint8_t track)
+{
+#if CONFIG_SEQ_LFO_SHARED
+    if (layer_idx >= s_num_layers || track >= SEQ_TRACKS) return false;
+    return s_lfo2_synth[layer_idx][track] != LFO_BANK_NONE;
+#else
+    (void)layer_idx;
+    (void)track;
+    return false;
+#endif
+}
+
 void melodic_lfo_bank_drop_row(uint8_t layer_idx, uint8_t track)
 {
 #if CONFIG_SEQ_LFO_SHARED
     melodic_lfo_bank_drop(layer_idx, track);
+    melodic_lfo2_bank_drop(layer_idx, track);
 #else
     (void)layer_idx;
     (void)track;
@@ -702,6 +726,8 @@ typedef struct {
     seq_filter_t filter;
     bool         lfo_valid;
     seq_lfo_t    lfo;
+    bool         lfo2_valid;
+    seq_lfo_t    lfo2;
 } melodic_preview_t;
 static melodic_preview_t s_preview;
 static volatile uint32_t s_preview_gen;   /* odd = writer mid-update */
@@ -734,31 +760,40 @@ static bool preview_snapshot(melodic_preview_t *out)
  * native topology or software-service arming) without touching the store.
  * Shared by the committing setter (which passes the just-stored struct), the
  * live preview (editor scratch) and cancel-restore (stored struct). */
+#if CONFIG_SEQ_LFO_SHARED
+/* The oscs a row's shared LFO synths reach: a wave-topology row's as-built
+ * layout (SCAN rides the pitch mask), else a patch string's lfo_targets map.
+ * False for an unmapped patch and for every drum row (its stored patch is
+ * just its SYNTH-mode selection). */
+static bool melodic_lfo_target_map(uint8_t layer_idx, uint8_t track,
+                                   lfo_target_map_t *tm)
+{
+    const seq_layer_t *layer = &s_layers[layer_idx];
+    if (layer->type != SEQ_LAYER_MELODIC) return false;
+#if CONFIG_SEQ_MELODIC_AMY_NATIVE_LFO
+    seq_voice_layout_t vl;
+    if (seq_track_voice_layout(layer_idx, track, &vl)) {
+        *tm = (lfo_target_map_t){ .voice_mask = vl.voice_mask,
+                                  .pitch_mask = vl.pitch_mask,
+                                  .scan_mask  = vl.pitch_mask };
+        return true;
+    }
+#endif
+    return lfo_targets_of_patch(layer->track_patch[track], tm);
+}
+#endif
+
 static void melodic_lfo_apply_runtime(uint8_t layer_idx, uint8_t track,
                                       const seq_lfo_t *lfo)
 {
     const seq_layer_t *layer = &s_layers[layer_idx];
 #if CONFIG_SEQ_LFO_SHARED
     /* Every mapped melodic row binds a shared LFO synth through mod slot 1
-     * (lfo_bank.h): a wave-topology row over its as-built layout (SCAN rides
-     * the pitch mask), a patch string over its lfo_targets map. Acquire before
-     * release, so an unchanged source keeps its synth and phase. A full bank
-     * or a disabled LFO leaves the row to the software path below. Melodic
-     * only: a drum row's stored patch is just its SYNTH-mode selection. */
+     * (lfo_bank.h). Acquire before release, so an unchanged source keeps its
+     * synth and phase. A full bank or a disabled LFO leaves the row to the
+     * software path below. */
     lfo_target_map_t tm;
-    bool mapped = false;
-    if (layer->type == SEQ_LAYER_MELODIC) {
-#if CONFIG_SEQ_MELODIC_AMY_NATIVE_LFO
-        seq_voice_layout_t vl;
-        if (seq_track_voice_layout(layer_idx, track, &vl)) {
-            tm = (lfo_target_map_t){ .voice_mask = vl.voice_mask,
-                                     .pitch_mask = vl.pitch_mask,
-                                     .scan_mask  = vl.pitch_mask };
-            mapped = true;
-        } else
-#endif
-        mapped = lfo_targets_of_patch(layer->track_patch[track], &tm);
-    }
+    bool mapped = melodic_lfo_target_map(layer_idx, track, &tm);
     if (mapped &&
         lfo_bank_bind(layer->synth_id[track], VOICE_LFO_SLOT_LFO1, &tm, lfo, s_bpm,
                       &s_lfo_synth[layer_idx][track]) == LFO_BIND_BANK) {
@@ -805,22 +840,83 @@ static void melodic_lfo_apply_runtime(uint8_t layer_idx, uint8_t track,
     }
 }
 
-/* The LFO a block actually runs: its stored one while authored, otherwise a
- * disabled copy. A released block keeps its values (so re-authoring restores
- * them) but must not modulate anything meanwhile. */
-static seq_lfo_t melodic_effective_lfo(const voice_params_t *vp)
+/* Push an EXPLICIT LFO2 struct to one row (mod slot 0) without touching the
+ * store, by the slot-0 rule (ENGINE-SEMANTICS.md, "LFO: native carrier vs
+ * software stepper"): open, a mapped row is wired to its shared LFO synth, or
+ * unwired while lfo is NULL, off, without targets or the bank is full;
+ * collapsed (!open), nothing is sent and only the reference is dropped, so a
+ * Juno/DX7 patch keeps its own LFO there. No stepper and no native carrier:
+ * without CONFIG_SEQ_LFO_SHARED LFO2 does nothing. */
+static void melodic_lfo2_apply_runtime(uint8_t layer_idx, uint8_t track,
+                                       const seq_lfo_t *lfo, bool open)
 {
-    seq_lfo_t l = vp->lfo;
-    if (!vp->lfo_authored) l.enabled = false;
+#if CONFIG_SEQ_LFO_SHARED
+    lfo_target_map_t tm;
+    if (open && melodic_lfo_target_map(layer_idx, track, &tm)) {
+        (void)lfo_bank_bind(s_layers[layer_idx].synth_id[track], VOICE_LFO_SLOT_LFO2,
+                            &tm, lfo, s_bpm, &s_lfo2_synth[layer_idx][track]);
+        return;
+    }
+    melodic_lfo2_bank_drop(layer_idx, track);
+#else
+    (void)layer_idx;
+    (void)track;
+    (void)lfo;
+    (void)open;
+#endif
+}
+
+/* The LFO (idx 0 = LFO1, 1 = LFO2) a row actually runs: an open editor's
+ * preview copy for that row and index, else its stored one while authored,
+ * otherwise a disabled copy. A released block keeps its values (so
+ * re-authoring restores them) but must not modulate anything meanwhile. Read
+ * by every reload and re-push, so a layer reload during a preview rebinds the
+ * previewed LFO, not the stored one. UI task (the preview writers' task). */
+static seq_lfo_t melodic_effective_lfo_idx(uint8_t layer_idx, uint8_t track,
+                                           uint8_t idx)
+{
+    bool here = s_preview.active && s_preview.li == layer_idx &&
+                s_preview.tr == track;
+    if (here && idx == 0u && s_preview.lfo_valid)  return s_preview.lfo;
+    if (here && idx == 1u && s_preview.lfo2_valid) return s_preview.lfo2;
+    const voice_params_t *vp = seq_track_vp(layer_idx, track);
+    seq_lfo_t l  = idx ? vp->lfo2 : vp->lfo;
+    bool authored = idx ? vp->lfo2_authored : vp->lfo_authored;
+    if (!authored) l.enabled = false;
     return l;
+}
+
+/* LFO2 open on this row: authored, or on an open LFO2 editor page (the page
+ * exists only while LFO2 is open). */
+static bool melodic_lfo2_open(uint8_t layer_idx, uint8_t track)
+{
+    if (s_preview.active && s_preview.li == layer_idx && s_preview.tr == track &&
+        s_preview.lfo2_valid)
+        return true;
+    return seq_track_vp(layer_idx, track)->lfo2_authored;
 }
 
 /* Runtime re-push of one row's stored LFO; the push callback shape the
  * fan-out helper takes. */
 static void melodic_reapply_lfo_track(uint8_t layer_idx, uint8_t track)
 {
-    seq_lfo_t l = melodic_effective_lfo(seq_track_vp(layer_idx, track));
+    seq_lfo_t l = melodic_effective_lfo_idx(layer_idx, track, 0u);
     melodic_lfo_apply_runtime(layer_idx, track, &l);
+}
+
+/* The same for LFO2. */
+static void melodic_reapply_lfo2_track(uint8_t layer_idx, uint8_t track)
+{
+    seq_lfo_t l = melodic_effective_lfo_idx(layer_idx, track, 1u);
+    melodic_lfo2_apply_runtime(layer_idx, track, &l,
+                               melodic_lfo2_open(layer_idx, track));
+}
+
+/* Unwire LFO2 from slot 0 (collapse on a family whose patch does not use the
+ * slot; the reload that follows restores a Juno/DX7 patch LFO). */
+static void melodic_unwire_lfo2_track(uint8_t layer_idx, uint8_t track)
+{
+    melodic_lfo2_apply_runtime(layer_idx, track, NULL, true);
 }
 
 void sequencer_core_set_melodic_lfo(uint8_t layer_idx, uint8_t track,
@@ -832,12 +928,40 @@ void sequencer_core_set_melodic_lfo(uint8_t layer_idx, uint8_t track,
     vp->lfo = *lfo;
     if (vp->lfo.depth > 100) vp->lfo.depth = 100;
     vp->lfo_authored = true;
+    /* One LFO per target (seq_model.h): LFO1 keeps a shared one. */
+    uint8_t shared = vp->lfo2.targets & vp->lfo.targets;
+    vp->lfo2.targets &= (uint8_t)~shared;
 
+    if (shared) melodic_push_peers(layer_idx, track, melodic_reapply_lfo2_track);
     melodic_push_peers(layer_idx, track, melodic_reapply_lfo_track);
     ESP_LOGI(TAG, "LFO L%u T%u [%s] %s %.2f Hz d=%u tgt=0x%02x",
              layer_idx + 1u, track + 1u, melodic_vp_where(layer_idx, track),
              lfo->enabled ? "ON" : "OFF",
              (double)s_lfo_hz[layer_idx][track], lfo->depth, lfo->targets);
+}
+
+void sequencer_core_set_melodic_lfo2(uint8_t layer_idx, uint8_t track,
+                                     const seq_lfo_t *lfo, bool open)
+{
+    if (!lfo || layer_idx >= s_num_layers || track >= SEQ_TRACKS) return;
+    voice_params_t *vp = seq_track_vp(layer_idx, track);
+
+    vp->lfo2 = *lfo;
+    if (vp->lfo2.depth > 100) vp->lfo2.depth = 100;
+    vp->lfo2.targets &= (uint8_t)~vp->lfo.targets;   /* one LFO per target */
+    ESP_LOGI(TAG, "LFO2 L%u T%u [%s] %s %s d=%u tgt=0x%02x",
+             layer_idx + 1u, track + 1u, melodic_vp_where(layer_idx, track),
+             open ? "OPEN" : "COLLAPSED", lfo->enabled ? "ON" : "OFF",
+             lfo->depth, vp->lfo2.targets);
+    if (!open) {
+        /* Collapse is release to patch; a collapsed LFO2 just keeps its
+         * fields. */
+        if (vp->lfo2_authored)
+            sequencer_core_release_melodic_group(layer_idx, track, SEQ_VP_GROUP_LFO2);
+        return;
+    }
+    vp->lfo2_authored = true;
+    melodic_push_peers(layer_idx, track, melodic_reapply_lfo2_track);
 }
 
 /* Cancel-restore for the LFO live preview: re-push the stored (committed)
@@ -849,11 +973,25 @@ void sequencer_core_reapply_melodic_lfo(uint8_t layer_idx, uint8_t track)
     melodic_reapply_lfo_track(layer_idx, track);
 }
 
+void sequencer_core_reapply_melodic_lfo2(uint8_t layer_idx, uint8_t track)
+{
+    if (layer_idx >= s_num_layers || track >= SEQ_TRACKS) return;
+    melodic_reapply_lfo2_track(layer_idx, track);
+}
+
 bool sequencer_core_get_melodic_lfo(uint8_t layer_idx, uint8_t track,
                                     seq_lfo_t *out)
 {
     if (!out || layer_idx >= s_num_layers || track >= SEQ_TRACKS) return false;
     *out = seq_track_vp(layer_idx, track)->lfo;
+    return true;
+}
+
+bool sequencer_core_get_melodic_lfo2(uint8_t layer_idx, uint8_t track,
+                                     seq_lfo_t *out)
+{
+    if (!out || layer_idx >= s_num_layers || track >= SEQ_TRACKS) return false;
+    *out = seq_track_vp(layer_idx, track)->lfo2;
     return true;
 }
 
@@ -970,9 +1108,12 @@ void __attribute__((optimize("O3", "unroll-loops", "fast-math"))) sequencer_core
 
 /* Post-apply LFO tail. With CONFIG_SEQ_LFO_SHARED: re-wire every row with a
  * live LFO and a target map to its shared LFO synth (the patch re-apply
- * cleared its mod slot 1). Without it: re-apply the authored native LFO for
- * every row whose patch reserves a carrier pair. Skipped rows fall to the
- * software loop. */
+ * cleared its mod slot 1), then LFO2 on slot 0. Without it: re-apply the
+ * authored native LFO for every row whose patch reserves a carrier pair.
+ * Skipped rows fall to the software loop. Both LFOs read through
+ * melodic_effective_lfo_idx(), so a reload under an open preview keeps the
+ * previewed LFO. Never re-applies a patch itself: the LFO2 collapse re-apply
+ * is release to patch's own reload, which ends here. */
 void sequencer_configure_melodic_lfo(uint8_t layer_idx, uint8_t rows)
 {
     const seq_layer_t *layer = &s_layers[layer_idx];
@@ -985,21 +1126,30 @@ void sequencer_configure_melodic_lfo(uint8_t layer_idx, uint8_t rows)
 #endif
     for (uint8_t t = 0; t < rows; t++) {
 #if CONFIG_SEQ_LFO_SHARED
-        /* Per row: a mixed layer can have wave rows next to string rows. The
-         * stored block, while authored. A row without a live LFO drops its
-         * reference and sends nothing: the fresh re-apply carries no slot-1
+        /* Per row: a mixed layer can have wave rows next to string rows. A
+         * row without a live LFO1 takes the send-nothing
+         * melodic_lfo_bank_drop(): the fresh re-apply carries no slot-1
          * wiring and no stepper residue, and a neutral restore would
          * overwrite the patch's own values. */
-        const voice_params_t *vp = seq_track_vp(layer_idx, t);
         uint16_t patch = layer->track_patch[t];
         bool mapped = lfo_targets_of_patch(patch, NULL);
 #if CONFIG_SEQ_MELODIC_AMY_NATIVE_LFO
         mapped = mapped || sequencer_core_lfo_wave_layout(patch, NULL);
 #endif
-        if (vp->lfo_authored && vp->lfo.enabled && vp->lfo.targets && mapped)
-            melodic_lfo_apply_runtime(layer_idx, t, &vp->lfo);
+        seq_lfo_t l = melodic_effective_lfo_idx(layer_idx, t, 0u);
+        if (l.enabled && l.targets && mapped)
+            melodic_lfo_apply_runtime(layer_idx, t, &l);
         else
             melodic_lfo_bank_drop(layer_idx, t);
+        /* LFO2 after LFO1. Open: wired, or unwired while off (a Juno/DX7
+         * patch LFO the re-apply just restored stays off while LFO2 is
+         * open). Collapsed: nothing sent, so that patch LFO plays. */
+        if (mapped && melodic_lfo2_open(layer_idx, t)) {
+            seq_lfo_t l2 = melodic_effective_lfo_idx(layer_idx, t, 1u);
+            melodic_lfo2_apply_runtime(layer_idx, t, &l2, true);
+        } else {
+            melodic_lfo2_bank_drop(layer_idx, t);
+        }
 #elif CONFIG_SEQ_MELODIC_AMY_NATIVE_LFO
         /* Per row: a mixed layer can have wave rows next to string rows, and
          * only the former reserve a carrier pair. */
@@ -1013,7 +1163,10 @@ void sequencer_configure_melodic_lfo(uint8_t layer_idx, uint8_t rows)
 #endif
     }
 #if CONFIG_SEQ_LFO_SHARED
-    for (uint8_t t = rows; t < SEQ_TRACKS; t++) melodic_lfo_bank_drop(layer_idx, t);
+    for (uint8_t t = rows; t < SEQ_TRACKS; t++) {
+        melodic_lfo_bank_drop(layer_idx, t);
+        melodic_lfo2_bank_drop(layer_idx, t);
+    }
 #endif
     (void)layer;
     (void)rows;
@@ -1174,6 +1327,24 @@ void sequencer_core_preview_melodic_lfo(uint8_t layer_idx, uint8_t track,
     melodic_lfo_apply_runtime(layer_idx, track, &tmp);
 }
 
+void sequencer_core_preview_melodic_lfo2(uint8_t layer_idx, uint8_t track,
+                                         const seq_lfo_t *lfo)
+{
+    if (!lfo || layer_idx >= s_num_layers || track >= SEQ_TRACKS) return;
+    seq_lfo_t tmp = *lfo;
+    if (tmp.depth > 100) tmp.depth = 100;
+
+    s_preview_gen++;
+    preview_slot_touch(layer_idx, track);
+    s_preview.lfo2       = tmp;
+    s_preview.lfo2_valid = true;
+    s_preview_gen++;
+
+    /* LFO2 has no stepper: the shared LFO synth takes the scratch at once.
+     * The LFO2 page exists only while LFO2 is open. */
+    melodic_lfo2_apply_runtime(layer_idx, track, &tmp, true);
+}
+
 bool sequencer_core_melodic_env_authored(uint8_t layer_idx, uint8_t track,
                                          uint8_t eg_index)
 {
@@ -1196,6 +1367,7 @@ bool sequencer_core_melodic_group_authored(uint8_t layer_idx, uint8_t track,
         case SEQ_VP_GROUP_ENV1:   return vp->env1_authored;
         case SEQ_VP_GROUP_FILTER: return vp->filter_authored;
         case SEQ_VP_GROUP_LFO:    return vp->lfo_authored;
+        case SEQ_VP_GROUP_LFO2:   return vp->lfo2_authored;
         case SEQ_VP_GROUP_DIST:   return vp->dist_authored;
         default:                  return false;
     }
@@ -1220,14 +1392,18 @@ seq_vp_src_t sequencer_core_get_melodic_vp_source(uint8_t layer_idx, uint8_t tra
  * (software pacing, shared LFO synth or native carrier) is re-armed first
  * either way: the reload path only covers live mapped / native tracks, and
  * its neutral restores must land before the block's filter/dist pushes, not
- * after. */
-static void melodic_repush_track(uint8_t layer_idx, uint8_t track)
+ * after. force_reload: the caller unwired a Juno/DX7 patch's own LFO from
+ * slot 0, so a block whose LFO2 is collapsed also takes the reload, the only
+ * way that patch LFO comes back. */
+static void melodic_repush_track(uint8_t layer_idx, uint8_t track,
+                                 bool force_reload)
 {
     const voice_params_t *vp = seq_track_vp(layer_idx, track);
     melodic_reapply_lfo_track(layer_idx, track);
+    melodic_reapply_lfo2_track(layer_idx, track);
     bool all_authored = vp->env_authored && vp->env1_authored &&
                         vp->filter_authored && vp->dist_authored;
-    if (!all_authored) {
+    if (!all_authored || (force_reload && !vp->lfo2_authored)) {
         sequencer_reconfigure_layer_paused(layer_idx);
         return;
     }
@@ -1249,12 +1425,20 @@ bool sequencer_core_set_melodic_vp_source(uint8_t layer_idx, uint8_t track,
      * stepper only restores the rails of the lfo it is handed, so a target
      * the new block does not modulate would otherwise stay at its last swept
      * value. */
-    seq_lfo_t off = melodic_effective_lfo(seq_track_vp(layer_idx, track));
+    seq_lfo_t off = melodic_effective_lfo_idx(layer_idx, track, 0u);
     off.enabled = false;
     melodic_lfo_apply_runtime(layer_idx, track, &off);
+    /* LFO2 twin: only unwire an open one (the repush below rewires or
+     * reloads); a collapsed one never sent anything to slot 0. On a Juno/DX7
+     * patch that unwire also clears the patch's own LFO, so the repush must
+     * reload unless the new block's LFO2 is open. */
+    bool slot0_cleared = melodic_lfo2_open(layer_idx, track) &&
+                         lfo_targets_patch_owns_slot0(layer->track_patch[track]);
+    if (melodic_lfo2_open(layer_idx, track))
+        melodic_unwire_lfo2_track(layer_idx, track);
 
     layer->vp_src[track] = (uint8_t)src;
-    melodic_repush_track(layer_idx, track);
+    melodic_repush_track(layer_idx, track, slot0_cleared);
     ESP_LOGI(TAG, "L%u T%u voice source -> %s", layer_idx + 1u, track + 1u,
              melodic_vp_where(layer_idx, track));
     return true;
@@ -1277,6 +1461,13 @@ void sequencer_core_release_melodic_group(uint8_t layer_idx, uint8_t track,
              * LFO synth or native carrier and restore the rails before the
              * reload re-imposes the patch. */
             melodic_push_peers(layer_idx, track, melodic_reapply_lfo_track);
+            break;
+        case SEQ_VP_GROUP_LFO2:
+            /* Collapse: slot 0 is handed back. Unwire it on every reader
+             * now; the reload then re-applies the patch (a Juno/DX7 patch
+             * LFO returns) and sends nothing for the collapsed LFO2. */
+            melodic_push_peers(layer_idx, track, melodic_unwire_lfo2_track);
+            vp->lfo2_authored = false;
             break;
         case SEQ_VP_GROUP_DIST:   vp->dist_authored   = false; break;
         default: return;

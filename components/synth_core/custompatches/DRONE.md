@@ -55,7 +55,8 @@ balance), replacing the patch's own head level; the piano keeps its own
 level. After every rebuild the drone re-imposes what the user authored, the
 way the live voice does: the envelopes, the filter with its envelope routing
 matrix (EG0/EG1 to cutoff, pitch, drive, mix, and scan on a wavetable), the
-distortion and the LFO (a shared LFO synth, `lfo_bank.h`). The sub is a fixed
+distortion and the LFOs (LFO1, then LFO2 while open; shared LFO synths,
+`lfo_bank.h`). The sub is a fixed
 one-voice sine at SUB INT below the root (-1..-36): level and EG0 only, no
 filter, LFO or distortion.
 
@@ -291,8 +292,9 @@ opens the editor bound to the drone; commit calls
 - It is pushed via the shared envelope helper (the same EG0 breakpoint delta
   path the melodic layers use), to main at the patch's voice osc and to the
   sub; EG1 goes to main only.
-- The editor cycle runs ADSR (EG0, EG1), Filter, LFO, DIST, as on every
-  other instrument; the envelope pages carry the routing matrix.
+- The editor cycle runs ADSR (EG0, EG1), Filter, LFO1, LFO2 (while open),
+  DIST, as on every other instrument; the envelope pages carry the routing
+  matrix.
 
 ## Patches
 

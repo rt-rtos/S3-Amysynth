@@ -26,8 +26,9 @@ flowchart TD
 wobble settings) runs once, as a two-osc AMY synth of its own above the slot
 map (`lfo_bank.h`): the carrier at the BPM-synced rate, RANDOM mapped to the
 NOISE sample-and-hold, and the wobble modulator chained behind it
-(`voice_lfo_source_apply()`). Every voice using that source names the synth in
-its mod slot 1, and each checked target's COEF_MOD1 depth is set once
+(`voice_lfo_source_apply()`). Every voice using that source for its LFO1
+names the synth in its mod slot 1 (LFO2 uses slot 0, below), and each checked
+target's COEF_MOD1 depth is set once
 (`voice_lfo_wire()`, `voice_config.c`): filter, amp, pitch, scan, pan and both
 distortion rails. Nothing is stepped, so there is no zipper. The per-target
 depth scalars are the `VOICE_LFO_DEPTH_*` constants in `voice_config.h`.
@@ -63,6 +64,38 @@ full bank it runs without an LFO.
 stepper runs only while that reference is empty, so the two never modulate the
 same voice. The LFO editor's WOBBLE rows follow the same state.
 
+**Two LFOs.** Every voice block carries a second LFO (`voice_params_t.lfo2`).
+AMY has two mod slots per osc: slot 1 is LFO1's (`VOICE_LFO_SLOT_LFO1`), slot 0
+is LFO2's (`VOICE_LFO_SLOT_LFO2`, `voice_config.h`). LFO2 binds through the
+same bank and depth laws, with its own reference per consumer
+(`s_lfo2_synth` per row), and LFO1 and LFO2 of one voice with equal source
+fields share one LFO synth. LFO2 has no stepper: with a full bank it is inert.
+Each target belongs to at most one LFO (`lfo.targets & lfo2.targets` is 0):
+the setters and the project loader take a shared target away from LFO2, so
+only one LFO can own AMP and only one slot's overshoot cap is ever below 1
+(`synth_level.h`). At every patch apply or rebuild the order is the patch
+string, then LFO1, then LFO2.
+
+LFO2 is open or collapsed (`lfo2_authored`, release group
+`SEQ_VP_GROUP_LFO2`) and, separately, on or off (`lfo2.enabled`). The slot-0
+rule:
+
+- Collapsed: no slot-0 send at all. Juno (patches 0..127) and DX7 (128..255)
+  strings wire slot 0 to their own LFO (osc 1, `L1`;
+  `lfo_targets_patch_owns_slot0()`), which keeps playing.
+- Open: slot 0 is LFO2's. It is wired while LFO2 runs (on, with targets, on a
+  mapped patch) and unwired otherwise, so on a Juno or DX7 patch an open LFO2
+  that is off leaves the patch LFO off too.
+- Open to collapsed: on a Juno or DX7 patch the patch is re-applied, the only
+  way back to its slot-0 wiring and depths (a melodic row through release to
+  patch, which reloads the layer; the arp, drones and live voice rebuild their
+  slot). On other families collapse is a plain unwire. The family decides;
+  AMY's slot-0 state is not read.
+
+On a sequencer row the reload tail binds both LFOs through the open editor's
+preview copy when one is up, so a reload during a preview keeps what is being
+auditioned.
+
 **Distortion.** DRIVE and MIX are independent target bits. AMY has MOD rails
 for both (`dist_logdrive_coefs`, `dist_mix_coefs`), so on a shared LFO synth
 they ride it like every other target; the stepper drives them only when it
@@ -75,7 +108,7 @@ switches distortion on.
 trailing carrier and wobble osc pair that its audible oscs name as
 `mod_source` on slot 0 (`voice_apply_native_lfo_topo()`), patch strings stay on
 the stepper, and `sequencer_core_lfo_native_layout()` is the one predicate
-every gate uses.
+every gate uses. LFO2 is stored and saved there but does nothing.
 
 ## Voice blocks and deferred authority
 

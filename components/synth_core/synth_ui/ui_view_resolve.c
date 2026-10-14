@@ -158,7 +158,8 @@ static const char *hint_mixer_bs(void)
  * Rows name only the label callbacks they set; the rest stay NULL. */
 const ui_view_desc_t ui_view_table[UI_VIEW_COUNT] = {
     [UI_VIEW_FILTER]    = { "FILTER", sig_filter,    draw_filter,    "On/Off", "-",     "Next",  .badge_x =  52 },
-    [UI_VIEW_LFO]       = { "LFO",    sig_lfo,       draw_lfo,       "-",      "-",     "Next",  .badge_x =  68 },
+    [UI_VIEW_LFO]       = { "LFO",    sig_lfo,       draw_lfo,       "On/Off", NULL,    "Next",  .badge_x =  68,
+                            .b2_fn = synth_ui_lfo_hint_b2 },
     [UI_VIEW_DIST]      = { "DIST",   sig_dist,      draw_dist,      "-",      "-",     "Next",  .badge_x =   0 },
     [UI_VIEW_STEPEDIT]  = { "STEP",   sig_stepedit,  draw_stepedit,  "-",      "-",     "Close", .badge_x =   0 },
     [UI_VIEW_GRAPH]     = { "GRAPH",  sig_graph,     draw_graph,     "Type",   NULL,    "Next",  .badge_x =  52,

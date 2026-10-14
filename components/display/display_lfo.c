@@ -104,10 +104,11 @@ void lfo_view_draw(u8g2_t *u8g2, const lfo_view_t *v)
     /* ── Header bar ── */
     u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
     char hdr[20];
+    const char *title = (v->index == 1u) ? "LFO2" : "LFO";
     if (v->target_label && v->target_label[0]) {
-        snprintf(hdr, sizeof(hdr), "LFO %s", v->target_label);
+        snprintf(hdr, sizeof(hdr), "%s %s", title, v->target_label);
     } else {
-        snprintf(hdr, sizeof(hdr), "LFO L%u T%u%s",
+        snprintf(hdr, sizeof(hdr), "%s L%u T%u%s", title,
                  v->layer_idx + 1u, v->track_idx + 1u, v->src_badge);
     }
     u8g2_DrawStr(u8g2, 1, 10, hdr);
@@ -129,8 +130,38 @@ void lfo_view_draw(u8g2_t *u8g2, const lfo_view_t *v)
         u8g2_DrawStr(u8g2, (uint8_t)(127 - tw - 2), 10, en_txt);
         if (en_sel) u8g2_SetDrawColor(u8g2, 1);
     }
-    /* FILTER swing range ("550-2.2k"), right-aligned against the En chip in
-     * the small font; dropped when a long title leaves no room for it. */
+    /* One display-only chip left of EN, a single header-font glyph: on the
+     * LFO1 page "2" while LFO2 is open (inverted while it runs: on, with
+     * targets, on a mapped patch); on the LFO2 page an outlined, struck "P"
+     * while LFO2 replaces the patch's own LFO. */
+    {
+        const char *glyph = NULL;
+        bool inv = false, strike = false;
+        if (v->index == 0u && v->lfo2_open) {
+            glyph = "2";
+            inv   = v->lfo2_on && v->other_targets != 0u && v->lfo2_avail;
+        } else if (v->index == 1u && v->patch_lfo_replaced) {
+            glyph  = "P";
+            strike = true;
+        }
+        if (glyph) {
+            uint8_t gw = (uint8_t)u8g2_GetStrWidth(u8g2, glyph);
+            uint8_t x  = (uint8_t)(chip_x - 2 - (gw + 4));
+            if (inv) {
+                u8g2_DrawBox(u8g2, x, 1, (uint8_t)(gw + 4), 11);
+                u8g2_SetDrawColor(u8g2, 0);
+            } else {
+                u8g2_DrawFrame(u8g2, x, 1, (uint8_t)(gw + 4), 11);
+            }
+            u8g2_DrawStr(u8g2, (uint8_t)(x + 2), 10, glyph);
+            if (strike) u8g2_DrawHLine(u8g2, (uint8_t)(x + 1), 6, (uint8_t)(gw + 2));
+            if (inv) u8g2_SetDrawColor(u8g2, 1);
+            chip_x = x;
+        }
+    }
+    /* FILTER swing range ("550-2.2k"), right-aligned against the leftmost
+     * header chip in the small font; dropped when a long title leaves no room
+     * for it. */
     if (v->flt_lo_hz > 0.0f && (l->targets & LFO_TGT_BIT(LFO_TARGET_FILTER))) {
         char lo[6], hi[6], rng[14];
         display_hz_label(lo, v->flt_lo_hz);
@@ -161,9 +192,16 @@ void lfo_view_draw(u8g2_t *u8g2, const lfo_view_t *v)
             u8g2_DrawBox(u8g2, 0, base - 7, LFO_DIV_X, 9);
             u8g2_SetDrawColor(u8g2, 0);
         }
-        /* checkbox: filled when the target is active, framed when not */
-        if (on) u8g2_DrawBox(u8g2, 2, base - 6, 6, 6);
-        else    u8g2_DrawFrame(u8g2, 2, base - 6, 6, 6);
+        /* checkbox: filled when the target is active, framed when not; a
+         * target the other LFO drives shows that LFO's number instead
+         * (checking it moves the target here). */
+        if (on) {
+            u8g2_DrawBox(u8g2, 2, base - 6, 6, 6);
+        } else if (v->other_targets & LFO_TGT_BIT(t)) {
+            u8g2_DrawStr(u8g2, 2, base, (v->index == 1u) ? "1" : "2");
+        } else {
+            u8g2_DrawFrame(u8g2, 2, base - 6, 6, 6);
+        }
         u8g2_DrawStr(u8g2, 11, base, target_name(t));
         /* Distortion targets without a serving stepper (drone): inert, struck
          * through like the WOBBLE rows on software tracks. Current colour

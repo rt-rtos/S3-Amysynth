@@ -180,6 +180,9 @@ extern const ui_view_desc_t ui_view_table[UI_VIEW_COUNT];
 /* GRAPH b2 hint (owner: ui_editors.c): the stop the next MY_BUTTON_2 press
  * enters. */
 const char *synth_ui_graph_hint_b2(void);
+/* LFO b2 hint (owner: ui_editors.c): "+LFO2" / "-LFO2" for what the next
+ * MY_BUTTON_2 press does, "-" where LFO2 is unavailable. */
+const char *synth_ui_lfo_hint_b2(void);
 
 /* ─── Build-view helpers called from synth_ui_task draw switch ────────── */
 void     drone_build_view(drone_view_t *out);

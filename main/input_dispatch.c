@@ -230,9 +230,9 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
         return;
     }
 
-    // MY_BUTTON_1, per editor: filter = enabled toggle, envelope = cycle EG
-    // curve type, LFO = unused (source flip is SHIFT+3). Otherwise it is the
-    // patch-select hold.
+    // MY_BUTTON_1, per editor: filter and LFO = enabled toggle, envelope =
+    // cycle EG curve type, DIST = unused (source flip is SHIFT+3). Otherwise
+    // it is the patch-select hold.
     if (button_id == MY_BUTTON_1) {
         if (synth_ui_filter_is_active()) {
             if (event == BUTTON_PRESS_DOWN) {
@@ -246,7 +246,13 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
             }
             return;
         }
-        if (synth_ui_lfo_is_active() || synth_ui_dist_is_active()) {
+        if (synth_ui_lfo_is_active()) {
+            if (event == BUTTON_PRESS_DOWN) {
+                synth_ui_lfo_toggle_enabled();
+            }
+            return;
+        }
+        if (synth_ui_dist_is_active()) {
             return;   /* bare press is a no-op; source flip is SHIFT+3 */
         }
         /* PROG screen: delete the entry at the cursor. */
@@ -344,7 +350,8 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
 
     // MY_BUTTON_2: pitch-edit hold normally; in the graph editor it toggles
     // amp-edit mode (encoder adjusts amplitude trim instead of ADSR points);
-    // on the FM screen it mutes/unmutes the selected operator.
+    // in the LFO editor it opens or collapses LFO2; on the FM screen it
+    // mutes/unmutes the selected operator.
     if (button_id == MY_BUTTON_2) {
         switch (v) {
             case UI_VIEW_FILTER:
@@ -352,6 +359,9 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
                 return;
             case UI_VIEW_GRAPH:
                 if (event == BUTTON_PRESS_DOWN) synth_ui_graph_toggle_amp_mode();
+                return;
+            case UI_VIEW_LFO:
+                if (event == BUTTON_PRESS_DOWN) synth_ui_lfo_button2();
                 return;
             case UI_VIEW_STEPEDIT:
                 /* Popup owns the encoder; suppress drum-select hold. */
@@ -378,9 +388,9 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
     }
 
     // MY_BUTTON_3: inside an editor, click cycles editor pages (EG0 -> EG1 ->
-    // filter -> LFO -> DIST); in STEPEDIT it closes; in FM link mode it ends
-    // linking; in the mixer's track rows it returns to the overview;
-    // otherwise it is the menu toggle.
+    // filter -> LFO1 -> LFO2 while open -> DIST); in STEPEDIT it closes; in
+    // FM link mode it ends linking; in the mixer's track rows it returns to
+    // the overview; otherwise it is the menu toggle.
     if (button_id == MY_BUTTON_3) {
 #if CONFIG_SYNTH_CUSTOM_FM
         if (v == UI_VIEW_FM && synth_ui_fm_link_active()) {

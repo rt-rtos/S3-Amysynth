@@ -21,7 +21,10 @@ enum {
     LFO_FLD_WOB_RATE,         /* WOBBLE (second-order LFO) rate               */
     LFO_FLD_WOB_DEPTH,        /* WOBBLE amount in dB of swing, OFF = off      */
     LFO_FLD_WOB_MODE,         /* WOBBLE reach: depth only vs depth + rate     */
-    LFO_FLD_EN,               /* drawn as a header chip, not a panel row      */
+    LFO_FLD_EN,               /* drawn as a header chip, not a panel row. On
+                                 either page it toggles that LFO's enabled
+                                 only, as Button 1 does; it never opens or
+                                 collapses LFO2, which is Button 2's job      */
     LFO_FLD_COUNT,            /* total navigable fields */
 };
 
@@ -37,9 +40,20 @@ enum {
 #define LFO_TGT_SLOTS    5
 
 /* View state for the LFO editor overlay: the working copy being edited plus
- * display metadata (cursor, editing flag, target track). */
+ * display metadata (cursor, editing flag, target track). One view for both
+ * pages: index 0 shows LFO1, index 1 LFO2. */
 typedef struct {
-    seq_lfo_t   lfo;
+    seq_lfo_t   lfo;          /* the shown page's LFO                       */
+    uint8_t     index;        /* 0 = LFO1 page, 1 = LFO2 page (header "LFO2") */
+    uint8_t     other_targets;/* targets the other LFO drives: marked "2" (on
+                                 the LFO1 page) or "1" at their checkbox    */
+    bool        lfo2_open;    /* LFO2 open: on the LFO1 page a "2" chip left
+                                 of EN, inverted while LFO2 runs            */
+    bool        lfo2_on;      /* LFO2's enabled flag (either page)          */
+    bool        lfo2_avail;   /* the patch has a target map, so LFO2 can run */
+    bool        patch_lfo_replaced; /* LFO2 open on a patch whose own LFO
+                                 rides slot 0 (Juno, DX7): on the LFO2 page
+                                 a struck "P" chip left of EN              */
     uint8_t     cursor;       /* 0..LFO_TARGET_COUNT-1 = target checkbox;
                                  then WAVE/RATE/DEPTH/EN (see LFO_FLD_*)   */
     uint8_t     tgt_first;    /* target row drawn at the top of the left

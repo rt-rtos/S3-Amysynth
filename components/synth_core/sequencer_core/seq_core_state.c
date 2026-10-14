@@ -125,6 +125,7 @@ void sequencer_core_init(void)
     memset(s_lfo_rnd,   0, MAX_LAYERS * SEQ_TRACKS * sizeof(s_lfo_rnd[0][0]));
 #if CONFIG_SEQ_LFO_SHARED
     memset(s_lfo_synth, LFO_BANK_NONE, MAX_LAYERS * SEQ_TRACKS * sizeof(s_lfo_synth[0][0]));
+    memset(s_lfo2_synth, LFO_BANK_NONE, MAX_LAYERS * SEQ_TRACKS * sizeof(s_lfo2_synth[0][0]));
 #endif
     DIAG_HEAP_CHECK("core_init: before push_tempo");
     sequencer_push_tempo(s_bpm);
@@ -148,6 +149,7 @@ uint8_t sequencer_core_add_layer(seq_layer_type_t type, uint8_t num_steps)
 #if CONFIG_SEQ_LFO_SHARED
     /* No row of a new layer holds a shared-LFO reference. */
     memset(s_lfo_synth[idx], LFO_BANK_NONE, sizeof(s_lfo_synth[idx]));
+    memset(s_lfo2_synth[idx], LFO_BANK_NONE, sizeof(s_lfo2_synth[idx]));
 #endif
 
     /* Per-row voice params: unauthored with amp_trim at unity. The single
@@ -309,12 +311,17 @@ bool sequencer_core_delete_layer(uint8_t layer_idx)
         memmove(&s_lfo_synth[layer_idx],
                 &s_lfo_synth[layer_idx + 1],
                 tail * sizeof(s_lfo_synth[0]));
+        memmove(&s_lfo2_synth[layer_idx],
+                &s_lfo2_synth[layer_idx + 1],
+                tail * sizeof(s_lfo2_synth[0]));
 #endif
     }
 #if CONFIG_SEQ_LFO_SHARED
     /* The vacated last layer's references moved down with it. */
     memset(s_lfo_synth[s_num_layers - 1], LFO_BANK_NONE,
            sizeof(s_lfo_synth[0]));
+    memset(s_lfo2_synth[s_num_layers - 1], LFO_BANK_NONE,
+           sizeof(s_lfo2_synth[0]));
 #endif
     s_num_layers--;
     /* Only the permanent drum layer left: every melodic slot is free again
