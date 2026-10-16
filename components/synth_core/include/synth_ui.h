@@ -189,7 +189,11 @@ void synth_ui_drop_handle_button(void);
 void synth_ui_drop_cycle_patch(int delta);   /* the focused synth's patch */
 void synth_ui_drop_button_edge(uint8_t btn, bool down);
 bool synth_ui_drop_button_long(uint8_t btn);
-void synth_ui_drop_shift0(bool hold);
+/* SHIFT + Button 0 on the drop screen, press and release. Held, it is
+ * Button 0's hold (a SHIFT + turn sets the splitter ratio); released
+ * without a turn, a press rerolls the seed and a hold (after
+ * synth_ui_drop_button_long(0)) freezes or unfreezes it. */
+void synth_ui_drop_shift0_edge(bool down);
 
 /* ── Drone screen ────────────────────────────────────────────────────────
  * Standalone "stutter house drone" synth (custompatches/drone_core). Active

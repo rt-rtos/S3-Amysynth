@@ -41,8 +41,8 @@ Screens are changed only through the Menu.
 
 | Gesture | Action |
 |---|---|
-| SHIFT + Button 0 (press) | Sequencer screen, no menu: toggle solo on the selected track. Arpeggiator screen, no menu: toggle the arp's solo. A SOLO / SOLO OFF banner shows the result. Ball drop screen: reroll the seed. Elsewhere: nothing |
-| SHIFT + Button 0 (hold) | Sequencer or Arpeggiator screen, no menu: clear every solo, the arp's included (SOLO CLR banner). Ball drop screen: freeze / unfreeze the seed. Elsewhere: nothing |
+| SHIFT + Button 0 (press) | Sequencer screen, no menu: toggle solo on the selected track. Arpeggiator screen, no menu: toggle the arp's solo. A SOLO / SOLO OFF banner shows the result. Ball drop screen: reroll the seed on the release, unless a turn set a splitter's ratio during the press. Elsewhere: nothing |
+| SHIFT + Button 0 (hold) | Sequencer or Arpeggiator screen, no menu: clear every solo, the arp's included (SOLO CLR banner). Ball drop screen: freeze / unfreeze the seed on the release, unless a turn set a splitter's ratio during the hold. Elsewhere: nothing |
 | SHIFT + Button 1 | Open the ADSR editor on the current instrument (Seq, Arp, Ball drop, Drone screens, or the Wireless menu page; on the Ball drop screen the focused synth, DROP or SUB). With an editor open: commit and close it |
 | SHIFT + Button 2 | Sequencer screen, no menu: open the Step Trig popup. Popup open: close it. Filter/LFO/DIST/ADSR editor open: release the open tab to the patch |
 | SHIFT + Button 3 | Sequencer screen, no menu: open the menu on the Layer page, on the row it was left on if the menu was closed on that page's layer entry, else on Gate. Arpeggiator screen, no menu: the same on the page's ARP entry, else on Level. Ball drop screen: the same on the entry of the focused synth (DROP or SUB). Menu open on the Wireless page: switch to the Layer page's LIVE entry, on Level. Menu open on the Layer page: close it. Filter/LFO/DIST/ADSR editor open on a melodic row: flip the row between its own voice block and the layer's shared block |
@@ -324,8 +324,6 @@ like (adjacent cells form one region, separate ones fire separately, all on
 the SUB). The loop (Bars long) is simulated from the seed and repeats
 until an edit or a reroll changes it. Each bar of the loop keeps an even
 share of the loop's notes: a field busier than that share is cut short
-within each bar, never at the loop's end. Each bar of the loop keeps an even
-share of the loop's notes: a field busier than that share is cut short
 within each bar, never at the loop's end. The header reads ON/OFF (MUTE when the focused synth is
 muted), the focus (DROP or SUB), the focused synth's patch and root on its first row,
 the loop bars, the seed (a `*` when frozen) and the rate on its second. The
@@ -340,13 +338,13 @@ spawner and a jackpot cell above it, so ON plays at once.
 | Button 0 (tap) | Place a plain segment on the cursor cell, or remove the one there |
 | Button 0 hold + turn | Rotate the segment under the cursor |
 | SHIFT + turn | Cycle the segment's type: plain, split (a notch: balls leave left or right by its ratio), damp (dotted: ends the ball) |
-| SHIFT + Button 0 hold + turn | On a split segment: its ratio, 5 % steps |
+| SHIFT + Button 0 hold + turn | On a split segment: its ratio, 5 % steps (the release then leaves the seed alone) |
 | Button 1 (tap) | Focus the other synth (DROP / SUB): what the patch gesture, the root field and the Layer entry address |
 | Button 1 hold + turn | Cycle the focused synth's patch |
 | Button 2 (tap) | Place a jackpot cell on the cursor, or remove the one there |
 | Button 0 (hold) | Play / stop, unless the hold turned something |
 | Button 3 (tap) | Menu |
-| SHIFT + Button 0 (press / hold) | Reroll the seed / freeze or unfreeze it |
+| SHIFT + Button 0 (press / hold) | Reroll the seed / freeze or unfreeze it, on the release |
 | SHIFT + Button 1 | The ADSR editor on the focused synth; Button 3 cycles to EG1, filter, LFO, LFO2 and DIST as on every instrument |
 | SHIFT + Button 3 | The Layer page's DROP or SUB entry, the focused synth's own: Level, Key, Mute, Solo, ClrSolo, Unison, Gate, Glide |
 

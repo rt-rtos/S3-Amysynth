@@ -78,17 +78,28 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
      * on the release (a press: toggle the target's solo) or on
      * LONG_PRESS_START (a hold: clear every solo). The latch below swallows
      * the SINGLE_CLICK that follows the release, so button 0's own tap
-     * gesture never fires. */
-    if (button_id == MY_BUTTON_0 && s_chord0 != CHORD0_NONE) {
+     * gesture never fires. The drop screen holds the chord to the release:
+     * a turn during the hold sets the splitter ratio, and the release spends
+     * an unturned press on the seed (a press rerolls, a hold freezes). */
+    if (button_id == MY_BUTTON_0 && s_chord0 == CHORD0_DROP) {
+        if (event == BUTTON_LONG_PRESS_START) {
+            (void)synth_ui_drop_button_long(0);
+            return;
+        }
+        if (event == BUTTON_PRESS_UP) {
+            s_chord0 = CHORD0_NONE;
+            synth_ui_drop_shift0_edge(false);
+            return;
+        }
+        if (event != BUTTON_PRESS_DOWN) return;
+        s_chord0 = CHORD0_NONE;
+    } else if (button_id == MY_BUTTON_0 && s_chord0 != CHORD0_NONE) {
         if (event == BUTTON_LONG_PRESS_START || event == BUTTON_PRESS_UP) {
             bool hold = (event == BUTTON_LONG_PRESS_START);
             chord0_t c = s_chord0;
             s_chord0 = CHORD0_NONE;
-            /* The drop screen spends the chord on its seed: the press
-             * rerolls, the hold freezes. */
-            if (c == CHORD0_ARP)       synth_ui_arp_solo_chord(hold);
-            else if (c == CHORD0_DROP) synth_ui_drop_shift0(hold);
-            else                       synth_ui_seq_solo_chord(hold);
+            if (c == CHORD0_ARP) synth_ui_arp_solo_chord(hold);
+            else                 synth_ui_seq_solo_chord(hold);
             return;
         }
         if (event != BUTTON_PRESS_DOWN) return;
@@ -96,9 +107,9 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
     }
 
     /* SHIFT chords, fired on the digit's PRESS_DOWN:
-     *   SHIFT+0 -> solo on the sequencer and arp screens, the seed reroll /
-     *              freeze on the drop screen (above); latched but inert
-     *              elsewhere
+     *   SHIFT+0 -> solo on the sequencer and arp screens, the splitter
+     *              ratio (held + turn) or the seed reroll / freeze on the
+     *              drop screen (above); latched but inert elsewhere
      *   SHIFT+1 -> open the ADSR/graph editor, or close+commit an open one
      *   SHIFT+2 -> toggle the step probability/trig editor; inside an
      *              effects editor: release the open tab to the patch
@@ -120,6 +131,7 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
         s_chord0 = (sv == UI_VIEW_SEQ)  ? CHORD0_SEQ
                  : (sv == UI_VIEW_ARP)  ? CHORD0_ARP
                  : (sv == UI_VIEW_DROP) ? CHORD0_DROP : CHORD0_NONE;
+        if (s_chord0 == CHORD0_DROP) synth_ui_drop_shift0_edge(true);
         return;
     }
     if (s_shift_held && event == BUTTON_PRESS_DOWN &&

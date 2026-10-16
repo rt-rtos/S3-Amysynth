@@ -18,7 +18,8 @@
  * Button 1 tap toggles the focus (DROP / SUB), held + turn cycles the
  * focused patch (the dispatcher's patch hold). Button 2 tap places or
  * removes a jackpot cell at the cursor. SHIFT + Button 0 rerolls the seed,
- * held it freezes or unfreezes it; SHIFT + Button 1 opens the editors on
+ * held it freezes or unfreezes it (both on the release, and neither when a
+ * turn set a ratio during the hold); SHIFT + Button 1 opens the editors on
  * the focused synth and SHIFT + Button 3 the Layer page's entry for it, as
  * on the arp screen. */
 
@@ -251,9 +252,18 @@ bool synth_ui_drop_button_long(uint8_t btn)
     return s_turned[btn];
 }
 
-void synth_ui_drop_shift0(bool hold)
+void synth_ui_drop_shift0_edge(bool down)
 {
-    if (hold) drop_set_seed_frozen(!drop_get_seed_frozen());
-    else      drop_reroll_seed();
+    if (down) {
+        s_held[0] = true;
+        s_turned[0] = false;
+        s_long[0] = false;
+        return;
+    }
+    bool spend = s_held[0] && !s_turned[0];
+    s_held[0] = false;
+    if (!spend) return;
+    if (s_long[0]) drop_set_seed_frozen(!drop_get_seed_frozen());
+    else           drop_reroll_seed();
     s_force_redraw = true;
 }
