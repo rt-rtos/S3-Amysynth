@@ -424,9 +424,10 @@ void app_main(void)
      * seq_core_config.h (sequencer, arp, ratchet trigs, chord one-shots, chord
      * previews, clip starts) and its top depends on SEQ_CHORD_MAX_NOTES and
      * CLIP_SLOT_COUNT, so this is derived rather than a literal.
-     * sequencer_add_wire rejects tag >= this, and the layout comment requires
-     * two above the top tag. */
-    amy_cfg.max_sequencer_tags = SEQ_CLIP_TAG_MAX + 2;
+     * sequencer_add_wire rejects tag >= this, the layout comment requires
+     * two above the top tag, and the drop's four tags hold many events each,
+     * so the pool is SEQ_AMY_SEQUENCE_SLOTS. */
+    amy_cfg.max_sequencer_tags = SEQ_AMY_SEQUENCE_SLOTS;
     /* Slot map lives in synth_slots.h: statics pack 1..SEQ_MEL_SYNTH_BASE-1, melodic is the
      * open-ended arena SEQ_MEL_SYNTH_BASE..SYNTH_SLOT_COUNT-1, the shared LFO synths sit
      * above it. Each LFO synth also takes one voice id from AMY's pool. */

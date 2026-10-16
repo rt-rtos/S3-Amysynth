@@ -986,16 +986,18 @@ void sequencer_core_drop_configure(uint8_t synth, uint16_t patch_number,
 
 /* Schedule a repeating note-on + note-off pair on a drop slot; arguments as
  * sequencer_core_arp_emit_note() plus the slot. tick_on is folded into the
- * period (an impact on the loop's last tick lands on tick 1 of the next),
- * tag_base must lie in the drop tag window (seq_core_config.h), period must
- * be > 0; a violation drops the note. Not sent while the transport is
- * stopped. */
+ * period (an impact on the loop's last tick lands on tick 1 of the next).
+ * tag_base is the synth's pair in the drop tag window (seq_core_config.h):
+ * the note-off goes on tag_base, the note-on on tag_base + 1, and both tags
+ * collect every note the synth's loop emits. period must be > 0; a
+ * violation drops the note. Not sent while the transport is stopped. */
 void sequencer_core_drop_emit_note(uint8_t synth, uint32_t tag_base,
                                    uint8_t midi_note, float velocity,
                                    uint32_t tick_on, uint32_t gate_ticks,
                                    uint32_t period);
 
-/* Cancel a scheduled drop note (clears tag_base and tag_base+1). */
+/* Cancel every note scheduled on a drop pair (clears tag_base and
+ * tag_base + 1). */
 void sequencer_core_drop_clear_note(uint32_t tag_base);
 
 /* Base tag of the drop window (SEQ_DROP_TAG_BASE). */

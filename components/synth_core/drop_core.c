@@ -94,8 +94,14 @@ static volatile bool s_drop_dirty = false;
 /* Bumped by every edit that changes the loop; the view sim restarts on a
  * change so it never continues from a field that is gone. */
 static uint32_t s_drop_gen = 1;
-/* Events the last refresh emitted: the pairs the next clear has to cover. */
+/* Notes the last refresh emitted on each synth's tag pair. */
 static uint16_t s_last_impacts = 0, s_last_jackpots = 0;
+
+/* A synth's tag pair in the drop window: its note-offs, then its note-ons. */
+static inline uint32_t drop_tag_pair(drop_which_t w)
+{
+    return sequencer_core_drop_tag_base() + (w == DROP_VOICE_SUB ? 2u : 0u);
+}
 
 static inline void drop_mark_dirty(void)
 {
@@ -447,13 +453,8 @@ static uint8_t drop_snap(uint8_t row)
 
 void drop_core_clear_all(void)
 {
-    uint32_t base = sequencer_core_drop_tag_base();
-    for (uint32_t i = 0; i < s_last_impacts; i++) {
-        sequencer_core_drop_clear_note(base + i * 2u);
-    }
-    for (uint32_t j = 0; j < s_last_jackpots; j++) {
-        sequencer_core_drop_clear_note(base + (SEQ_DROP_IMPACT_MAX + j) * 2u);
-    }
+    sequencer_core_drop_clear_note(drop_tag_pair(DROP_VOICE_MAIN));
+    sequencer_core_drop_clear_note(drop_tag_pair(DROP_VOICE_SUB));
     s_last_impacts  = 0;
     s_last_jackpots = 0;
 }
@@ -506,7 +507,7 @@ void drop_core_refresh(void)
     drop_core_clear_all();
     drop_kill_all();
 
-    if (!s_drop.enabled) return;
+    if (!s_drop.enabled || !sequencer_core_get_playing()) return;
     if (s_drop.seg_count == 0 && drop_jackpot_count() == 0) return;
     const drop_voice_t *vm = &s_drop.voice[DROP_VOICE_MAIN];
     const drop_voice_t *vs = &s_drop.voice[DROP_VOICE_SUB];
@@ -518,7 +519,8 @@ void drop_core_refresh(void)
     sim_run_loop(&s_sim_loop, s);
 
     uint32_t period = drop_loop_ticks();
-    uint32_t base   = sequencer_core_drop_tag_base();
+    uint32_t base   = drop_tag_pair(DROP_VOICE_MAIN);
+    uint32_t sub_base = drop_tag_pair(DROP_VOICE_SUB);
     float    trim   = s_drop.voice[DROP_VOICE_MAIN].vp.amp_trim;
     uint8_t  notes[SEQ_DROP_IMPACT_MAX];
     for (uint16_t i = 0; i < s->n_impacts; i++) notes[i] = drop_snap(s->impacts[i].row);
@@ -529,7 +531,7 @@ void drop_core_refresh(void)
          * must end before the next impact at the same pitch, in this loop
          * or the next. */
         gate = gate_before_repeat(gate, im->tick, i, s, notes, period);
-        sequencer_core_drop_emit_note(DROP_SYNTH, base + (uint32_t)i * 2u,
+        sequencer_core_drop_emit_note(DROP_SYNTH, base,
                                       notes[i], drop_velocity(im->speed, trim),
                                       1u + im->tick, gate, period);
     }
@@ -543,8 +545,7 @@ void drop_core_refresh(void)
         if (gate + 1u > next - jp->tick) gate = next - jp->tick - 1u;
         if (gate < 1) gate = 1;
         if (gate > period - 1) gate = period - 1;
-        sequencer_core_drop_emit_note(DROP_SUB_SYNTH,
-                                      base + (uint32_t)(SEQ_DROP_IMPACT_MAX + j) * 2u,
+        sequencer_core_drop_emit_note(DROP_SUB_SYNTH, sub_base,
                                       sub_note, drop_velocity(jp->speed, sub_trim),
                                       1u + jp->tick, gate, period);
     }

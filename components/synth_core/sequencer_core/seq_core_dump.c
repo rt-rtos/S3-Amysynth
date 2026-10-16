@@ -209,10 +209,24 @@ void sequencer_core_dump_state(void)
 
     n_lines += drop_core_dump();
 
-    /* A send to an AMY tag adds to it, so every app tag holds at most one
-     * event; a tag holding more names a re-send path that skips the clear. */
+    /* A send to an AMY tag adds to it, so every app tag outside the drop's
+     * holds at most one event; a tag holding more names a re-send path that
+     * skips the clear. Each drop tag holds one event per note its synth's
+     * loop emitted. */
+    uint32_t db = sequencer_core_drop_tag_base();
+    uint16_t want[SEQ_DROP_TAG_COUNT] = { drop_last_impact_count(), drop_last_impact_count(),
+                                          drop_last_jackpot_count(), drop_last_jackpot_count() };
+    unsigned drop_bad = 0;
+    for (uint32_t i = 0; i < SEQ_DROP_TAG_COUNT; i++) {
+        uint16_t n = sequencer_tag_count(db + i);
+        if (n != want[i]) drop_bad++;
+        DP("DROP-TAG tag=%u events=%u emitted=%u", (unsigned)(db + i), (unsigned)n,
+           (unsigned)want[i]);
+    }
+    DP("drop tags off their emitted count: %u", drop_bad);
     unsigned stacked = 0;
     for (uint32_t tag = 0; tag <= SEQ_CLIP_TAG_MAX; tag++) {
+        if (tag >= SEQ_DROP_TAG_BASE && tag <= SEQ_DROP_TAG_MAX) continue;
         uint16_t n = sequencer_tag_count(tag);
         if (n > 1) {
             DP("STACKED tag=%u events=%u", (unsigned)tag, (unsigned)n);

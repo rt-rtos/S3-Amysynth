@@ -1108,8 +1108,8 @@ void sequencer_core_drop_emit_note(uint8_t synth, uint32_t tag_base,
     if (tick_on  == 0) tick_on  = 1; /* tick 0 is reserved (clear) */
     if (tick_off == 0) tick_off = 1;
 
-    amy_helpers_note_send(synth, midi_note, velocity, tag_base, tick_on, period);
-    amy_helpers_note_send(synth, midi_note, 0.0f, tag_base + 1, tick_off, period);
+    amy_helpers_note_send(synth, midi_note, velocity, tag_base + 1, tick_on, period);
+    amy_helpers_note_send(synth, midi_note, 0.0f, tag_base, tick_off, period);
 }
 
 void sequencer_core_drop_clear_note(uint32_t tag_base)
