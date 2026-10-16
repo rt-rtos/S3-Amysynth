@@ -18,6 +18,7 @@
 #include "sequencer_core.h"
 #include "seq_core_config.h"   /* SEQ_SWING_MAX - same-component engine limits */
 #include "arp_core.h"
+#include "drop_core.h"
 #include "custompatches/drone_core.h"
 #include "custompatches/drone_std_core.h"
 #include "custompatches/drone_common.h"   /* DRONE_SUB_INTERVAL_MIN/MAX */
@@ -49,6 +50,7 @@ static const char *TAG = "project_snapshot";
 #define TAG_GLOB 0x424F4C47u
 #define TAG_LAYR 0x5259414Cu
 #define TAG_ARP  0x20505241u
+#define TAG_DROP 0x504F5244u
 #define TAG_DRON 0x4E4F5244u
 #define TAG_DSTD 0x44545344u
 #define TAG_PROG 0x474F5250u
@@ -788,6 +790,186 @@ static void apply_arp(const staged_arp_t *a)
     sequencer_core_set_arp_solo(a->solo);
 }
 
+/* ── DROP section ──────────────────────────────────────────────────────────
+ * One fixed shape per version, as ARP. Field order: enabled, muted, solo,
+ * rate, loop_bars, octaves, gate_pct, seed, seed_frozen, scale_index,
+ * root_note, sub_root_note, quant_mode, seg_count, DROP_SEG_MAX segments of
+ * 5 bytes, the jackpot (4 bytes), then the DROP and SUB voices: patch, glide,
+ * the voice_params_t block (ser_vp, authored flags included) and unison. */
+
+#define DROP_VERSION 1
+
+typedef struct {
+    uint16_t       patch;
+    uint16_t       portamento_ms;
+    voice_params_t vp;
+    voice_unison_t unison;
+} staged_drop_voice_t;
+
+typedef struct {
+    bool       enabled, muted, solo;
+    note_div_t rate;
+    uint8_t    loop_bars, octaves, gate_pct;
+    uint32_t   seed;
+    bool       seed_frozen;
+    uint8_t    scale, root, sub_root, quant_mode;
+    uint8_t    seg_count;
+    drop_seg_t segs[DROP_SEG_MAX];
+    drop_jackpot_t jackpot;
+    staged_drop_voice_t voice[DROP_VOICE_COUNT];
+} staged_drop_t;
+
+static void ser_drop(tlv_writer_t *w)
+{
+    size_t h = tlv_begin_section(w, TAG_DROP, DROP_VERSION);
+    tlv_put_u8(w, drop_get_enabled() ? 1 : 0);
+    tlv_put_u8(w, drop_get_muted() ? 1 : 0);
+    tlv_put_u8(w, sequencer_core_get_drop_solo() ? 1 : 0);
+    tlv_put_u8(w, (uint8_t)drop_get_rate());
+    tlv_put_u8(w, drop_get_loop_bars());
+    tlv_put_u8(w, drop_get_octaves());
+    tlv_put_u8(w, drop_get_gate_pct());
+    tlv_put_u32(w, drop_get_seed());
+    tlv_put_u8(w, drop_get_seed_frozen() ? 1 : 0);
+    tlv_put_u8(w, drop_get_scale());
+    tlv_put_u8(w, drop_get_root_note());
+    tlv_put_u8(w, drop_get_sub_root_note());
+    tlv_put_u8(w, (uint8_t)drop_get_quant_mode());
+    tlv_put_u8(w, drop_get_seg_count());
+    for (uint8_t i = 0; i < DROP_SEG_MAX; i++) {
+        drop_seg_t s = { 0 };
+        (void)drop_get_seg(i, &s);
+        tlv_put_u8(w, s.col);
+        tlv_put_u8(w, s.row);
+        tlv_put_u8(w, s.angle);
+        tlv_put_u8(w, s.type);
+        tlv_put_u8(w, s.ratio);
+    }
+    drop_jackpot_t jp;
+    drop_get_jackpot(&jp);
+    tlv_put_u8(w, jp.col0);
+    tlv_put_u8(w, jp.col1);
+    tlv_put_u8(w, jp.row);
+    tlv_put_u8(w, jp.enabled ? 1 : 0);
+    for (uint8_t v = 0; v < DROP_VOICE_COUNT; v++) {
+        drop_which_t which = (drop_which_t)v;
+        tlv_put_u16(w, drop_get_patch(which));
+        tlv_put_u16(w, drop_get_portamento_ms(which));
+        voice_params_t vp;
+        drop_get_vp(which, &vp);
+        ser_vp(w, &vp);
+        voice_unison_t u;
+        drop_get_unison(which, &u);
+        tlv_put_u8(w, u.count);
+        tlv_put_u8(w, u.detune_cents);
+        tlv_put_u8(w, u.spread_pct);
+        tlv_put_u8(w, u.blend_pct);
+    }
+    tlv_end_section(w, h);
+}
+
+static bool parse_drop(tlv_reader_t *b, staged_drop_t *d)
+{
+    uint8_t v;
+    if (!tlv_get_u8(b, &v)) return false;
+    d->enabled = v != 0;
+    if (!tlv_get_u8(b, &v)) return false;
+    d->muted = v != 0;
+    if (!tlv_get_u8(b, &v)) return false;
+    d->solo = v != 0;
+    if (!tlv_get_u8(b, &v)) return false;
+    d->rate = (v >= NOTE_DIV_STD_COUNT) ? NOTE_DIV_1_4 : (note_div_t)v;
+    if (!tlv_get_u8(b, &d->loop_bars)) return false;
+    d->loop_bars = SEQ_CLAMP_U8(d->loop_bars, 1, DROP_LOOP_BARS_MAX);
+    if (!tlv_get_u8(b, &d->octaves)) return false;
+    d->octaves = SEQ_CLAMP_U8(d->octaves, 1, DROP_OCT_MAX);
+    if (!tlv_get_u8(b, &d->gate_pct)) return false;
+    d->gate_pct = SEQ_CLAMP_U8(d->gate_pct, 10, 100);
+    if (!tlv_get_u32(b, &d->seed)) return false;
+    if (!tlv_get_u8(b, &v)) return false;
+    d->seed_frozen = v != 0;
+    if (!tlv_get_u8(b, &d->scale)) return false;
+    if (d->scale >= quantizer_scale_count()) d->scale = 0;
+    if (!tlv_get_u8(b, &d->root)) return false;
+    d->root = SEQ_CLAMP_U8(d->root, 0, 127);
+    if (!tlv_get_u8(b, &d->sub_root)) return false;
+    d->sub_root = SEQ_CLAMP_U8(d->sub_root, 0, 127);
+    if (!tlv_get_u8(b, &v)) return false;
+    d->quant_mode = (v >= ARP_QUANT_COUNT) ? ARP_QUANT_CHORD : v;
+    if (!tlv_get_u8(b, &d->seg_count)) return false;
+    if (d->seg_count > DROP_SEG_MAX) d->seg_count = DROP_SEG_MAX;
+    for (uint8_t i = 0; i < DROP_SEG_MAX; i++) {
+        drop_seg_t *s = &d->segs[i];
+        if (!tlv_get_u8(b, &s->col))   return false;
+        if (!tlv_get_u8(b, &s->row))   return false;
+        if (!tlv_get_u8(b, &s->angle)) return false;
+        if (!tlv_get_u8(b, &s->type))  return false;
+        if (!tlv_get_u8(b, &s->ratio)) return false;
+        /* A cell out of the field drops the segment (drop_set_seg refuses
+         * it); the rest clamps there. */
+        s->angle = SEQ_CLAMP_U8(s->angle, 0, DROP_SEG_ANGLES - 1);
+        s->type  = SEQ_CLAMP_U8(s->type, 0, DROP_SEG_TYPE_COUNT - 1);
+        s->ratio = SEQ_CLAMP_U8(s->ratio, 0, 100);
+    }
+    if (!tlv_get_u8(b, &d->jackpot.col0)) return false;
+    if (!tlv_get_u8(b, &d->jackpot.col1)) return false;
+    if (!tlv_get_u8(b, &d->jackpot.row))  return false;
+    if (!tlv_get_u8(b, &v)) return false;
+    d->jackpot.enabled = v != 0;
+    d->jackpot.col0 = SEQ_CLAMP_U8(d->jackpot.col0, 0, DROP_COLS - 1);
+    d->jackpot.col1 = SEQ_CLAMP_U8(d->jackpot.col1, d->jackpot.col0, DROP_COLS - 1);
+    d->jackpot.row  = SEQ_CLAMP_U8(d->jackpot.row, 0, DROP_ROWS - 1);
+    for (uint8_t i = 0; i < DROP_VOICE_COUNT; i++) {
+        staged_drop_voice_t *dv = &d->voice[i];
+        if (!tlv_get_u16(b, &dv->patch)) return false;
+        dv->patch = clamp_patch(dv->patch);
+        if (!tlv_get_u16(b, &dv->portamento_ms)) return false;
+        if (dv->portamento_ms > DROP_PORTAMENTO_MAX_MS) dv->portamento_ms = DROP_PORTAMENTO_MAX_MS;
+        if (!de_vp(b, &dv->vp)) return false;
+        voice_unison_t *u = &dv->unison;
+        if (!tlv_get_u8(b, &u->count))        return false;
+        if (!tlv_get_u8(b, &u->detune_cents)) return false;
+        if (!tlv_get_u8(b, &u->spread_pct))   return false;
+        if (!tlv_get_u8(b, &u->blend_pct))    return false;
+        u->count        = SEQ_CLAMP_U8(u->count, 0u, VOICE_UNISON_MAX_COPIES);
+        u->detune_cents = SEQ_CLAMP_U8(u->detune_cents, 0u, VOICE_UNISON_MAX_DETUNE);
+        u->spread_pct   = SEQ_CLAMP_U8(u->spread_pct, 0u, 100u);
+        u->blend_pct    = SEQ_CLAMP_U8(u->blend_pct, 0u, 100u);
+        u->layout       = 0u;
+    }
+    return true;
+}
+
+/* Voices first (each rebuilds its slot), then the loop parameters and the
+ * field (each marks dirty), enabled, then mute and solo last, as apply_arp. */
+static void apply_drop(const staged_drop_t *d)
+{
+    for (uint8_t i = 0; i < DROP_VOICE_COUNT; i++) {
+        const staged_drop_voice_t *dv = &d->voice[i];
+        drop_set_voice((drop_which_t)i, dv->patch, dv->portamento_ms, &dv->vp, &dv->unison);
+    }
+    drop_set_rate(d->rate);
+    drop_set_loop_bars(d->loop_bars);
+    drop_set_octaves(d->octaves);
+    drop_set_gate_pct(d->gate_pct);
+    drop_set_seed(d->seed);
+    drop_set_seed_frozen(d->seed_frozen);
+    drop_set_scale(d->scale);
+    drop_set_root_note(d->root);
+    drop_set_sub_root_note(d->sub_root);
+    drop_set_quant_mode((arp_quant_mode_t)d->quant_mode);
+    /* The field is replaced: every cell cleared, then the file's segments. */
+    for (uint8_t i = drop_get_seg_count(); i > 0; i--) {
+        drop_seg_t s;
+        if (drop_get_seg((uint8_t)(i - 1), &s)) drop_remove_seg(s.col, s.row);
+    }
+    for (uint8_t i = 0; i < d->seg_count; i++) (void)drop_set_seg(&d->segs[i]);
+    drop_set_jackpot(&d->jackpot);
+    drop_set_enabled(d->enabled);
+    drop_set_muted(d->muted);
+    sequencer_core_set_drop_solo(d->solo);
+}
+
 /* ── DRON section ─────────────────────────────────────────────────────────── */
 
 typedef struct {
@@ -1335,6 +1517,7 @@ bool project_snapshot_save(uint8_t slot, const char *name)
         if (sequencer_core_export_layer_authored(i, scratch)) ser_layer(&w, scratch);
     }
     ser_arp(&w);
+    ser_drop(&w);
     ser_drone(&w);
     ser_drone_std(&w);
     ser_prog(&w);
@@ -1368,6 +1551,7 @@ bool project_snapshot_load_buffer(const uint8_t *payload, size_t len, const char
     typedef struct {
         staged_drone_t     drone;
         staged_drone_std_t dstd;
+        staged_drop_t      drop;
     } staged_drones_t;
     seq_layer_t *staged_layers =
         heap_caps_malloc(sizeof(seq_layer_t) * MAX_LAYERS, MALLOC_CAP_SPIRAM);
@@ -1390,7 +1574,7 @@ bool project_snapshot_load_buffer(const uint8_t *payload, size_t len, const char
     uint8_t staged_layer_count = 0;
     bool got_glob = false, got_arp = false, got_drone = false, got_prog = false;
     bool got_chrd = false, got_clip = false, got_pgen = false, got_dstd = false;
-    bool got_mixr = false;
+    bool got_mixr = false, got_drop = false;
 #if CONFIG_SYNTH_CUSTOM_WT
     wt_params_t staged_wtcu;
     bool got_wtcu = false;
@@ -1424,6 +1608,11 @@ bool project_snapshot_load_buffer(const uint8_t *payload, size_t len, const char
             if (got_arp || ver != 17) { ok = false; break; }
             ok = parse_arp(&body, &staged_arp);
             got_arp = ok;
+            break;
+        case TAG_DROP:
+            if (got_drop || ver != DROP_VERSION) { ok = false; break; }
+            ok = parse_drop(&body, &sd->drop);
+            got_drop = ok;
             break;
         case TAG_DRON:
             if (got_drone || ver != 7) { ok = false; break; }
@@ -1501,6 +1690,7 @@ bool project_snapshot_load_buffer(const uint8_t *payload, size_t len, const char
     /* ── Phase 2: apply. Nothing above this point touched live state. ── */
     sequencer_core_set_playing(false);
     arp_core_clear_all();
+    drop_core_clear_all();
 
     /* Chord table BEFORE the layer imports: import sizes each row's voice
      * count from the chord a loaded sentinel references (seq_track_num_voices),
@@ -1529,6 +1719,9 @@ bool project_snapshot_load_buffer(const uint8_t *payload, size_t len, const char
 
     apply_glob(&staged_glob);
     if (got_arp)   apply_arp(&staged_arp);
+    /* A file without a drop section leaves the drop off, as the drones. */
+    if (got_drop)  apply_drop(&sd->drop);
+    else           drop_set_enabled(false);
     /* A file without a drone section leaves that drone off, not playing
      * whatever the session had (the project is the whole persisted state). */
     if (got_drone) apply_drone(&sd->drone);

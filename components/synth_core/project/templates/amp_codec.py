@@ -18,16 +18,17 @@ MAGIC = 0x50594D41
 FMT_VERSION = 1
 NAME_LEN = 16
 
-TAG = {k: struct.unpack('<I', k.encode())[0] for k in ('GLOB', 'LAYR', 'ARP ', 'DRON', 'DSTD', 'PROG', 'CHRD', 'CLIP',
-                                                       'MIXR', 'PGEN', 'WTCU', 'FMCU')}
-VER = {'GLOB': 6, 'LAYR': 26, 'ARP ': 17, 'DRON': 7, 'DSTD': 4, 'PROG': 1, 'CHRD': 1, 'CLIP': 2,
-       'MIXR': 2, 'PGEN': 1, 'WTCU': 2, 'FMCU': 1}
+TAG = {k: struct.unpack('<I', k.encode())[0] for k in ('GLOB', 'LAYR', 'ARP ', 'DROP', 'DRON', 'DSTD', 'PROG', 'CHRD',
+                                                       'CLIP', 'MIXR', 'PGEN', 'WTCU', 'FMCU')}
+VER = {'GLOB': 6, 'LAYR': 26, 'ARP ': 17, 'DROP': 1, 'DRON': 7, 'DSTD': 4, 'PROG': 1, 'CHRD': 1,
+       'CLIP': 2, 'MIXR': 2, 'PGEN': 1, 'WTCU': 2, 'FMCU': 1}
 
 MAX_LAYERS = 4
 SEQ_TRACKS = 5
 SEQ_MAX_STEPS = 32
 FX_BUS_COUNT = 4
 ARP_MAX_SLOTS = 8
+DROP_SEG_MAX = 16
 SEQ_CHORD_SLOTS = 8
 SEQ_CHORD_MAX_NOTES = 5
 CLIP_SLOT_COUNT = 2
@@ -332,6 +333,47 @@ def r_arp(r):
     return a
 
 
+def w_drop(d):
+    """The ball drop: loop scalars, the field, then the DROP and SUB voices."""
+    w = W()
+    for k in ('enabled', 'muted', 'solo'):
+        w.u8(1 if d[k] else 0)
+    for k in ('rate', 'loop_bars', 'octaves', 'gate_pct'):
+        w.u8(d[k])
+    w.u32(d['seed']); w.u8(1 if d['seed_frozen'] else 0)
+    for k in ('scale', 'root', 'sub_root', 'quant_mode'):
+        w.u8(d[k])
+    w.u8(len(d['segs']))
+    for i in range(DROP_SEG_MAX):
+        s = d['segs'][i] if i < len(d['segs']) else (0, 0, 0, 0, 0)
+        for v in s:
+            w.u8(v)
+    jp = d['jackpot']
+    w.u8(jp['col0']); w.u8(jp['col1']); w.u8(jp['row']); w.u8(1 if jp['enabled'] else 0)
+    for v in d['voices']:
+        w.u16(v['patch']); w.u16(v['portamento_ms']); w_vp(w, v['vp'])
+        w.u8(v['uni_count']); w.u8(v['uni_detune']); w.u8(v['uni_spread']); w.u8(v['uni_blend'])
+    return bytes(w.b)
+
+
+def r_drop(r):
+    d = dict(enabled=r.u8() != 0, muted=r.u8() != 0, solo=r.u8() != 0,
+             rate=r.u8(), loop_bars=r.u8(), octaves=r.u8(), gate_pct=r.u8(),
+             seed=r.u32(), seed_frozen=r.u8() != 0,
+             scale=r.u8(), root=r.u8(), sub_root=r.u8(), quant_mode=r.u8())
+    n = r.u8()
+    segs = [tuple(r.u8() for _ in range(5)) for _ in range(DROP_SEG_MAX)]
+    d['segs'] = segs[:n]
+    d['jackpot'] = dict(col0=r.u8(), col1=r.u8(), row=r.u8(), enabled=r.u8() != 0)
+    d['voices'] = []
+    for _ in range(2):
+        v = dict(patch=r.u16(), portamento_ms=r.u16(), vp=r_vp(r))
+        v['uni_count'] = r.u8(); v['uni_detune'] = r.u8(); v['uni_spread'] = r.u8()
+        v['uni_blend'] = r.u8()
+        d['voices'].append(v)
+    return d
+
+
 DRON_FIELDS = [('enabled', 'b1'), ('chord', 'u8'), ('root', 'u8'), ('patch', 'u16'),
                ('amp_peak', 'f32'), ('amp_duck', 'f32'), ('rate', 'u8'),
                ('sub_enabled', 'b1'), ('sub_interval', 'i8'), ('gate_len', 'f32'),
@@ -525,6 +567,8 @@ def encode_payload(p):
     for L in p['layers']:
         w.section('LAYR', w_layr(L))
     w.section('ARP ', w_arp(p['arp']))
+    if 'drop' in p:   # optional: a file without it loads the ball drop disabled
+        w.section('DROP', w_drop(p['drop']))
     w.section('DRON', w_dron(p['drone']))
     w.section('DSTD', w_dstd(p['drone_std']))
     w.section('PROG', w_prog(p['prog']))
@@ -558,7 +602,8 @@ def decode_file(data):
         raise ValueError('bad header/CRC')
     r = R(payload)
     p = dict(name=name, layers=[])
-    readers = {'GLOB': ('glob', r_glob), 'ARP ': ('arp', r_arp), 'DRON': ('drone', r_dron),
+    readers = {'GLOB': ('glob', r_glob), 'ARP ': ('arp', r_arp), 'DROP': ('drop', r_drop),
+               'DRON': ('drone', r_dron),
                'DSTD': ('drone_std', r_dstd),
                'PROG': ('prog', r_prog), 'CHRD': ('chords', r_chrd), 'CLIP': ('clip', r_clip),
                'MIXR': ('mixr', r_mixr), 'PGEN': ('pgen', r_pgen), 'WTCU': ('wtcu', r_wtcu), 'FMCU': ('fmcu', r_fmcu)}
