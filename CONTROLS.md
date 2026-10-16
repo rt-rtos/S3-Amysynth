@@ -337,8 +337,8 @@ spawner and a jackpot cell above it, so ON plays at once.
 | Encoder turn, editing | A header field: change its value (the seed field rerolls). A cell: rotate the segment there (8 angles) |
 | Button 0 (tap) | Place a plain segment on the cursor cell, or remove the one there |
 | Button 0 hold + turn | Rotate the segment under the cursor |
-| SHIFT + turn | Cycle the segment's type: plain, split (a notch: balls leave left or right by its ratio), damp (dotted: ends the ball) |
-| SHIFT + Button 0 hold + turn | On a split segment: its ratio, 5 % steps (the release then leaves the seed alone) |
+| SHIFT + turn | Cycle the segment's type: plain, split (a rod across the bar: balls leave left or right by its ratio), damp (dotted: ends the ball) |
+| SHIFT + Button 0 hold + turn | On a split segment: its ratio, 5 % steps; the rod moves with it, its distance from the bar's left end (top end when vertical) being the share sent left (the release then leaves the seed alone) |
 | Button 1 (tap) | Focus the other synth (DROP / SUB): what the patch gesture, the root field and the Layer entry address |
 | Button 1 hold + turn | Cycle the focused synth's patch |
 | Button 2 (tap) | Place a jackpot cell on the cursor, or remove the one there |

@@ -46,7 +46,7 @@ extern "C" {
 typedef struct {
     uint8_t col, row;
     uint8_t angle;    /* 0..7, 22.5 degree steps from horizontal */
-    uint8_t type;     /* 0 plain, 1 split (notched), 2 damp (dotted) */
+    uint8_t type;     /* 0 plain, 1 split (rod at `ratio`), 2 damp (dotted) */
     uint8_t ratio;    /* split: percent sent left */
 } drop_view_seg_t;
 

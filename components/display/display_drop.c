@@ -23,6 +23,13 @@ static void draw_dotted_line(u8g2_t *u8g2, int x0, int y0, int x1, int y1)
     }
 }
 
+/* `pct` percent of a signed pixel span, rounded to the nearest pixel. */
+static inline int pct_of(int span, int pct)
+{
+    int v = span * pct;
+    return (v >= 0) ? (v + 50) / 100 : -((-v + 50) / 100);
+}
+
 static void draw_segment(u8g2_t *u8g2, const drop_view_seg_t *s)
 {
     int cx = cell_x(s->col) + DROP_VIEW_CELL_W / 2;
@@ -36,11 +43,20 @@ static void draw_segment(u8g2_t *u8g2, const drop_view_seg_t *s)
         u8g2_DrawLine(u8g2, (u8g2_uint_t)x0, (u8g2_uint_t)y0, (u8g2_uint_t)x1, (u8g2_uint_t)y1);
     }
     if (s->type == 1) {
-        /* The notch: a short tick along the normal at the centre. */
+        /* The rod: a short tick along the normal, `ratio` percent of the way
+         * from the bar's left end (its top end when vertical), so the part of
+         * the bar left of the rod is the share of balls sent left. */
+        int lx = x0, ly = y0, rx = x1, ry = y1;
+        if (x1 < x0 || (x1 == x0 && y1 < y0)) {
+            lx = x1; ly = y1; rx = x0; ry = y0;
+        }
+        int r = (s->ratio > 100) ? 100 : s->ratio;
+        int px = lx + pct_of(rx - lx, r);
+        int py = ly + pct_of(ry - ly, r);
         int nx = -hy, ny = hx;
         int tx = (nx > 0) - (nx < 0), ty = (ny > 0) - (ny < 0);
-        u8g2_DrawPixel(u8g2, (u8g2_uint_t)(cx + tx), (u8g2_uint_t)(cy + ty));
-        u8g2_DrawPixel(u8g2, (u8g2_uint_t)(cx - tx), (u8g2_uint_t)(cy - ty));
+        u8g2_DrawPixel(u8g2, (u8g2_uint_t)(px + tx), (u8g2_uint_t)(py + ty));
+        u8g2_DrawPixel(u8g2, (u8g2_uint_t)(px - tx), (u8g2_uint_t)(py - ty));
     }
 }
 
