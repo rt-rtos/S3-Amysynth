@@ -29,7 +29,7 @@ bool synth_ui_drop_is_active(void)
     return synth_ui_active_view() == UI_VIEW_DROP;
 }
 
-static uint8_t s_cursor  = 7 * DROP_COLS + 8;   /* bottom row under the spawner */
+static uint8_t s_cursor  = DROP_CUR_ENABLE;     /* the screen opens on its on/off field */
 static bool    s_editing = false;
 /* Hold state of buttons 0..2 and whether a turn landed during the hold; a
  * held button's release is a tap only when nothing turned. */
@@ -37,8 +37,9 @@ static bool    s_held[3];
 static bool    s_turned[3];
 static bool    s_long[3];
 
-static inline uint8_t cur_col(void) { return (uint8_t)(s_cursor % DROP_COLS); }
-static inline uint8_t cur_row(void) { return (uint8_t)(s_cursor / DROP_COLS); }
+static inline bool    on_cell(void) { return s_cursor >= DROP_CUR_CELL0; }
+static inline uint8_t cur_col(void) { return (uint8_t)((s_cursor - DROP_CUR_CELL0) % DROP_COLS); }
+static inline uint8_t cur_row(void) { return (uint8_t)((s_cursor - DROP_CUR_CELL0) / DROP_COLS); }
 
 void drop_build_view(drop_view_t *out)
 {
@@ -106,6 +107,7 @@ uint32_t drop_view_signature(drop_view_t *out)
 
 static void drop_rotate_seg(int dir)
 {
+    if (!on_cell()) return;
     int idx = drop_find_seg(cur_col(), cur_row());
     drop_seg_t s;
     if (idx < 0 || !drop_get_seg((uint8_t)idx, &s)) return;
@@ -115,6 +117,7 @@ static void drop_rotate_seg(int dir)
 
 static void drop_cycle_seg_type(int dir)
 {
+    if (!on_cell()) return;
     int idx = drop_find_seg(cur_col(), cur_row());
     drop_seg_t s;
     if (idx < 0 || !drop_get_seg((uint8_t)idx, &s)) return;
@@ -125,6 +128,7 @@ static void drop_cycle_seg_type(int dir)
 
 static void drop_adjust_ratio(int dir)
 {
+    if (!on_cell()) return;
     int idx = drop_find_seg(cur_col(), cur_row());
     drop_seg_t s;
     if (idx < 0 || !drop_get_seg((uint8_t)idx, &s)) return;
@@ -135,6 +139,7 @@ static void drop_adjust_ratio(int dir)
 
 static void drop_toggle_seg(void)
 {
+    if (!on_cell()) return;
     if (drop_remove_seg(cur_col(), cur_row())) return;
     drop_seg_t s = { .col = cur_col(), .row = cur_row(), .angle = 0,
                      .type = DROP_SEG_PLAIN, .ratio = 50 };
@@ -145,6 +150,7 @@ static void drop_toggle_seg(void)
  * keeping its width; a tap on its left end removes it. */
 static void drop_toggle_jackpot(void)
 {
+    if (!on_cell()) return;
     drop_jackpot_t jp;
     drop_get_jackpot(&jp);
     uint8_t width = (uint8_t)(jp.col1 - jp.col0);

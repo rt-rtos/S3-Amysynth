@@ -31,7 +31,7 @@
 static const char *TAG = "drop_core";
 
 _Static_assert(NOTE_DIV_PPQ == AMY_SEQUENCER_PPQ, "note_div ticks are AMY sequencer ticks");
-_Static_assert(DROP_FIELD_W <= 128 && DROP_FIELD_H + 8 <= 64, "field fits the panel");
+_Static_assert(DROP_FIELD_W <= 128 && DROP_FIELD_H + 16 <= 64, "field fits under the header");
 
 /* ── Physics constants (DROP_Q fixed point, pixels and ticks) ─────────────
  * Gravity makes a free fall over the whole field take one beat

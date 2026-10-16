@@ -19,8 +19,8 @@ extern "C" {
  * from a seed on the UI task and handed to AMY as repeating tagged events,
  * exactly as the arp's slots are; nothing here runs on the render task.
  *
- * Field: DROP_COLS x DROP_ROWS cells over the OLED, DROP_CELL_W x
- * DROP_CELL_H pixels each, the status row above them. Row DROP_ROWS-1 (the
+ * Field: DROP_COLS x DROP_ROWS cells over the OLED's blue band, DROP_CELL_W x
+ * DROP_CELL_H pixels each, the header in the yellow band. Row DROP_ROWS-1 (the
  * bottom) plays the root; each row up is `octaves` scale degrees higher.
  * The sim runs in integer fixed point (DROP_Q fractional bits), so the same
  * seed gives the same loop on the host and the target.
@@ -32,9 +32,9 @@ extern "C" {
 #define DROP_COLS       16
 #define DROP_ROWS       8
 #define DROP_CELL_W     8
-#define DROP_CELL_H     7
+#define DROP_CELL_H     6
 #define DROP_FIELD_W    (DROP_COLS * DROP_CELL_W)   /* 128 px */
-#define DROP_FIELD_H    (DROP_ROWS * DROP_CELL_H)   /* 56 px  */
+#define DROP_FIELD_H    (DROP_ROWS * DROP_CELL_H)   /* 48 px: the blue band */
 
 #define DROP_SEG_MAX    16
 #define DROP_BALL_MAX   8

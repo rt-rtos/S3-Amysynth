@@ -314,20 +314,22 @@ until Button 2 returns to LIST mode.
 
 ## Ball drop screen
 
-A field of 16 x 8 cells under a status row. Balls drop from the spawner
+A two-row header in the yellow band over a field of 16 x 8 cells in the
+blue band. Balls drop from the spawner
 (the chevron at the top of column 8) once per Rate; every segment they hit
 plays a note on the DROP synth (the bottom row is Root, each row up one
 scale degree), and a ball crossing the jackpot cells plays the SUB synth at
 its own root. The loop (Bars long) is simulated from the seed and repeats
-until an edit or a reroll changes it. The status row reads ON/OFF/MUTE,
-the focus (D or S), the focused synth's patch and root, the loop bars, the
-seed (a `*` when frozen) and the rate.
+until an edit or a reroll changes it. The header reads ON/OFF/MUTE, the
+focus (DROP or SUB), the focused synth's patch and root on its first row,
+the loop bars, the seed (a `*` when frozen) and the rate on its second. The
+screen opens with the cursor on ON/OFF.
 
 | Input | Action |
 |---|---|
-| Encoder turn, browsing | Move the cursor over the cells, then the status fields (ON/OFF, focus, root, bars, seed, rate) |
+| Encoder turn, browsing | Move the cursor over the header fields (ON/OFF, focus, root, bars, seed, rate), then the cells, row by row |
 | Encoder click | Enter / leave editing |
-| Encoder turn, editing | A status field: change its value (the seed field rerolls). A cell: rotate the segment there (8 angles) |
+| Encoder turn, editing | A header field: change its value (the seed field rerolls). A cell: rotate the segment there (8 angles) |
 | Button 0 (tap) | Place a plain segment on the cursor cell, or remove the one there |
 | Button 0 hold + turn | Rotate the segment under the cursor |
 | SHIFT + turn | Cycle the segment's type: plain, split (a notch: balls leave left or right by its ratio), damp (dotted: ends the ball) |

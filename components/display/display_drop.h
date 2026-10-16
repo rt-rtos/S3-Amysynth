@@ -12,33 +12,36 @@ extern "C" {
  * The engine lives in synth_core (drop_core); synth_ui builds this flat view
  * each frame and the renderer draws it.
  *
- * Layout:
- *   ON D 138 C3 2b 1A2F*   1/4     <- status row, y 0..7 (cursor fields)
- *   [16 x 8 cells, 8 x 7 px each]  <- the field, y 8..63: segments as lines
- *                                     at their angle, the jackpot as a
+ * Layout, on the panel's yellow (rows 0..15) / blue (16..63) split:
+ *   ON  D  138  C3                 <- header row 1 (yellow): enable, focus,
+ *                                     patch (display only), root
+ *   2b  1A2F*  1/4                 <- header row 2 (yellow): bars, seed, rate
+ *   [16 x 8 cells, 8 x 6 px each]  <- the field (blue), y 16..63: segments as
+ *                                     lines at their angle, the jackpot as a
  *                                     hatched box, balls as 2 x 2 dots, the
  *                                     spawner as a chevron on the top edge
  *
- * Cursor index space: 0..DROP_VIEW_CELLS-1 are the cells (row-major), then
- * the status fields DROP_CUR_*. The patch number is display-only; it changes
- * with the hold+turn gesture. */
+ * Cursor index space: the header fields DROP_CUR_* first (the screen opens
+ * on ENABLE), then the cells from DROP_CUR_CELL0, row-major. The patch
+ * number is display-only; it changes with the hold+turn gesture. */
 
 #define DROP_VIEW_COLS   16
 #define DROP_VIEW_ROWS   8
 #define DROP_VIEW_CELL_W 8
-#define DROP_VIEW_CELL_H 7
-#define DROP_VIEW_Y0     8       /* first field row's top edge */
+#define DROP_VIEW_CELL_H 6
+#define DROP_VIEW_Y0     16      /* first field row's top edge: the blue band */
 #define DROP_VIEW_CELLS  (DROP_VIEW_COLS * DROP_VIEW_ROWS)
 #define DROP_VIEW_SEGS   16
 #define DROP_VIEW_BALLS  8
 
-#define DROP_CUR_ENABLE  (DROP_VIEW_CELLS + 0)
-#define DROP_CUR_FOCUS   (DROP_VIEW_CELLS + 1)
-#define DROP_CUR_ROOT    (DROP_VIEW_CELLS + 2)
-#define DROP_CUR_BARS    (DROP_VIEW_CELLS + 3)
-#define DROP_CUR_SEED    (DROP_VIEW_CELLS + 4)
-#define DROP_CUR_RATE    (DROP_VIEW_CELLS + 5)
-#define DROP_CUR_COUNT   (DROP_VIEW_CELLS + 6)
+#define DROP_CUR_ENABLE  0
+#define DROP_CUR_FOCUS   1
+#define DROP_CUR_ROOT    2
+#define DROP_CUR_BARS    3
+#define DROP_CUR_SEED    4
+#define DROP_CUR_RATE    5
+#define DROP_CUR_CELL0   6
+#define DROP_CUR_COUNT   (DROP_CUR_CELL0 + DROP_VIEW_CELLS)
 
 typedef struct {
     uint8_t col, row;
