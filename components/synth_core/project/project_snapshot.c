@@ -2,8 +2,29 @@
  *
  * Field order IS the format: every ser_ writer and its de_/parse_ reader must
  * walk fields in the same sequence or saved projects corrupt on load. The
- * shared env/filter/lfo helpers keep LAYR's voice_params_t and the ARP/DRON
- * sections from drifting apart.
+ * shared env/filter/lfo/dist/vp helpers keep LAYR's voice_params_t and the
+ * ARP/DROP/DRON/DSTD sections from drifting apart.
+ *
+ * Format rules:
+ * - Records: every struct a section writes field by field is a block
+ *   (tlv_begin_block/tlv_get_block, project_tlv.h); blocks nest. A new field
+ *   is appended at the end of the block of the record it belongs to, and that
+ *   needs no version bump.
+ * - Short records keep the seed: each parser seeds its record, then reads the
+ *   fields in writer order. A field past the end of its block (the file
+ *   predates it) fails to read and keeps the seed, as does every field after
+ *   it, because a failed read leaves its output untouched and the block's
+ *   reader stays failed. So parsers read straight through and clamp every
+ *   field, read or seeded. Bytes after the last field this build knows (a
+ *   newer build's appends) are ignored.
+ * - Version bump only for a reshape: reorder, removal, enum remap, type
+ *   change, or a fixed array length (SEQ_TRACKS, SEQ_MAX_STEPS, FX_BUS_COUNT,
+ *   ARP_MAX_SLOTS, DROP_SEG_MAX, SEQ_CHORD_SLOTS, ...). Each section's
+ *   <TAG>_VERSION sits next to its writer and is the loader's only accepted
+ *   value.
+ * - A reshaped optional section (any but GLOB and LAYR) is skipped and loads
+ *   as if absent; project_snapshot_skipped() reports it. A GLOB or LAYR at
+ *   another version refuses the file.
  *
  * Two-phase load: parse_* stages into heap scratch, never touching live state;
  * apply runs only after every section parses clean. Any failure frees scratch
@@ -63,39 +84,39 @@ static const char *TAG = "project_snapshot";
 
 #define PROJECT_SER_BUF_CAP (64 * 1024)
 
-/* LAYR section version: the writer's tag and the loader's only accepted
- * value. */
-#define LAYR_VERSION 26
-
-_Static_assert(SEQ_TRACKS == 5 && SEQ_MAX_STEPS == 32,
-               "LAYR format assumes 5x32; bump LAYR_VERSION");
-
-/* ── Shared env/filter/lfo sub-block codecs ──────────────────────────────
- * Used by voice_params_t (LAYR, per track) and directly by ARP/DRON, so the
- * three engines' persisted shapes cannot drift apart. */
+/* ── Shared env/filter/lfo record codecs ─────────────────────────────────
+ * Used by voice_params_t (LAYR per track, DROP, DRON, DSTD) and directly by
+ * ARP, so the engines' persisted shapes cannot drift apart. */
 
 static void ser_env(tlv_writer_t *w, const seq_env_t *e)
 {
+    size_t h = tlv_begin_block(w);
     tlv_put_u32(w, e->attack_ms);
     tlv_put_u32(w, e->decay_ms);
     tlv_put_u8(w,  e->sustain_pct);
     tlv_put_u32(w, e->release_ms);
     tlv_put_u8(w,  e->eg_type);
+    tlv_end_block(w, h);
 }
 
+/* Seed: *e as the caller left it; a field appended here takes its default
+ * from this seed. */
 static bool de_env(tlv_reader_t *r, seq_env_t *e)
 {
-    if (!tlv_get_u32(r, &e->attack_ms))  return false;
-    if (!tlv_get_u32(r, &e->decay_ms))   return false;
-    if (!tlv_get_u8(r, &e->sustain_pct)) return false;
+    tlv_reader_t b;
+    tlv_get_block(r, &b);
+    tlv_get_u32(&b, &e->attack_ms);
+    tlv_get_u32(&b, &e->decay_ms);
+    tlv_get_u8(&b, &e->sustain_pct);
     if (e->sustain_pct > 100) e->sustain_pct = 100;
-    if (!tlv_get_u32(r, &e->release_ms)) return false;
-    if (!tlv_get_u8(r, &e->eg_type))     return false;
+    tlv_get_u32(&b, &e->release_ms);
+    tlv_get_u8(&b, &e->eg_type);
     return true;
 }
 
 static void ser_filter(tlv_writer_t *w, const seq_filter_t *f)
 {
+    size_t h = tlv_begin_block(w);
     tlv_put_u8(w,  f->filter_type);
     tlv_put_f32(w, f->cutoff_hz);
     tlv_put_f32(w, f->resonance);
@@ -107,34 +128,41 @@ static void ser_filter(tlv_writer_t *w, const seq_filter_t *f)
             tlv_put_f32(w, f->eg_depth[eg][t]);
     tlv_put_f32(w, f->ks_duty_ofs);   /* KS pluck duty - 0.5 */
     tlv_put_f32(w, f->key_track);     /* filter key tracking, oct/oct */
+    tlv_end_block(w, h);
 }
 
-/* Reads every field first (keeps the reader position correct), then bypasses
- * the whole sub-block if filter_type is out of range rather than passing a
- * bogus enum downstream. One fixed shape: the sections that carry this block
- * accept exactly one version. */
+/* Reads every field into temporaries first, then bypasses the whole record
+ * if filter_type is out of range rather than passing a bogus enum
+ * downstream. Seed: *f as the caller left it (the temporaries start from it,
+ * so a short record validates the seed); a field appended here takes its
+ * default from this seed. */
 static bool de_filter(tlv_reader_t *r, seq_filter_t *f)
 {
-    uint8_t ft, en;
-    float cutoff, resonance, feedback, duty_ofs, key_track;
+    tlv_reader_t b;
+    tlv_get_block(r, &b);
+    uint8_t ft = f->filter_type;
+    bool en = f->enabled;
+    float cutoff = f->cutoff_hz, resonance = f->resonance, feedback = f->feedback;
+    float duty_ofs = f->ks_duty_ofs, key_track = f->key_track;
     float depth[2][SEQ_EGT_COUNT];
-    if (!tlv_get_u8(r, &ft))          return false;
-    if (!tlv_get_f32(r, &cutoff))     return false;
-    if (!tlv_get_f32(r, &resonance))  return false;
-    if (!tlv_get_u8(r, &en))          return false;
-    if (!tlv_get_f32(r, &feedback))   return false;
+    memcpy(depth, f->eg_depth, sizeof depth);
+    tlv_get_u8(&b, &ft);
+    tlv_get_f32(&b, &cutoff);
+    tlv_get_f32(&b, &resonance);
+    tlv_get_bool(&b, &en);
+    tlv_get_f32(&b, &feedback);
     feedback = SEQ_CLAMP_F32(feedback, 0.0f, 1.0f);
     for (int eg = 0; eg < 2; eg++) {
         for (int t = 0; t < SEQ_EGT_COUNT; t++) {
-            if (!tlv_get_f32(r, &depth[eg][t])) return false;
+            tlv_get_f32(&b, &depth[eg][t]);
             depth[eg][t] = SEQ_CLAMP_F32(depth[eg][t],
                                          -seq_eg_depth_max((seq_eg_target_t)t),
                                          seq_eg_depth_max((seq_eg_target_t)t));
         }
     }
-    if (!tlv_get_f32(r, &duty_ofs))   return false;
+    tlv_get_f32(&b, &duty_ofs);
     duty_ofs = SEQ_CLAMP_F32(duty_ofs, -0.5f, 0.5f);
-    if (!tlv_get_f32(r, &key_track))  return false;
+    tlv_get_f32(&b, &key_track);
     key_track = SEQ_CLAMP_F32(key_track, 0.0f, 1.0f);
 
     if (ft >= SEQ_FILTER_COUNT) {
@@ -144,7 +172,7 @@ static bool de_filter(tlv_reader_t *r, seq_filter_t *f)
     f->filter_type       = ft;
     f->cutoff_hz         = cutoff;
     f->resonance         = resonance;
-    f->enabled           = en != 0;
+    f->enabled           = en;
     f->feedback          = feedback;
     memcpy(f->eg_depth, depth, sizeof(f->eg_depth));
     f->ks_duty_ofs       = duty_ofs;
@@ -153,25 +181,31 @@ static bool de_filter(tlv_reader_t *r, seq_filter_t *f)
 }
 
 /* ── Distortion codec ─────────────────────────────────────────────────────
- * Values are re-clamped on read: a truncated or hand-edited body must not
- * push an out-of-range type into AMY. */
+ * Values are re-clamped on read: a hand-edited record must not push an
+ * out-of-range type into AMY. */
 static void ser_dist(tlv_writer_t *w, const seq_dist_t *d)
 {
+    size_t h = tlv_begin_block(w);
     tlv_put_u8(w, d->type);
     tlv_put_u8(w, d->drive);
     tlv_put_u8(w, d->bits);
     tlv_put_u8(w, d->rate);
     tlv_put_u8(w, d->mix);
+    tlv_end_block(w, h);
 }
 
+/* Seed: *d as the caller left it; a field appended here takes its default
+ * from this seed. */
 static bool de_dist(tlv_reader_t *r, seq_dist_t *d)
 {
-    uint8_t type, drive, bits, rate, mix;
-    if (!tlv_get_u8(r, &type))  return false;
-    if (!tlv_get_u8(r, &drive)) return false;
-    if (!tlv_get_u8(r, &bits))  return false;
-    if (!tlv_get_u8(r, &rate))  return false;
-    if (!tlv_get_u8(r, &mix))   return false;
+    tlv_reader_t b;
+    tlv_get_block(r, &b);
+    uint8_t type = d->type, drive = d->drive, bits = d->bits, rate = d->rate, mix = d->mix;
+    tlv_get_u8(&b, &type);
+    tlv_get_u8(&b, &drive);
+    tlv_get_u8(&b, &bits);
+    tlv_get_u8(&b, &rate);
+    tlv_get_u8(&b, &mix);
     d->type = type; d->drive = drive; d->bits = bits; d->rate = rate; d->mix = mix;
     voice_dist_clamp(d);
     return true;
@@ -179,6 +213,7 @@ static bool de_dist(tlv_reader_t *r, seq_dist_t *d)
 
 static void ser_lfo(tlv_writer_t *w, const seq_lfo_t *l)
 {
+    size_t h = tlv_begin_block(w);
     tlv_put_u8(w, l->enabled ? 1 : 0);
     tlv_put_u8(w, (uint8_t)l->mode);
     tlv_put_u8(w, (uint8_t)l->wave);
@@ -190,28 +225,34 @@ static void ser_lfo(tlv_writer_t *w, const seq_lfo_t *l)
     tlv_put_u8(w, l->wob_reach);  /* reach: 0 both, 1 depth, 2 rate */
     tlv_put_u8(w, l->flt_oct_q);  /* FILTER swing in quarter-octaves; 0 =
                                    * depth-derived */
+    tlv_end_block(w, h);
 }
 
-/* Same "read everything, then validate" shape as de_filter. */
+/* Same "read everything, then validate" shape and seed as de_filter. */
 static bool de_lfo(tlv_reader_t *r, seq_lfo_t *l)
 {
-    uint8_t en, mode, wave, rate, depth, tgt, wrate, wdepth, wdeponly, foct;
-    if (!tlv_get_u8(r, &en))       return false;
-    if (!tlv_get_u8(r, &mode))     return false;
-    if (!tlv_get_u8(r, &wave))     return false;
-    if (!tlv_get_u8(r, &rate))     return false;
-    if (!tlv_get_u8(r, &depth))    return false;
-    if (!tlv_get_u8(r, &tgt))      return false;
-    if (!tlv_get_u8(r, &wrate))    return false;
-    if (!tlv_get_u8(r, &wdepth))   return false;
-    if (!tlv_get_u8(r, &wdeponly)) return false;
-    if (!tlv_get_u8(r, &foct))     return false;
+    tlv_reader_t b;
+    tlv_get_block(r, &b);
+    bool en = l->enabled;
+    uint8_t mode = (uint8_t)l->mode, wave = (uint8_t)l->wave, rate = (uint8_t)l->rate;
+    uint8_t depth = l->depth, tgt = l->targets, wrate = l->wob_rate;
+    uint8_t wdepth = l->wob_depth, wdeponly = l->wob_reach, foct = l->flt_oct_q;
+    tlv_get_bool(&b, &en);
+    tlv_get_u8(&b, &mode);
+    tlv_get_u8(&b, &wave);
+    tlv_get_u8(&b, &rate);
+    tlv_get_u8(&b, &depth);
+    tlv_get_u8(&b, &tgt);
+    tlv_get_u8(&b, &wrate);
+    tlv_get_u8(&b, &wdepth);
+    tlv_get_u8(&b, &wdeponly);
+    tlv_get_u8(&b, &foct);
 
     if (mode > LFO_MODE_RETRIG || wave >= LFO_WAVE_COUNT) {
         *l = (seq_lfo_t){ .rate = NOTE_DIV_1_8, .wob_rate = NOTE_DIV_1_8 };
         return true;
     }
-    l->enabled = en != 0;
+    l->enabled = en;
     l->mode    = (lfo_mode_t)mode;
     l->wave    = (lfo_wave_t)wave;
     l->rate    = (rate < NOTE_DIV_COUNT) ? (note_div_t)rate : NOTE_DIV_1_8;
@@ -231,6 +272,7 @@ static bool de_lfo(tlv_reader_t *r, seq_lfo_t *l)
 
 static void ser_vp(tlv_writer_t *w, const voice_params_t *vp)
 {
+    size_t h = tlv_begin_block(w);
     ser_env(w, &vp->env);
     ser_env(w, &vp->env1);
     ser_filter(w, &vp->filter);
@@ -244,45 +286,69 @@ static void ser_vp(tlv_writer_t *w, const voice_params_t *vp)
     tlv_put_f32(w, vp->amp_trim);
     ser_dist(w, &vp->dist);
     tlv_put_u8(w, vp->dist_authored ? 1 : 0);
+    tlv_end_block(w, h);
 }
 
+/* Seed: voice_params_init_defaults() (zeroed baseline + unity amp_trim); a
+ * field appended here takes its default from this seed. */
 static bool de_vp(tlv_reader_t *r, voice_params_t *vp)
 {
-    voice_params_init_defaults(vp);   /* zeroed baseline + unity amp_trim */
-    if (!de_env(r, &vp->env))       return false;
-    if (!de_env(r, &vp->env1))      return false;
-    if (!de_filter(r, &vp->filter)) return false;
-    if (!de_lfo(r, &vp->lfo))       return false;
-    if (!de_lfo(r, &vp->lfo2))      return false;
+    tlv_reader_t b;
+    tlv_get_block(r, &b);
+    voice_params_init_defaults(vp);
+    if (!de_env(&b, &vp->env))       return false;
+    if (!de_env(&b, &vp->env1))      return false;
+    if (!de_filter(&b, &vp->filter)) return false;
+    if (!de_lfo(&b, &vp->lfo))       return false;
+    if (!de_lfo(&b, &vp->lfo2))      return false;
     /* Each target on at most one LFO (seq_model.h); LFO1 keeps a shared one. */
     vp->lfo2.targets &= (uint8_t)~vp->lfo.targets;
-    uint8_t ea, e1a, fa, la, l2a;
-    if (!tlv_get_u8(r, &ea))  return false;
-    if (!tlv_get_u8(r, &e1a)) return false;
-    if (!tlv_get_u8(r, &fa))  return false;
-    if (!tlv_get_u8(r, &la))  return false;
-    if (!tlv_get_u8(r, &l2a)) return false;
-    vp->env_authored    = ea  != 0;
-    vp->env1_authored   = e1a != 0;
-    vp->filter_authored = fa  != 0;
-    vp->lfo_authored    = la  != 0;
-    vp->lfo2_authored   = l2a != 0;
-    if (!tlv_get_f32(r, &vp->amp_trim)) return false;
+    tlv_get_bool(&b, &vp->env_authored);
+    tlv_get_bool(&b, &vp->env1_authored);
+    tlv_get_bool(&b, &vp->filter_authored);
+    tlv_get_bool(&b, &vp->lfo_authored);
+    tlv_get_bool(&b, &vp->lfo2_authored);
+    tlv_get_f32(&b, &vp->amp_trim);
     vp->amp_trim = SEQ_CLAMP_F32(vp->amp_trim, 0.0f, 1.0f);
-    if (!de_dist(r, &vp->dist)) return false;
-    uint8_t da;
-    if (!tlv_get_u8(r, &da)) return false;
-    vp->dist_authored = da != 0;
+    if (!de_dist(&b, &vp->dist)) return false;
+    tlv_get_bool(&b, &vp->dist_authored);
+    return true;
+}
+
+/* ── Shared voice_unison_t codec (LAYR per track, ARP, DROP voices) ─────── */
+
+static void ser_unison(tlv_writer_t *w, const voice_unison_t *u)
+{
+    size_t h = tlv_begin_block(w);
+    tlv_put_u8(w, u->count);
+    tlv_put_u8(w, u->detune_cents);
+    tlv_put_u8(w, u->spread_pct);
+    tlv_put_u8(w, u->blend_pct);
+    tlv_end_block(w, h);
+}
+
+/* Raw fields, clamped; count 0 (never set) survives the round trip. Seed: *u
+ * as the caller left it; a field appended here takes its default from this
+ * seed. */
+static bool de_unison(tlv_reader_t *r, voice_unison_t *u)
+{
+    tlv_reader_t b;
+    tlv_get_block(r, &b);
+    tlv_get_u8(&b, &u->count);
+    tlv_get_u8(&b, &u->detune_cents);
+    tlv_get_u8(&b, &u->spread_pct);
+    tlv_get_u8(&b, &u->blend_pct);
+    u->count        = SEQ_CLAMP_U8(u->count, 0u, VOICE_UNISON_MAX_COPIES);
+    u->detune_cents = SEQ_CLAMP_U8(u->detune_cents, 0u, VOICE_UNISON_MAX_DETUNE);
+    u->spread_pct   = SEQ_CLAMP_U8(u->spread_pct, 0u, 100u);
+    u->blend_pct    = SEQ_CLAMP_U8(u->blend_pct, 0u, 100u);
     return true;
 }
 
 /* ── GLOB section ─────────────────────────────────────────────────────────
- * Tail tolerance WITHIN the current version: a shorter GLOB body just runs out
- * of bytes and fields past that keep their seeded live-state value, so a new
- * tail field costs no reader work. tlv_reader_t.err sticks on the first short
- * read, so a failed tlv_get_* here means "no more data", not corruption.
- * Older section versions are rejected outright (no migration) - the dispatcher
- * checks the version before this runs. */
+ * The section scalars, then one record per FX bus. */
+
+#define GLOB_VERSION 7
 
 typedef struct {
     uint16_t bpm;
@@ -298,7 +364,7 @@ typedef struct {
 
 static void ser_glob(tlv_writer_t *w)
 {
-    size_t h = tlv_begin_section(w, TAG_GLOB, 6);  /* v6: echo note is a note_div_t */
+    size_t h = tlv_begin_section(w, TAG_GLOB, GLOB_VERSION);
     tlv_put_u16(w, sequencer_core_get_bpm());
     tlv_put_f32(w, amy_fx_get_master_volume());
     tlv_put_u8(w, sequencer_core_get_quantizer_enabled() ? 1 : 0);
@@ -315,6 +381,7 @@ static void ser_glob(tlv_writer_t *w)
     }
     for (uint8_t bus = 0; bus < FX_BUS_COUNT; bus++) {
         const fx_state_t *f = &s_fx[bus];
+        size_t hb = tlv_begin_block(w);
         tlv_put_i8(w,  f->eq_low_db);
         tlv_put_i8(w,  f->eq_mid_db);
         tlv_put_i8(w,  f->eq_high_db);
@@ -338,13 +405,51 @@ static void ser_glob(tlv_writer_t *w)
         tlv_put_u8(w,  f->bus_dist_mix);
         tlv_put_u8(w,  f->level);
         tlv_put_i16(w, f->chorus_delay);
+        tlv_end_block(w, hb);
     }
     tlv_end_section(w, h);
 }
 
+/* One FX bus record; seed: *f as parse_glob left it. */
+static bool parse_glob_bus(tlv_reader_t *r, fx_state_t *f)
+{
+    tlv_reader_t b;
+    tlv_get_block(r, &b);
+    tlv_get_i8(&b, &f->eq_low_db);
+    tlv_get_i8(&b, &f->eq_mid_db);
+    tlv_get_i8(&b, &f->eq_high_db);
+    tlv_get_u8(&b, &f->echo_level);
+    tlv_get_u8(&b, &f->chorus_level);
+    tlv_get_u8(&b, &f->reverb_level);
+    tlv_get_i16(&b, &f->echo_delay_ms);
+    tlv_get_i16(&b, &f->echo_feedback);
+    tlv_get_i16(&b, &f->echo_tone);
+    tlv_get_bool(&b, &f->echo_sync);
+    tlv_get_u8(&b, &f->echo_div);
+    if (f->echo_div >= NOTE_DIV_STD_COUNT) f->echo_div = NOTE_DIV_1_8D;
+    tlv_get_i16(&b, &f->reverb_liveness);
+    tlv_get_i16(&b, &f->reverb_damping);
+    tlv_get_i16(&b, &f->reverb_xover_hz);
+    tlv_get_i16(&b, &f->chorus_rate);
+    tlv_get_i16(&b, &f->chorus_depth);
+    tlv_get_u8(&b, &f->bus_dist_type);
+    f->bus_dist_type &= 7;  /* stray data reads as a valid stage mask */
+    tlv_get_u8(&b, &f->bus_dist_drive);
+    tlv_get_u8(&b, &f->bus_dist_bits);
+    tlv_get_u8(&b, &f->bus_dist_rate);
+    tlv_get_u8(&b, &f->bus_dist_mix);
+    tlv_get_u8(&b, &f->level);
+    if (f->level > 200) f->level = 200;
+    tlv_get_i16(&b, &f->chorus_delay);
+    if (f->chorus_delay != FX_PARAM_UNSET)
+        f->chorus_delay = (int16_t)SEQ_CLAMP_INT(f->chorus_delay, 16, 512);
+    return true;
+}
+
 static bool parse_glob(tlv_reader_t *b, staged_glob_t *g)
 {
-    /* Seed from live state so a short section leaves the tail as-is. */
+    /* Seed: live state; a field appended here takes its default from this
+     * seed. */
     g->bpm           = sequencer_core_get_bpm();
     g->master_volume = amy_fx_get_master_volume();
     g->quant_enabled = sequencer_core_get_quantizer_enabled();
@@ -358,49 +463,20 @@ static bool parse_glob(tlv_reader_t *b, staged_glob_t *g)
         if (fx_group_is_split(grp)) g->split_flags |= (uint8_t)(1u << grp);
     }
 
-    uint8_t v;
-    if (!tlv_get_u16(b, &g->bpm))           return true;
-    if (!tlv_get_f32(b, &g->master_volume)) return true;
-    if (!tlv_get_u8(b, &v))                 return true;
-    g->quant_enabled = v != 0;
-    if (!tlv_get_u8(b, &g->quant_root))     return true;
-    if (!tlv_get_u8(b, &g->quant_scale))    return true;
-    if (!tlv_get_u8(b, &v))                 return true;
-    g->drum_engine = (v == SEQ_DRUM_PCM) ? SEQ_DRUM_PCM : SEQ_DRUM_SYNTH;
-    if (!tlv_get_u8(b, &v))                 return true;
-    g->presets_alter_global = v != 0;
-    if (!tlv_get_u8(b, &g->split_flags))    return true;
+    tlv_get_u16(b, &g->bpm);
+    tlv_get_f32(b, &g->master_volume);
+    tlv_get_bool(b, &g->quant_enabled);
+    tlv_get_u8(b, &g->quant_root);
+    tlv_get_u8(b, &g->quant_scale);
+    {
+        uint8_t v = (uint8_t)g->drum_engine;
+        tlv_get_u8(b, &v);
+        g->drum_engine = (v == SEQ_DRUM_PCM) ? SEQ_DRUM_PCM : SEQ_DRUM_SYNTH;
+    }
+    tlv_get_bool(b, &g->presets_alter_global);
+    tlv_get_u8(b, &g->split_flags);
     for (uint8_t bus = 0; bus < FX_BUS_COUNT; bus++) {
-        fx_state_t *f = &g->fx[bus];
-        if (!tlv_get_i8(b, &f->eq_low_db))        return true;
-        if (!tlv_get_i8(b, &f->eq_mid_db))        return true;
-        if (!tlv_get_i8(b, &f->eq_high_db))       return true;
-        if (!tlv_get_u8(b, &f->echo_level))       return true;
-        if (!tlv_get_u8(b, &f->chorus_level))     return true;
-        if (!tlv_get_u8(b, &f->reverb_level))     return true;
-        if (!tlv_get_i16(b, &f->echo_delay_ms))   return true;
-        if (!tlv_get_i16(b, &f->echo_feedback))   return true;
-        if (!tlv_get_i16(b, &f->echo_tone))       return true;
-        if (!tlv_get_u8(b, &v))                   return true;
-        f->echo_sync = v != 0;
-        if (!tlv_get_u8(b, &f->echo_div))         return true;
-        if (f->echo_div >= NOTE_DIV_STD_COUNT) f->echo_div = NOTE_DIV_1_8D;
-        if (!tlv_get_i16(b, &f->reverb_liveness)) return true;
-        if (!tlv_get_i16(b, &f->reverb_damping))  return true;
-        if (!tlv_get_i16(b, &f->reverb_xover_hz)) return true;
-        if (!tlv_get_i16(b, &f->chorus_rate))     return true;
-        if (!tlv_get_i16(b, &f->chorus_depth))    return true;
-        if (!tlv_get_u8(b, &f->bus_dist_type))    return true;
-        f->bus_dist_type &= 7;  /* stray data reads as a valid stage mask */
-        if (!tlv_get_u8(b, &f->bus_dist_drive))   return true;
-        if (!tlv_get_u8(b, &f->bus_dist_bits))    return true;
-        if (!tlv_get_u8(b, &f->bus_dist_rate))    return true;
-        if (!tlv_get_u8(b, &f->bus_dist_mix))     return true;
-        if (!tlv_get_u8(b, &f->level))            return true;
-        if (f->level > 200) f->level = 200;
-        if (!tlv_get_i16(b, &f->chorus_delay))    return true;
-        if (f->chorus_delay != FX_PARAM_UNSET)
-            f->chorus_delay = (int16_t)SEQ_CLAMP_INT(f->chorus_delay, 16, 512);
+        if (!parse_glob_bus(b, &g->fx[bus])) return false;
     }
     return true;
 }
@@ -426,18 +502,22 @@ static void apply_glob(const staged_glob_t *g)
 }
 
 /* ── LAYR section ─────────────────────────────────────────────────────────
- * Strict: any truncated read rejects the whole file - unlike GLOB, a partial
- * LAYR body cannot be defaulted field-by-field once step arrays are involved.
+ * Records: the layer head, one per row (its unison and voice blocks nested),
+ * the step arrays, then the note-FX tail (the layer's shared voice block
+ * nested).
  * Out-of-range values clamp rather than reject, except the layer-count/type/
  * first-layer-is-drum invariants the caller enforces after all LAYR sections
  * have parsed. */
 
+#define LAYR_VERSION 27
+
+_Static_assert(SEQ_TRACKS == 5 && SEQ_MAX_STEPS == 32,
+               "LAYR format assumes 5x32; bump LAYR_VERSION");
+
 static void ser_layer(tlv_writer_t *w, const seq_layer_t *L)
 {
-    /* One fixed shape per version; the loader rejects any other version
-     * (no migration), so a format change is a bump here and in
-     * project_snapshot_load. Field history: git log. */
     size_t h = tlv_begin_section(w, TAG_LAYR, LAYR_VERSION);
+    size_t hb = tlv_begin_block(w);   /* head */
     tlv_put_u8(w, (uint8_t)L->type);
     tlv_put_u8(w, L->num_steps);
     tlv_put_u16(w, L->patch);
@@ -447,22 +527,23 @@ static void ser_layer(tlv_writer_t *w, const seq_layer_t *L)
     tlv_put_u8(w, L->chord_root);
     tlv_put_u8(w, (uint8_t)L->chord_type);
     tlv_put_u8(w, L->swing_pct);
+    tlv_end_block(w, hb);
     for (int t = 0; t < SEQ_TRACKS; t++) {
+        hb = tlv_begin_block(w);   /* row t */
         tlv_put_u8(w, L->track_base_note[t]);
         tlv_put_u16(w, L->track_patch[t]);
         tlv_put_u16(w, L->track_pcm_preset[t]);
         tlv_put_u8(w, L->track_pcm_mode[t]);
-        tlv_put_u8(w, L->track_unison[t].count);
-        tlv_put_u8(w, L->track_unison[t].detune_cents);
-        tlv_put_u8(w, L->track_unison[t].spread_pct);
-        tlv_put_u8(w, L->track_unison[t].blend_pct);
+        ser_unison(w, &L->track_unison[t]);
         tlv_put_u8(w, L->repeat_rate[t]);
         tlv_put_u8(w, L->mute[t] ? 1 : 0);
         tlv_put_u8(w, L->solo[t] ? 1 : 0);
         tlv_put_u8(w, L->follow[t]);
         tlv_put_u8(w, L->wt_frame[t]);
         ser_vp(w, &L->vp[t]);
+        tlv_end_block(w, hb);
     }
+    hb = tlv_begin_block(w);   /* step arrays */
     tlv_put_bytes(w, L->grid,               sizeof L->grid);
     tlv_put_bytes(w, L->step_note,          sizeof L->step_note);
     tlv_put_bytes(w, L->step_pitch_ofs,     sizeof L->step_pitch_ofs);
@@ -476,6 +557,8 @@ static void ser_layer(tlv_writer_t *w, const seq_layer_t *L)
     tlv_put_bytes(w, L->step_frame,         sizeof L->step_frame);
     tlv_put_bytes(w, L->step_velocity_adj,  sizeof L->step_velocity_adj);
     tlv_put_bytes(w, L->step_ratchet_taper, sizeof L->step_ratchet_taper);
+    tlv_end_block(w, hb);
+    hb = tlv_begin_block(w);   /* note FX + tail */
     /* Note FX: gate length (drum and melodic), glide, GROOVE accent amount. */
     tlv_put_u16(w, L->gate_pct);
     tlv_put_u16(w, L->portamento_ms);
@@ -490,6 +573,7 @@ static void ser_layer(tlv_writer_t *w, const seq_layer_t *L)
     tlv_put_u8(w, L->patch_scope);
     /* Live row count; rows above it are written and read but not built. */
     tlv_put_u8(w, L->num_tracks);
+    tlv_end_block(w, hb);
     tlv_end_section(w, h);
 }
 
@@ -500,75 +584,80 @@ static uint16_t clamp_patch(uint16_t patch)
     return patch;
 }
 
-static bool parse_layer(tlv_reader_t *b, seq_layer_t *L)
+/* The LAYR record parsers below take parse_layer's seed. */
+
+static bool parse_layer_head(tlv_reader_t *r, seq_layer_t *L)
 {
-    memset(L, 0, sizeof *L);
-
-    uint8_t type_raw;
-    if (!tlv_get_u8(b, &type_raw)) return false;
-    L->type = (type_raw > SEQ_LAYER_MELODIC) ? SEQ_LAYER_MELODIC
-                                              : (seq_layer_type_t)type_raw;
-
-    if (!tlv_get_u8(b, &L->num_steps)) return false;
+    tlv_reader_t b;
+    tlv_get_block(r, &b);
+    {
+        uint8_t v = (uint8_t)L->type;
+        tlv_get_u8(&b, &v);
+        L->type = (v > SEQ_LAYER_MELODIC) ? SEQ_LAYER_MELODIC : (seq_layer_type_t)v;
+    }
+    tlv_get_u8(&b, &L->num_steps);
     if (L->num_steps != 16 && L->num_steps != 32) L->num_steps = 16;
 
-    if (!tlv_get_u16(b, &L->patch)) return false;
+    tlv_get_u16(&b, &L->patch);
     L->patch = clamp_patch(L->patch);
 
-    if (!tlv_get_u32(b, &L->synth_flags)) return false;
-    if (!tlv_get_u8(b, &L->num_voices))   return false;
+    tlv_get_u32(&b, &L->synth_flags);
+    tlv_get_u8(&b, &L->num_voices);
     /* AMY's instrument_init() aborts outside 1..MAX_VOICES_PER_INSTRUMENT
      * (32); a CRC-valid but hand-edited file must not crash the load. */
     L->num_voices = SEQ_CLAMP_U8(L->num_voices, 1, 32);
-    { uint8_t v; if (!tlv_get_u8(b, &v)) return false; L->chord_mode = v != 0; }
-    if (!tlv_get_u8(b, &L->chord_root)) return false;
-    { uint8_t v; if (!tlv_get_u8(b, &v)) return false;
-      L->chord_type = (v >= CHORD_TYPE_COUNT) ? CHORD_MAJ : (chord_type_t)v; }
-    if (!tlv_get_u8(b, &L->swing_pct)) return false;
+    tlv_get_bool(&b, &L->chord_mode);
+    tlv_get_u8(&b, &L->chord_root);
+    {
+        uint8_t v = (uint8_t)L->chord_type;
+        tlv_get_u8(&b, &v);
+        L->chord_type = (v >= CHORD_TYPE_COUNT) ? CHORD_MAJ : (chord_type_t)v;
+    }
+    tlv_get_u8(&b, &L->swing_pct);
     /* Bulk import bypasses sequencer_core_set_layer_swing(), so enforce the
      * engine ceiling here: swing-offset math requires the delay to stay
      * short of one full step. */
     if (L->swing_pct > SEQ_SWING_MAX) L->swing_pct = SEQ_SWING_MAX;
+    return true;
+}
 
-    for (int t = 0; t < SEQ_TRACKS; t++) {
-        if (!tlv_get_u8(b, &L->track_base_note[t]))  return false;
-        if (!tlv_get_u16(b, &L->track_patch[t]))      return false;
-        L->track_patch[t] = clamp_patch(L->track_patch[t]);
-        if (!tlv_get_u16(b, &L->track_pcm_preset[t])) return false;
-        if (!tlv_get_u8(b, &L->track_pcm_mode[t]))    return false;
-        /* Unison raw fields; count 0 (never set) survives the round trip. */
-        voice_unison_t *u = &L->track_unison[t];
-        if (!tlv_get_u8(b, &u->count))        return false;
-        if (!tlv_get_u8(b, &u->detune_cents)) return false;
-        if (!tlv_get_u8(b, &u->spread_pct))   return false;
-        if (!tlv_get_u8(b, &u->blend_pct))    return false;
-        u->count        = SEQ_CLAMP_U8(u->count, 0u, VOICE_UNISON_MAX_COPIES);
-        u->detune_cents = SEQ_CLAMP_U8(u->detune_cents, 0u, VOICE_UNISON_MAX_DETUNE);
-        u->spread_pct   = SEQ_CLAMP_U8(u->spread_pct, 0u, 100u);
-        u->blend_pct    = SEQ_CLAMP_U8(u->blend_pct, 0u, 100u);
-        { uint8_t v; if (!tlv_get_u8(b, &v)) return false; L->repeat_rate[t] = v; }
-        { uint8_t v; if (!tlv_get_u8(b, &v)) return false; L->mute[t] = v != 0; }
-        { uint8_t v; if (!tlv_get_u8(b, &v)) return false; L->solo[t] = v != 0; }
-        { uint8_t v; if (!tlv_get_u8(b, &v)) return false;
-          L->follow[t] = (v >= SEQ_FOLLOW_COUNT) ? (uint8_t)SEQ_FOLLOW_CHORD : v; }
-        { uint8_t v; if (!tlv_get_u8(b, &v)) return false;
-          L->wt_frame[t] = (v > 64u) ? 0u : v; }
-        if (!de_vp(b, &L->vp[t])) return false;
-    }
+static bool parse_layer_row(tlv_reader_t *r, seq_layer_t *L, int t)
+{
+    tlv_reader_t b;
+    tlv_get_block(r, &b);
+    tlv_get_u8(&b, &L->track_base_note[t]);
+    tlv_get_u16(&b, &L->track_patch[t]);
+    L->track_patch[t] = clamp_patch(L->track_patch[t]);
+    tlv_get_u16(&b, &L->track_pcm_preset[t]);
+    tlv_get_u8(&b, &L->track_pcm_mode[t]);
+    if (!de_unison(&b, &L->track_unison[t])) return false;
+    tlv_get_u8(&b, &L->repeat_rate[t]);
+    tlv_get_bool(&b, &L->mute[t]);
+    tlv_get_bool(&b, &L->solo[t]);
+    tlv_get_u8(&b, &L->follow[t]);
+    if (L->follow[t] >= SEQ_FOLLOW_COUNT) L->follow[t] = (uint8_t)SEQ_FOLLOW_CHORD;
+    tlv_get_u8(&b, &L->wt_frame[t]);
+    if (L->wt_frame[t] > 64u) L->wt_frame[t] = 0u;
+    return de_vp(&b, &L->vp[t]);
+}
 
-    if (!tlv_get_bytes(b, L->grid,               sizeof L->grid))               return false;
-    if (!tlv_get_bytes(b, L->step_note,          sizeof L->step_note))          return false;
-    if (!tlv_get_bytes(b, L->step_pitch_ofs,     sizeof L->step_pitch_ofs))     return false;
-    if (!tlv_get_bytes(b, L->step_prob,          sizeof L->step_prob))          return false;
-    if (!tlv_get_bytes(b, L->step_ratchet,       sizeof L->step_ratchet))       return false;
-    if (!tlv_get_bytes(b, L->step_every,         sizeof L->step_every))         return false;
-    if (!tlv_get_bytes(b, L->step_prev,          sizeof L->step_prev))          return false;
-    if (!tlv_get_bytes(b, L->step_transform,     sizeof L->step_transform))     return false;
-    if (!tlv_get_bytes(b, L->step_quant_bypass,  sizeof L->step_quant_bypass))  return false;
-    if (!tlv_get_bytes(b, L->step_nudge,         sizeof L->step_nudge))         return false;
-    if (!tlv_get_bytes(b, L->step_frame,         sizeof L->step_frame))         return false;
-    if (!tlv_get_bytes(b, L->step_velocity_adj,  sizeof L->step_velocity_adj))  return false;
-    if (!tlv_get_bytes(b, L->step_ratchet_taper, sizeof L->step_ratchet_taper)) return false;
+static bool parse_layer_steps(tlv_reader_t *r, seq_layer_t *L)
+{
+    tlv_reader_t b;
+    tlv_get_block(r, &b);
+    tlv_get_bytes(&b, L->grid,               sizeof L->grid);
+    tlv_get_bytes(&b, L->step_note,          sizeof L->step_note);
+    tlv_get_bytes(&b, L->step_pitch_ofs,     sizeof L->step_pitch_ofs);
+    tlv_get_bytes(&b, L->step_prob,          sizeof L->step_prob);
+    tlv_get_bytes(&b, L->step_ratchet,       sizeof L->step_ratchet);
+    tlv_get_bytes(&b, L->step_every,         sizeof L->step_every);
+    tlv_get_bytes(&b, L->step_prev,          sizeof L->step_prev);
+    tlv_get_bytes(&b, L->step_transform,     sizeof L->step_transform);
+    tlv_get_bytes(&b, L->step_quant_bypass,  sizeof L->step_quant_bypass);
+    tlv_get_bytes(&b, L->step_nudge,         sizeof L->step_nudge);
+    tlv_get_bytes(&b, L->step_frame,         sizeof L->step_frame);
+    tlv_get_bytes(&b, L->step_velocity_adj,  sizeof L->step_velocity_adj);
+    tlv_get_bytes(&b, L->step_ratchet_taper, sizeof L->step_ratchet_taper);
 
     for (int t = 0; t < SEQ_TRACKS; t++) {
         for (int s = 0; s < SEQ_MAX_STEPS; s++) {
@@ -582,13 +671,62 @@ static bool parse_layer(tlv_reader_t *b, seq_layer_t *L)
             if (L->step_frame[t][s] > 64u) L->step_frame[t][s] = 0u;
         }
     }
+    return true;
+}
+
+static bool parse_layer_tail(tlv_reader_t *r, seq_layer_t *L)
+{
+    tlv_reader_t b;
+    tlv_get_block(r, &b);
+    /* Note FX, clamped to the live control ranges. */
+    tlv_get_u16(&b, &L->gate_pct);
+    tlv_get_u16(&b, &L->portamento_ms);
+    if (L->gate_pct != SEQ_GATE_HOLD)
+        L->gate_pct = SEQ_CLAMP_U16(L->gate_pct, SEQ_GATE_PCT_MIN, SEQ_GATE_PCT_MAX);
+    if (L->portamento_ms > SEQ_MELODIC_PORTAMENTO_MAX_MS)
+        L->portamento_ms = SEQ_MELODIC_PORTAMENTO_MAX_MS;
+
+    tlv_get_u8(&b, &L->groove_pct);
+    if (L->groove_pct > 100) L->groove_pct = 100;
+
+    /* Live FM algorithm override; corrupt values fall back to none. The
+     * configure path reasserts it after the load's patch apply; anything past
+     * AMY's algorithm table would be an unchecked OOB index there. */
+    tlv_get_u8(&b, &L->fm_algo_override);
+    if (L->fm_algo_override != SEQ_FM_ALGO_NONE &&
+        L->fm_algo_override >= amy_num_algorithms)
+        L->fm_algo_override = SEQ_FM_ALGO_NONE;
+
+    /* Per-row voice-block source + the layer's shared block. */
+    for (int t = 0; t < SEQ_TRACKS; t++) tlv_get_u8(&b, &L->vp_src[t]);
+    if (!de_vp(&b, &L->vp_layer)) return false;
+
+    /* Melodic patch scope. */
+    tlv_get_u8(&b, &L->patch_scope);
+    tlv_get_u8(&b, &L->num_tracks);
+    L->num_tracks = SEQ_CLAMP_U8(L->num_tracks, SEQ_TRACKS_DEFAULT, SEQ_TRACKS);
+    return true;
+}
+
+/* Seed: zero, each voice block at de_vp()'s seed; a field appended to any
+ * LAYR record takes its default from this seed. The rules that span records
+ * run after all four have parsed. */
+static bool parse_layer(tlv_reader_t *b, seq_layer_t *L)
+{
+    memset(L, 0, sizeof *L);
+    if (!parse_layer_head(b, L)) return false;
+    for (int t = 0; t < SEQ_TRACKS; t++) {
+        if (!parse_layer_row(b, L, t)) return false;
+    }
+    if (!parse_layer_steps(b, L)) return false;
+    if (!parse_layer_tail(b, L)) return false;
 
     /* Note fields hold a playable pitch or (melodic only) a chord preset
      * sentinel (seq_chords.h). Anything else - corrupt, or a sentinel family
      * this build doesn't know - clamps into the playable range so it cannot
      * leak into pitch math. */
+    bool mel = L->type == SEQ_LAYER_MELODIC;
     for (int t = 0; t < SEQ_TRACKS; t++) {
-        bool mel = L->type == SEQ_LAYER_MELODIC;
         if (!(mel && SEQ_NOTE_IS_CHORD(L->track_base_note[t]))) {
             L->track_base_note[t] = SEQ_CLAMP_U8(L->track_base_note[t],
                                                  SEQ_MEL_NOTE_MIN, SEQ_MEL_NOTE_MAX);
@@ -601,50 +739,22 @@ static bool parse_layer(tlv_reader_t *b, seq_layer_t *L)
         }
     }
 
-    /* Note FX, clamped to the live control ranges. */
-    if (!tlv_get_u16(b, &L->gate_pct))      return false;
-    if (!tlv_get_u16(b, &L->portamento_ms)) return false;
-    if (L->gate_pct != SEQ_GATE_HOLD)
-        L->gate_pct = SEQ_CLAMP_U16(L->gate_pct, SEQ_GATE_PCT_MIN, SEQ_GATE_PCT_MAX);
-    if (L->portamento_ms > SEQ_MELODIC_PORTAMENTO_MAX_MS)
-        L->portamento_ms = SEQ_MELODIC_PORTAMENTO_MAX_MS;
-
-    if (!tlv_get_u8(b, &L->groove_pct)) return false;
-    if (L->groove_pct > 100) L->groove_pct = 100;
-
-    /* Live FM algorithm override; corrupt values fall back to none. The
-     * configure path reasserts it after the load's patch apply; anything past
-     * AMY's algorithm table would be an unchecked OOB index there. */
-    if (!tlv_get_u8(b, &L->fm_algo_override)) return false;
-    if (L->fm_algo_override != SEQ_FM_ALGO_NONE &&
-        L->fm_algo_override >= amy_num_algorithms)
-        L->fm_algo_override = SEQ_FM_ALGO_NONE;
-
-    /* Per-row voice-block source + the layer's shared block. The layer block
-     * is only meaningful on melodic layers; drum rows are forced to TRACK so
-     * the bank seeding never resolves onto the shared block. */
+    /* The layer block is only meaningful on melodic layers; drum rows are
+     * forced to TRACK so the bank seeding never resolves onto the shared
+     * block. */
     for (int t = 0; t < SEQ_TRACKS; t++) {
-        if (!tlv_get_u8(b, &L->vp_src[t])) return false;
-        if (L->vp_src[t] > SEQ_VP_SRC_LAYER || L->type != SEQ_LAYER_MELODIC)
-            L->vp_src[t] = SEQ_VP_SRC_TRACK;
+        if (L->vp_src[t] > SEQ_VP_SRC_LAYER || !mel) L->vp_src[t] = SEQ_VP_SRC_TRACK;
     }
-    if (!de_vp(b, &L->vp_layer)) return false;
 
-    /* Melodic patch scope. */
-    if (!tlv_get_u8(b, &L->patch_scope)) return false;
     if (L->patch_scope > SEQ_PATCH_SCOPE_TRACK)
         L->patch_scope = SEQ_PATCH_SCOPE_LAYER;
-    if (L->type != SEQ_LAYER_MELODIC) L->patch_scope = SEQ_PATCH_SCOPE_LAYER;
+    if (!mel) L->patch_scope = SEQ_PATCH_SCOPE_LAYER;
     /* Invariant repair: in LAYER scope every melodic row plays `patch`, and
      * the configure path reads track_patch[] only. Cheap enough to do
      * unconditionally rather than trust the file. */
-    if (L->type == SEQ_LAYER_MELODIC && L->patch_scope == SEQ_PATCH_SCOPE_LAYER) {
+    if (mel && L->patch_scope == SEQ_PATCH_SCOPE_LAYER) {
         for (int t = 0; t < SEQ_TRACKS; t++) L->track_patch[t] = L->patch;
     }
-
-    if (!tlv_get_u8(b, &L->num_tracks)) return false;
-    L->num_tracks = SEQ_CLAMP_U8(L->num_tracks, SEQ_TRACKS_DEFAULT, SEQ_TRACKS);
-
     return true;
 }
 
@@ -674,10 +784,14 @@ typedef struct {
     voice_unison_t unison;
 } staged_arp_t;
 
+/* One record: the arp's scalars, its slots as a raw array, and its env/
+ * filter/lfo/dist/unison records nested. */
+#define ARP_VERSION 18
+
 static void ser_arp(tlv_writer_t *w)
 {
-    /* One fixed shape per version, as for LAYR. Field history: git log. */
-    size_t h = tlv_begin_section(w, TAG_ARP, 17);
+    size_t h = tlv_begin_section(w, TAG_ARP, ARP_VERSION);
+    size_t hb = tlv_begin_block(w);
     tlv_put_u8(w, arp_get_enabled() ? 1 : 0);
     tlv_put_u16(w, arp_get_patch());
     tlv_put_u8(w, (uint8_t)arp_get_direction());
@@ -699,67 +813,55 @@ static void ser_arp(tlv_writer_t *w)
     seq_dist_t d; arp_get_dist(&d);      ser_dist(w, &d);
     tlv_put_u8(w, arp_get_muted() ? 1 : 0);
     tlv_put_u8(w, sequencer_core_get_arp_solo() ? 1 : 0);
-    voice_unison_t u; arp_get_unison(&u);
-    tlv_put_u8(w, u.count);
-    tlv_put_u8(w, u.detune_cents);
-    tlv_put_u8(w, u.spread_pct);
-    tlv_put_u8(w, u.blend_pct);
+    voice_unison_t u; arp_get_unison(&u); ser_unison(w, &u);
+    tlv_end_block(w, hb);
     tlv_end_section(w, h);
 }
 
-static bool parse_arp(tlv_reader_t *b, staged_arp_t *a)
+/* Seed: zero; a field appended here takes its default from this seed. */
+static bool parse_arp(tlv_reader_t *r, staged_arp_t *a)
 {
+    tlv_reader_t b;
+    tlv_get_block(r, &b);
     uint8_t v;
-    if (!tlv_get_u8(b, &v)) return false;
-    a->enabled = v != 0;
-    if (!tlv_get_u16(b, &a->patch)) return false;
+    tlv_get_bool(&b, &a->enabled);
+    tlv_get_u16(&b, &a->patch);
     a->patch = clamp_patch(a->patch);
-    if (!tlv_get_u8(b, &v)) return false;
+    v = (uint8_t)a->dir;
+    tlv_get_u8(&b, &v);
     a->dir = (v >= ARP_DIR_COUNT) ? ARP_UP : (arp_dir_t)v;
-    if (!tlv_get_u8(b, &a->octaves)) return false;
+    tlv_get_u8(&b, &a->octaves);
     a->octaves = SEQ_CLAMP_U8(a->octaves, 1, ARP_OCT_MAX);
-    if (!tlv_get_u8(b, &v)) return false;
+    v = (uint8_t)a->rate;
+    tlv_get_u8(&b, &v);
     a->rate = (v >= NOTE_DIV_STD_COUNT) ? NOTE_DIV_1_4 : (note_div_t)v;
-    if (!tlv_get_u8(b, &a->gate_pct)) return false;
+    tlv_get_u8(&b, &a->gate_pct);
     a->gate_pct = SEQ_CLAMP_U8(a->gate_pct, 10, 100);
-    if (!tlv_get_u8(b, &a->scale)) return false;
+    tlv_get_u8(&b, &a->scale);
     if (a->scale >= quantizer_scale_count()) a->scale = 0;
-    if (!tlv_get_u8(b, &a->root)) return false;
-    if (!tlv_get_u16(b, &a->portamento_ms)) return false;
+    tlv_get_u8(&b, &a->root);
+    tlv_get_u16(&b, &a->portamento_ms);
     if (a->portamento_ms > ARP_PORTAMENTO_MAX_MS) a->portamento_ms = ARP_PORTAMENTO_MAX_MS;
-    if (!tlv_get_f32(b, &a->amp_scale)) return false;
+    tlv_get_f32(&b, &a->amp_scale);
     a->amp_scale = SEQ_CLAMP_F32(a->amp_scale, 0.0f, 1.0f);
     for (int i = 0; i < ARP_MAX_SLOTS; i++) {
-        if (!tlv_get_i16(b, &a->slots[i])) return false;
+        tlv_get_i16(&b, &a->slots[i]);
         if (a->slots[i] < ARP_REST || a->slots[i] > 127) a->slots[i] = -1;
     }
-    if (!de_env(b, &a->env))       return false;
-    if (!de_env(b, &a->env2))      return false;
-    if (!de_filter(b, &a->filter)) return false;
-    if (!de_lfo(b, &a->lfo))       return false;
-    if (!de_lfo(b, &a->lfo2))      return false;
+    if (!de_env(&b, &a->env))       return false;
+    if (!de_env(&b, &a->env2))      return false;
+    if (!de_filter(&b, &a->filter)) return false;
+    if (!de_lfo(&b, &a->lfo))       return false;
+    if (!de_lfo(&b, &a->lfo2))      return false;
     a->lfo2.targets &= (uint8_t)~a->lfo.targets;   /* as de_vp */
-    if (!tlv_get_u8(b, &v)) return false;
-    a->lfo2_authored = v != 0;
+    tlv_get_bool(&b, &a->lfo2_authored);
     /* Scale source (arp_quant_mode_t). */
-    if (!tlv_get_u8(b, &v)) return false;
-    a->quant_mode = (v >= ARP_QUANT_COUNT) ? ARP_QUANT_CHORD : v;
-    if (!de_dist(b, &a->dist)) return false;
-    if (!tlv_get_u8(b, &v)) return false;
-    a->muted = v != 0;
-    if (!tlv_get_u8(b, &v)) return false;
-    a->solo = v != 0;
-    /* Unison raw fields, clamped as parse_layer does; count 0 (never set)
-     * survives the parse. */
-    voice_unison_t *u = &a->unison;
-    if (!tlv_get_u8(b, &u->count))        return false;
-    if (!tlv_get_u8(b, &u->detune_cents)) return false;
-    if (!tlv_get_u8(b, &u->spread_pct))   return false;
-    if (!tlv_get_u8(b, &u->blend_pct))    return false;
-    u->count        = SEQ_CLAMP_U8(u->count, 0u, VOICE_UNISON_MAX_COPIES);
-    u->detune_cents = SEQ_CLAMP_U8(u->detune_cents, 0u, VOICE_UNISON_MAX_DETUNE);
-    u->spread_pct   = SEQ_CLAMP_U8(u->spread_pct, 0u, 100u);
-    u->blend_pct    = SEQ_CLAMP_U8(u->blend_pct, 0u, 100u);
+    tlv_get_u8(&b, &a->quant_mode);
+    if (a->quant_mode >= ARP_QUANT_COUNT) a->quant_mode = ARP_QUANT_CHORD;
+    if (!de_dist(&b, &a->dist)) return false;
+    tlv_get_bool(&b, &a->muted);
+    tlv_get_bool(&b, &a->solo);
+    if (!de_unison(&b, &a->unison)) return false;
     return true;
 }
 
@@ -791,14 +893,14 @@ static void apply_arp(const staged_arp_t *a)
 }
 
 /* ── DROP section ──────────────────────────────────────────────────────────
- * One fixed shape per version, as ARP. Field order: enabled,
- * rate, loop_bars, octaves, seed, seed_frozen, scale_index,
- * root_note, sub_root_note, quant_mode, seg_count, DROP_SEG_MAX segments of
- * 5 bytes, the jackpot cell map (DROP_JACKPOT_BYTES), then the DROP and SUB
- * voices: patch, glide, the voice_params_t block (ser_vp, authored flags
- * included), unison, muted, solo and gate_pct. */
+ * Records: the loop record (enabled, rate, loop_bars, octaves, seed,
+ * seed_frozen, scale_index, root_note, sub_root_note, quant_mode, seg_count,
+ * DROP_SEG_MAX segment records of 5 bytes nested, the jackpot cell map as a
+ * raw DROP_JACKPOT_BYTES array), then one record per DROP and SUB voice:
+ * patch, glide, the voice_params_t block (ser_vp, authored flags included),
+ * the unison block, muted, solo and gate_pct. */
 
-#define DROP_VERSION 3
+#define DROP_VERSION 4
 
 typedef struct {
     uint16_t       patch;
@@ -825,6 +927,7 @@ typedef struct {
 static void ser_drop(tlv_writer_t *w)
 {
     size_t h = tlv_begin_section(w, TAG_DROP, DROP_VERSION);
+    size_t hb = tlv_begin_block(w);
     tlv_put_u8(w, drop_get_enabled() ? 1 : 0);
     tlv_put_u8(w, (uint8_t)drop_get_rate());
     tlv_put_u8(w, drop_get_loop_bars());
@@ -839,17 +942,21 @@ static void ser_drop(tlv_writer_t *w)
     for (uint8_t i = 0; i < DROP_SEG_MAX; i++) {
         drop_seg_t s = { 0 };
         (void)drop_get_seg(i, &s);
+        size_t hs = tlv_begin_block(w);
         tlv_put_u8(w, s.col);
         tlv_put_u8(w, s.row);
         tlv_put_u8(w, s.angle);
         tlv_put_u8(w, s.type);
         tlv_put_u8(w, s.ratio);
+        tlv_end_block(w, hs);
     }
     uint8_t jp[DROP_JACKPOT_BYTES];
     drop_jackpot_get_map(jp);
     for (uint8_t i = 0; i < DROP_JACKPOT_BYTES; i++) tlv_put_u8(w, jp[i]);
+    tlv_end_block(w, hb);
     for (uint8_t v = 0; v < DROP_VOICE_COUNT; v++) {
         drop_which_t which = (drop_which_t)v;
+        hb = tlv_begin_block(w);
         tlv_put_u16(w, drop_get_patch(which));
         tlv_put_u16(w, drop_get_portamento_ms(which));
         voice_params_t vp;
@@ -857,80 +964,85 @@ static void ser_drop(tlv_writer_t *w)
         ser_vp(w, &vp);
         voice_unison_t u;
         drop_get_unison(which, &u);
-        tlv_put_u8(w, u.count);
-        tlv_put_u8(w, u.detune_cents);
-        tlv_put_u8(w, u.spread_pct);
-        tlv_put_u8(w, u.blend_pct);
+        ser_unison(w, &u);
         tlv_put_u8(w, drop_get_muted(which) ? 1 : 0);
         tlv_put_u8(w, sequencer_core_get_drop_solo((uint8_t)which) ? 1 : 0);
         tlv_put_u8(w, drop_get_gate_pct(which));
+        tlv_end_block(w, hb);
     }
     tlv_end_section(w, h);
 }
 
-static bool parse_drop(tlv_reader_t *b, staged_drop_t *d)
+/* The DROP record parsers below take parse_drop's seed. */
+
+static bool parse_drop_seg(tlv_reader_t *r, drop_seg_t *s)
 {
+    tlv_reader_t b;
+    tlv_get_block(r, &b);
+    tlv_get_u8(&b, &s->col);
+    tlv_get_u8(&b, &s->row);
+    tlv_get_u8(&b, &s->angle);
+    tlv_get_u8(&b, &s->type);
+    tlv_get_u8(&b, &s->ratio);
+    /* A cell out of the field drops the segment (drop_set_seg refuses
+     * it); the rest clamps there. */
+    s->angle = SEQ_CLAMP_U8(s->angle, 0, DROP_SEG_ANGLES - 1);
+    s->type  = SEQ_CLAMP_U8(s->type, 0, DROP_SEG_TYPE_COUNT - 1);
+    s->ratio = SEQ_CLAMP_U8(s->ratio, 0, 100);
+    return true;
+}
+
+static bool parse_drop_voice(tlv_reader_t *r, staged_drop_voice_t *dv)
+{
+    tlv_reader_t b;
+    tlv_get_block(r, &b);
+    tlv_get_u16(&b, &dv->patch);
+    dv->patch = clamp_patch(dv->patch);
+    tlv_get_u16(&b, &dv->portamento_ms);
+    if (dv->portamento_ms > DROP_PORTAMENTO_MAX_MS) dv->portamento_ms = DROP_PORTAMENTO_MAX_MS;
+    if (!de_vp(&b, &dv->vp)) return false;
+    if (!de_unison(&b, &dv->unison)) return false;
+    dv->unison.layout = 0u;
+    tlv_get_bool(&b, &dv->muted);
+    tlv_get_bool(&b, &dv->solo);
+    tlv_get_u8(&b, &dv->gate_pct);
+    dv->gate_pct = SEQ_CLAMP_U8(dv->gate_pct, 10, 100);
+    return true;
+}
+
+/* Seed: zero, each voice block at de_vp()'s seed; a field appended to any
+ * DROP record takes its default from this seed. */
+static bool parse_drop(tlv_reader_t *r, staged_drop_t *d)
+{
+    tlv_reader_t b;
+    tlv_get_block(r, &b);
     uint8_t v;
-    if (!tlv_get_u8(b, &v)) return false;
-    d->enabled = v != 0;
-    if (!tlv_get_u8(b, &v)) return false;
+    tlv_get_bool(&b, &d->enabled);
+    v = (uint8_t)d->rate;
+    tlv_get_u8(&b, &v);
     d->rate = (v >= NOTE_DIV_STD_COUNT) ? NOTE_DIV_1_4 : (note_div_t)v;
-    if (!tlv_get_u8(b, &d->loop_bars)) return false;
+    tlv_get_u8(&b, &d->loop_bars);
     d->loop_bars = SEQ_CLAMP_U8(d->loop_bars, 1, DROP_LOOP_BARS_MAX);
-    if (!tlv_get_u8(b, &d->octaves)) return false;
+    tlv_get_u8(&b, &d->octaves);
     d->octaves = SEQ_CLAMP_U8(d->octaves, 1, DROP_OCT_MAX);
-    if (!tlv_get_u32(b, &d->seed)) return false;
-    if (!tlv_get_u8(b, &v)) return false;
-    d->seed_frozen = v != 0;
-    if (!tlv_get_u8(b, &d->scale)) return false;
+    tlv_get_u32(&b, &d->seed);
+    tlv_get_bool(&b, &d->seed_frozen);
+    tlv_get_u8(&b, &d->scale);
     if (d->scale >= quantizer_scale_count()) d->scale = 0;
-    if (!tlv_get_u8(b, &d->root)) return false;
+    tlv_get_u8(&b, &d->root);
     d->root = SEQ_CLAMP_U8(d->root, 0, 127);
-    if (!tlv_get_u8(b, &d->sub_root)) return false;
+    tlv_get_u8(&b, &d->sub_root);
     d->sub_root = SEQ_CLAMP_U8(d->sub_root, 0, 127);
-    if (!tlv_get_u8(b, &v)) return false;
-    d->quant_mode = (v >= ARP_QUANT_COUNT) ? ARP_QUANT_CHORD : v;
-    if (!tlv_get_u8(b, &d->seg_count)) return false;
+    tlv_get_u8(&b, &d->quant_mode);
+    if (d->quant_mode >= ARP_QUANT_COUNT) d->quant_mode = ARP_QUANT_CHORD;
+    tlv_get_u8(&b, &d->seg_count);
     if (d->seg_count > DROP_SEG_MAX) d->seg_count = DROP_SEG_MAX;
     for (uint8_t i = 0; i < DROP_SEG_MAX; i++) {
-        drop_seg_t *s = &d->segs[i];
-        if (!tlv_get_u8(b, &s->col))   return false;
-        if (!tlv_get_u8(b, &s->row))   return false;
-        if (!tlv_get_u8(b, &s->angle)) return false;
-        if (!tlv_get_u8(b, &s->type))  return false;
-        if (!tlv_get_u8(b, &s->ratio)) return false;
-        /* A cell out of the field drops the segment (drop_set_seg refuses
-         * it); the rest clamps there. */
-        s->angle = SEQ_CLAMP_U8(s->angle, 0, DROP_SEG_ANGLES - 1);
-        s->type  = SEQ_CLAMP_U8(s->type, 0, DROP_SEG_TYPE_COUNT - 1);
-        s->ratio = SEQ_CLAMP_U8(s->ratio, 0, 100);
+        if (!parse_drop_seg(&b, &d->segs[i])) return false;
     }
-    for (uint8_t i = 0; i < DROP_JACKPOT_BYTES; i++) {
-        if (!tlv_get_u8(b, &d->jackpot[i])) return false;
-    }
+    tlv_get_bytes(&b, d->jackpot, sizeof d->jackpot);
     for (uint8_t i = 0; i < DROP_VOICE_COUNT; i++) {
-        staged_drop_voice_t *dv = &d->voice[i];
-        if (!tlv_get_u16(b, &dv->patch)) return false;
-        dv->patch = clamp_patch(dv->patch);
-        if (!tlv_get_u16(b, &dv->portamento_ms)) return false;
-        if (dv->portamento_ms > DROP_PORTAMENTO_MAX_MS) dv->portamento_ms = DROP_PORTAMENTO_MAX_MS;
-        if (!de_vp(b, &dv->vp)) return false;
-        voice_unison_t *u = &dv->unison;
-        if (!tlv_get_u8(b, &u->count))        return false;
-        if (!tlv_get_u8(b, &u->detune_cents)) return false;
-        if (!tlv_get_u8(b, &u->spread_pct))   return false;
-        if (!tlv_get_u8(b, &u->blend_pct))    return false;
-        u->count        = SEQ_CLAMP_U8(u->count, 0u, VOICE_UNISON_MAX_COPIES);
-        u->detune_cents = SEQ_CLAMP_U8(u->detune_cents, 0u, VOICE_UNISON_MAX_DETUNE);
-        u->spread_pct   = SEQ_CLAMP_U8(u->spread_pct, 0u, 100u);
-        u->blend_pct    = SEQ_CLAMP_U8(u->blend_pct, 0u, 100u);
-        u->layout       = 0u;
-        if (!tlv_get_u8(b, &v)) return false;
-        dv->muted = v != 0;
-        if (!tlv_get_u8(b, &v)) return false;
-        dv->solo = v != 0;
-        if (!tlv_get_u8(b, &dv->gate_pct)) return false;
-        dv->gate_pct = SEQ_CLAMP_U8(dv->gate_pct, 10, 100);
+        if (!parse_drop_voice(r, &d->voice[i])) return false;
     }
     return true;
 }
@@ -989,9 +1101,13 @@ typedef struct {
     voice_params_t  vp;
 } staged_drone_t;
 
+/* Records: the drone's scalars, then its voice block. */
+#define DRON_VERSION 8
+
 static void ser_drone(tlv_writer_t *w)
 {
-    size_t h = tlv_begin_section(w, TAG_DRON, 7);
+    size_t h = tlv_begin_section(w, TAG_DRON, DRON_VERSION);
+    size_t hb = tlv_begin_block(w);
     tlv_put_u8(w, drone_get_enabled() ? 1 : 0);
     tlv_put_u8(w, (uint8_t)drone_get_chord());
     tlv_put_u8(w, drone_get_root_note());
@@ -1006,42 +1122,49 @@ static void ser_drone(tlv_writer_t *w)
     tlv_put_f32(w, drone_get_blip());
     tlv_put_u8(w, (uint8_t)drone_get_pattern());
     tlv_put_u8(w, (uint8_t)drone_get_follow());
+    tlv_end_block(w, hb);
     voice_params_t vp; drone_get_voice_params(&vp); ser_vp(w, &vp);
     tlv_end_section(w, h);
 }
 
-static bool parse_drone(tlv_reader_t *b, staged_drone_t *d)
+/* Seed: zero, the voice block at de_vp()'s seed; a field appended to either
+ * record takes its default from this seed. */
+static bool parse_drone(tlv_reader_t *r, staged_drone_t *d)
 {
+    tlv_reader_t b;
+    tlv_get_block(r, &b);
     uint8_t v;
-    if (!tlv_get_u8(b, &v)) return false;
-    d->enabled = v != 0;
-    if (!tlv_get_u8(b, &v)) return false;
+    tlv_get_bool(&b, &d->enabled);
+    v = (uint8_t)d->chord;
+    tlv_get_u8(&b, &v);
     d->chord = (v >= CHORD_TYPE_COUNT) ? CHORD_MAJ : (chord_type_t)v;
-    if (!tlv_get_u8(b, &d->root))  return false;
-    if (!tlv_get_u16(b, &d->patch)) return false;
+    tlv_get_u8(&b, &d->root);
+    tlv_get_u16(&b, &d->patch);
     d->patch = clamp_patch(d->patch);
-    if (!tlv_get_f32(b, &d->amp_peak))  return false;
+    tlv_get_f32(&b, &d->amp_peak);
     d->amp_peak = SEQ_CLAMP_F32(d->amp_peak, 0.0f, 1.0f);
-    if (!tlv_get_f32(b, &d->amp_duck))  return false;
+    tlv_get_f32(&b, &d->amp_duck);
     d->amp_duck = SEQ_CLAMP_F32(d->amp_duck, 0.0f, 1.0f);
-    if (!tlv_get_u8(b, &v)) return false;
+    v = (uint8_t)d->rate;
+    tlv_get_u8(&b, &v);
     d->rate = (v >= NOTE_DIV_STD_COUNT) ? NOTE_DIV_1_4 : (note_div_t)v;
-    { uint8_t se; if (!tlv_get_u8(b, &se)) return false; d->sub_enabled = se != 0; }
-    if (!tlv_get_i8(b, &d->sub_interval)) return false;
+    tlv_get_bool(&b, &d->sub_enabled);
+    tlv_get_i8(&b, &d->sub_interval);
     d->sub_interval = (int8_t)SEQ_CLAMP_INT(d->sub_interval, DRONE_SUB_INTERVAL_MIN,
                                             DRONE_SUB_INTERVAL_MAX);
-    if (!tlv_get_f32(b, &d->gate_len)) return false;
+    tlv_get_f32(&b, &d->gate_len);
     d->gate_len = SEQ_CLAMP_F32(d->gate_len, 0.05f, 0.95f);
-    if (!tlv_get_u8(b, &d->swing)) return false;
+    tlv_get_u8(&b, &d->swing);
     if (d->swing > 66) d->swing = 66;   /* mirrors the private SEQ/DRONE_SWING_MAX ceiling */
-    if (!tlv_get_f32(b, &d->blip)) return false;
+    tlv_get_f32(&b, &d->blip);
     d->blip = SEQ_CLAMP_F32(d->blip, 0.0f, 1.0f);
-    if (!tlv_get_u8(b, &v)) return false;
+    v = (uint8_t)d->pattern;
+    tlv_get_u8(&b, &v);
     d->pattern = (v >= DRONE_PAT_COUNT) ? DRONE_PAT_FULL : (drone_pattern_t)v;
-    if (!tlv_get_u8(b, &v)) return false;
+    v = (uint8_t)d->follow;
+    tlv_get_u8(&b, &v);
     d->follow = (v >= DRONE_FOLLOW_COUNT) ? DRONE_FOLLOW_OFF : (drone_follow_t)v;
-    if (!de_vp(b, &d->vp)) return false;
-    return true;
+    return de_vp(r, &d->vp);
 }
 
 /* enabled LAST; patch is skipped (leaving the live patch) when the value
@@ -1079,9 +1202,13 @@ typedef struct {
     voice_params_t  vp;
 } staged_drone_std_t;
 
+/* Records as DRON: the scalars, then the voice block. */
+#define DSTD_VERSION 5
+
 static void ser_drone_std(tlv_writer_t *w)
 {
-    size_t h = tlv_begin_section(w, TAG_DSTD, 4);
+    size_t h = tlv_begin_section(w, TAG_DSTD, DSTD_VERSION);
+    size_t hb = tlv_begin_block(w);
     tlv_put_u8(w, drone_std_get_enabled() ? 1 : 0);
     tlv_put_u8(w, (uint8_t)drone_std_get_chord());
     tlv_put_u8(w, drone_std_get_root_note());
@@ -1090,30 +1217,34 @@ static void ser_drone_std(tlv_writer_t *w)
     tlv_put_u16(w, drone_std_get_patch());
     tlv_put_u8(w, drone_std_get_sub_enabled() ? 1 : 0);
     tlv_put_i8(w, drone_std_get_sub_interval());
+    tlv_end_block(w, hb);
     voice_params_t vp; drone_std_get_voice_params(&vp); ser_vp(w, &vp);
     tlv_end_section(w, h);
 }
 
-static bool parse_drone_std(tlv_reader_t *b, staged_drone_std_t *d)
+/* Seed as parse_drone. */
+static bool parse_drone_std(tlv_reader_t *r, staged_drone_std_t *d)
 {
+    tlv_reader_t b;
+    tlv_get_block(r, &b);
     uint8_t v;
-    if (!tlv_get_u8(b, &v)) return false;
-    d->enabled = v != 0;
-    if (!tlv_get_u8(b, &v)) return false;
+    tlv_get_bool(&b, &d->enabled);
+    v = (uint8_t)d->chord;
+    tlv_get_u8(&b, &v);
     d->chord = (v >= CHORD_TYPE_COUNT) ? CHORD_MAJ : (chord_type_t)v;
-    if (!tlv_get_u8(b, &d->root)) return false;
-    if (!tlv_get_u8(b, &v)) return false;
+    tlv_get_u8(&b, &d->root);
+    v = (uint8_t)d->follow;
+    tlv_get_u8(&b, &v);
     d->follow = (v >= DRONE_FOLLOW_COUNT) ? DRONE_FOLLOW_OFF : (drone_follow_t)v;
-    if (!tlv_get_f32(b, &d->level)) return false;
+    tlv_get_f32(&b, &d->level);
     d->level = SEQ_CLAMP_F32(d->level, 0.0f, 1.0f);
-    if (!tlv_get_u16(b, &d->patch)) return false;
+    tlv_get_u16(&b, &d->patch);
     d->patch = clamp_patch(d->patch);
-    { uint8_t se; if (!tlv_get_u8(b, &se)) return false; d->sub_enabled = se != 0; }
-    if (!tlv_get_i8(b, &d->sub_interval)) return false;
+    tlv_get_bool(&b, &d->sub_enabled);
+    tlv_get_i8(&b, &d->sub_interval);
     d->sub_interval = (int8_t)SEQ_CLAMP_INT(d->sub_interval, DRONE_SUB_INTERVAL_MIN,
                                             DRONE_SUB_INTERVAL_MAX);
-    if (!de_vp(b, &d->vp)) return false;
-    return true;
+    return de_vp(r, &d->vp);
 }
 
 /* As apply_drone(): enabled LAST, an unplayable patch leaves the live one. */
@@ -1144,9 +1275,13 @@ typedef struct {
     uint8_t after;
 } staged_clip_t;
 
+/* One record: the shape, one record per clip slot nested, then after. */
+#define CLIP_VERSION 3
+
 static void ser_clip(tlv_writer_t *w)
 {
-    size_t h = tlv_begin_section(w, TAG_CLIP, 2);   /* v2: +after */
+    size_t h = tlv_begin_section(w, TAG_CLIP, CLIP_VERSION);
+    size_t hb = tlv_begin_block(w);
     clip_bounce_shape_t sh;
     clip_bounce_get_shape(&sh);
     tlv_put_u8(w, sh.max_bars);
@@ -1154,33 +1289,38 @@ static void ser_clip(tlv_writer_t *w)
     tlv_put_u8(w, (uint8_t)sh.tail);
     tlv_put_u8(w, CLIP_SLOT_COUNT);
     for (uint8_t s = 0; s < CLIP_SLOT_COUNT; s++) {
+        size_t hs = tlv_begin_block(w);
         tlv_put_u8(w, clip_player_get_level(s));
         tlv_put_u8(w, (uint8_t)clip_player_get_tempo_mode(s));
+        tlv_end_block(w, hs);
     }
-    tlv_put_u8(w, (uint8_t)sh.after);   /* v2 */
+    tlv_put_u8(w, (uint8_t)sh.after);
+    tlv_end_block(w, hb);
     tlv_end_section(w, h);
 }
 
-/* Slots beyond this build's count are consumed but not stored. */
-static bool parse_clip(tlv_reader_t *b, staged_clip_t *c)
+/* Seed: zero; a field appended to either record takes its default from this
+ * seed. Slots beyond this build's count are consumed but not stored. */
+static bool parse_clip(tlv_reader_t *r, staged_clip_t *c)
 {
-    uint8_t v, nslots;
-    if (!tlv_get_u8(b, &c->bars)) return false;
-    if (!tlv_get_u8(b, &v)) return false;
-    c->stereo = v != 0;
-    if (!tlv_get_u8(b, &c->tail)) return false;
+    tlv_reader_t b;
+    tlv_get_block(r, &b);
+    uint8_t nslots = 0;
+    tlv_get_u8(&b, &c->bars);
+    tlv_get_bool(&b, &c->stereo);
+    tlv_get_u8(&b, &c->tail);
     if (c->tail > CLIP_TAIL_BAR) c->tail = CLIP_TAIL_BAR;
-    if (!tlv_get_u8(b, &nslots)) return false;
+    tlv_get_u8(&b, &nslots);
     for (uint8_t s = 0; s < nslots; s++) {
-        uint8_t level, mode;
-        if (!tlv_get_u8(b, &level)) return false;
-        if (!tlv_get_u8(b, &mode))  return false;
-        if (s < CLIP_SLOT_COUNT) {
-            c->level[s] = (level > 100) ? 100 : level;
-            c->mode[s]  = (mode > CLIP_TEMPO_VARI) ? CLIP_TEMPO_STRETCH : mode;
-        }
+        tlv_reader_t sb;
+        tlv_get_block(&b, &sb);
+        if (s >= CLIP_SLOT_COUNT) continue;
+        tlv_get_u8(&sb, &c->level[s]);
+        tlv_get_u8(&sb, &c->mode[s]);
+        if (c->level[s] > 100) c->level[s] = 100;
+        if (c->mode[s] > CLIP_TEMPO_VARI) c->mode[s] = CLIP_TEMPO_STRETCH;
     }
-    if (!tlv_get_u8(b, &c->after)) return false;
+    tlv_get_u8(&b, &c->after);
     if (c->after > CLIP_AFTER_CLEAR) c->after = CLIP_AFTER_MUTE;
     return true;
 }
@@ -1201,8 +1341,9 @@ static void apply_clip(const staged_clip_t *c)
 
 /* Mixer positions, soft mutes and the FADE length (mixer.h). Layer arrays
  * are index-aligned with the LAYR sections; master is GLOB's master volume,
- * not stored here. A fade in progress is not stored. */
-#define MIXR_VERSION 2
+ * not stored here. A fade in progress is not stored. One record, the
+ * track_pos row of each layer a record nested in it. */
+#define MIXR_VERSION 3
 
 typedef mixer_snapshot_t staged_mixr_t;
 
@@ -1211,47 +1352,50 @@ static void ser_mixr(tlv_writer_t *w)
     mixer_snapshot_t m;
     mixer_export(&m);
     size_t h = tlv_begin_section(w, TAG_MIXR, MIXR_VERSION);
+    size_t hb = tlv_begin_block(w);
     for (uint8_t L = 0; L < MAX_LAYERS; L++) tlv_put_u8(w, m.layer_pos[L]);
     tlv_put_u8(w, m.layer_mute);
     for (uint8_t L = 0; L < MAX_LAYERS; L++) {
+        size_t hr = tlv_begin_block(w);
         for (uint8_t t = 0; t < SEQ_TRACKS; t++) tlv_put_u8(w, m.track_pos[L][t]);
+        tlv_end_block(w, hr);
     }
     for (uint8_t L = 0; L < MAX_LAYERS; L++) tlv_put_u8(w, m.track_mute[L]);
     for (uint8_t k = 0; k < MIX_MISC_COUNT; k++) tlv_put_u8(w, m.misc_pos[k]);
     tlv_put_u8(w, m.misc_mute);
     tlv_put_u8(w, m.fade_bars_idx);
+    tlv_end_block(w, hb);
     tlv_end_section(w, h);
 }
 
-static bool parse_mixr_pos(tlv_reader_t *b, uint8_t *out)
+static void parse_mixr_pos(tlv_reader_t *b, uint8_t *out)
 {
-    if (!tlv_get_u8(b, out)) return false;
+    tlv_get_u8(b, out);
     if (*out > MIXER_POS_MAX) *out = MIXER_POS_MAX;
-    return true;
 }
 
-static bool parse_mixr(tlv_reader_t *b, staged_mixr_t *m)
+/* Seed: zero; a field appended to either record takes its default from this
+ * seed. */
+static bool parse_mixr(tlv_reader_t *r, staged_mixr_t *m)
 {
-    for (uint8_t L = 0; L < MAX_LAYERS; L++) {
-        if (!parse_mixr_pos(b, &m->layer_pos[L])) return false;
-    }
-    if (!tlv_get_u8(b, &m->layer_mute)) return false;
+    tlv_reader_t b;
+    tlv_get_block(r, &b);
+    for (uint8_t L = 0; L < MAX_LAYERS; L++) parse_mixr_pos(&b, &m->layer_pos[L]);
+    tlv_get_u8(&b, &m->layer_mute);
     m->layer_mute &= (uint8_t)((1u << MAX_LAYERS) - 1u);
     for (uint8_t L = 0; L < MAX_LAYERS; L++) {
-        for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
-            if (!parse_mixr_pos(b, &m->track_pos[L][t])) return false;
-        }
+        tlv_reader_t rb;
+        tlv_get_block(&b, &rb);
+        for (uint8_t t = 0; t < SEQ_TRACKS; t++) parse_mixr_pos(&rb, &m->track_pos[L][t]);
     }
     for (uint8_t L = 0; L < MAX_LAYERS; L++) {
-        if (!tlv_get_u8(b, &m->track_mute[L])) return false;
+        tlv_get_u8(&b, &m->track_mute[L]);
         m->track_mute[L] &= (uint8_t)((1u << SEQ_TRACKS) - 1u);
     }
-    for (uint8_t k = 0; k < MIX_MISC_COUNT; k++) {
-        if (!parse_mixr_pos(b, &m->misc_pos[k])) return false;
-    }
-    if (!tlv_get_u8(b, &m->misc_mute)) return false;
+    for (uint8_t k = 0; k < MIX_MISC_COUNT; k++) parse_mixr_pos(&b, &m->misc_pos[k]);
+    tlv_get_u8(&b, &m->misc_mute);
     m->misc_mute &= (uint8_t)((1u << MIX_MISC_COUNT) - 1u);
-    if (!tlv_get_u8(b, &m->fade_bars_idx)) return false;
+    tlv_get_u8(&b, &m->fade_bars_idx);
     if (m->fade_bars_idx > MIXER_FADE_BARS_COUNT - 1) m->fade_bars_idx = MIXER_FADE_BARS_COUNT - 1;
     return true;
 }
@@ -1277,43 +1421,52 @@ typedef struct {
     uint8_t      duration_bars[PROJECT_PROG_MAX_ENTRIES];
 } staged_prog_t;
 
+/* Records: enabled and the entry count, then one record per entry. */
+#define PROG_VERSION 2
+
 static void ser_prog(tlv_writer_t *w)
 {
-    size_t h = tlv_begin_section(w, TAG_PROG, 1);
+    size_t h = tlv_begin_section(w, TAG_PROG, PROG_VERSION);
+    size_t hb = tlv_begin_block(w);
     tlv_put_u8(w, sequencer_core_progression_get_enabled() ? 1 : 0);
     uint8_t count = sequencer_core_progression_get_count();
     tlv_put_u8(w, count);
+    tlv_end_block(w, hb);
     for (uint8_t i = 0; i < count; i++) {
         uint8_t root, bars; chord_type_t ct;
         sequencer_core_progression_get_entry(i, &root, &ct, &bars);
+        hb = tlv_begin_block(w);
         tlv_put_u8(w, root);
         tlv_put_u8(w, (uint8_t)ct);
         tlv_put_u8(w, bars);
+        tlv_end_block(w, hb);
     }
     tlv_end_section(w, h);
 }
 
-static bool parse_prog(tlv_reader_t *b, staged_prog_t *p)
+/* Seed: zero; a field appended to either record takes its default from this
+ * seed. */
+static bool parse_prog(tlv_reader_t *r, staged_prog_t *p)
 {
-    uint8_t v, raw_count;
-    if (!tlv_get_u8(b, &v)) return false;
-    p->enabled = v != 0;
-    if (!tlv_get_u8(b, &raw_count)) return false;
+    tlv_reader_t b;
+    tlv_get_block(r, &b);
+    uint8_t raw_count = 0;
+    tlv_get_bool(&b, &p->enabled);
+    tlv_get_u8(&b, &raw_count);
 
     uint8_t max_entries = sequencer_core_progression_get_max();
     if (max_entries > PROJECT_PROG_MAX_ENTRIES) max_entries = PROJECT_PROG_MAX_ENTRIES;
     p->count = (raw_count > max_entries) ? max_entries : raw_count;
 
     for (uint8_t i = 0; i < raw_count; i++) {
-        uint8_t root, ctraw, bars;
-        if (!tlv_get_u8(b, &root))  return false;
-        if (!tlv_get_u8(b, &ctraw)) return false;
-        if (!tlv_get_u8(b, &bars))  return false;
-        if (i < p->count) {
-            p->root[i]          = root;
-            p->chord_type[i]    = (ctraw >= CHORD_TYPE_COUNT) ? CHORD_MAJ : (chord_type_t)ctraw;
-            p->duration_bars[i] = bars;
-        }
+        tlv_reader_t eb;
+        tlv_get_block(r, &eb);
+        if (i >= p->count) continue;
+        uint8_t ctraw = (uint8_t)p->chord_type[i];
+        tlv_get_u8(&eb, &p->root[i]);
+        tlv_get_u8(&eb, &ctraw);
+        tlv_get_u8(&eb, &p->duration_bars[i]);
+        p->chord_type[i] = (ctraw >= CHORD_TYPE_COUNT) ? CHORD_MAJ : (chord_type_t)ctraw;
     }
     return true;
 }
@@ -1335,9 +1488,12 @@ typedef struct {
     prog_gen_params_t params;
 } staged_pgen_t;
 
+#define PGEN_VERSION 2
+
 static void ser_pgen(tlv_writer_t *w)
 {
-    size_t h = tlv_begin_section(w, TAG_PGEN, 1);
+    size_t h = tlv_begin_section(w, TAG_PGEN, PGEN_VERSION);
+    size_t hb = tlv_begin_block(w);
     prog_gen_params_t p;
     sequencer_core_progression_gen_params_get(&p);
     tlv_put_u8(w, p.style);
@@ -1346,18 +1502,22 @@ static void ser_pgen(tlv_writer_t *w)
     tlv_put_u8(w, p.ext);
     tlv_put_u8(w, p.var);
     tlv_put_u16(w, p.seed);
+    tlv_end_block(w, hb);
     tlv_end_section(w, h);
 }
 
-/* No clamping here: the generator clamps every field on use. */
-static bool parse_pgen(tlv_reader_t *b, staged_pgen_t *g)
+/* Seed: zero; a field appended here takes its default from this seed. No
+ * clamping here: the generator clamps every field on use. */
+static bool parse_pgen(tlv_reader_t *r, staged_pgen_t *g)
 {
-    if (!tlv_get_u8(b, &g->params.style)) return false;
-    if (!tlv_get_u8(b, &g->params.len))   return false;
-    if (!tlv_get_u8(b, &g->params.bars))  return false;
-    if (!tlv_get_u8(b, &g->params.ext))   return false;
-    if (!tlv_get_u8(b, &g->params.var))   return false;
-    if (!tlv_get_u16(b, &g->params.seed)) return false;
+    tlv_reader_t b;
+    tlv_get_block(r, &b);
+    tlv_get_u8(&b, &g->params.style);
+    tlv_get_u8(&b, &g->params.len);
+    tlv_get_u8(&b, &g->params.bars);
+    tlv_get_u8(&b, &g->params.ext);
+    tlv_get_u8(&b, &g->params.var);
+    tlv_get_u16(&b, &g->params.seed);
     return true;
 }
 
@@ -1367,14 +1527,17 @@ static void apply_pgen(const staged_pgen_t *g)
 }
 
 /* ── WTCU section (custom wavetable, CONFIG_SYNTH_CUSTOM_WT) ───────────────
- * Version 2: the builder's sixteen parameter bytes in wt_params_t order
+ * One record: the builder's sixteen parameter bytes in wt_params_t order
  * (shape, width, bright, sync, peak per keyframe A, M, B, then range); the
  * table itself is never stored, the load rebuilds it. Written only when the
  * builder is compiled in; a build without it skips the section as unknown. */
 #if CONFIG_SYNTH_CUSTOM_WT
+#define WTCU_VERSION 3
+
 static void ser_wtcu(tlv_writer_t *w)
 {
-    size_t h = tlv_begin_section(w, TAG_WTCU, 2);
+    size_t h = tlv_begin_section(w, TAG_WTCU, WTCU_VERSION);
+    size_t hb = tlv_begin_block(w);
     wt_params_t p;
     wt_builder_get_params(&p);
     for (uint8_t k = 0; k < WT_KEYS; k++) tlv_put_u8(w, p.shape[k]);
@@ -1383,114 +1546,233 @@ static void ser_wtcu(tlv_writer_t *w)
     for (uint8_t k = 0; k < WT_KEYS; k++) tlv_put_u8(w, p.sync[k]);
     for (uint8_t k = 0; k < WT_KEYS; k++) tlv_put_u8(w, p.peak[k]);
     tlv_put_u8(w, p.range);
+    tlv_end_block(w, hb);
     tlv_end_section(w, h);
 }
 
-/* Clamped here (crash-safety for foreign data); the builder clamps again. */
-static bool parse_wtcu(tlv_reader_t *b, wt_params_t *p)
+/* Seed: wt_params_default(); a field appended here takes its default from
+ * this seed. Clamped here (crash-safety for foreign data); the builder
+ * clamps again. */
+static bool parse_wtcu(tlv_reader_t *r, wt_params_t *p)
 {
-    for (uint8_t k = 0; k < WT_KEYS; k++) if (!tlv_get_u8(b, &p->shape[k]))  return false;
-    for (uint8_t k = 0; k < WT_KEYS; k++) if (!tlv_get_u8(b, &p->width[k]))  return false;
-    for (uint8_t k = 0; k < WT_KEYS; k++) if (!tlv_get_u8(b, &p->bright[k])) return false;
-    for (uint8_t k = 0; k < WT_KEYS; k++) if (!tlv_get_u8(b, &p->sync[k]))   return false;
-    for (uint8_t k = 0; k < WT_KEYS; k++) if (!tlv_get_u8(b, &p->peak[k]))   return false;
-    if (!tlv_get_u8(b, &p->range)) return false;
+    tlv_reader_t b;
+    tlv_get_block(r, &b);
+    wt_params_default(p);
+    for (uint8_t k = 0; k < WT_KEYS; k++) tlv_get_u8(&b, &p->shape[k]);
+    for (uint8_t k = 0; k < WT_KEYS; k++) tlv_get_u8(&b, &p->width[k]);
+    for (uint8_t k = 0; k < WT_KEYS; k++) tlv_get_u8(&b, &p->bright[k]);
+    for (uint8_t k = 0; k < WT_KEYS; k++) tlv_get_u8(&b, &p->sync[k]);
+    for (uint8_t k = 0; k < WT_KEYS; k++) tlv_get_u8(&b, &p->peak[k]);
+    tlv_get_u8(&b, &p->range);
     wt_params_clamp(p);
     return true;
 }
 #endif
 
 /* ── FMCU section (custom FM voice, CONFIG_SYNTH_CUSTOM_FM) ────────────────
- * Version 1: the fm_voice_t of patch 276 (fm_voice.h): algorithm and fb_op,
- * then per operator its target mask, ratio, fixed Hz, level and envelope
- * (R1..R4, L1..L4, eg_type), then feedback and the op_fixed mask. op_mute is
- * audition state and stays out. Written only when the FM voice is compiled
- * in; a build without it skips the section as unknown. */
+ * One record: the fm_voice_t of patch 276 (fm_voice.h): algorithm and fb_op,
+ * then one record per operator (target mask, ratio, fixed Hz, level and its
+ * envelope record R1..R4, L1..L4, eg_type), then feedback and the op_fixed
+ * mask.
+ * op_mute is audition state and stays out. Written only when the FM voice is
+ * compiled in; a build without it skips the section as unknown. */
 #if CONFIG_SYNTH_CUSTOM_FM
+#define FMCU_VERSION 2
+
+static void ser_fm_op_env(tlv_writer_t *w, const fm_op_env_t *e)
+{
+    size_t h = tlv_begin_block(w);
+    for (uint8_t s = 0; s < 4; s++) tlv_put_u8(w, e->rate[s]);
+    for (uint8_t s = 0; s < 4; s++) tlv_put_u8(w, e->level[s]);
+    tlv_put_u8(w, e->eg_type);
+    tlv_end_block(w, h);
+}
+
+/* Seed: *e as parse_fmcu left it; fm_voice_clamp clamps the whole voice
+ * afterwards. */
+static bool de_fm_op_env(tlv_reader_t *r, fm_op_env_t *e)
+{
+    tlv_reader_t b;
+    tlv_get_block(r, &b);
+    for (uint8_t s = 0; s < 4; s++) tlv_get_u8(&b, &e->rate[s]);
+    for (uint8_t s = 0; s < 4; s++) tlv_get_u8(&b, &e->level[s]);
+    tlv_get_u8(&b, &e->eg_type);
+    return true;
+}
+
 static void ser_fmcu(tlv_writer_t *w)
 {
-    size_t h = tlv_begin_section(w, TAG_FMCU, 1);
+    size_t h = tlv_begin_section(w, TAG_FMCU, FMCU_VERSION);
+    size_t hb = tlv_begin_block(w);
     const fm_voice_t *v = &s_fm_voice;
     tlv_put_u8(w, v->algorithm);
     tlv_put_u8(w, v->fb_op);
     for (uint8_t i = 0; i < FM_NUM_OPS; i++) {
+        size_t ho = tlv_begin_block(w);
         tlv_put_u8(w, v->op_targets[i]);
         tlv_put_f32(w, v->op_ratio[i]);
         tlv_put_f32(w, v->op_fixed_hz[i]);
         tlv_put_f32(w, v->op_level[i]);
-        for (uint8_t s = 0; s < 4; s++) tlv_put_u8(w, v->op_env[i].rate[s]);
-        for (uint8_t s = 0; s < 4; s++) tlv_put_u8(w, v->op_env[i].level[s]);
-        tlv_put_u8(w, v->op_env[i].eg_type);
+        ser_fm_op_env(w, &v->op_env[i]);
+        tlv_end_block(w, ho);
     }
     tlv_put_f32(w, v->feedback);
     tlv_put_u8(w, v->op_fixed);
+    tlv_end_block(w, hb);
     tlv_end_section(w, h);
 }
 
-/* Clamped here (crash-safety for foreign data); fm_voice_clamp also reseeds a
- * custom routing that would not compile, so the voice always pushes. */
-static bool parse_fmcu(tlv_reader_t *b, fm_voice_t *v)
+/* Seed: fm_voice_default(); a field appended to either record takes its
+ * default from this seed. Clamped here (crash-safety for foreign data);
+ * fm_voice_clamp also reseeds a custom routing that would not compile, so
+ * the voice always pushes. */
+static bool parse_fmcu(tlv_reader_t *r, fm_voice_t *v)
 {
-    memset(v, 0, sizeof *v);
-    if (!tlv_get_u8(b, &v->algorithm)) return false;
-    if (!tlv_get_u8(b, &v->fb_op)) return false;
+    tlv_reader_t b;
+    tlv_get_block(r, &b);
+    fm_voice_default(v);
+    tlv_get_u8(&b, &v->algorithm);
+    tlv_get_u8(&b, &v->fb_op);
     for (uint8_t i = 0; i < FM_NUM_OPS; i++) {
-        if (!tlv_get_u8(b, &v->op_targets[i])) return false;
-        if (!tlv_get_f32(b, &v->op_ratio[i])) return false;
-        if (!tlv_get_f32(b, &v->op_fixed_hz[i])) return false;
-        if (!tlv_get_f32(b, &v->op_level[i])) return false;
-        for (uint8_t s = 0; s < 4; s++) if (!tlv_get_u8(b, &v->op_env[i].rate[s]))  return false;
-        for (uint8_t s = 0; s < 4; s++) if (!tlv_get_u8(b, &v->op_env[i].level[s])) return false;
-        if (!tlv_get_u8(b, &v->op_env[i].eg_type)) return false;
+        tlv_reader_t ob;
+        tlv_get_block(&b, &ob);
+        tlv_get_u8(&ob, &v->op_targets[i]);
+        tlv_get_f32(&ob, &v->op_ratio[i]);
+        tlv_get_f32(&ob, &v->op_fixed_hz[i]);
+        tlv_get_f32(&ob, &v->op_level[i]);
+        if (!de_fm_op_env(&ob, &v->op_env[i])) return false;
     }
-    if (!tlv_get_f32(b, &v->feedback)) return false;
-    if (!tlv_get_u8(b, &v->op_fixed)) return false;
+    tlv_get_f32(&b, &v->feedback);
+    tlv_get_u8(&b, &v->op_fixed);
     fm_voice_clamp(v);
     return true;
 }
 #endif
 
 /* ── CHRD section (chord presets, seq_chords.h) ──────────────────────────
- * v1: u8 slot count, then per slot u8 tone count + SEQ_CHORD_MAX_NOTES note
- * bytes (fixed width; a wider voicing bumps the version). Old firmware skips
- * the unknown section: chords vanish there and any chord sentinel in that
- * file's LAYR notes range-clamps to a top-of-range note, no crash. */
+ * Records: the u8 slot count, then one record per slot: u8 tone count +
+ * SEQ_CHORD_MAX_NOTES note bytes (fixed width; a wider voicing bumps the
+ * version). Firmware without CHRD skips the unknown section: chords vanish
+ * there and any chord sentinel in that file's LAYR notes range-clamps to a
+ * top-of-range note, no crash. */
+
+#define CHRD_VERSION 2
 
 static void ser_chrd(tlv_writer_t *w)
 {
-    size_t h = tlv_begin_section(w, TAG_CHRD, 1);
+    size_t h = tlv_begin_section(w, TAG_CHRD, CHRD_VERSION);
+    size_t hb = tlv_begin_block(w);
     tlv_put_u8(w, SEQ_CHORD_SLOTS);
+    tlv_end_block(w, hb);
     for (uint8_t s = 0; s < SEQ_CHORD_SLOTS; s++) {
         seq_chord_t c;
         if (!seq_chords_get(s, &c)) memset(&c, 0, sizeof c);
+        hb = tlv_begin_block(w);
         tlv_put_u8(w, c.count);
         for (uint8_t i = 0; i < SEQ_CHORD_MAX_NOTES; i++) {
             tlv_put_u8(w, c.notes[i]);
         }
+        tlv_end_block(w, hb);
     }
     tlv_end_section(w, h);
 }
 
-static bool parse_chrd(tlv_reader_t *b, seq_chord_t slots[SEQ_CHORD_SLOTS])
+/* Seed: zero; a field appended to either record takes its default from this
+ * seed. */
+static bool parse_chrd(tlv_reader_t *r, seq_chord_t slots[SEQ_CHORD_SLOTS])
 {
-    uint8_t nslots;
-    if (!tlv_get_u8(b, &nslots)) return false;
+    tlv_reader_t b;
+    tlv_get_block(r, &b);
+    uint8_t nslots = 0;
+    tlv_get_u8(&b, &nslots);
     for (uint8_t s = 0; s < nslots; s++) {
-        uint8_t count;
-        uint8_t notes[SEQ_CHORD_MAX_NOTES];
-        if (!tlv_get_u8(b, &count)) return false;
+        tlv_reader_t sb;
+        tlv_get_block(r, &sb);
+        if (s >= SEQ_CHORD_SLOTS) continue;
+        /* count is advisory: seq_chords_import re-derives it from the
+         * non-zero tones, which also normalizes hand-edited files. */
+        tlv_get_u8(&sb, &slots[s].count);
         for (uint8_t i = 0; i < SEQ_CHORD_MAX_NOTES; i++) {
-            if (!tlv_get_u8(b, &notes[i])) return false;
+            tlv_get_u8(&sb, &slots[s].notes[i]);
         }
-        if (s < SEQ_CHORD_SLOTS) {
-            /* count is advisory: seq_chords_import re-derives it from the
-             * non-zero tones, which also normalizes hand-edited files. */
-            memcpy(slots[s].notes, notes, sizeof notes);
-            slots[s].count = (count > SEQ_CHORD_MAX_NOTES)
-                             ? SEQ_CHORD_MAX_NOTES : count;
-        }
+        if (slots[s].count > SEQ_CHORD_MAX_NOTES) slots[s].count = SEQ_CHORD_MAX_NOTES;
     }
     return true;
+}
+
+/* ── Section dispatch + partial-load report ───────────────────────────────── */
+
+static const char *const k_sect_name[PROJECT_SECT_COUNT] = {
+    [PROJECT_SECT_GLOB] = "GLOB", [PROJECT_SECT_LAYR] = "LAYR", [PROJECT_SECT_ARP]  = "ARP",
+    [PROJECT_SECT_DROP] = "DROP", [PROJECT_SECT_DRON] = "DRON", [PROJECT_SECT_DSTD] = "DSTD",
+    [PROJECT_SECT_PROG] = "PROG", [PROJECT_SECT_CHRD] = "CHRD", [PROJECT_SECT_CLIP] = "CLIP",
+    [PROJECT_SECT_MIXR] = "MIXR", [PROJECT_SECT_PGEN] = "PGEN", [PROJECT_SECT_WTCU] = "WTCU",
+    [PROJECT_SECT_FMCU] = "FMCU",
+};
+
+/* This build's version of each section; 0 for one compiled out (its tag is
+ * then unknown to the dispatcher). */
+static const uint8_t k_sect_ver[PROJECT_SECT_COUNT] = {
+    [PROJECT_SECT_GLOB] = GLOB_VERSION, [PROJECT_SECT_LAYR] = LAYR_VERSION,
+    [PROJECT_SECT_ARP]  = ARP_VERSION,  [PROJECT_SECT_DROP] = DROP_VERSION,
+    [PROJECT_SECT_DRON] = DRON_VERSION, [PROJECT_SECT_DSTD] = DSTD_VERSION,
+    [PROJECT_SECT_PROG] = PROG_VERSION, [PROJECT_SECT_CHRD] = CHRD_VERSION,
+    [PROJECT_SECT_CLIP] = CLIP_VERSION, [PROJECT_SECT_MIXR] = MIXR_VERSION,
+    [PROJECT_SECT_PGEN] = PGEN_VERSION,
+#if CONFIG_SYNTH_CUSTOM_WT
+    [PROJECT_SECT_WTCU] = WTCU_VERSION,
+#endif
+#if CONFIG_SYNTH_CUSTOM_FM
+    [PROJECT_SECT_FMCU] = FMCU_VERSION,
+#endif
+};
+
+_Static_assert(PROJECT_SECT_COUNT <= 16, "skipped-section mask is a uint16_t");
+
+/* The last successful load's skipped sections (project_snapshot.h); synth_ui
+ * task only, like the load. */
+static uint16_t s_skipped;
+static uint8_t  s_skipped_ver[PROJECT_SECT_COUNT];
+
+typedef enum { SECT_PARSE = 0, SECT_SKIP, SECT_REFUSE } sect_action_t;
+
+typedef struct {
+    uint16_t seen, skipped;                 /* bit 1u << project_sect_t */
+    uint8_t  file_ver[PROJECT_SECT_COUNT];  /* of the skipped ones */
+} sect_track_t;
+
+/* What the loader does with a once-only section at file version ver
+ * (file header rules): a duplicate refuses the file, as does GLOB at another
+ * version; any other section at another version is skipped and recorded. */
+static sect_action_t sect_check(sect_track_t *st, project_sect_t s, uint8_t ver)
+{
+    uint16_t bit = (uint16_t)(1u << s);
+    if (st->seen & bit) return SECT_REFUSE;
+    st->seen |= bit;
+    if (ver == k_sect_ver[s]) return SECT_PARSE;
+    if (s == PROJECT_SECT_GLOB) return SECT_REFUSE;
+    st->skipped |= bit;
+    st->file_ver[s] = ver;
+    return SECT_SKIP;
+}
+
+uint16_t project_snapshot_skipped(void)
+{
+    return s_skipped;
+}
+
+bool project_snapshot_skipped_version(project_sect_t s, uint8_t *file_ver,
+                                      uint8_t *build_ver)
+{
+    if ((unsigned)s >= PROJECT_SECT_COUNT || !(s_skipped & (1u << s))) return false;
+    if (file_ver)  *file_ver  = s_skipped_ver[s];
+    if (build_ver) *build_ver = k_sect_ver[s];
+    return true;
+}
+
+const char *project_snapshot_sect_name(project_sect_t s)
+{
+    return ((unsigned)s < PROJECT_SECT_COUNT) ? k_sect_name[s] : "?";
 }
 
 /* ── Public API ───────────────────────────────────────────────────────────── */
@@ -1542,6 +1824,7 @@ bool project_snapshot_save(uint8_t slot, const char *name)
 
 bool project_snapshot_load_buffer(const uint8_t *payload, size_t len, const char *name)
 {
+    s_skipped = 0;
     if (!payload) return false;
     if (!name) name = "";
 
@@ -1586,85 +1869,75 @@ bool project_snapshot_load_buffer(const uint8_t *payload, size_t len, const char
     tlv_reader_t r;
     tlv_reader_init(&r, payload, len);
     bool ok = true;
+    sect_track_t st;
+    memset(&st, 0, sizeof st);
     uint32_t tag; uint8_t ver; tlv_reader_t body;
     while (ok && tlv_next_section(&r, &tag, &ver, &body)) {
+        sect_action_t act = SECT_PARSE;
         switch (tag) {
         case TAG_GLOB:
-            if (got_glob || ver != 6) { ok = false; break; }
-            ok = parse_glob(&body, &staged_glob);
-            got_glob = ok;
+            act = sect_check(&st, PROJECT_SECT_GLOB, ver);
+            if (act == SECT_PARSE) { ok = parse_glob(&body, &staged_glob); got_glob = ok; }
             break;
         case TAG_LAYR:
-            /* Exactly ser_layer()'s version: older files are rejected outright
-             * (no migration), and the ceiling must track the writer or the
-             * firmware rejects its own files. */
+            /* Repeats once per layer; the ceiling must track the writer or
+             * the firmware refuses its own files. */
             if (ver != LAYR_VERSION || staged_layer_count >= MAX_LAYERS) { ok = false; break; }
             ok = parse_layer(&body, &staged_layers[staged_layer_count]);
             if (ok) staged_layer_count++;
             break;
         case TAG_ARP:
-            /* Exactly ser_arp()'s version (see TAG_LAYR). */
-            if (got_arp || ver != 17) { ok = false; break; }
-            ok = parse_arp(&body, &staged_arp);
-            got_arp = ok;
+            act = sect_check(&st, PROJECT_SECT_ARP, ver);
+            if (act == SECT_PARSE) { ok = parse_arp(&body, &staged_arp); got_arp = ok; }
             break;
         case TAG_DROP:
-            if (got_drop || ver != DROP_VERSION) { ok = false; break; }
-            ok = parse_drop(&body, &sd->drop);
-            got_drop = ok;
+            act = sect_check(&st, PROJECT_SECT_DROP, ver);
+            if (act == SECT_PARSE) { ok = parse_drop(&body, &sd->drop); got_drop = ok; }
             break;
         case TAG_DRON:
-            if (got_drone || ver != 7) { ok = false; break; }
-            ok = parse_drone(&body, &sd->drone);
-            got_drone = ok;
+            act = sect_check(&st, PROJECT_SECT_DRON, ver);
+            if (act == SECT_PARSE) { ok = parse_drone(&body, &sd->drone); got_drone = ok; }
             break;
         case TAG_DSTD:
-            if (got_dstd || ver != 4) { ok = false; break; }
-            ok = parse_drone_std(&body, &sd->dstd);
-            got_dstd = ok;
+            act = sect_check(&st, PROJECT_SECT_DSTD, ver);
+            if (act == SECT_PARSE) { ok = parse_drone_std(&body, &sd->dstd); got_dstd = ok; }
             break;
         case TAG_PROG:
-            if (got_prog || ver != 1) { ok = false; break; }
-            ok = parse_prog(&body, &staged_prog);
-            got_prog = ok;
+            act = sect_check(&st, PROJECT_SECT_PROG, ver);
+            if (act == SECT_PARSE) { ok = parse_prog(&body, &staged_prog); got_prog = ok; }
             break;
         case TAG_CHRD:
-            if (got_chrd || ver != 1) { ok = false; break; }
-            ok = parse_chrd(&body, staged_chords);
-            got_chrd = ok;
+            act = sect_check(&st, PROJECT_SECT_CHRD, ver);
+            if (act == SECT_PARSE) { ok = parse_chrd(&body, staged_chords); got_chrd = ok; }
             break;
         case TAG_CLIP:
-            if (got_clip || ver != 2) { ok = false; break; }
-            ok = parse_clip(&body, &staged_clip);
-            got_clip = ok;
+            act = sect_check(&st, PROJECT_SECT_CLIP, ver);
+            if (act == SECT_PARSE) { ok = parse_clip(&body, &staged_clip); got_clip = ok; }
             break;
         case TAG_MIXR:
-            if (got_mixr || ver != MIXR_VERSION) { ok = false; break; }
-            ok = parse_mixr(&body, &staged_mixr);
-            got_mixr = ok;
+            act = sect_check(&st, PROJECT_SECT_MIXR, ver);
+            if (act == SECT_PARSE) { ok = parse_mixr(&body, &staged_mixr); got_mixr = ok; }
             break;
         case TAG_PGEN:
-            if (got_pgen || ver != 1) { ok = false; break; }
-            ok = parse_pgen(&body, &staged_pgen);
-            got_pgen = ok;
+            act = sect_check(&st, PROJECT_SECT_PGEN, ver);
+            if (act == SECT_PARSE) { ok = parse_pgen(&body, &staged_pgen); got_pgen = ok; }
             break;
 #if CONFIG_SYNTH_CUSTOM_WT
         case TAG_WTCU:
-            if (got_wtcu || ver != 2) { ok = false; break; }
-            ok = parse_wtcu(&body, &staged_wtcu);
-            got_wtcu = ok;
+            act = sect_check(&st, PROJECT_SECT_WTCU, ver);
+            if (act == SECT_PARSE) { ok = parse_wtcu(&body, &staged_wtcu); got_wtcu = ok; }
             break;
 #endif
 #if CONFIG_SYNTH_CUSTOM_FM
         case TAG_FMCU:
-            if (got_fmcu || ver != 1) { ok = false; break; }
-            ok = parse_fmcu(&body, &staged_fmcu);
-            got_fmcu = ok;
+            act = sect_check(&st, PROJECT_SECT_FMCU, ver);
+            if (act == SECT_PARSE) { ok = parse_fmcu(&body, &staged_fmcu); got_fmcu = ok; }
             break;
 #endif
         default:
             break;   /* unknown section: ignore (forward-compat) */
         }
+        if (act == SECT_REFUSE) ok = false;
     }
     if (r.err) ok = false;   /* truncated/corrupt outer stream */
 
@@ -1757,6 +2030,8 @@ bool project_snapshot_load_buffer(const uint8_t *payload, size_t len, const char
 
     free(staged_layers);
     free(sd);
+    s_skipped = st.skipped;
+    memcpy(s_skipped_ver, st.file_ver, sizeof s_skipped_ver);
     ESP_LOGI(TAG, "load '%s' OK: %u layer(s)", name, staged_layer_count);
     return true;
 }
@@ -1766,6 +2041,7 @@ bool project_snapshot_load(uint8_t slot)
     uint8_t *payload = NULL;
     size_t   len = 0;
     char     name[PROJECT_NAME_LEN];
+    s_skipped = 0;
     if (!project_store_read(slot, &payload, &len, name)) return false;
 
     bool ok = project_snapshot_load_buffer(payload, len, name);

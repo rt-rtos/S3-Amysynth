@@ -65,6 +65,23 @@ bool tlv_end_section(tlv_writer_t *w, size_t handle)
     return true;
 }
 
+size_t tlv_begin_block(tlv_writer_t *w)
+{
+    size_t handle = w->len;          /* offset of the length field */
+    tlv_put_u16(w, 0);               /* placeholder */
+    return handle;
+}
+
+bool tlv_end_block(tlv_writer_t *w, size_t handle)
+{
+    if (w->err) return false;
+    size_t body_len = w->len - handle - 2;
+    if (body_len > 0xFFFFu) { w->err = true; return false; }
+    w->buf[handle + 0] = (uint8_t)body_len;
+    w->buf[handle + 1] = (uint8_t)(body_len >> 8);
+    return true;
+}
+
 /* ── Reader ── */
 
 void tlv_reader_init(tlv_reader_t *r, const uint8_t *buf, size_t len)
@@ -107,9 +124,27 @@ bool tlv_get_f32(tlv_reader_t *r, float *v)
     memcpy(v, &u, 4); return true;
 }
 
+bool tlv_get_bool(tlv_reader_t *r, bool *v)
+{
+    uint8_t b; if (!rd(r, &b, 1)) return false;
+    *v = b != 0; return true;
+}
+
 bool tlv_get_bytes(tlv_reader_t *r, void *p, size_t n)
 {
     return rd(r, (uint8_t *)p, n);
+}
+
+void tlv_get_block(tlv_reader_t *r, tlv_reader_t *blk)
+{
+    blk->buf = r->buf; blk->len = 0; blk->pos = 0; blk->err = false;
+    if (r->err || r->len - r->pos < 2) return;
+    uint16_t n;
+    (void)tlv_get_u16(r, &n);        /* cannot fail: two bytes are left */
+    size_t avail = r->len - r->pos;
+    blk->buf = r->buf + r->pos;
+    blk->len = (n > avail) ? avail : n;
+    r->pos += blk->len;
 }
 
 bool tlv_next_section(tlv_reader_t *r, uint32_t *tag, uint8_t *version,

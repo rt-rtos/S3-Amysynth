@@ -461,6 +461,33 @@ bool projects_menu_handle_click(uint8_t idx)
     }
 }
 
+/* After a load: logs each section that loaded at its defaults because the
+ * file holds it at a version this build does not read
+ * (project_snapshot_skipped()), then, unless quiet, sets the row status:
+ * LOADED, RESET <TAG> for one such section, RESET <n> SECT for more. */
+static void report_load(uint8_t idx, bool ok, bool quiet)
+{
+    unsigned n = 0;
+    project_sect_t one = PROJECT_SECT_GLOB;
+    for (unsigned i = 0; ok && i < PROJECT_SECT_COUNT; i++) {
+        project_sect_t s = (project_sect_t)i;
+        uint8_t file_ver, build_ver;
+        if (!project_snapshot_skipped_version(s, &file_ver, &build_ver)) continue;
+        ESP_LOGW(TAG, "projects: section %s skipped (file v%u, build v%u)",
+                 project_snapshot_sect_name(s), (unsigned)file_ver, (unsigned)build_ver);
+        one = s;
+        n++;
+    }
+    if (quiet) return;
+    char msg[MENU_VALUE_LEN];
+    if (!ok)          snprintf(msg, sizeof msg, "LOAD FAIL");
+    else if (n == 0)  snprintf(msg, sizeof msg, "LOADED");
+    else if (n == 1)  snprintf(msg, sizeof msg, "RESET %s", project_snapshot_sect_name(one));
+    else              snprintf(msg, sizeof msg, "RESET %u SECT",
+                               n < PROJECT_SECT_COUNT ? n : PROJECT_SECT_COUNT);   /* 2 digits */
+    set_status(idx, msg);
+}
+
 /* Runs once per synth_ui_task frame: executes the queued load/save on the
  * layers-applier task, then rewrites the acted-on row's inline status. */
 void projects_menu_service(void)
@@ -468,11 +495,9 @@ void projects_menu_service(void)
     if (s_req == PREQ_NONE) return;
 
     if (s_req == PREQ_LOAD) {
-        bool ok = project_snapshot_load(s_req_slot);
-        set_status(s_req_idx, ok ? "LOADED" : "LOAD FAIL");
+        report_load(s_req_idx, project_snapshot_load(s_req_slot), false);
     } else if (s_req == PREQ_LOAD_TPL) {
-        bool ok = project_templates_load(s_req_slot);
-        if (!s_req_quiet) set_status(s_req_idx, ok ? "LOADED" : "LOAD FAIL");
+        report_load(s_req_idx, project_templates_load(s_req_slot), s_req_quiet);
     } else {
         bool ok = project_snapshot_save(s_req_slot,
                                         s_req_has_name ? s_req_name : NULL);
