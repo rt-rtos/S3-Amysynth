@@ -325,7 +325,8 @@ the SUB). The loop (Bars long) is simulated from the seed and repeats
 until an edit or a reroll changes it. The header reads ON/OFF/MUTE, the
 focus (DROP or SUB), the focused synth's patch and root on its first row,
 the loop bars, the seed (a `*` when frozen) and the rate on its second. The
-screen opens with the cursor on ON/OFF.
+screen opens with the cursor on ON/OFF. The boot field is a floor under the
+spawner and a jackpot cell above it, so ON plays at once.
 
 | Input | Action |
 |---|---|

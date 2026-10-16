@@ -787,6 +787,16 @@ void drop_core_init(void)
     s_drop.quant_mode    = ARP_QUANT_CHORD;
     drop_voice_defaults(&s_drop.voice[DROP_VOICE_MAIN], CONFIG_SEQ_DROP_DEFAULT_PATCH);
     drop_voice_defaults(&s_drop.voice[DROP_VOICE_SUB], CONFIG_SEQ_DROP_SUB_DEFAULT_PATCH);
+    /* The boot field: a plain floor under the spawner, so every ball lands
+     * and bounces out its ritardando on the root, and a jackpot cell on the
+     * way down, which the first fall and the first bounce cross. */
+    s_drop.segs[0] = (drop_seg_t){ .col = DROP_SPAWN_COL, .row = DROP_ROWS - 1,
+                                   .angle = 0, .type = DROP_SEG_PLAIN, .ratio = 50 };
+    s_drop.seg_count = 1;
+    {
+        unsigned bit = 3u * DROP_COLS + DROP_SPAWN_COL;
+        s_drop.jackpot[bit >> 3] = (uint8_t)(1u << (bit & 7u));
+    }
 
     DIAG_HEAP_CHECK("drop_init: before configure");
     drop_rebuild(DROP_VOICE_MAIN);
