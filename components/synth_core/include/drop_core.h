@@ -192,8 +192,8 @@ uint8_t  drop_view_balls(uint32_t loop_tick, drop_ball_pos_t out[DROP_BALL_MAX])
 uint32_t drop_loop_ticks(void);
 /* Impacts and jackpot crossings the last refresh emitted (0 while the loop
  * is not playing). */
-uint8_t  drop_last_impact_count(void);
-uint8_t  drop_last_jackpot_count(void);
+uint16_t drop_last_impact_count(void);
+uint16_t drop_last_jackpot_count(void);
 
 /* Print the loop state and the last emitted loop (one line per impact and
  * crossing: tick, note, velocity, gate) to the console, for the DEV

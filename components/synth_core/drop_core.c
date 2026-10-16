@@ -94,7 +94,8 @@ static volatile bool s_drop_dirty = false;
 /* Bumped by every edit that changes the loop; the view sim restarts on a
  * change so it never continues from a field that is gone. */
 static uint32_t s_drop_gen = 1;
-static uint8_t s_last_impacts = 0, s_last_jackpots = 0;
+/* Events the last refresh emitted: the pairs the next clear has to cover. */
+static uint16_t s_last_impacts = 0, s_last_jackpots = 0;
 
 static inline void drop_mark_dirty(void)
 {
@@ -118,7 +119,7 @@ typedef struct {
     int32_t x, y, vx, vy;
     bool    alive;
     bool    in_jackpot;
-    int8_t  last_impact;   /* index into impacts awaiting its gate, or -1 */
+    int16_t last_impact;   /* index into impacts awaiting its gate, or -1 */
 } drop_ball_t;
 
 typedef struct {
@@ -133,14 +134,22 @@ typedef struct {
     uint16_t speed;
 } drop_jp_hit_t;
 
+/* What a loop run records: the impacts and crossings, and per bar how many
+ * of each, against the even share of the caps each bar keeps. */
+typedef struct {
+    uint16_t      n_impacts;
+    uint16_t      n_jackpots;
+    uint16_t      bar_impacts[DROP_LOOP_BARS_MAX];
+    uint16_t      bar_jackpots[DROP_LOOP_BARS_MAX];
+    drop_impact_t impacts[SEQ_DROP_IMPACT_MAX];
+    drop_jp_hit_t jackpots[SEQ_DROP_JACKPOT_MAX];
+} drop_rec_t;
+
 typedef struct {
     uint32_t rng;
     uint32_t tick;
-    uint8_t  n_impacts;
-    uint8_t  n_jackpots;
-    drop_ball_t   balls[DROP_BALL_MAX];
-    drop_impact_t impacts[SEQ_DROP_IMPACT_MAX];
-    drop_jp_hit_t jackpots[SEQ_DROP_JACKPOT_MAX];
+    drop_rec_t  *rec;      /* NULL: balls only (the view) */
+    drop_ball_t  balls[DROP_BALL_MAX];
 } drop_sim_t;
 
 /* Segment geometry the sim tests against, derived from s_drop.segs by
@@ -153,9 +162,11 @@ typedef struct {
 static drop_seg_geom_t s_geom[DROP_SEG_MAX];
 static uint8_t         s_geom_count;
 
-/* The refresh's sim and the view's incremental one, static: together they
- * are over a kilobyte, which the UI task's frame cannot carry. */
+/* The refresh's sim and record and the view's incremental sim, static: the
+ * record alone is over two kilobytes, which the UI task's frame cannot
+ * carry. The view replays the same balls without recording. */
 static drop_sim_t s_sim_loop;
+static drop_rec_t s_rec_loop;
 static drop_sim_t s_sim_view;
 static uint32_t   s_sim_view_gen = 0;
 
@@ -169,9 +180,11 @@ static inline uint32_t sim_rand(drop_sim_t *s)
     return x;
 }
 
-static void sim_init(drop_sim_t *s, uint32_t seed)
+static void sim_init(drop_sim_t *s, drop_rec_t *rec, uint32_t seed)
 {
     memset(s, 0, sizeof(*s));
+    if (rec) memset(rec, 0, sizeof(*rec));
+    s->rec = rec;
     s->rng = seed ? seed : 0x9E3779B9u;
     for (uint8_t i = 0; i < DROP_BALL_MAX; i++) s->balls[i].last_impact = -1;
     s_geom_count = s_drop.seg_count;
@@ -198,8 +211,8 @@ static inline uint32_t spawn_interval(void)
 /* Close the gate of the ball's pending impact at `tick`. */
 static void sim_close_gate(drop_sim_t *s, drop_ball_t *b, uint32_t tick)
 {
-    if (b->last_impact >= 0) {
-        drop_impact_t *im = &s->impacts[b->last_impact];
+    if (b->last_impact >= 0 && s->rec) {
+        drop_impact_t *im = &s->rec->impacts[b->last_impact];
         im->gate = (uint16_t)(tick - im->tick);
         b->last_impact = -1;
     }
@@ -268,9 +281,18 @@ static bool seg_bounce(drop_sim_t *s, const drop_seg_geom_t *g, drop_ball_t *b,
     return true;
 }
 
+/* The share of `cap` each bar of the loop keeps. */
+static inline uint16_t bar_quota(uint16_t cap)
+{
+    return (uint16_t)(cap / s_drop.loop_bars);
+}
+
 static void sim_step(drop_sim_t *s)
 {
     uint32_t tick = s->tick;
+    drop_rec_t *rec = s->rec;
+    uint32_t bar = tick / SEQ_TICKS_PER_BAR;
+    if (bar >= DROP_LOOP_BARS_MAX) bar = DROP_LOOP_BARS_MAX - 1;
     if (tick % spawn_interval() == 0) sim_spawn(s);
 
     bool jp_on = drop_jackpot_count() != 0;
@@ -286,14 +308,16 @@ static void sim_step(drop_sim_t *s)
             if (!seg_bounce(s, &s_geom[k], b, x1, y1, &speed)) continue;
             hit = true;
             sim_close_gate(s, b, tick);
-            if (s->n_impacts < SEQ_DROP_IMPACT_MAX) {
-                drop_impact_t *im = &s->impacts[s->n_impacts];
+            if (rec && rec->n_impacts < SEQ_DROP_IMPACT_MAX &&
+                rec->bar_impacts[bar] < bar_quota(SEQ_DROP_IMPACT_MAX)) {
+                drop_impact_t *im = &rec->impacts[rec->n_impacts];
                 im->tick  = (uint16_t)tick;
                 im->gate  = 0;
                 im->speed = (speed > 0xFFFF) ? 0xFFFFu : (uint16_t)speed;
                 im->row   = s_geom[k].row;
-                b->last_impact = (int8_t)s->n_impacts;
-                s->n_impacts++;
+                b->last_impact = (int16_t)rec->n_impacts;
+                rec->n_impacts++;
+                rec->bar_impacts[bar]++;
             }
             int32_t ax = (b->vx < 0) ? -b->vx : b->vx;
             int32_t ay = (b->vy < 0) ? -b->vy : b->vy;
@@ -317,11 +341,13 @@ static void sim_step(drop_sim_t *s)
             uint8_t col = (uint8_t)((b->x >> DROP_Q) / DROP_CELL_W);
             uint8_t row = (uint8_t)((b->y < 0 ? 0 : b->y) >> DROP_Q) / DROP_CELL_H;
             bool inside = drop_jackpot_at(col, row);
-            if (inside && !b->in_jackpot && s->n_jackpots < SEQ_DROP_JACKPOT_MAX) {
+            if (inside && !b->in_jackpot && rec && rec->n_jackpots < SEQ_DROP_JACKPOT_MAX &&
+                rec->bar_jackpots[bar] < bar_quota(SEQ_DROP_JACKPOT_MAX)) {
                 int32_t sp = (b->vy < 0) ? -b->vy : b->vy;
-                s->jackpots[s->n_jackpots].tick  = (uint16_t)tick;
-                s->jackpots[s->n_jackpots].speed = (sp > 0xFFFF) ? 0xFFFFu : (uint16_t)sp;
-                s->n_jackpots++;
+                rec->jackpots[rec->n_jackpots].tick  = (uint16_t)tick;
+                rec->jackpots[rec->n_jackpots].speed = (sp > 0xFFFF) ? 0xFFFFu : (uint16_t)sp;
+                rec->n_jackpots++;
+                rec->bar_jackpots[bar]++;
             }
             b->in_jackpot = inside;
         }
@@ -330,10 +356,10 @@ static void sim_step(drop_sim_t *s)
 }
 
 /* Run the whole loop: impacts, crossings and gates, from the seed. */
-static void sim_run_loop(drop_sim_t *s)
+static void sim_run_loop(drop_sim_t *s, drop_rec_t *rec)
 {
     uint32_t loop = drop_loop_ticks();
-    sim_init(s, s_drop.seed);
+    sim_init(s, rec, s_drop.seed);
     while (s->tick < loop) sim_step(s);
     /* Balls still in the air at loop end: their last note holds until the
      * loop restarts. */
@@ -352,7 +378,7 @@ uint8_t drop_view_balls(uint32_t loop_tick, drop_ball_pos_t out[DROP_BALL_MAX])
     uint32_t loop = drop_loop_ticks();
     if (loop_tick >= loop) loop_tick = loop - 1;
     if (s_sim_view_gen != s_drop_gen || s_sim_view.tick > loop_tick) {
-        sim_init(&s_sim_view, s_drop.seed);
+        sim_init(&s_sim_view, NULL, s_drop.seed);
         s_sim_view_gen = s_drop_gen;
     }
     while (s_sim_view.tick <= loop_tick) sim_step(&s_sim_view);
@@ -369,8 +395,8 @@ uint8_t drop_view_balls(uint32_t loop_tick, drop_ball_pos_t out[DROP_BALL_MAX])
     return n;
 }
 
-uint8_t drop_last_impact_count(void)  { return s_last_impacts; }
-uint8_t drop_last_jackpot_count(void) { return s_last_jackpots; }
+uint16_t drop_last_impact_count(void)  { return s_last_impacts; }
+uint16_t drop_last_jackpot_count(void) { return s_last_jackpots; }
 
 /* ── Pitch ───────────────────────────────────────────────────────────── */
 
@@ -422,9 +448,14 @@ static uint8_t drop_snap(uint8_t row)
 void drop_core_clear_all(void)
 {
     uint32_t base = sequencer_core_drop_tag_base();
-    for (uint32_t i = 0; i < SEQ_DROP_IMPACT_MAX + SEQ_DROP_JACKPOT_MAX; i++) {
+    for (uint32_t i = 0; i < s_last_impacts; i++) {
         sequencer_core_drop_clear_note(base + i * 2u);
     }
+    for (uint32_t j = 0; j < s_last_jackpots; j++) {
+        sequencer_core_drop_clear_note(base + (SEQ_DROP_IMPACT_MAX + j) * 2u);
+    }
+    s_last_impacts  = 0;
+    s_last_jackpots = 0;
 }
 
 /* All-notes-off on one slot. Must follow every clear that can run while
@@ -453,14 +484,14 @@ static float drop_velocity(uint16_t speed, float amp_trim)
 
 /* The gate of impact i, shortened to end before the next impact at the same
  * pitch (the loop wrapping around counts), clamped to 1..period-1. */
-static uint32_t gate_before_repeat(uint32_t gate, uint32_t tick, uint8_t i,
-                                   const drop_sim_t *s, const uint8_t *notes,
+static uint32_t gate_before_repeat(uint32_t gate, uint32_t tick, uint16_t i,
+                                   const drop_rec_t *r, const uint8_t *notes,
                                    uint32_t period)
 {
     uint32_t next = period + tick;   /* itself, one loop later */
-    for (uint8_t j = 0; j < s->n_impacts; j++) {
+    for (uint16_t j = 0; j < r->n_impacts; j++) {
         if (j == i || notes[j] != notes[i]) continue;
-        uint32_t t = s->impacts[j].tick;
+        uint32_t t = r->impacts[j].tick;
         if (t <= tick) t += period;
         if (t < next) next = t;
     }
@@ -474,21 +505,19 @@ void drop_core_refresh(void)
 {
     drop_core_clear_all();
     drop_kill_all();
-    s_last_impacts = 0;
-    s_last_jackpots = 0;
 
     if (!s_drop.enabled || s_drop.solo_muted || s_drop.muted) return;
     if (s_drop.seg_count == 0 && drop_jackpot_count() == 0) return;
 
-    drop_sim_t *s = &s_sim_loop;
-    sim_run_loop(s);
+    drop_rec_t *s = &s_rec_loop;
+    sim_run_loop(&s_sim_loop, s);
 
     uint32_t period = drop_loop_ticks();
     uint32_t base   = sequencer_core_drop_tag_base();
     float    trim   = s_drop.voice[DROP_VOICE_MAIN].vp.amp_trim;
     uint8_t  notes[SEQ_DROP_IMPACT_MAX];
-    for (uint8_t i = 0; i < s->n_impacts; i++) notes[i] = drop_snap(s->impacts[i].row);
-    for (uint8_t i = 0; i < s->n_impacts; i++) {
+    for (uint16_t i = 0; i < s->n_impacts; i++) notes[i] = drop_snap(s->impacts[i].row);
+    for (uint16_t i = 0; i < s->n_impacts; i++) {
         const drop_impact_t *im = &s->impacts[i];
         uint32_t gate = ((uint32_t)im->gate * s_drop.gate_pct) / 100u;
         /* AMY's instrument keeps one voice per sounding pitch, so a note
@@ -501,7 +530,7 @@ void drop_core_refresh(void)
     }
     float sub_trim = s_drop.voice[DROP_VOICE_SUB].vp.amp_trim;
     uint8_t sub_note = sequencer_core_clamp_melodic_note((int32_t)s_drop.sub_root_note);
-    for (uint8_t j = 0; j < s->n_jackpots; j++) {
+    for (uint16_t j = 0; j < s->n_jackpots; j++) {
         const drop_jp_hit_t *jp = &s->jackpots[j];
         uint32_t gate = ((uint32_t)spawn_interval() * s_drop.gate_pct) / 100u;
         uint32_t next = (j + 1u < s->n_jackpots) ? s->jackpots[j + 1].tick
@@ -542,16 +571,16 @@ unsigned drop_core_dump(void)
                g->type, g->ratio);
         n++;
     }
-    const drop_sim_t *s = &s_sim_loop;
+    const drop_rec_t *s = &s_rec_loop;
     float trim = s_drop.voice[DROP_VOICE_MAIN].vp.amp_trim;
-    for (uint8_t i = 0; i < s_last_impacts; i++) {
+    for (uint16_t i = 0; i < s_last_impacts; i++) {
         const drop_impact_t *im = &s->impacts[i];
         printf("  IMP%u tick=%u row=%u note=%u vel=%.2f air=%u\n", i, im->tick, im->row,
                (unsigned)drop_snap(im->row), (double)drop_velocity(im->speed, trim),
                (unsigned)im->gate);
         n++;
     }
-    for (uint8_t j = 0; j < s_last_jackpots; j++) {
+    for (uint16_t j = 0; j < s_last_jackpots; j++) {
         printf("  JP%u tick=%u vel=%.2f\n", j, s->jackpots[j].tick,
                (double)drop_velocity(s->jackpots[j].speed,
                                      s_drop.voice[DROP_VOICE_SUB].vp.amp_trim));
