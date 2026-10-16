@@ -659,9 +659,14 @@ static bool parse_layer_steps(tlv_reader_t *r, seq_layer_t *L)
     tlv_get_bytes(&b, L->step_velocity_adj,  sizeof L->step_velocity_adj);
     tlv_get_bytes(&b, L->step_ratchet_taper, sizeof L->step_ratchet_taper);
 
+    /* grid is bool and the file bytes went in raw: a byte other than 0 or 1
+     * is not a valid bool, so fold them through a byte view before any bool
+     * load reads one. */
+    unsigned char *grid_bytes = (unsigned char *)L->grid;
+    for (size_t i = 0; i < sizeof L->grid; i++) grid_bytes[i] = grid_bytes[i] != 0;
+
     for (int t = 0; t < SEQ_TRACKS; t++) {
         for (int s = 0; s < SEQ_MAX_STEPS; s++) {
-            L->grid[t][s]              = L->grid[t][s] ? 1 : 0;
             L->step_quant_bypass[t][s] = L->step_quant_bypass[t][s] ? 1 : 0;
             if (L->step_prob[t][s] > 100) L->step_prob[t][s] = 100;
             L->step_ratchet[t][s] = SEQ_CLAMP_U8(L->step_ratchet[t][s], 1, SEQ_MAX_RATCHET);
