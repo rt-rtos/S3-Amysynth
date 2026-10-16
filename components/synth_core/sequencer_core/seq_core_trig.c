@@ -352,7 +352,7 @@ void sequencer_core_service_tick(void)
      * another task: skip this tick rather than read a half-shifted table. The
      * engine tolerates skipped ticks - trig_reset_all runs after the edit - so
      * a dropped tick is inaudible. */
-    if (s_layers_mutating) return;
+    if (s_layers_mutating || s_transport_mutating) return;
     /* Decorated steps are evaluated on a clock run SEQ_TRIG_LOOKAHEAD_TICKS
      * ahead of the sequencer, so a step can be scheduled at its absolute grid
      * tick plus swing plus a negative nudge and still land in the future.

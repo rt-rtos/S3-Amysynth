@@ -219,6 +219,15 @@ float lfo_rate_to_hz(note_div_t rate, uint16_t bpm);
 
 /* ── Core lifecycle ── */
 void sequencer_core_init(void);
+/* Start/stop the transport.
+ * Obligation: applier-task context only (synth_ui_task, the harness command
+ *   task, or project-load) - never the render task or an ISR. May block: it
+ *   re-emits every layer's scheduled AMY events through the amy_helpers
+ *   ingress seam, which is forbidden on the render task.
+ * Guarantee: on return the transport state, per-layer trigger bookkeeping
+ *   and AMY's periodic schedule all match `playing`. While the transition
+ *   runs, sequencer_core_service_tick() skips its per-tick work instead of
+ *   reading half-reset trigger state. */
 void sequencer_core_set_playing(bool playing);
 /* The transport state as set above. Any task (one word). */
 bool sequencer_core_get_playing(void);

@@ -848,9 +848,18 @@ void sequencer_core_oom_service(void)
 }
 #endif
 
+/* True only while sequencer_core_set_playing() is applying a transport
+ * transition; sequencer_core_service_tick() (Core-1 render task) skips its
+ * per-tick work while set, to avoid racing the transition's writes to the trig
+ * bookkeeping arrays. Sole writer is sequencer_core_set_playing(). */
+volatile bool s_transport_mutating = false;
+
 void sequencer_core_set_playing(bool p)
 {
     if (s_playing == p) return;
+    /* Cover the whole transition (not just the trig_reset below): the tick's
+     * guard cannot tell "reset done, resync not yet" from "fully consistent". */
+    s_transport_mutating = true;
     s_playing = p;
     if (s_playing) {
         /* Anchor the bar counter to the NEXT absolute bar boundary, not the
@@ -915,6 +924,7 @@ void sequencer_core_set_playing(bool p)
         sequencer_kill_synth_voices(DROP_SUB_SYNTH);
         clip_player_on_transport(false);
     }
+    s_transport_mutating = false;
     if (s_transport_change_cb) s_transport_change_cb(s_playing);
 }
 

@@ -168,7 +168,8 @@ extern uint8_t        s_next_melodic_synth;
  * as the per-row truth - this is only the seed for new layers plus the display
  * fallback. */
 extern uint16_t       s_melodic_patch;
-extern volatile bool  s_layers_mutating;   /* guards delete_layer's compaction vs. the tick */
+extern volatile bool  s_layers_mutating;      /* guards delete_layer's compaction vs. the tick */
+extern volatile bool  s_transport_mutating;   /* guards set_playing()'s transition vs. the tick */
 
 /* Owned by seq_core_engine.c */
 extern uint8_t        s_cached_step[];
