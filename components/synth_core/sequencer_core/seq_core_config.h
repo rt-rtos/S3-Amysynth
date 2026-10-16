@@ -129,6 +129,17 @@
  * base, so it never collides with a melodic layer's per-row block. */
 #define SEQ_ARP_VOICES        4     /* allow note overlap at fast rates       */
 
+/* ── Ball drop synth slots ───────────────────────────────────────────────
+ * DROP_SYNTH / DROP_SUB_SYNTH (synth_slots.h) sit in the static pool with
+ * the arp. The impact voice overlaps as the arp does; the sub fires only on
+ * jackpot crossings, so two voices cover a crossing landing on a tail. */
+#define SEQ_DROP_VOICES       4
+#define SEQ_DROP_SUB_VOICES   2
+/* Per loop: impacts and jackpot crossings the sim emits; later ones in the
+ * same loop are silent. Each takes a tag pair in the drop tag space. */
+#define SEQ_DROP_IMPACT_MAX   64
+#define SEQ_DROP_JACKPOT_MAX  8
+
 /* One-shot preview fires this many ticks after an adjustment */
 #define SEQ_PREVIEW_DELAY_TICKS 4
 
@@ -145,7 +156,7 @@
  * own step on/off and preview tags (seq_core_engine.c):
  *   step on/off : 0 .. MAX_LAYERS*SEQ_TRACKS*SEQ_MAX_STEPS*2 - 1
  *   previews    : MAX_LAYERS*SEQ_TRACKS*2 tags directly after
- * then arp, ratchet, chord, chord preview, clip.
+ * then arp, drop, ratchet, chord, chord preview, clip.
  *
  * AMY's sequencer_add_wire rejects `tag >= max_sequences`, so sequences[]
  * needs at least (highest_tag + 1) user-addressable entries. The same count
@@ -159,14 +170,22 @@
 #define SEQ_ARP_TAG_COUNT     (ARP_MAX_SLOTS * ARP_OCT_MAX * 2)  /* = 64 */
 #define SEQ_ARP_TAG_MAX       (SEQ_ARP_TAG_BASE + SEQ_ARP_TAG_COUNT - 1)  /* 1383 */
 
+/* ── Ball drop tag space ──────────────────────────────────────────────────
+ * One repeating on/off pair per impact, then one per jackpot crossing, laid
+ * out as the arp's: drop_core_refresh() clears every pair before it
+ * re-emits a loop. */
+#define SEQ_DROP_TAG_BASE     (SEQ_ARP_TAG_MAX + 1u)                          /* 1384 */
+#define SEQ_DROP_TAG_COUNT    ((SEQ_DROP_IMPACT_MAX + SEQ_DROP_JACKPOT_MAX) * 2) /* 144 */
+#define SEQ_DROP_TAG_MAX      (SEQ_DROP_TAG_BASE + SEQ_DROP_TAG_COUNT - 1)    /* 1527 */
+
 /* ── Ratchet tag space ────────────────────────────────────────────────────
  * A decorated step never uses the plain per-step ON/OFF pair: instead
  * sequencer_core_service_tick() one-shot schedules up to SEQ_MAX_RATCHET
  * note-on/off pairs per firing, each on its own statically assigned tag so
  * sub-hits never overwrite each other. */
-#define SEQ_RATCHET_TAG_BASE  (SEQ_ARP_TAG_MAX + 1u)                          /* 1384 */
+#define SEQ_RATCHET_TAG_BASE  (SEQ_DROP_TAG_MAX + 1u)                         /* 1528 */
 #define SEQ_RATCHET_TAG_COUNT (MAX_LAYERS * SEQ_TRACKS * SEQ_MAX_RATCHET * 2) /* 160 */
-#define SEQ_RATCHET_TAG_MAX   (SEQ_RATCHET_TAG_BASE + SEQ_RATCHET_TAG_COUNT - 1) /* 1543 */
+#define SEQ_RATCHET_TAG_MAX   (SEQ_RATCHET_TAG_BASE + SEQ_RATCHET_TAG_COUNT - 1) /* 1687 */
 
 /* ── Chord tag space ──────────────────────────────────────────────────────
  * Chord steps always take the decorated one-shot path (a chord sentinel in
@@ -177,24 +196,24 @@
  * Each tag slot (sequence_info_t) is 16 B of internal DRAM in AMY, plus its
  * wire string while occupied, which is why the one-shot scheme (800 tags)
  * beat a periodic per-step chord block (~3.5 K tags). */
-#define SEQ_CHORD_TAG_BASE    (SEQ_RATCHET_TAG_MAX + 1u)                      /* 1544 */
+#define SEQ_CHORD_TAG_BASE    (SEQ_RATCHET_TAG_MAX + 1u)                      /* 1688 */
 #define SEQ_CHORD_TAG_COUNT   (MAX_LAYERS * SEQ_TRACKS * SEQ_MAX_RATCHET \
                                * (SEQ_CHORD_MAX_NOTES - 1) * 2)               /* 640 */
-#define SEQ_CHORD_TAG_MAX     (SEQ_CHORD_TAG_BASE + SEQ_CHORD_TAG_COUNT - 1)  /* 2183 */
-#define SEQ_CHORD_PREVIEW_TAG_BASE  (SEQ_CHORD_TAG_MAX + 1u)                  /* 2184 */
+#define SEQ_CHORD_TAG_MAX     (SEQ_CHORD_TAG_BASE + SEQ_CHORD_TAG_COUNT - 1)  /* 2327 */
+#define SEQ_CHORD_PREVIEW_TAG_BASE  (SEQ_CHORD_TAG_MAX + 1u)                  /* 2328 */
 #define SEQ_CHORD_PREVIEW_TAG_COUNT (MAX_LAYERS * SEQ_TRACKS \
                                      * (SEQ_CHORD_MAX_NOTES - 1) * 2)         /* 160 */
 #define SEQ_CHORD_PREVIEW_TAG_MAX   (SEQ_CHORD_PREVIEW_TAG_BASE + \
-                                     SEQ_CHORD_PREVIEW_TAG_COUNT - 1)         /* 2343 */
+                                     SEQ_CHORD_PREVIEW_TAG_COUNT - 1)         /* 2487 */
 
 /* ── Bounce clip start tags ──────────────────────────────────────────────
  * Two per clip slot (clip_player.c): an aux config entry that sets the
  * right-channel osc's start parameters, then the note-on that starts the clip
  * at its end tick or re-anchors it on a bar line. The aux tag is the lower
  * one so it fires first within the tick. */
-#define SEQ_CLIP_TAG_BASE     (SEQ_CHORD_PREVIEW_TAG_MAX + 1u)                /* 2344 */
+#define SEQ_CLIP_TAG_BASE     (SEQ_CHORD_PREVIEW_TAG_MAX + 1u)                /* 2488 */
 #define SEQ_CLIP_TAG_COUNT    (2u * CLIP_SLOT_COUNT)
-#define SEQ_CLIP_TAG_MAX      (SEQ_CLIP_TAG_BASE + SEQ_CLIP_TAG_COUNT - 1)    /* 2347 */
+#define SEQ_CLIP_TAG_MAX      (SEQ_CLIP_TAG_BASE + SEQ_CLIP_TAG_COUNT - 1)    /* 2491 */
 
 /* ── Global chord progression ────────────────────────────────────────────── */
 #define CHORD_PROG_MAX_ENTRIES 8

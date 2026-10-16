@@ -1541,6 +1541,14 @@ uint8_t sequencer_core_arp_synth(void)  { return SEQ_ARP_SYNTH; }
 uint8_t sequencer_core_arp_voices(void) { return SEQ_ARP_VOICES; }
 uint32_t sequencer_core_arp_tag_base(void) { return SEQ_ARP_TAG_BASE; }
 
+/* ── Ball drop support ───────────────────────────────────────────────────── */
+
+uint8_t sequencer_core_drop_voices(uint8_t synth)
+{
+    return (synth == DROP_SUB_SYNTH) ? SEQ_DROP_SUB_VOICES : SEQ_DROP_VOICES;
+}
+uint32_t sequencer_core_drop_tag_base(void) { return SEQ_DROP_TAG_BASE; }
+
 uint8_t sequencer_core_clamp_melodic_note(int32_t midi_note)
 {
     return SEQ_CLAMP_U8(midi_note, SEQ_MEL_NOTE_MIN, SEQ_MEL_NOTE_MAX);
@@ -1645,6 +1653,28 @@ void sequencer_core_arp_configure(uint16_t patch_number, uint8_t num_voices,
     seq_flush_patch_fx(string_patch, SEQ_ARP_SYNTH);
     ESP_LOGI(TAG, "arp synth %u patch -> %u (%u voices)",
              (unsigned)SEQ_ARP_SYNTH, (unsigned)patch_number, (unsigned)num_voices);
+}
+
+void sequencer_core_drop_configure(uint8_t synth, uint16_t patch_number,
+                                   uint8_t num_voices, bool filter_authored,
+                                   float ks_feedback, float ks_duty_ofs,
+                                   const voice_unison_t *uni)
+{
+    if (synth != DROP_SYNTH && synth != DROP_SUB_SYNTH) return;
+    patch_number = SEQ_CLAMP_U16(patch_number, 0, SEQ_PATCH_FULL_MAX);
+    /* As the arp: the osc topology changes between kinds, so kill sounding
+     * voices before the pool is rebuilt. A loop re-emitted mid-loop
+     * schedules note-offs whose note-ons are already past, which AMY's
+     * instrument would report from the render task; the flag reaches the
+     * patch-string kinds only. */
+    sequencer_kill_synth_voices(synth);
+    bool string_patch = seq_apply_patch(synth, patch_number, num_voices,
+                                        SYNTH_FLAGS_NO_NOTE_WARNINGS,
+                                        filter_authored, ks_feedback,
+                                        ks_duty_ofs, uni);
+    seq_flush_patch_fx(string_patch, synth);
+    ESP_LOGI(TAG, "drop synth %u patch -> %u (%u voices)",
+             (unsigned)synth, (unsigned)patch_number, (unsigned)num_voices);
 }
 
 /* The AMY synth slot backing a melodic row. Exposed so UI code addressing the

@@ -220,6 +220,8 @@ float lfo_rate_to_hz(note_div_t rate, uint16_t bpm);
 /* ── Core lifecycle ── */
 void sequencer_core_init(void);
 void sequencer_core_set_playing(bool playing);
+/* The transport state as set above. Any task (one word). */
+bool sequencer_core_get_playing(void);
 
 /* Fired on every transport change, after the core has re-armed (play) or
  * silenced (stop) its own voices; `playing` is the new state. The handler
@@ -967,6 +969,38 @@ void sequencer_core_arp_clear_note(uint32_t tag_base);
 /* Base tag for arp events — well above the sequencer's tag space. */
 uint32_t sequencer_core_arp_tag_base(void);
 
+/* ── Ball drop support ────────────────────────────────────────────────────
+ * drop_core owns the field and the loop; its AMY traffic goes through these
+ * helpers, which take the slot (DROP_SYNTH or DROP_SUB_SYNTH, synth_slots.h)
+ * as a parameter and otherwise follow the arp's. */
+
+/* Voice count the slot is built with (SEQ_DROP_VOICES / SEQ_DROP_SUB_VOICES). */
+uint8_t sequencer_core_drop_voices(uint8_t synth);
+
+/* (Re)configure one drop slot; arguments as sequencer_core_arp_configure().
+ * Any other slot is ignored. */
+void sequencer_core_drop_configure(uint8_t synth, uint16_t patch_number,
+                                   uint8_t num_voices, bool filter_authored,
+                                   float ks_feedback, float ks_duty_ofs,
+                                   const voice_unison_t *uni);
+
+/* Schedule a repeating note-on + note-off pair on a drop slot; arguments as
+ * sequencer_core_arp_emit_note() plus the slot. tick_on is folded into the
+ * period (an impact on the loop's last tick lands on tick 1 of the next),
+ * tag_base must lie in the drop tag window (seq_core_config.h), period must
+ * be > 0; a violation drops the note. Not sent while the transport is
+ * stopped. */
+void sequencer_core_drop_emit_note(uint8_t synth, uint32_t tag_base,
+                                   uint8_t midi_note, float velocity,
+                                   uint32_t tick_on, uint32_t gate_ticks,
+                                   uint32_t period);
+
+/* Cancel a scheduled drop note (clears tag_base and tag_base+1). */
+void sequencer_core_drop_clear_note(uint32_t tag_base);
+
+/* Base tag of the drop window (SEQ_DROP_TAG_BASE). */
+uint32_t sequencer_core_drop_tag_base(void);
+
 /* ── Per-track repeat rate ────────────────────────────────────────────────
  * A track with repeat_rate=N fires every N bars instead of every bar.
  * Re-emits all steps immediately so AMY picks up the new period. */
@@ -1060,6 +1094,11 @@ bool sequencer_core_get_track_solo(uint8_t layer_idx, uint8_t track);
  * UI task only. Persisted in the project's arp section. */
 void sequencer_core_set_arp_solo(bool solo);
 bool sequencer_core_get_arp_solo(void);
+
+/* The ball drop's solo flag, with the arp's semantics: a member of the solo
+ * set that plays while soloed. UI task only. Persisted in the drop section. */
+void sequencer_core_set_drop_solo(bool solo);
+bool sequencer_core_get_drop_solo(void);
 
 /* True when the arp or any track of any layer is soloed - i.e. when the solo
  * mode that silences everything else is in force. Drives the Trackopts clear

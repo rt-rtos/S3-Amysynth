@@ -14,6 +14,7 @@
 #include "sequencer_core.h"
 #include "esp_app_desc.h"
 #include "sequencer.h"          /* sequencer_tag_count (AMY) */
+#include "drop_core.h"
 #include <stdio.h>
 
 /* One printed line per call site, counted for the END marker. */
@@ -205,6 +206,8 @@ void sequencer_core_dump_state(void)
             n_lines += dump_vp("LB", lv);
         }
     }
+
+    n_lines += drop_core_dump();
 
     /* A send to an AMY tag adds to it, so every app tag holds at most one
      * event; a tag holding more names a re-send path that skips the clear. */

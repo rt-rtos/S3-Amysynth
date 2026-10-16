@@ -402,6 +402,44 @@ config SEQ_ARP_DEFAULT_PATCH
 		AMY built-in patch for the arp synth (0..127 Juno, 128..255 DX7,
 		256 built-in piano). 138 = DX7 E.Piano 1.
 
+comment "Ball drop"
+
+config SEQ_DROP_DEFAULT_ENABLED
+	bool "Ball drop enabled by default"
+	default n
+	help
+		Whether the ball drop engine runs at boot. Balls fall onto the
+		segments of its field; every impact plays a note on the DROP synth
+		and a jackpot crossing one on the SUB synth, as a loop that repeats
+		in sync with the global tempo. The field itself boots empty, so an
+		enabled drop is silent until segments are placed on its screen or
+		a project supplies them.
+
+config SEQ_DROP_DEFAULT_PATCH
+	int "Ball drop default patch number (DROP synth)"
+	range 0 266
+	default 138
+	help
+		Patch for the impact synth (0..127 Juno, 128..255 DX7, 256 built-in
+		piano, 257..263 raw waves, 264..266 bass presets). 138 = DX7
+		E.Piano 1.
+
+config SEQ_DROP_SUB_DEFAULT_PATCH
+	int "Ball drop default patch number (SUB synth)"
+	range 0 266
+	default 142
+	help
+		Patch for the jackpot synth, full melodic catalog as the DROP synth
+		(264..266 the multi-osc bass presets). 142 = DX7 Bass 1.
+
+config SEQ_DROP_DEFAULT_ROOT_NOTE
+	int "Ball drop default root MIDI note"
+	range 0 127
+	default 48
+	help
+		The pitch of the bottom field row; each row up is one scale degree.
+		48 = C3. The SUB root boots one octave below it.
+
 
 menu "Global FX Defaults"
 

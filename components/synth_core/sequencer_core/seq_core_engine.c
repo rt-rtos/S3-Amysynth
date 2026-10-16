@@ -3,6 +3,7 @@
 #include "custompatches/clip_player.h"
 #include "custompatches/drone_core.h"
 #include "custompatches/drone_std_core.h"
+#include "drop_core.h"
 
 /* ── State definitions — owns step cache, source notes, bar baseline ── */
 uint8_t  s_cached_step[MAX_LAYERS];
@@ -77,6 +78,8 @@ void sequencer_core_freeze_release_apply(void)
         }
     }
     sequencer_kill_synth_voices(SEQ_ARP_SYNTH);
+    sequencer_kill_synth_voices(DROP_SYNTH);
+    sequencer_kill_synth_voices(DROP_SUB_SYNTH);
     sequencer_kill_synth_voices(DRONE_SYNTH_MAIN);
     sequencer_kill_synth_voices(DRONE_SYNTH_SUB);
     sequencer_kill_synth_voices(DRONE_STD_SYNTH_MAIN);
@@ -192,6 +195,8 @@ _Static_assert(MAX_LAYERS * (SEQ_TRACKS * SEQ_MAX_STEPS * 2)
                + (MAX_LAYERS - 1) * SEQ_TRACKS + (SEQ_TRACKS - 1)
                + MAX_LAYERS * SEQ_TRACKS < SEQ_ARP_TAG_BASE,
                "sequencer preview tags overlap the arp tag space");
+_Static_assert(SEQ_DROP_TAG_BASE > SEQ_ARP_TAG_MAX && SEQ_DROP_TAG_MAX < SEQ_RATCHET_TAG_BASE,
+               "drop tag space overlaps its neighbours");
 
 /* Chord edit-preview tags: extra-tone (1..SEQ_CHORD_MAX_NOTES-1) on/off pairs
  * for the one-shot preview path; tone 0 stays on the preview pair above.
@@ -326,6 +331,8 @@ static seq_transport_change_cb_t s_transport_change_cb = NULL;   /* likewise */
 
 /* The arp's membership in the solo set (sequencer_core_set_arp_solo). */
 static bool s_arp_solo = false;
+/* The ball drop's (sequencer_core_set_drop_solo). */
+static bool s_drop_solo = false;
 
 /* True when the arp or any track of any layer has solo engaged (solo is
  * global: sequencer_core.h). Scans only the rows each layer has (num_tracks):
@@ -333,7 +340,7 @@ static bool s_arp_solo = false;
  * rows still in use. */
 bool sequencer_core_any_solo(void)
 {
-    if (s_arp_solo) return true;
+    if (s_arp_solo || s_drop_solo) return true;
     for (uint8_t li = 0; li < s_num_layers; li++) {
         for (uint8_t t = 0; t < s_layers[li].num_tracks; t++) {
             if (s_layers[li].solo[t]) return true;
@@ -837,6 +844,7 @@ void sequencer_core_oom_service(void)
         sequencer_resync_layer(i);
     }
     arp_core_mark_dirty();
+    drop_core_mark_dirty();
 }
 #endif
 
@@ -873,11 +881,14 @@ void sequencer_core_set_playing(bool p)
          * s_playing-gated, so nothing re-armed it while stopped - request a
          * coalesced re-emit (drained by arp_core_service() on the UI task). */
         arp_core_mark_dirty();
+        drop_core_mark_dirty();
         clip_player_on_transport(true);
     } else {
         /* Clear arp scheduled events FIRST so repeating arp tags don't keep
-         * firing while the sequencer is paused. */
+         * firing while the sequencer is paused. The drop's loop is cleared
+         * the same way. */
         arp_core_clear_all();
+        drop_core_clear_all();
 
         /* Freeze display positions before clearing scheduled events. */
         for (uint8_t i = 0; i < s_num_layers; i++) {
@@ -900,9 +911,16 @@ void sequencer_core_set_playing(bool p)
             }
         }
         sequencer_kill_synth_voices(SEQ_ARP_SYNTH);
+        sequencer_kill_synth_voices(DROP_SYNTH);
+        sequencer_kill_synth_voices(DROP_SUB_SYNTH);
         clip_player_on_transport(false);
     }
     if (s_transport_change_cb) s_transport_change_cb(s_playing);
+}
+
+bool sequencer_core_get_playing(void)
+{
+    return s_playing;
 }
 
 void sequencer_core_set_transport_change_cb(seq_transport_change_cb_t cb)
@@ -1063,6 +1081,38 @@ void sequencer_core_arp_emit_note(uint32_t tag_base, uint8_t midi_note,
 }
 
 void sequencer_core_arp_clear_note(uint32_t tag_base)
+{
+    sequencer_emit_clear_tag(tag_base);
+    sequencer_emit_clear_tag(tag_base + 1);
+}
+
+void sequencer_core_drop_emit_note(uint8_t synth, uint32_t tag_base,
+                                   uint8_t midi_note, float velocity,
+                                   uint32_t tick_on, uint32_t gate_ticks,
+                                   uint32_t period)
+{
+    /* Transport-slaved as the arp's emit: sequencer_core_set_playing() marks
+     * the drop dirty on resume, and the loop is phase-locked to the absolute
+     * tick grid like every periodic entry. */
+    if (!s_playing) return;
+    if (synth != DROP_SYNTH && synth != DROP_SUB_SYNTH) return;
+    if (tag_base < SEQ_DROP_TAG_BASE || tag_base + 1 > SEQ_DROP_TAG_MAX) {
+        ESP_LOGE(TAG, "drop tag %u out of range (%u..%u) - dropped",
+                 (unsigned)tag_base, (unsigned)SEQ_DROP_TAG_BASE,
+                 (unsigned)SEQ_DROP_TAG_MAX);
+        return;
+    }
+    if (period == 0) return;
+    tick_on %= period;
+    uint32_t tick_off = (tick_on + gate_ticks) % period;
+    if (tick_on  == 0) tick_on  = 1; /* tick 0 is reserved (clear) */
+    if (tick_off == 0) tick_off = 1;
+
+    amy_helpers_note_send(synth, midi_note, velocity, tag_base, tick_on, period);
+    amy_helpers_note_send(synth, midi_note, 0.0f, tag_base + 1, tick_off, period);
+}
+
+void sequencer_core_drop_clear_note(uint32_t tag_base)
 {
     sequencer_emit_clear_tag(tag_base);
     sequencer_emit_clear_tag(tag_base + 1);
@@ -1261,10 +1311,23 @@ bool sequencer_core_get_arp_solo(void)
     return s_arp_solo;
 }
 
+void sequencer_core_set_drop_solo(bool solo)
+{
+    if (s_drop_solo == solo) return;
+    s_drop_solo = solo;
+    sequencer_apply_solo_change();
+}
+
+bool sequencer_core_get_drop_solo(void)
+{
+    return s_drop_solo;
+}
+
 void sequencer_core_clear_all_solos(void)
 {
-    bool any = s_arp_solo;
+    bool any = s_arp_solo || s_drop_solo;
     s_arp_solo = false;
+    s_drop_solo = false;
     for (uint8_t li = 0; li < s_num_layers; li++) {
         for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
             if (s_layers[li].solo[t]) { s_layers[li].solo[t] = false; any = true; }

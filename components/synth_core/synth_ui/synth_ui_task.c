@@ -2,6 +2,7 @@
 #include "synth_ui.h"
 #include "sequencer_core.h"
 #include "arp_core.h"
+#include "drop_core.h"
 #include "custompatches/drone_core.h"
 #include "custompatches/drone_std_core.h"
 #include "custompatches/fm_voice.h"
@@ -81,6 +82,8 @@ static void ui_services(void)
     /* Coalesced arp re-emit: setters mark the arp dirty, at most one full
      * re-emit per frame lands here, collapsing fast encoder edits. */
     arp_core_service();
+    /* Ball drop: same coalescing; a refresh re-simulates the loop. */
+    drop_core_service();
     /* Drone: advance the tempo-locked filter sweep and keep the LFO in
      * sync. Cheap no-op while the drone is disabled. */
     drone_core_service();
@@ -331,6 +334,7 @@ static void synth_ui_task(void *pvParameters)
 static void ui_solo_change(bool any_solo)
 {
     arp_set_solo_muted(any_solo && !sequencer_core_get_arp_solo());
+    drop_set_solo_muted(any_solo && !sequencer_core_get_drop_solo());
     drone_set_solo_muted(any_solo);
     drone_std_set_solo_muted(any_solo);
 }
@@ -361,6 +365,8 @@ void synth_ui_init(u8g2_t *u8g2)
     DIAG_HEAP_CHECK("ui_init: after sequencer_core_init");
     arp_core_init();
     DIAG_HEAP_CHECK("ui_init: after arp_core_init");
+    drop_core_init();
+    DIAG_HEAP_CHECK("ui_init: after drop_core_init");
     drone_core_init();
     DIAG_HEAP_CHECK("ui_init: after drone_core_init");
     drone_std_core_init();

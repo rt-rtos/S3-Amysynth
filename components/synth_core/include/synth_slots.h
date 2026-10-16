@@ -28,7 +28,9 @@
 #define LIVE_SYNTH             (SEQ_DRUM_SYNTH_BASE + SEQ_TRACKS)   /* live-play (BLE/USB MIDI) voice: 11 */
 #define CLIP_SYNTH_BASE        (LIVE_SYNTH + 1)   /* bounce clip players: 12..12+CLIP_SLOT_COUNT-1 */
 #define CLIP_SLOT_COUNT        2    /* clip slots; the melodic arena is unaffected */
-#define SEQ_MEL_SYNTH_BASE     (CLIP_SYNTH_BASE + CLIP_SLOT_COUNT)   /* first melodic slot; arena from here up */
+#define DROP_SYNTH             (CLIP_SYNTH_BASE + CLIP_SLOT_COUNT)   /* ball drop, impact voice: 14 */
+#define DROP_SUB_SYNTH         (DROP_SYNTH + 1)   /* ball drop, jackpot (sub) voice: 15 */
+#define SEQ_MEL_SYNTH_BASE     (DROP_SUB_SYNTH + 1)   /* first melodic slot; arena from here up */
 
 #define SEQ_MEL_SLOT_COUNT     CONFIG_SEQ_MEL_SLOT_COUNT   /* melodic arena size; THE polyphony knob */
 #define SYNTH_SLOT_COUNT       (SEQ_MEL_SYNTH_BASE + SEQ_MEL_SLOT_COUNT)   /* end of the slot map */
