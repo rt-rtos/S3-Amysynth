@@ -58,6 +58,7 @@ mindmap
       Sequencer tag count
     c6{{"`**Behaviour fixes**`"}}
       Periodic-entry horizon
+      Sequencer edit cost
       reset_osc keeps the bus
       Zero-level FM operator is off
     c7{{"`**Build and diagnostics**`"}}
@@ -551,6 +552,27 @@ DEV-menu sequencer dump (`seq_core_dump.c`) calls it to flag tags holding more
 than one event, which names a re-send path that skipped the clear. Local
 diagnostic, not proposed upstream.
 
+### `src/sequencer.c` — clear and alloc cost follows what is scheduled (upstream PR candidate)
+
+Since #1156 (v1.2.166) an edit is "clear the tag, re-add its events", and
+both halves scanned the tagged pool: `sequencer_clear_tag()` tested every
+slot for the tag, and `alloc_tagged_slot()` searched for the lowest free
+slot from 0. With the pool sized from the app's tag layout (2861 slots) that
+is a pool-length scan under `amy_queue_lock` per clear and an occupied-prefix
+scan per add, whatever is scheduled. Now `sequencer_clear_tag()` walks the
+active list (sorted by tag, a tag's events adjacent) to the tag's run and
+unlinks it in place, and `alloc_tagged_slot()` starts at `free_hint`, the
+lowest slot that may be free (every slot below it is occupied), which
+`slot_freed()` lowers at each release (`slot_release()`, the clear, a fired
+one-shot) and init and reset return to 0. Lowest-free placement and the
+firing order are unchanged.
+
+Host test (upstream `tests/` style, built against this tree with ASan and
+UBSan): the same edit with the same 20 events scheduled costs 24x more in a
+16384-slot pool than in a 256-slot one before, 0.99x after; upstream's
+`test_sequencer_active`, `test_sequencer_bounds` and
+`test_sequencer_cumulate` pass on both. Not posted upstream.
+
 ### `pcm.c` + `amy.h` — `pcm_osc_frame()` read accessor (upstream PR candidate)
 
 A PCM osc's source position in frames: the stretcher's input timeline while
@@ -756,6 +778,13 @@ component files). Besides the Kconfig flags in the entries above it:
 # AMY Local Edits
 
 Track local, project-specific changes made against the upstream AMY component here.
+
+## 2026-10-16 — Sequencer clear and alloc cost
+
+- **`src/sequencer.c`**: `sequencer_clear_tag()` walks the active list
+  instead of the whole tagged pool, and `alloc_tagged_slot()` starts at a
+  lowest-free hint (`free_hint`, `slot_freed()`). See the active entry.
+  **Upstream PR candidate.**
 
 ## 2026-10-14 — Upstream sync v1.2.163 -> v1.2.200
 
