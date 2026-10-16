@@ -24,9 +24,6 @@ static bool s_shift_chord_latched[MY_BUTTON_MAX] = { false };
  * press: the selected track on the sequencer screen, the arp on its screen. */
 typedef enum { CHORD0_NONE, CHORD0_SEQ, CHORD0_ARP, CHORD0_DROP } chord0_t;
 static chord0_t s_chord0 = CHORD0_NONE;
-/* SHIFT+1 on the drop screen, same shape: the release rerolls the seed, the
- * long-press threshold freezes it. */
-static bool s_chord1_drop = false;
 
 void input_dispatch_button(my_button_id_t button_id, button_event_t event)
 {
@@ -87,27 +84,21 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
             bool hold = (event == BUTTON_LONG_PRESS_START);
             chord0_t c = s_chord0;
             s_chord0 = CHORD0_NONE;
+            /* The drop screen spends the chord on its seed: the press
+             * rerolls, the hold freezes. */
             if (c == CHORD0_ARP)       synth_ui_arp_solo_chord(hold);
-            else if (c == CHORD0_DROP) synth_ui_drop_solo_chord(hold);
+            else if (c == CHORD0_DROP) synth_ui_drop_shift0(hold);
             else                       synth_ui_seq_solo_chord(hold);
             return;
         }
         if (event != BUTTON_PRESS_DOWN) return;
         s_chord0 = CHORD0_NONE;
     }
-    if (button_id == MY_BUTTON_1 && s_chord1_drop) {
-        if (event == BUTTON_LONG_PRESS_START || event == BUTTON_PRESS_UP) {
-            s_chord1_drop = false;
-            synth_ui_drop_shift1(event == BUTTON_LONG_PRESS_START);
-            return;
-        }
-        if (event != BUTTON_PRESS_DOWN) return;
-        s_chord1_drop = false;
-    }
 
     /* SHIFT chords, fired on the digit's PRESS_DOWN:
-     *   SHIFT+0 -> solo on the sequencer and arp screens (above); latched
-     *              but inert elsewhere
+     *   SHIFT+0 -> solo on the sequencer and arp screens, the seed reroll /
+     *              freeze on the drop screen (above); latched but inert
+     *              elsewhere
      *   SHIFT+1 -> open the ADSR/graph editor, or close+commit an open one
      *   SHIFT+2 -> toggle the step probability/trig editor; inside an
      *              effects editor: release the open tab to the patch
@@ -137,12 +128,8 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
         s_shift_chord_latched[button_id] = true;
         ui_view_id_t sv = synth_ui_active_view();
         if (button_id == MY_BUTTON_1) {
-            if (sv == UI_VIEW_DROP) {
-                /* Seed reroll / freeze, decided on the release or the hold. */
-                s_chord1_drop = true;
-                return;
-            }
             bool open_from_screen = (sv == UI_VIEW_SEQ || sv == UI_VIEW_ARP ||
+                                     sv == UI_VIEW_DROP ||
                                      sv == UI_VIEW_DRONE || sv == UI_VIEW_DRONE_STD);
 #if CONFIG_SYNTH_WIRELESS
             /* Wireless overlay page: same chord, bound to the BLE live-play
@@ -185,7 +172,8 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
             if (sv == UI_VIEW_GRAPH || sv == UI_VIEW_LFO || sv == UI_VIEW_DIST ||
                 sv == UI_VIEW_FILTER) {
                 synth_ui_toggle_editor_source();
-            } else if (sv == UI_VIEW_SEQ || sv == UI_VIEW_ARP || sv == UI_VIEW_MENU) {
+            } else if (sv == UI_VIEW_SEQ || sv == UI_VIEW_ARP || sv == UI_VIEW_DROP ||
+                       sv == UI_VIEW_MENU) {
                 synth_ui_menu_toggle_layer_page();
             }
         }

@@ -17,8 +17,8 @@ extern "C" {
  *                                     patch (display only), root
  *   2b  1A2F*  1/4                 <- header row 2 (yellow): bars, seed, rate
  *   [16 x 8 cells, 8 x 6 px each]  <- the field (blue), y 16..63: segments as
- *                                     lines at their angle, the jackpot as a
- *                                     hatched box, balls as 2 x 2 dots, the
+ *                                     lines at their angle, jackpot cells as
+ *                                     hatched boxes, balls as 2 x 2 dots, the
  *                                     spawner as a chevron on the top edge
  *
  * Cursor index space: the header fields DROP_CUR_* first (the screen opens
@@ -64,7 +64,7 @@ typedef struct {
     bool        seed_frozen;
     uint8_t     seg_count;
     drop_view_seg_t segs[DROP_VIEW_SEGS];
-    struct { uint8_t col0, col1, row; bool enabled; } jackpot;
+    uint8_t     jackpot[(DROP_VIEW_CELLS + 7) / 8];   /* one bit per cell, row-major */
     uint8_t     ball_count;
     struct { uint8_t x, y; } balls[DROP_VIEW_BALLS];   /* field pixels */
     uint8_t     spawn_col;

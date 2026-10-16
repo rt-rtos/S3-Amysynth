@@ -181,15 +181,15 @@ void synth_ui_cycle_live_patch(int delta);
  * button_edge/button_long feed the screen the press edges of buttons 0..2
  * (its taps act on the release, holds are turn modifiers); button_long
  * returns true when the hold already turned something, so the dispatcher
- * keeps its own long-press meaning (play/stop) otherwise. shift1 is the
- * SHIFT + Button 1 chord: a press rerolls the seed, a hold freezes it. */
+ * keeps its own long-press meaning (play/stop) otherwise. shift0 is the
+ * SHIFT + Button 0 chord: a press rerolls the seed, a hold freezes it. */
 bool synth_ui_drop_is_active(void);
 void synth_ui_drop_handle_encoder(long delta, bool shift);
 void synth_ui_drop_handle_button(void);
 void synth_ui_drop_cycle_patch(int delta);   /* the focused synth's patch */
 void synth_ui_drop_button_edge(uint8_t btn, bool down);
 bool synth_ui_drop_button_long(uint8_t btn);
-void synth_ui_drop_shift1(bool hold);
+void synth_ui_drop_shift0(bool hold);
 
 /* ── Drone screen ────────────────────────────────────────────────────────
  * Standalone "stutter house drone" synth (custompatches/drone_core). Active
@@ -337,7 +337,6 @@ void synth_ui_graph_open_envelope(void);
  * input path only. */
 void synth_ui_seq_solo_chord(bool long_press);
 void synth_ui_arp_solo_chord(bool long_press);
-void synth_ui_drop_solo_chord(bool long_press);
 
 /* Route input to the pop-up while it is active. Each returns true if the
  * pop-up consumed the event (caller should then skip normal sequencer input).

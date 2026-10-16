@@ -111,9 +111,10 @@ static uint8_t lm_row_list(uint8_t *rows)
                                              LM_BACK };
         static const uint8_t live_rows[] = { LM_LEVEL, LM_KEYTRACK, LM_UNISON, LM_GLIDE,
                                              LM_BACK };
-        const uint8_t *src = (s_lm_kind == VT_ARP) ? arp_rows : live_rows;
-        uint8_t        cnt = (s_lm_kind == VT_ARP) ? (uint8_t)sizeof(arp_rows)
-                                                   : (uint8_t)sizeof(live_rows);
+        /* The drop's focused synth takes the arp's rows. */
+        const uint8_t *src = (s_lm_kind == VT_LIVE) ? live_rows : arp_rows;
+        uint8_t        cnt = (s_lm_kind == VT_LIVE) ? (uint8_t)sizeof(live_rows)
+                                                    : (uint8_t)sizeof(arp_rows);
         uint8_t n = 0;
         for (uint8_t i = 0; i < cnt; i++) {
             if (src[i] == LM_CLRSOLO && !sequencer_core_any_solo()) continue;
@@ -464,7 +465,7 @@ void layermenu_menu_edit_value(uint8_t idx, int delta)
                      ? (uint8_t)SEQ_PATCH_SCOPE_LAYER : (uint8_t)SEQ_PATCH_SCOPE_TRACK);
         break;
     case LM_GATE:
-        if (s_lm_kind == VT_ARP) {
+        if (s_lm_kind == VT_ARP || s_lm_kind == VT_DROP) {
             /* 5%/detent within 10..100, as the arp screen's GATE control. */
             int v = SEQ_CLAMP_INT((int)vt_get_gate_pct(s_lm_kind) + dir * 5, 10, 100);
             vt_set_gate_pct(s_lm_kind, (uint16_t)v);

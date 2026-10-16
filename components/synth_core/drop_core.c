@@ -19,10 +19,10 @@
 #define CONFIG_SEQ_DROP_DEFAULT_ENABLED 0
 #endif
 #ifndef CONFIG_SEQ_DROP_DEFAULT_PATCH
-#define CONFIG_SEQ_DROP_DEFAULT_PATCH 138
+#define CONFIG_SEQ_DROP_DEFAULT_PATCH SEQ_PATCH_PULSE
 #endif
 #ifndef CONFIG_SEQ_DROP_SUB_DEFAULT_PATCH
-#define CONFIG_SEQ_DROP_SUB_DEFAULT_PATCH 142
+#define CONFIG_SEQ_DROP_SUB_DEFAULT_PATCH SEQ_PATCH_SINE
 #endif
 #ifndef CONFIG_SEQ_DROP_DEFAULT_ROOT_NOTE
 #define CONFIG_SEQ_DROP_DEFAULT_ROOT_NOTE 48
@@ -85,7 +85,7 @@ typedef struct {
     arp_quant_mode_t quant_mode;
     drop_seg_t segs[DROP_SEG_MAX];
     uint8_t    seg_count;
-    drop_jackpot_t jackpot;
+    uint8_t    jackpot[DROP_JACKPOT_BYTES];
     drop_voice_t voice[DROP_VOICE_COUNT];
 } drop_state_t;
 
@@ -273,7 +273,7 @@ static void sim_step(drop_sim_t *s)
     uint32_t tick = s->tick;
     if (tick % spawn_interval() == 0) sim_spawn(s);
 
-    bool jp_on = s_drop.jackpot.enabled;
+    bool jp_on = drop_jackpot_count() != 0;
     for (uint8_t i = 0; i < DROP_BALL_MAX; i++) {
         drop_ball_t *b = &s->balls[i];
         if (!b->alive) continue;
@@ -316,8 +316,7 @@ static void sim_step(drop_sim_t *s)
         if (jp_on) {
             uint8_t col = (uint8_t)((b->x >> DROP_Q) / DROP_CELL_W);
             uint8_t row = (uint8_t)((b->y < 0 ? 0 : b->y) >> DROP_Q) / DROP_CELL_H;
-            bool inside = row == s_drop.jackpot.row &&
-                          col >= s_drop.jackpot.col0 && col <= s_drop.jackpot.col1;
+            bool inside = drop_jackpot_at(col, row);
             if (inside && !b->in_jackpot && s->n_jackpots < SEQ_DROP_JACKPOT_MAX) {
                 int32_t sp = (b->vy < 0) ? -b->vy : b->vy;
                 s->jackpots[s->n_jackpots].tick  = (uint16_t)tick;
@@ -479,7 +478,7 @@ void drop_core_refresh(void)
     s_last_jackpots = 0;
 
     if (!s_drop.enabled || s_drop.solo_muted || s_drop.muted) return;
-    if (s_drop.seg_count == 0 && !s_drop.jackpot.enabled) return;
+    if (s_drop.seg_count == 0 && drop_jackpot_count() == 0) return;
 
     drop_sim_t *s = &s_sim_loop;
     sim_run_loop(s);
@@ -523,17 +522,20 @@ unsigned drop_core_dump(void)
 {
     unsigned n = 0;
     printf("DROP en=%u mute=%u rate=%u bars=%u oct=%u gate=%u seed=%08X%s root=%u sub=%u q=%u"
-           " patch=%u/%u segs=%u jp=%u(%u-%u,%u) loop=%u\n",
+           " patch=%u/%u segs=%u jpcells=%u loop=%u\n",
            (unsigned)s_drop.enabled, (unsigned)s_drop.muted, (unsigned)s_drop.rate,
            (unsigned)s_drop.loop_bars, (unsigned)s_drop.octaves, (unsigned)s_drop.gate_pct,
            (unsigned)s_drop.seed, s_drop.seed_frozen ? "*" : "",
            (unsigned)s_drop.root_note, (unsigned)s_drop.sub_root_note,
            (unsigned)s_drop.quant_mode, (unsigned)s_drop.voice[0].patch,
            (unsigned)s_drop.voice[1].patch, (unsigned)s_drop.seg_count,
-           (unsigned)s_drop.jackpot.enabled, (unsigned)s_drop.jackpot.col0,
-           (unsigned)s_drop.jackpot.col1, (unsigned)s_drop.jackpot.row,
-           (unsigned)drop_loop_ticks());
+           (unsigned)drop_jackpot_count(), (unsigned)drop_loop_ticks());
     n++;
+    for (uint8_t r = 0; r < DROP_ROWS; r++) {
+        for (uint8_t c = 0; c < DROP_COLS; c++) {
+            if (drop_jackpot_at(c, r)) { printf("  JPC c=%u r=%u\n", c, r); n++; }
+        }
+    }
     for (uint8_t i = 0; i < s_drop.seg_count; i++) {
         const drop_seg_t *g = &s_drop.segs[i];
         printf("  SEG%u c=%u r=%u a=%u t=%u ratio=%u\n", i, g->col, g->row, g->angle,
@@ -654,32 +656,58 @@ static bool drop_lfo_target_map(drop_which_t w, lfo_target_map_t *map)
 }
 #endif
 
-/* The authored LFOs on a shared LFO synth over the patch's target map; an
+/* `lfo` (NULL = none) on a shared LFO synth over the patch's target map; an
  * unmapped patch, a full bank or no shared bank leaves the voice without
  * one (the drop has no software stepper). */
-static void drop_apply_lfos(drop_which_t w)
+static void drop_apply_lfo(drop_which_t w, const seq_lfo_t *lfo)
 {
 #if CONFIG_SEQ_LFO_SHARED
-    const drop_voice_t *v = &s_drop.voice[w];
-    uint8_t synth = slot_of(w);
-    uint16_t bpm  = sequencer_core_get_bpm();
     lfo_target_map_t map;
-    if (!drop_lfo_target_map(w, &map)) {
+    if (drop_lfo_target_map(w, &map))
+        (void)lfo_bank_bind(slot_of(w), VOICE_LFO_SLOT_LFO1, &map, lfo,
+                            sequencer_core_get_bpm(), &s_lfo_ref[w]);
+    else
         lfo_bank_unbind(&s_lfo_ref[w]);
-        lfo_bank_unbind(&s_lfo2_ref[w]);
-        return;
-    }
-    bool lfo_on = v->vp.lfo_authored && v->vp.lfo.enabled;
-    (void)lfo_bank_bind(synth, VOICE_LFO_SLOT_LFO1, &map, lfo_on ? &v->vp.lfo : NULL,
-                        bpm, &s_lfo_ref[w]);
-    if (v->vp.lfo2_authored)
-        (void)lfo_bank_bind(synth, VOICE_LFO_SLOT_LFO2, &map, &v->vp.lfo2, bpm,
-                            &s_lfo2_ref[w]);
+#else
+    (void)w; (void)lfo;
+#endif
+}
+
+/* `lfo` (NULL = unwire) on the slot's mod slot 0 where the patch has a target
+ * map; drop LFO2's reference otherwise. */
+static void drop_wire_lfo2(drop_which_t w, const seq_lfo_t *lfo)
+{
+#if CONFIG_SEQ_LFO_SHARED
+    lfo_target_map_t map;
+    if (drop_lfo_target_map(w, &map))
+        (void)lfo_bank_bind(slot_of(w), VOICE_LFO_SLOT_LFO2, &map, lfo,
+                            sequencer_core_get_bpm(), &s_lfo2_ref[w]);
     else
         lfo_bank_unbind(&s_lfo2_ref[w]);
 #else
-    (void)w;
+    (void)w; (void)lfo;
 #endif
+}
+
+/* LFO2 by the slot-0 rule (arp_apply_lfo2): wired while open, else no send
+ * so a Juno/DX7 patch keeps its own LFO. */
+static void drop_apply_lfo2(drop_which_t w)
+{
+    if (s_drop.voice[w].vp.lfo2_authored) {
+        drop_wire_lfo2(w, &s_drop.voice[w].vp.lfo2);
+        return;
+    }
+#if CONFIG_SEQ_LFO_SHARED
+    lfo_bank_unbind(&s_lfo2_ref[w]);
+#endif
+}
+
+static void drop_apply_lfos(drop_which_t w)
+{
+    const drop_voice_t *v = &s_drop.voice[w];
+    bool lfo_on = v->vp.lfo_authored && v->vp.lfo.enabled;
+    drop_apply_lfo(w, lfo_on ? &v->vp.lfo : NULL);
+    drop_apply_lfo2(w);
 }
 
 static void drop_push_portamento(drop_which_t w)
@@ -757,7 +785,6 @@ void drop_core_init(void)
     s_drop.sub_root_note = (s_drop.root_note >= 12u) ? (uint8_t)(s_drop.root_note - 12u)
                                                      : s_drop.root_note;
     s_drop.quant_mode    = ARP_QUANT_CHORD;
-    s_drop.jackpot = (drop_jackpot_t){ .col0 = 7, .col1 = 8, .row = DROP_ROWS - 1, .enabled = false };
     drop_voice_defaults(&s_drop.voice[DROP_VOICE_MAIN], CONFIG_SEQ_DROP_DEFAULT_PATCH);
     drop_voice_defaults(&s_drop.voice[DROP_VOICE_SUB], CONFIG_SEQ_DROP_SUB_DEFAULT_PATCH);
 
@@ -939,20 +966,42 @@ bool drop_remove_seg(uint8_t col, uint8_t row)
     return true;
 }
 
-void drop_get_jackpot(drop_jackpot_t *out)
+bool drop_jackpot_at(uint8_t col, uint8_t row)
 {
-    if (out) *out = s_drop.jackpot;
+    if (col >= DROP_COLS || row >= DROP_ROWS) return false;
+    unsigned bit = (unsigned)row * DROP_COLS + col;
+    return (s_drop.jackpot[bit >> 3] >> (bit & 7u)) & 1u;
 }
 
-void drop_set_jackpot(const drop_jackpot_t *jp)
+void drop_jackpot_set(uint8_t col, uint8_t row, bool on)
 {
-    if (!jp) return;
-    drop_jackpot_t v = *jp;
-    v.col0 = SEQ_CLAMP_U8(v.col0, 0, DROP_COLS - 1);
-    v.col1 = SEQ_CLAMP_U8(v.col1, v.col0, DROP_COLS - 1);
-    v.row  = SEQ_CLAMP_U8(v.row, 0, DROP_ROWS - 1);
-    if (memcmp(&s_drop.jackpot, &v, sizeof(v)) == 0) return;
-    s_drop.jackpot = v;
+    if (col >= DROP_COLS || row >= DROP_ROWS) return;
+    if (drop_jackpot_at(col, row) == on) return;
+    unsigned bit = (unsigned)row * DROP_COLS + col;
+    if (on) s_drop.jackpot[bit >> 3] |=  (uint8_t)(1u << (bit & 7u));
+    else    s_drop.jackpot[bit >> 3] &= (uint8_t)~(1u << (bit & 7u));
+    drop_mark_dirty();
+}
+
+uint8_t drop_jackpot_count(void)
+{
+    uint8_t n = 0;
+    for (uint8_t i = 0; i < DROP_JACKPOT_BYTES; i++) {
+        uint8_t b = s_drop.jackpot[i];
+        while (b) { n++; b &= (uint8_t)(b - 1u); }
+    }
+    return n;
+}
+
+void drop_jackpot_get_map(uint8_t out[DROP_JACKPOT_BYTES])
+{
+    if (out) memcpy(out, s_drop.jackpot, DROP_JACKPOT_BYTES);
+}
+
+void drop_jackpot_set_map(const uint8_t map[DROP_JACKPOT_BYTES])
+{
+    if (!map || memcmp(s_drop.jackpot, map, DROP_JACKPOT_BYTES) == 0) return;
+    memcpy(s_drop.jackpot, map, DROP_JACKPOT_BYTES);
     drop_mark_dirty();
 }
 
@@ -1031,6 +1080,180 @@ static voice_unison_t drop_unison_clamp(const voice_unison_t *u)
     v.blend_pct    = SEQ_CLAMP_U8(v.blend_pct, 0u, 100u);
     v.layout       = 0u;
     return v;
+}
+
+void drop_set_unison(drop_which_t w, const voice_unison_t *u)
+{
+    if (!which_ok(w) || !u) return;
+    uint8_t was = drop_unison_copies(w);
+    s_drop.voice[w].unison = drop_unison_clamp(u);
+    uint8_t now = drop_unison_copies(w);
+    if (now != was) {
+        drop_rebuild(w);
+    } else if (now > 1u) {
+        voice_unison_t eff = drop_unison_eff(w);
+        voice_push_unison_live(slot_of(w), &eff, 1.0f);
+    }
+}
+
+/* ── The shared editors, per synth (contracts in drop_core.h) ── */
+
+static void drop_env_clamp(seq_env_t *e)
+{
+    e->attack_ms  = SEQ_CLAMP_U32(e->attack_ms, VOICE_ENV_ATTACK_MIN_MS, VOICE_ENV_TIME_MAX_MS);
+    e->release_ms = SEQ_CLAMP_U32(e->release_ms, VOICE_ENV_RELEASE_MIN_MS, VOICE_ENV_TIME_MAX_MS);
+}
+
+void drop_get_envelope(drop_which_t w, seq_env_t *out)
+{
+    if (out && which_ok(w)) *out = s_drop.voice[w].vp.env;
+}
+
+void drop_set_envelope(drop_which_t w, const seq_env_t *env)
+{
+    if (!which_ok(w) || !env) return;
+    drop_voice_t *v = &s_drop.voice[w];
+    v->vp.env = *env;
+    drop_env_clamp(&v->vp.env);
+    v->vp.env_authored = true;
+    sequencer_core_push_envelope_osc(slot_of(w), sequencer_core_patch_voice_osc(v->patch),
+                                     &v->vp.env);
+}
+
+void drop_preview_envelope(drop_which_t w, const seq_env_t *env)
+{
+    if (!which_ok(w) || !env) return;
+    sequencer_core_push_envelope_osc(slot_of(w),
+                                     sequencer_core_patch_voice_osc(s_drop.voice[w].patch), env);
+}
+
+void drop_get_envelope2(drop_which_t w, seq_env_t *out)
+{
+    if (out && which_ok(w)) *out = s_drop.voice[w].vp.env1;
+}
+
+void drop_set_envelope2(drop_which_t w, const seq_env_t *env)
+{
+    if (!which_ok(w) || !env) return;
+    drop_voice_t *v = &s_drop.voice[w];
+    v->vp.env1 = *env;
+    drop_env_clamp(&v->vp.env1);
+    v->vp.env1_authored = true;
+    sequencer_core_push_envelope_eg1(slot_of(w), 0, &v->vp.env1);
+}
+
+void drop_preview_envelope2(drop_which_t w, const seq_env_t *env)
+{
+    if (!which_ok(w) || !env) return;
+    sequencer_core_push_envelope_eg1(slot_of(w), 0, env);
+}
+
+void drop_get_filter(drop_which_t w, seq_filter_t *out)
+{
+    if (out && which_ok(w)) *out = s_drop.voice[w].vp.filter;
+}
+
+void drop_set_filter(drop_which_t w, const seq_filter_t *f)
+{
+    if (!which_ok(w) || !f) return;
+    s_drop.voice[w].vp.filter = *f;
+    s_drop.voice[w].vp.filter_authored = true;
+    drop_apply_filter(w, &s_drop.voice[w].vp.filter);
+}
+
+void drop_preview_filter(drop_which_t w, const seq_filter_t *f)
+{
+    if (!which_ok(w) || !f) return;
+    drop_apply_filter(w, f);
+}
+
+void drop_get_dist(drop_which_t w, seq_dist_t *out)
+{
+    if (out && which_ok(w)) *out = s_drop.voice[w].vp.dist;
+}
+
+void drop_set_dist(drop_which_t w, const seq_dist_t *d)
+{
+    if (!which_ok(w) || !d) return;
+    s_drop.voice[w].vp.dist = *d;
+    voice_dist_clamp(&s_drop.voice[w].vp.dist);
+    s_drop.voice[w].vp.dist_authored = true;
+    drop_push_dist(w, &s_drop.voice[w].vp.dist);
+}
+
+void drop_preview_dist(drop_which_t w, const seq_dist_t *d)
+{
+    if (!which_ok(w) || !d) return;
+    drop_push_dist(w, d);
+}
+
+void drop_reapply_dist(drop_which_t w)
+{
+    if (!which_ok(w)) return;
+    if (s_drop.voice[w].vp.dist_authored) drop_push_dist(w, &s_drop.voice[w].vp.dist);
+}
+
+void drop_get_lfo(drop_which_t w, seq_lfo_t *out)
+{
+    if (out && which_ok(w)) *out = s_drop.voice[w].vp.lfo;
+}
+
+void drop_set_lfo(drop_which_t w, const seq_lfo_t *lfo)
+{
+    if (!which_ok(w) || !lfo) return;
+    drop_voice_t *v = &s_drop.voice[w];
+    v->vp.lfo = *lfo;
+    v->vp.lfo_authored = true;
+    /* One LFO per target (seq_model.h): LFO1 keeps a shared one. */
+    uint8_t shared = v->vp.lfo2.targets & v->vp.lfo.targets;
+    v->vp.lfo2.targets &= (uint8_t)~shared;
+    if (shared) drop_apply_lfo2(w);
+    drop_apply_lfo(w, lfo->enabled ? &v->vp.lfo : NULL);
+}
+
+bool drop_lfo_bound(drop_which_t w)
+{
+#if CONFIG_SEQ_LFO_SHARED
+    return which_ok(w) && s_lfo_ref[w] != LFO_BANK_NONE;
+#else
+    (void)w;
+    return false;
+#endif
+}
+
+bool drop_get_lfo2(drop_which_t w, seq_lfo_t *out)
+{
+    if (!which_ok(w)) return false;
+    if (out) *out = s_drop.voice[w].vp.lfo2;
+    return s_drop.voice[w].vp.lfo2_authored;
+}
+
+void drop_set_lfo2(drop_which_t w, const seq_lfo_t *lfo, bool open)
+{
+    if (!which_ok(w) || !lfo) return;
+    drop_voice_t *v = &s_drop.voice[w];
+    bool collapse = v->vp.lfo2_authored && !open;
+    v->vp.lfo2 = *lfo;
+    v->vp.lfo2.targets &= (uint8_t)~v->vp.lfo.targets;
+    if (collapse && lfo_targets_patch_owns_slot0(v->patch)) {
+        /* Only a patch re-apply brings the patch's own LFO back. */
+        v->vp.lfo2_authored = false;
+        drop_rebuild(w);
+        return;
+    }
+    if (collapse) drop_wire_lfo2(w, NULL);
+    v->vp.lfo2_authored = open;
+    drop_apply_lfo2(w);
+}
+
+bool drop_lfo2_bound(drop_which_t w)
+{
+#if CONFIG_SEQ_LFO_SHARED
+    return which_ok(w) && s_lfo2_ref[w] != LFO_BANK_NONE;
+#else
+    (void)w;
+    return false;
+#endif
 }
 
 void drop_set_voice(drop_which_t w, uint16_t patch, uint16_t portamento_ms,

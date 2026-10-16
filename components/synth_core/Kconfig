@@ -418,19 +418,18 @@ config SEQ_DROP_DEFAULT_ENABLED
 config SEQ_DROP_DEFAULT_PATCH
 	int "Ball drop default patch number (DROP synth)"
 	range 0 266
-	default 138
+	default 260
 	help
 		Patch for the impact synth (0..127 Juno, 128..255 DX7, 256 built-in
-		piano, 257..263 raw waves, 264..266 bass presets). 138 = DX7
-		E.Piano 1.
+		piano, 257..263 raw waves, 264..266 bass presets). 260 = PULSE.
 
 config SEQ_DROP_SUB_DEFAULT_PATCH
 	int "Ball drop default patch number (SUB synth)"
 	range 0 266
-	default 142
+	default 257
 	help
 		Patch for the jackpot synth, full melodic catalog as the DROP synth
-		(264..266 the multi-osc bass presets). 142 = DX7 Bass 1.
+		(264..266 the multi-osc bass presets). 257 = SINE.
 
 config SEQ_DROP_DEFAULT_ROOT_NOTE
 	int "Ball drop default root MIDI note"

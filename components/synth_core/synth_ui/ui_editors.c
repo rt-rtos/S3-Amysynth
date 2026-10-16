@@ -2,6 +2,7 @@
 #include "synth_ui.h"
 #include "sequencer_core.h"
 #include "arp_core.h"
+#include "drop_core.h"
 #include "custompatches/drone_core.h"
 #include "custompatches/drone_std_core.h"
 #if CONFIG_SYNTH_WIRELESS
@@ -48,6 +49,10 @@ typedef enum {
     GRAPH_TGT_MELODIC   = 0,
     GRAPH_TGT_DRONE     = 1,
     GRAPH_TGT_ARP       = 2,
+    /* The ball drop's focused synth (drop_get_focus()): the arp's shape with
+     * the synth picked at every call; the screen's input is blocked under
+     * the editors, so the focus holds while one is open. */
+    GRAPH_TGT_DROP      = 5,
     GRAPH_TGT_DRONE_STD = 3,
     /* BLE MIDI live-play voice (slot 11). Structurally the arp's twin - one
      * voice, no layer/track scope - so it follows the arp branch everywhere. */
@@ -406,6 +411,9 @@ static bool graph_read_target_env_idx(seq_env_t *env, uint8_t eg_index)
             case GRAPH_TGT_ARP:
                 arp_get_envelope2(env);
                 return true;
+            case GRAPH_TGT_DROP:
+                drop_get_envelope2(drop_get_focus(), env);
+                return true;
 #if CONFIG_SYNTH_WIRELESS
             case GRAPH_TGT_LIVE:
                 live_play_get_envelope2(env);
@@ -426,6 +434,9 @@ static bool graph_read_target_env_idx(seq_env_t *env, uint8_t eg_index)
             return true;
         case GRAPH_TGT_ARP:
             arp_get_envelope(env);
+            return true;
+        case GRAPH_TGT_DROP:
+            drop_get_envelope(drop_get_focus(), env);
             return true;
 #if CONFIG_SYNTH_WIRELESS
         case GRAPH_TGT_LIVE:
@@ -453,6 +464,9 @@ static void graph_write_target_env_idx(const seq_env_t *env, uint8_t eg_index)
             case GRAPH_TGT_ARP:
                 arp_set_envelope2(env);
                 break;
+            case GRAPH_TGT_DROP:
+                drop_set_envelope2(drop_get_focus(), env);
+                break;
 #if CONFIG_SYNTH_WIRELESS
             case GRAPH_TGT_LIVE:
                 live_play_set_envelope2(env);
@@ -474,6 +488,9 @@ static void graph_write_target_env_idx(const seq_env_t *env, uint8_t eg_index)
             break;
         case GRAPH_TGT_ARP:
             arp_set_envelope(env);
+            break;
+        case GRAPH_TGT_DROP:
+            drop_set_envelope(drop_get_focus(), env);
             break;
 #if CONFIG_SYNTH_WIRELESS
         case GRAPH_TGT_LIVE:
@@ -511,6 +528,8 @@ void synth_ui_graph_open_envelope(void)
         s_graph_target = GRAPH_TGT_DRONE_STD;
     } else if (seq_state.ui_mode == UI_MODE_ARP) {
         s_graph_target = GRAPH_TGT_ARP;
+    } else if (seq_state.ui_mode == UI_MODE_DROP) {
+        s_graph_target = GRAPH_TGT_DROP;
     } else {
         s_graph_target = GRAPH_TGT_MELODIC;
     }
@@ -552,6 +571,9 @@ void synth_ui_graph_open_envelope(void)
         case GRAPH_TGT_ARP:
             s_graph_amp_edit = arp_get_amp_scale();
             break;
+        case GRAPH_TGT_DROP:
+            s_graph_amp_edit = drop_get_amp_scale(drop_get_focus());
+            break;
 #if CONFIG_SYNTH_WIRELESS
         case GRAPH_TGT_LIVE:
             s_graph_amp_edit = live_play_get_amp_scale();
@@ -586,6 +608,10 @@ void synth_ui_graph_open_envelope(void)
     } else if (s_graph_target == GRAPH_TGT_ARP) {
         seq_filter_t f;
         arp_get_filter(&f);
+        memcpy(s_graph_eg_edit, f.eg_depth, sizeof(s_graph_eg_edit));
+    } else if (s_graph_target == GRAPH_TGT_DROP) {
+        seq_filter_t f;
+        drop_get_filter(drop_get_focus(), &f);
         memcpy(s_graph_eg_edit, f.eg_depth, sizeof(s_graph_eg_edit));
     } else if (s_graph_target == GRAPH_TGT_DRONE) {
         seq_filter_t f;
@@ -671,6 +697,10 @@ static void graph_live_push_env(void)
             if (s_graph_eg_index == 1) arp_preview_envelope2(&env);
             else                       arp_preview_envelope(&env);
             break;
+        case GRAPH_TGT_DROP:
+            if (s_graph_eg_index == 1) drop_preview_envelope2(drop_get_focus(), &env);
+            else                       drop_preview_envelope(drop_get_focus(), &env);
+            break;
 #if CONFIG_SYNTH_WIRELESS
         case GRAPH_TGT_LIVE:
             if (s_graph_eg_index == 1) live_play_preview_envelope2(&env);
@@ -703,6 +733,14 @@ static void graph_live_push_eg_depths(void)
         arp_get_filter(&f);
         memcpy(f.eg_depth, s_graph_eg_edit, sizeof(f.eg_depth));
         arp_preview_filter(&f);
+        s_graph_live_fenv = true;
+        return;
+    }
+    if (s_graph_target == GRAPH_TGT_DROP) {
+        seq_filter_t f;
+        drop_get_filter(drop_get_focus(), &f);
+        memcpy(f.eg_depth, s_graph_eg_edit, sizeof(f.eg_depth));
+        drop_preview_filter(drop_get_focus(), &f);
         s_graph_live_fenv = true;
         return;
     }
@@ -750,6 +788,7 @@ static void graph_amp_live_set(float v)
         case GRAPH_TGT_DRONE:     drone_set_amp_trim(v);     break;
         case GRAPH_TGT_DRONE_STD: drone_std_set_amp_trim(v); break;
         case GRAPH_TGT_ARP:       arp_set_amp_scale(v);      break;
+        case GRAPH_TGT_DROP:      drop_set_amp_scale(drop_get_focus(), v); break;
 #if CONFIG_SYNTH_WIRELESS
         case GRAPH_TGT_LIVE:      live_play_set_amp_scale(v); break;
 #endif
@@ -794,7 +833,8 @@ static bool graph_swing_available(void)
  * keep it. */
 static bool graph_amp_available(void)
 {
-    return s_graph_target != GRAPH_TGT_MELODIC && s_graph_target != GRAPH_TGT_ARP;
+    return s_graph_target != GRAPH_TGT_MELODIC && s_graph_target != GRAPH_TGT_ARP &&
+           s_graph_target != GRAPH_TGT_DROP;
 }
 
 /* Rows carrying the envelope routing matrix: melodic and drum layer rows, the
@@ -806,6 +846,7 @@ static bool graph_eg_targets_available(void)
     if (s_graph_target == GRAPH_TGT_LIVE) return true;
 #endif
     return s_graph_target == GRAPH_TGT_MELODIC || s_graph_target == GRAPH_TGT_ARP ||
+           s_graph_target == GRAPH_TGT_DROP ||
            s_graph_target == GRAPH_TGT_DRONE || s_graph_target == GRAPH_TGT_DRONE_STD;
 }
 
@@ -819,6 +860,7 @@ static bool graph_eg_scan_available(void)
     else
 #endif
     if (s_graph_target == GRAPH_TGT_ARP) patch = arp_get_patch();
+    else if (s_graph_target == GRAPH_TGT_DROP) patch = drop_get_patch(drop_get_focus());
     else if (s_graph_target == GRAPH_TGT_DRONE) patch = drone_get_patch();
     else if (s_graph_target == GRAPH_TGT_DRONE_STD) patch = drone_std_get_patch();
     else if (s_graph_target == GRAPH_TGT_MELODIC)
@@ -920,6 +962,11 @@ static void graph_live_cancel_restore(void)
             arp_get_filter(&f);
             arp_preview_filter(&f);
         }
+        if (s_graph_live_fenv && s_graph_target == GRAPH_TGT_DROP) {
+            seq_filter_t f;
+            drop_get_filter(drop_get_focus(), &f);
+            drop_preview_filter(drop_get_focus(), &f);
+        }
         if (s_graph_live_fenv && s_graph_target == GRAPH_TGT_DRONE) {
             seq_filter_t f;
             drone_get_filter(&f);
@@ -942,6 +989,9 @@ static void graph_live_cancel_restore(void)
             if (s_graph_target == GRAPH_TGT_ARP) {
                 if (s_graph_eg_index == 1) arp_preview_envelope2(&env);
                 else                       arp_preview_envelope(&env);
+            } else if (s_graph_target == GRAPH_TGT_DROP) {
+                if (s_graph_eg_index == 1) drop_preview_envelope2(drop_get_focus(), &env);
+                else                       drop_preview_envelope(drop_get_focus(), &env);
 #if CONFIG_SYNTH_WIRELESS
             } else if (s_graph_target == GRAPH_TGT_LIVE) {
                 if (s_graph_eg_index == 1) live_play_preview_envelope2(&env);
@@ -982,6 +1032,9 @@ static void graph_commit_to_env(void)
         case GRAPH_TGT_ARP:
             arp_set_amp_scale(s_graph_amp_edit);
             break;
+        case GRAPH_TGT_DROP:
+            drop_set_amp_scale(drop_get_focus(), s_graph_amp_edit);
+            break;
 #if CONFIG_SYNTH_WIRELESS
         case GRAPH_TGT_LIVE:
             live_play_set_amp_scale(s_graph_amp_edit);
@@ -1009,6 +1062,13 @@ static void graph_commit_to_env(void)
         arp_get_filter(&f);
         memcpy(f.eg_depth, s_graph_eg_edit, sizeof(f.eg_depth));
         arp_set_filter(&f);
+        s_graph_eg_dirty = false;
+    }
+    if (s_graph_eg_dirty && s_graph_target == GRAPH_TGT_DROP) {
+        seq_filter_t f;
+        drop_get_filter(drop_get_focus(), &f);
+        memcpy(f.eg_depth, s_graph_eg_edit, sizeof(f.eg_depth));
+        drop_set_filter(drop_get_focus(), &f);
         s_graph_eg_dirty = false;
     }
     if (s_graph_eg_dirty && s_graph_target == GRAPH_TGT_DRONE) {
@@ -1524,6 +1584,10 @@ static bool filter_tgt_is_arp(void)
 {
     return !filter_tgt_is_live() && seq_state.ui_mode == UI_MODE_ARP;
 }
+static bool filter_tgt_is_drop(void)
+{
+    return !filter_tgt_is_live() && seq_state.ui_mode == UI_MODE_DROP;
+}
 
 /* True when the target plays a feedback wave (KS): the editor then exposes the
  * extra FB cursor (slot 2) for string feedback 0..1 and the DT cursor (slot 3)
@@ -1539,6 +1603,9 @@ static bool filter_target_is_feedback(void)
 #endif
     if (filter_tgt_is_arp()) {
         return arp_get_patch() == SEQ_PATCH_KS;
+    }
+    if (filter_tgt_is_drop()) {
+        return drop_get_patch(drop_get_focus()) == SEQ_PATCH_KS;
     }
     if (filter_tgt_is_drone() || filter_tgt_is_drone_std()) {
         return false;
@@ -1587,6 +1654,8 @@ static void filter_scope_bind_target(void)
 #endif
     } else if (filter_tgt_is_arp()) {
         slot = SEQ_ARP_SYNTH;
+    } else if (filter_tgt_is_drop()) {
+        slot = (drop_get_focus() == DROP_VOICE_SUB) ? DROP_SUB_SYNTH : DROP_SYNTH;
     } else if (filter_tgt_is_drone()) {
         slot = DRONE_SYNTH_MAIN;
     } else if (filter_tgt_is_drone_std()) {
@@ -1752,6 +1821,11 @@ static void filter_load_from_target(void)
          * one round-trips. */
         sequencer_core_filter_seed_default(&f);
         snprintf(s_fgraph.label, sizeof(s_fgraph.label), "ARP");
+    } else if (filter_tgt_is_drop()) {
+        drop_get_filter(drop_get_focus(), &f);
+        sequencer_core_filter_seed_default(&f);
+        snprintf(s_fgraph.label, sizeof(s_fgraph.label), "%s",
+                 drop_get_focus() == DROP_VOICE_SUB ? "SUB" : "DROP");
     } else {
         uint8_t li = seq_state.active_layer_idx;
         uint8_t tr = seq_state.selected_track;
@@ -1783,6 +1857,8 @@ static void filter_live_push(void)
         drone_std_preview_filter(&s_filter_edit);
     } else if (filter_tgt_is_arp()) {
         arp_preview_filter(&s_filter_edit);
+    } else if (filter_tgt_is_drop()) {
+        drop_preview_filter(drop_get_focus(), &s_filter_edit);
 #if CONFIG_SYNTH_WIRELESS
     } else if (filter_tgt_is_live()) {
         live_play_preview_filter(&s_filter_edit);
@@ -1821,6 +1897,12 @@ static void filter_live_cancel_restore(void)
         seq_filter_t f;
         arp_get_filter(&f);
         arp_preview_filter(&f);
+        return;
+    }
+    if (filter_tgt_is_drop()) {
+        seq_filter_t f;
+        drop_get_filter(drop_get_focus(), &f);
+        drop_preview_filter(drop_get_focus(), &f);
         return;
     }
 #if CONFIG_SYNTH_WIRELESS
@@ -2031,6 +2113,11 @@ bool synth_ui_filter_close_commit(void)
         ESP_LOGI(TAG, "filter commit arp: type%u %.0fHz Q%.2f",
                  s_filter_edit.filter_type,
                  (double)s_filter_edit.cutoff_hz, (double)s_filter_edit.resonance);
+    } else if (filter_tgt_is_drop()) {
+        drop_set_filter(drop_get_focus(), &s_filter_edit);
+        ESP_LOGI(TAG, "filter commit drop %u: type%u %.0fHz Q%.2f",
+                 (unsigned)drop_get_focus(), s_filter_edit.filter_type,
+                 (double)s_filter_edit.cutoff_hz, (double)s_filter_edit.resonance);
     } else if (s_filter_dirty) {
         /* Untouched: leave the group's authority where it was (the patch's,
          * or the block's earlier commit). */
@@ -2077,8 +2164,8 @@ static bool lfo_surface_is_track(void)
 #if CONFIG_SYNTH_WIRELESS
     if (s_lfo_live_target) return false;
 #endif
-    return seq_state.ui_mode != UI_MODE_ARP && seq_state.ui_mode != UI_MODE_DRONE &&
-           seq_state.ui_mode != UI_MODE_DRONE_STD;
+    return seq_state.ui_mode != UI_MODE_ARP && seq_state.ui_mode != UI_MODE_DROP &&
+           seq_state.ui_mode != UI_MODE_DRONE && seq_state.ui_mode != UI_MODE_DRONE_STD;
 }
 
 /* The patch the edited surface plays. */
@@ -2088,6 +2175,7 @@ static uint16_t lfo_surface_patch(void)
     if (s_lfo_live_target) return live_play_get_patch();
 #endif
     if (seq_state.ui_mode == UI_MODE_ARP)       return arp_get_patch();
+    if (seq_state.ui_mode == UI_MODE_DROP)      return drop_get_patch(drop_get_focus());
     if (seq_state.ui_mode == UI_MODE_DRONE)     return drone_get_patch();
     if (seq_state.ui_mode == UI_MODE_DRONE_STD) return drone_std_get_patch();
     return sequencer_core_get_melodic_track_patch(s_lfo_view.layer_idx,
@@ -2117,6 +2205,7 @@ static bool lfo2_bound(void)
     if (s_lfo_live_target) return live_play_lfo2_bound();
 #endif
     if (seq_state.ui_mode == UI_MODE_ARP)       return arp_lfo2_bound();
+    if (seq_state.ui_mode == UI_MODE_DROP)      return drop_lfo2_bound(drop_get_focus());
     if (seq_state.ui_mode == UI_MODE_DRONE)     return drone_lfo2_bound();
     if (seq_state.ui_mode == UI_MODE_DRONE_STD) return drone_std_lfo2_bound();
     return sequencer_core_track_lfo2_bound(s_lfo_view.layer_idx, s_lfo_view.track_idx);
@@ -2143,6 +2232,8 @@ uint32_t lfo_view_signature(void)
 #if CONFIG_SEQ_LFO_SHARED
     if (seq_state.ui_mode == UI_MODE_ARP)
         native = arp_lfo_bound();
+    else if (seq_state.ui_mode == UI_MODE_DROP)
+        native = drop_lfo_bound(drop_get_focus());
     else if (seq_state.ui_mode == UI_MODE_DRONE)
         native = drone_lfo_bound();
     else if (seq_state.ui_mode == UI_MODE_DRONE_STD)
@@ -2154,6 +2245,8 @@ uint32_t lfo_view_signature(void)
     if (seq_state.ui_mode == UI_MODE_ARP)
         /* Same predicate as the arp's own LFO routing (arp_rebuild). */
         native = sequencer_core_lfo_native_layout(arp_get_patch(), NULL, NULL);
+    else if (seq_state.ui_mode == UI_MODE_DROP)
+        native = false;   /* the drop has no native carriers */
     else if (seq_state.ui_mode == UI_MODE_DRONE)
         native = sequencer_core_lfo_native_layout(drone_get_patch(), NULL, NULL);
     else if (seq_state.ui_mode == UI_MODE_DRONE_STD)
@@ -2263,6 +2356,9 @@ void synth_ui_lfo_open(void)
     if (seq_state.ui_mode == UI_MODE_ARP) {
         arp_get_lfo(&existing);
         lfo2_open = arp_get_lfo2(&lfo2);
+    } else if (seq_state.ui_mode == UI_MODE_DROP) {
+        drop_get_lfo(drop_get_focus(), &existing);
+        lfo2_open = drop_get_lfo2(drop_get_focus(), &lfo2);
     } else if (seq_state.ui_mode == UI_MODE_DRONE) {
         drone_get_lfo(&existing);
         lfo2_open = drone_get_lfo2(&lfo2);
@@ -2283,6 +2379,8 @@ void synth_ui_lfo_open(void)
 #endif
     if (seq_state.ui_mode == UI_MODE_ARP)
         arp_get_filter(&flt);
+    else if (seq_state.ui_mode == UI_MODE_DROP)
+        drop_get_filter(drop_get_focus(), &flt);
     else if (seq_state.ui_mode == UI_MODE_DRONE)
         drone_get_filter(&flt);
     else if (seq_state.ui_mode == UI_MODE_DRONE_STD)
@@ -2302,6 +2400,8 @@ void synth_ui_lfo_open(void)
     s_lfo_view.layer_idx    = li;
     s_lfo_view.track_idx    = tr;
     s_lfo_view.target_label = (seq_state.ui_mode == UI_MODE_ARP)       ? "ARP"
+                            : (seq_state.ui_mode == UI_MODE_DROP)
+                                  ? (drop_get_focus() == DROP_VOICE_SUB ? "SUB" : "DROP")
                             : (seq_state.ui_mode == UI_MODE_DRONE)     ? "STUTR"
                             : (seq_state.ui_mode == UI_MODE_DRONE_STD) ? "DRONE"
                             : NULL;
@@ -2361,6 +2461,9 @@ static void lfo_store(uint8_t idx, const seq_lfo_t *l, bool open)
 #endif
     if (seq_state.ui_mode == UI_MODE_ARP) {
         if (idx) arp_set_lfo2(l, open); else arp_set_lfo(l);
+    } else if (seq_state.ui_mode == UI_MODE_DROP) {
+        if (idx) drop_set_lfo2(drop_get_focus(), l, open);
+        else     drop_set_lfo(drop_get_focus(), l);
     } else if (seq_state.ui_mode == UI_MODE_DRONE) {
         if (idx) drone_set_lfo2(l, open); else drone_set_lfo(l);
     } else if (seq_state.ui_mode == UI_MODE_DRONE_STD) {
@@ -2621,6 +2724,8 @@ void synth_ui_dist_open(void)
 #endif
     if (seq_state.ui_mode == UI_MODE_ARP)
         arp_get_dist(&existing);
+    else if (seq_state.ui_mode == UI_MODE_DROP)
+        drop_get_dist(drop_get_focus(), &existing);
     else if (seq_state.ui_mode == UI_MODE_DRONE)
         drone_get_dist(&existing);
     else if (seq_state.ui_mode == UI_MODE_DRONE_STD)
@@ -2633,6 +2738,8 @@ void synth_ui_dist_open(void)
     s_dist_view.layer_idx    = li;
     s_dist_view.track_idx    = tr;
     s_dist_view.target_label = (seq_state.ui_mode == UI_MODE_ARP)       ? "ARP"
+                             : (seq_state.ui_mode == UI_MODE_DROP)
+                                   ? (drop_get_focus() == DROP_VOICE_SUB ? "SUB" : "DROP")
                              : (seq_state.ui_mode == UI_MODE_DRONE)     ? "STUTR"
                              : (seq_state.ui_mode == UI_MODE_DRONE_STD) ? "DRONE"
                              : NULL;
@@ -2659,6 +2766,8 @@ static void dist_live_push_preview(void)
 #endif
     if (seq_state.ui_mode == UI_MODE_ARP)
         arp_preview_dist(&s_dist_view.dist);
+    else if (seq_state.ui_mode == UI_MODE_DROP)
+        drop_preview_dist(drop_get_focus(), &s_dist_view.dist);
     else if (seq_state.ui_mode == UI_MODE_DRONE)
         drone_preview_dist(&s_dist_view.dist);
     else if (seq_state.ui_mode == UI_MODE_DRONE_STD)
@@ -2677,6 +2786,8 @@ static void dist_preview_cancel_restore(void)
 #endif
     if (seq_state.ui_mode == UI_MODE_ARP)
         arp_reapply_dist();
+    else if (seq_state.ui_mode == UI_MODE_DROP)
+        drop_reapply_dist(drop_get_focus());
     else if (seq_state.ui_mode == UI_MODE_DRONE)
         drone_reapply_dist();
     else if (seq_state.ui_mode == UI_MODE_DRONE_STD)
@@ -2759,6 +2870,8 @@ bool synth_ui_dist_close_commit(void)
 #endif
     if (seq_state.ui_mode == UI_MODE_ARP) {
         arp_set_dist(&s_dist_view.dist);
+    } else if (seq_state.ui_mode == UI_MODE_DROP) {
+        drop_set_dist(drop_get_focus(), &s_dist_view.dist);
     } else if (seq_state.ui_mode == UI_MODE_DRONE) {
         drone_set_dist(&s_dist_view.dist);
     } else if (seq_state.ui_mode == UI_MODE_DRONE_STD) {
@@ -2794,8 +2907,8 @@ static editor_id_t editor_open_melodic(void)
 {
     /* The live voice (Wireless page) has no track scope. */
     if (synth_ui_wireless_page_is_open()) return EDITOR_NONE;
-    if (seq_state.ui_mode == UI_MODE_ARP || seq_state.ui_mode == UI_MODE_DRONE ||
-        seq_state.ui_mode == UI_MODE_DRONE_STD)
+    if (seq_state.ui_mode == UI_MODE_ARP || seq_state.ui_mode == UI_MODE_DROP ||
+        seq_state.ui_mode == UI_MODE_DRONE || seq_state.ui_mode == UI_MODE_DRONE_STD)
         return EDITOR_NONE;
     if (graph_popup_is_active(&s_graph_popup))
         return (s_graph_target == GRAPH_TGT_MELODIC) ? EDITOR_GRAPH : EDITOR_NONE;
@@ -2993,6 +3106,9 @@ static void graph_build_view(env_view_t *v)
     const char *eg_tag = (s_graph_eg_index == 1) ? "EG1" : "EG0";
     if (s_graph_target == GRAPH_TGT_ARP) {
         snprintf(v->label, sizeof(v->label), "ARP %s", eg_tag);
+    } else if (s_graph_target == GRAPH_TGT_DROP) {
+        snprintf(v->label, sizeof(v->label), "%s %s",
+                 drop_get_focus() == DROP_VOICE_SUB ? "SUB" : "DROP", eg_tag);
     } else if (s_graph_target == GRAPH_TGT_DRONE) {
         snprintf(v->label, sizeof(v->label), "STUTR %s", eg_tag);
     } else if (s_graph_target == GRAPH_TGT_DRONE_STD) {

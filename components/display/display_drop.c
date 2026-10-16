@@ -105,20 +105,16 @@ void display_drop_draw_frame(u8g2_t *u8g2, const drop_view_t *view)
         u8g2_DrawLine(u8g2, (u8g2_uint_t)(sx - 3), DROP_VIEW_Y0, (u8g2_uint_t)sx, DROP_VIEW_Y0 + 3);
         u8g2_DrawLine(u8g2, (u8g2_uint_t)(sx + 3), DROP_VIEW_Y0, (u8g2_uint_t)sx, DROP_VIEW_Y0 + 3);
     }
-    /* Jackpot: a hatched box over its cells. */
-    if (view->jackpot.enabled) {
-        int jx = cell_x(view->jackpot.col0);
-        int jy = cell_y(view->jackpot.row);
-        int jw = (view->jackpot.col1 - view->jackpot.col0 + 1) * DROP_VIEW_CELL_W;
-        u8g2_DrawFrame(u8g2, (u8g2_uint_t)jx, (u8g2_uint_t)jy, (u8g2_uint_t)jw, DROP_VIEW_CELL_H);
-        for (int d = 3; d < jw + DROP_VIEW_CELL_H; d += 3) {
-            int x0 = jx + d, y0 = jy;
-            int x1 = jx + d - (DROP_VIEW_CELL_H - 1), y1 = jy + DROP_VIEW_CELL_H - 1;
-            if (x0 > jx + jw - 1) { y0 += x0 - (jx + jw - 1); x0 = jx + jw - 1; }
-            if (x1 < jx) { y1 -= jx - x1; x1 = jx; }
-            if (y0 <= y1) u8g2_DrawLine(u8g2, (u8g2_uint_t)x0, (u8g2_uint_t)y0,
-                                        (u8g2_uint_t)x1, (u8g2_uint_t)y1);
-        }
+    /* Jackpot cells: a hatched box each. */
+    for (uint8_t cell = 0; cell < DROP_VIEW_CELLS; cell++) {
+        if (!((view->jackpot[cell >> 3] >> (cell & 7u)) & 1u)) continue;
+        int jx = cell_x((uint8_t)(cell % DROP_VIEW_COLS));
+        int jy = cell_y((uint8_t)(cell / DROP_VIEW_COLS));
+        u8g2_DrawFrame(u8g2, (u8g2_uint_t)jx, (u8g2_uint_t)jy, DROP_VIEW_CELL_W, DROP_VIEW_CELL_H);
+        u8g2_DrawLine(u8g2, (u8g2_uint_t)(jx + 2), (u8g2_uint_t)(jy + DROP_VIEW_CELL_H - 1),
+                      (u8g2_uint_t)(jx + DROP_VIEW_CELL_W - 1), (u8g2_uint_t)(jy + 1));
+        u8g2_DrawLine(u8g2, (u8g2_uint_t)jx, (u8g2_uint_t)(jy + 3),
+                      (u8g2_uint_t)(jx + 3), (u8g2_uint_t)jy);
     }
     for (uint8_t i = 0; i < view->seg_count && i < DROP_VIEW_SEGS; i++) {
         draw_segment(u8g2, &view->segs[i]);

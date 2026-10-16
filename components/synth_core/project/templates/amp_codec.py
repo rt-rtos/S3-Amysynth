@@ -20,7 +20,7 @@ NAME_LEN = 16
 
 TAG = {k: struct.unpack('<I', k.encode())[0] for k in ('GLOB', 'LAYR', 'ARP ', 'DROP', 'DRON', 'DSTD', 'PROG', 'CHRD',
                                                        'CLIP', 'MIXR', 'PGEN', 'WTCU', 'FMCU')}
-VER = {'GLOB': 6, 'LAYR': 26, 'ARP ': 17, 'DROP': 1, 'DRON': 7, 'DSTD': 4, 'PROG': 1, 'CHRD': 1,
+VER = {'GLOB': 6, 'LAYR': 26, 'ARP ': 17, 'DROP': 2, 'DRON': 7, 'DSTD': 4, 'PROG': 1, 'CHRD': 1,
        'CLIP': 2, 'MIXR': 2, 'PGEN': 1, 'WTCU': 2, 'FMCU': 1}
 
 MAX_LAYERS = 4
@@ -29,6 +29,7 @@ SEQ_MAX_STEPS = 32
 FX_BUS_COUNT = 4
 ARP_MAX_SLOTS = 8
 DROP_SEG_MAX = 16
+DROP_JACKPOT_BYTES = 16   # one bit per cell of the 16 x 8 field
 SEQ_CHORD_SLOTS = 8
 SEQ_CHORD_MAX_NOTES = 5
 CLIP_SLOT_COUNT = 2
@@ -348,8 +349,7 @@ def w_drop(d):
         s = d['segs'][i] if i < len(d['segs']) else (0, 0, 0, 0, 0)
         for v in s:
             w.u8(v)
-    jp = d['jackpot']
-    w.u8(jp['col0']); w.u8(jp['col1']); w.u8(jp['row']); w.u8(1 if jp['enabled'] else 0)
+    w.raw(bytes(d['jackpot']).ljust(DROP_JACKPOT_BYTES, b'\0')[:DROP_JACKPOT_BYTES])
     for v in d['voices']:
         w.u16(v['patch']); w.u16(v['portamento_ms']); w_vp(w, v['vp'])
         w.u8(v['uni_count']); w.u8(v['uni_detune']); w.u8(v['uni_spread']); w.u8(v['uni_blend'])
@@ -364,7 +364,7 @@ def r_drop(r):
     n = r.u8()
     segs = [tuple(r.u8() for _ in range(5)) for _ in range(DROP_SEG_MAX)]
     d['segs'] = segs[:n]
-    d['jackpot'] = dict(col0=r.u8(), col1=r.u8(), row=r.u8(), enabled=r.u8() != 0)
+    d['jackpot'] = bytes(r.raw(DROP_JACKPOT_BYTES))
     d['voices'] = []
     for _ in range(2):
         v = dict(patch=r.u16(), portamento_ms=r.u16(), vp=r_vp(r))

@@ -609,7 +609,8 @@ void synth_ui_menu_toggle_layer_page(void)
         return;
     }
     if (synth_ui_graph_is_active()) return;
-    voice_target_kind_t kind = (seq_state.ui_mode == UI_MODE_ARP) ? VT_ARP : VT_MELODIC;
+    voice_target_kind_t kind = (seq_state.ui_mode == UI_MODE_ARP)  ? VT_ARP
+                             : (seq_state.ui_mode == UI_MODE_DROP) ? VT_DROP : VT_MELODIC;
     if (!s_layer_page || layermenu_menu_kind() != kind) {
         /* Not closed on the Layer page, or closed on another entry: dive as
          * the main list's Layer row does, but land on Gate (layer) or Level
@@ -618,7 +619,7 @@ void synth_ui_menu_toggle_layer_page(void)
         s_main_cursor = MI_LAYER_MENU;
         layermenu_menu_set_kind(kind);
         s_layer_page = true;
-        seq_state.menu_cursor = layermenu_menu_row_index(kind == VT_ARP ? LM_LEVEL : LM_GATE);
+        seq_state.menu_cursor = layermenu_menu_row_index(kind != VT_MELODIC ? LM_LEVEL : LM_GATE);
     }
     synth_ui_menu_toggle();
 }

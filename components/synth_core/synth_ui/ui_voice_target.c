@@ -72,6 +72,9 @@ bool vt_get_filter(voice_target_kind_t kind, seq_filter_t *out)
     case VT_ARP:
         arp_get_filter(out);
         return true;
+    case VT_DROP:
+        drop_get_filter(drop_get_focus(), out);
+        return true;
 #if CONFIG_SYNTH_WIRELESS
     case VT_LIVE:
         live_play_get_filter(out);
@@ -93,6 +96,9 @@ void vt_set_filter(voice_target_kind_t kind, const seq_filter_t *f)
     }
     case VT_ARP:
         arp_set_filter(f);
+        break;
+    case VT_DROP:
+        drop_set_filter(drop_get_focus(), f);
         break;
 #if CONFIG_SYNTH_WIRELESS
     case VT_LIVE:
@@ -346,6 +352,9 @@ void vt_set_unison(voice_target_kind_t kind, const voice_unison_t *u)
     case VT_ARP:
         arp_set_unison(u);
         break;
+    case VT_DROP:
+        drop_set_unison(drop_get_focus(), u);
+        break;
 #if CONFIG_SYNTH_WIRELESS
     case VT_LIVE:
         live_play_set_unison(u);
@@ -360,7 +369,7 @@ const char *vt_title(voice_target_kind_t kind)
 {
     switch (kind) {
     case VT_ARP:  return "ARP";
-    case VT_DROP: return "DROP";
+    case VT_DROP: return drop_get_focus() == DROP_VOICE_SUB ? "SUB" : "DROP";
     case VT_LIVE: return "LIVE";
     default:      return NULL;
     }

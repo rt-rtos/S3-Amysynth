@@ -59,12 +59,10 @@ typedef struct {
     uint8_t ratio;    /* SPLIT: percent of balls sent left, 0..100 */
 } drop_seg_t;
 
-typedef struct {
-    uint8_t col0;     /* left end, 0..DROP_COLS-1 */
-    uint8_t col1;     /* right end, col0..DROP_COLS-1 */
-    uint8_t row;
-    bool    enabled;
-} drop_jackpot_t;
+/* Jackpot cells: one bit per cell, row-major (bit col + row * DROP_COLS).
+ * Any number of cells, placed one at a time; adjacent cells form one region
+ * (a ball inside the set fires again only after leaving it). */
+#define DROP_JACKPOT_BYTES ((DROP_COLS * DROP_ROWS + 7) / 8)
 
 /* The two synths: the impact voice and the jackpot (sub) voice. */
 typedef enum { DROP_VOICE_MAIN = 0, DROP_VOICE_SUB = 1, DROP_VOICE_COUNT } drop_which_t;
@@ -130,8 +128,11 @@ int     drop_find_seg(uint8_t col, uint8_t row);
  * full or a field is out of range. Angle, type and ratio are clamped. */
 bool    drop_set_seg(const drop_seg_t *seg);
 bool    drop_remove_seg(uint8_t col, uint8_t row);
-void    drop_get_jackpot(drop_jackpot_t *out);
-void    drop_set_jackpot(const drop_jackpot_t *jp);   /* clamped, col1 >= col0 */
+bool    drop_jackpot_at(uint8_t col, uint8_t row);
+void    drop_jackpot_set(uint8_t col, uint8_t row, bool on);
+uint8_t drop_jackpot_count(void);
+void    drop_jackpot_get_map(uint8_t out[DROP_JACKPOT_BYTES]);
+void    drop_jackpot_set_map(const uint8_t map[DROP_JACKPOT_BYTES]);
 
 /* ── Per-synth voice (DROP_VOICE_MAIN / DROP_VOICE_SUB) ── */
 void     drop_set_patch(drop_which_t w, uint16_t patch);   /* rebuilds the slot */
@@ -143,6 +144,33 @@ float    drop_get_amp_scale(drop_which_t w);
 void     drop_get_vp(drop_which_t w, voice_params_t *out);
 void     drop_get_unison(drop_which_t w, voice_unison_t *out);
 uint8_t  drop_unison_max(drop_which_t w);
+/* As arp_set_unison(): clamps, stores, rebuilds the slot when the effective
+ * count moved, else pushes live. */
+void     drop_set_unison(drop_which_t w, const voice_unison_t *u);
+
+/* ── The shared editors (ADSR, EG1, filter, LFO, LFO2, DIST), per synth,
+ * with the arp's contracts (arp_core.h): set stores, marks the group
+ * authored and pushes; preview pushes only; reapply re-asserts the stored
+ * dist after a rebuild. */
+void     drop_get_envelope(drop_which_t w, seq_env_t *out);
+void     drop_set_envelope(drop_which_t w, const seq_env_t *env);
+void     drop_preview_envelope(drop_which_t w, const seq_env_t *env);
+void     drop_get_envelope2(drop_which_t w, seq_env_t *out);
+void     drop_set_envelope2(drop_which_t w, const seq_env_t *env);
+void     drop_preview_envelope2(drop_which_t w, const seq_env_t *env);
+void     drop_get_filter(drop_which_t w, seq_filter_t *out);
+void     drop_set_filter(drop_which_t w, const seq_filter_t *f);
+void     drop_preview_filter(drop_which_t w, const seq_filter_t *f);
+void     drop_get_dist(drop_which_t w, seq_dist_t *out);
+void     drop_set_dist(drop_which_t w, const seq_dist_t *d);
+void     drop_preview_dist(drop_which_t w, const seq_dist_t *d);
+void     drop_reapply_dist(drop_which_t w);
+void     drop_get_lfo(drop_which_t w, seq_lfo_t *out);
+void     drop_set_lfo(drop_which_t w, const seq_lfo_t *lfo);
+bool     drop_lfo_bound(drop_which_t w);
+bool     drop_get_lfo2(drop_which_t w, seq_lfo_t *out);   /* returns: open */
+void     drop_set_lfo2(drop_which_t w, const seq_lfo_t *lfo, bool open);
+bool     drop_lfo2_bound(drop_which_t w);
 /* The whole voice at once (a loaded project): stores patch, glide, voice
  * block and unison, clamps, and rebuilds the slot once. */
 void     drop_set_voice(drop_which_t w, uint16_t patch, uint16_t portamento_ms,

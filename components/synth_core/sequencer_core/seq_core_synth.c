@@ -1663,16 +1663,20 @@ void sequencer_core_drop_configure(uint8_t synth, uint16_t patch_number,
     if (synth != DROP_SYNTH && synth != DROP_SUB_SYNTH) return;
     patch_number = SEQ_CLAMP_U16(patch_number, 0, SEQ_PATCH_FULL_MAX);
     /* As the arp: the osc topology changes between kinds, so kill sounding
-     * voices before the pool is rebuilt. A loop re-emitted mid-loop
-     * schedules note-offs whose note-ons are already past, which AMY's
-     * instrument would report from the render task; the flag reaches the
-     * patch-string kinds only. */
+     * voices before the pool is rebuilt. */
     sequencer_kill_synth_voices(synth);
-    bool string_patch = seq_apply_patch(synth, patch_number, num_voices,
-                                        SYNTH_FLAGS_NO_NOTE_WARNINGS,
+    bool string_patch = seq_apply_patch(synth, patch_number, num_voices, 0,
                                         filter_authored, ks_feedback,
                                         ks_duty_ofs, uni);
     seq_flush_patch_fx(string_patch, synth);
+    /* A loop re-emitted mid-loop schedules note-offs whose note-ons are
+     * already past, which AMY's instrument would report from the render
+     * task. The builders of the non-string kinds take no flags, so the flag
+     * goes to the built instrument on its own. */
+    amy_event *e = amy_helpers_event_begin();
+    e->synth       = synth;
+    e->synth_flags = SYNTH_FLAGS_NO_NOTE_WARNINGS;
+    amy_helpers_config_send(e);
     ESP_LOGI(TAG, "drop synth %u patch -> %u (%u voices)",
              (unsigned)synth, (unsigned)patch_number, (unsigned)num_voices);
 }

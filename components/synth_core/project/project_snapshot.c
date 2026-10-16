@@ -794,10 +794,11 @@ static void apply_arp(const staged_arp_t *a)
  * One fixed shape per version, as ARP. Field order: enabled, muted, solo,
  * rate, loop_bars, octaves, gate_pct, seed, seed_frozen, scale_index,
  * root_note, sub_root_note, quant_mode, seg_count, DROP_SEG_MAX segments of
- * 5 bytes, the jackpot (4 bytes), then the DROP and SUB voices: patch, glide,
- * the voice_params_t block (ser_vp, authored flags included) and unison. */
+ * 5 bytes, the jackpot cell map (DROP_JACKPOT_BYTES), then the DROP and SUB
+ * voices: patch, glide, the voice_params_t block (ser_vp, authored flags
+ * included) and unison. */
 
-#define DROP_VERSION 1
+#define DROP_VERSION 2
 
 typedef struct {
     uint16_t       patch;
@@ -815,7 +816,7 @@ typedef struct {
     uint8_t    scale, root, sub_root, quant_mode;
     uint8_t    seg_count;
     drop_seg_t segs[DROP_SEG_MAX];
-    drop_jackpot_t jackpot;
+    uint8_t    jackpot[DROP_JACKPOT_BYTES];
     staged_drop_voice_t voice[DROP_VOICE_COUNT];
 } staged_drop_t;
 
@@ -845,12 +846,9 @@ static void ser_drop(tlv_writer_t *w)
         tlv_put_u8(w, s.type);
         tlv_put_u8(w, s.ratio);
     }
-    drop_jackpot_t jp;
-    drop_get_jackpot(&jp);
-    tlv_put_u8(w, jp.col0);
-    tlv_put_u8(w, jp.col1);
-    tlv_put_u8(w, jp.row);
-    tlv_put_u8(w, jp.enabled ? 1 : 0);
+    uint8_t jp[DROP_JACKPOT_BYTES];
+    drop_jackpot_get_map(jp);
+    for (uint8_t i = 0; i < DROP_JACKPOT_BYTES; i++) tlv_put_u8(w, jp[i]);
     for (uint8_t v = 0; v < DROP_VOICE_COUNT; v++) {
         drop_which_t which = (drop_which_t)v;
         tlv_put_u16(w, drop_get_patch(which));
@@ -911,14 +909,9 @@ static bool parse_drop(tlv_reader_t *b, staged_drop_t *d)
         s->type  = SEQ_CLAMP_U8(s->type, 0, DROP_SEG_TYPE_COUNT - 1);
         s->ratio = SEQ_CLAMP_U8(s->ratio, 0, 100);
     }
-    if (!tlv_get_u8(b, &d->jackpot.col0)) return false;
-    if (!tlv_get_u8(b, &d->jackpot.col1)) return false;
-    if (!tlv_get_u8(b, &d->jackpot.row))  return false;
-    if (!tlv_get_u8(b, &v)) return false;
-    d->jackpot.enabled = v != 0;
-    d->jackpot.col0 = SEQ_CLAMP_U8(d->jackpot.col0, 0, DROP_COLS - 1);
-    d->jackpot.col1 = SEQ_CLAMP_U8(d->jackpot.col1, d->jackpot.col0, DROP_COLS - 1);
-    d->jackpot.row  = SEQ_CLAMP_U8(d->jackpot.row, 0, DROP_ROWS - 1);
+    for (uint8_t i = 0; i < DROP_JACKPOT_BYTES; i++) {
+        if (!tlv_get_u8(b, &d->jackpot[i])) return false;
+    }
     for (uint8_t i = 0; i < DROP_VOICE_COUNT; i++) {
         staged_drop_voice_t *dv = &d->voice[i];
         if (!tlv_get_u16(b, &dv->patch)) return false;
@@ -964,7 +957,7 @@ static void apply_drop(const staged_drop_t *d)
         if (drop_get_seg((uint8_t)(i - 1), &s)) drop_remove_seg(s.col, s.row);
     }
     for (uint8_t i = 0; i < d->seg_count; i++) (void)drop_set_seg(&d->segs[i]);
-    drop_set_jackpot(&d->jackpot);
+    drop_jackpot_set_map(d->jackpot);
     drop_set_enabled(d->enabled);
     drop_set_muted(d->muted);
     sequencer_core_set_drop_solo(d->solo);

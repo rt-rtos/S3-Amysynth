@@ -10,15 +10,17 @@
 /* ════════════════════════════════════════════════════════════════════════
  *  BALL DROP SCREEN
  * ════════════════════════════════════════════════════════════════════════
- * Gestures (CONTROLS.md): the encoder moves the cursor over the cells and
- * then the status fields; the encoder click toggles editing (a field's
+ * Gestures (CONTROLS.md): the encoder moves the cursor over the header
+ * fields and then the cells; the encoder click toggles editing (a field's
  * value, or the angle of the segment under the cursor). Button 0 tap
  * places or removes a plain segment, held + turn rotates it; SHIFT + turn
  * cycles its type, SHIFT + Button 0 held + turn sets a splitter's ratio.
  * Button 1 tap toggles the focus (DROP / SUB), held + turn cycles the
  * focused patch (the dispatcher's patch hold). Button 2 tap places or
- * removes the jackpot at the cursor, held + turn widens it. SHIFT +
- * Button 1 rerolls the seed, held it freezes or unfreezes it. */
+ * removes a jackpot cell at the cursor. SHIFT + Button 0 rerolls the seed,
+ * held it freezes or unfreezes it; SHIFT + Button 1 opens the editors on
+ * the focused synth and SHIFT + Button 3 the Layer page's entry for it, as
+ * on the arp screen. */
 
 _Static_assert(DROP_VIEW_COLS == DROP_COLS && DROP_VIEW_ROWS == DROP_ROWS &&
                DROP_VIEW_SEGS == DROP_SEG_MAX && DROP_VIEW_BALLS == DROP_BALL_MAX,
@@ -65,10 +67,7 @@ void drop_build_view(drop_view_t *out)
         out->segs[i].angle = s.angle; out->segs[i].type = s.type;
         out->segs[i].ratio = s.ratio;
     }
-    drop_jackpot_t jp;
-    drop_get_jackpot(&jp);
-    out->jackpot.col0 = jp.col0; out->jackpot.col1 = jp.col1;
-    out->jackpot.row = jp.row;   out->jackpot.enabled = jp.enabled;
+    drop_jackpot_get_map(out->jackpot);
     out->spawn_col = DROP_SPAWN_COL;
     /* Balls: the deterministic sim replayed to the playhead's loop tick; the
      * incremental replay only memoises, so the view stays a pure function
@@ -146,32 +145,11 @@ static void drop_toggle_seg(void)
     (void)drop_set_seg(&s);
 }
 
-/* Button 2 tap: the jackpot moves so the cursor cell is its left end,
- * keeping its width; a tap on its left end removes it. */
+/* Button 2 tap: a jackpot cell on the cursor, or none. */
 static void drop_toggle_jackpot(void)
 {
     if (!on_cell()) return;
-    drop_jackpot_t jp;
-    drop_get_jackpot(&jp);
-    uint8_t width = (uint8_t)(jp.col1 - jp.col0);
-    if (jp.enabled && jp.col0 == cur_col() && jp.row == cur_row()) {
-        jp.enabled = false;
-    } else {
-        jp.col0 = cur_col();
-        jp.col1 = (uint8_t)SEQ_CLAMP_INT((int)cur_col() + width, 0, DROP_COLS - 1);
-        jp.row  = cur_row();
-        jp.enabled = true;
-    }
-    drop_set_jackpot(&jp);
-}
-
-static void drop_widen_jackpot(int dir)
-{
-    drop_jackpot_t jp;
-    drop_get_jackpot(&jp);
-    if (!jp.enabled) return;
-    jp.col1 = (uint8_t)SEQ_CLAMP_INT((int)jp.col1 + dir, (int)jp.col0, DROP_COLS - 1);
-    drop_set_jackpot(&jp);
+    drop_jackpot_set(cur_col(), cur_row(), !drop_jackpot_at(cur_col(), cur_row()));
 }
 
 static void drop_edit_field(uint8_t cursor, int dir)
@@ -218,8 +196,7 @@ void synth_ui_drop_handle_encoder(long delta, bool shift)
         if (shift) drop_adjust_ratio(dir);
         else       drop_rotate_seg(dir);
     } else if (s_held[2]) {
-        s_turned[2] = true;
-        drop_widen_jackpot(dir);
+        s_turned[2] = true;   /* a held Button 2 only parks the cursor */
     } else if (shift) {
         drop_cycle_seg_type(dir);
     } else if (s_editing) {
@@ -274,7 +251,7 @@ bool synth_ui_drop_button_long(uint8_t btn)
     return s_turned[btn];
 }
 
-void synth_ui_drop_shift1(bool hold)
+void synth_ui_drop_shift0(bool hold)
 {
     if (hold) drop_set_seed_frozen(!drop_get_seed_frozen());
     else      drop_reroll_seed();
