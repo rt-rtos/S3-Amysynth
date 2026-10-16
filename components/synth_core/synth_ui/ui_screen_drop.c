@@ -48,7 +48,7 @@ void drop_build_view(drop_view_t *out)
     memset(out, 0, sizeof(*out));
     drop_which_t focus = drop_get_focus();
     out->enabled   = drop_get_enabled();
-    out->muted     = drop_get_muted();
+    out->muted     = drop_get_muted(focus);
     out->focus     = (uint8_t)focus;
     out->patch     = drop_get_patch(focus);
     out->patch_select = seq_state.patch_select_mode;

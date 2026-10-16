@@ -66,17 +66,17 @@ typedef struct {
     voice_params_t vp;
     uint16_t       portamento_ms;
     voice_unison_t unison;        /* count 0 = never set */
+    uint8_t        gate_pct;
+    bool           muted;
+    bool           solo_muted;
 } drop_voice_t;
 
 typedef struct {
     bool       enabled;
-    bool       muted;
-    bool       solo_muted;
     uint8_t    focus;             /* drop_which_t the screen addresses */
     note_div_t rate;              /* spawn interval */
     uint8_t    loop_bars;
     uint8_t    octaves;
-    uint8_t    gate_pct;
     uint32_t   seed;
     bool       seed_frozen;
     uint8_t    scale_index;
@@ -506,8 +506,13 @@ void drop_core_refresh(void)
     drop_core_clear_all();
     drop_kill_all();
 
-    if (!s_drop.enabled || s_drop.solo_muted || s_drop.muted) return;
+    if (!s_drop.enabled) return;
     if (s_drop.seg_count == 0 && drop_jackpot_count() == 0) return;
+    const drop_voice_t *vm = &s_drop.voice[DROP_VOICE_MAIN];
+    const drop_voice_t *vs = &s_drop.voice[DROP_VOICE_SUB];
+    bool main_on = !vm->muted && !vm->solo_muted;
+    bool sub_on  = !vs->muted && !vs->solo_muted;
+    if (!main_on && !sub_on) return;
 
     drop_rec_t *s = &s_rec_loop;
     sim_run_loop(&s_sim_loop, s);
@@ -517,9 +522,9 @@ void drop_core_refresh(void)
     float    trim   = s_drop.voice[DROP_VOICE_MAIN].vp.amp_trim;
     uint8_t  notes[SEQ_DROP_IMPACT_MAX];
     for (uint16_t i = 0; i < s->n_impacts; i++) notes[i] = drop_snap(s->impacts[i].row);
-    for (uint16_t i = 0; i < s->n_impacts; i++) {
+    for (uint16_t i = 0; main_on && i < s->n_impacts; i++) {
         const drop_impact_t *im = &s->impacts[i];
-        uint32_t gate = ((uint32_t)im->gate * s_drop.gate_pct) / 100u;
+        uint32_t gate = ((uint32_t)im->gate * vm->gate_pct) / 100u;
         /* AMY's instrument keeps one voice per sounding pitch, so a note
          * must end before the next impact at the same pitch, in this loop
          * or the next. */
@@ -530,9 +535,9 @@ void drop_core_refresh(void)
     }
     float sub_trim = s_drop.voice[DROP_VOICE_SUB].vp.amp_trim;
     uint8_t sub_note = sequencer_core_clamp_melodic_note((int32_t)s_drop.sub_root_note);
-    for (uint16_t j = 0; j < s->n_jackpots; j++) {
+    for (uint16_t j = 0; sub_on && j < s->n_jackpots; j++) {
         const drop_jp_hit_t *jp = &s->jackpots[j];
-        uint32_t gate = ((uint32_t)spawn_interval() * s_drop.gate_pct) / 100u;
+        uint32_t gate = ((uint32_t)spawn_interval() * vs->gate_pct) / 100u;
         uint32_t next = (j + 1u < s->n_jackpots) ? s->jackpots[j + 1].tick
                                                  : period + s->jackpots[0].tick;
         if (gate + 1u > next - jp->tick) gate = next - jp->tick - 1u;
@@ -543,17 +548,19 @@ void drop_core_refresh(void)
                                       sub_note, drop_velocity(jp->speed, sub_trim),
                                       1u + jp->tick, gate, period);
     }
-    s_last_impacts  = s->n_impacts;
-    s_last_jackpots = s->n_jackpots;
+    s_last_impacts  = main_on ? s->n_impacts : 0;
+    s_last_jackpots = sub_on ? s->n_jackpots : 0;
 }
 
 unsigned drop_core_dump(void)
 {
     unsigned n = 0;
-    printf("DROP en=%u mute=%u rate=%u bars=%u oct=%u gate=%u seed=%08X%s root=%u sub=%u q=%u"
+    printf("DROP en=%u mute=%u/%u rate=%u bars=%u oct=%u gate=%u/%u seed=%08X%s root=%u sub=%u q=%u"
            " patch=%u/%u segs=%u jpcells=%u loop=%u\n",
-           (unsigned)s_drop.enabled, (unsigned)s_drop.muted, (unsigned)s_drop.rate,
-           (unsigned)s_drop.loop_bars, (unsigned)s_drop.octaves, (unsigned)s_drop.gate_pct,
+           (unsigned)s_drop.enabled, (unsigned)s_drop.voice[0].muted,
+           (unsigned)s_drop.voice[1].muted, (unsigned)s_drop.rate,
+           (unsigned)s_drop.loop_bars, (unsigned)s_drop.octaves,
+           (unsigned)s_drop.voice[0].gate_pct, (unsigned)s_drop.voice[1].gate_pct,
            (unsigned)s_drop.seed, s_drop.seed_frozen ? "*" : "",
            (unsigned)s_drop.root_note, (unsigned)s_drop.sub_root_note,
            (unsigned)s_drop.quant_mode, (unsigned)s_drop.voice[0].patch,
@@ -782,6 +789,7 @@ static void drop_voice_defaults(drop_voice_t *v, uint16_t patch)
     memset(v, 0, sizeof(*v));
     voice_params_init_defaults(&v->vp);
     v->patch = SEQ_CLAMP_U16(patch, 0, SEQ_PATCH_FULL_MAX);
+    v->gate_pct = 75;
     /* As the arp's defaults: an envelope with a short decay and a slower
      * EG1 tail, both unauthored until an editor commits them. */
     v->vp.env.attack_ms   = 4;
@@ -807,7 +815,6 @@ void drop_core_init(void)
     s_drop.rate          = NOTE_DIV_1_4;
     s_drop.loop_bars     = 2;
     s_drop.octaves       = 1;
-    s_drop.gate_pct      = 75;
     s_drop.seed          = 0x1D0B5EEDu;
     s_drop.scale_index   = 0;
     s_drop.root_note     = SEQ_CLAMP_U8(CONFIG_SEQ_DROP_DEFAULT_ROOT_NOTE, 0, 127);
@@ -844,19 +851,19 @@ void drop_set_enabled(bool enabled)
 }
 bool drop_get_enabled(void) { return s_drop.enabled; }
 
-void drop_set_muted(bool muted)
+void drop_set_muted(drop_which_t w, bool muted)
 {
-    if (s_drop.muted == muted) return;
-    s_drop.muted = muted;
+    if (!which_ok(w) || s_drop.voice[w].muted == muted) return;
+    s_drop.voice[w].muted = muted;
     if (muted) drop_core_refresh();
     else       drop_mark_dirty();
 }
-bool drop_get_muted(void) { return s_drop.muted; }
+bool drop_get_muted(drop_which_t w) { return which_ok(w) && s_drop.voice[w].muted; }
 
-void drop_set_solo_muted(bool muted)
+void drop_set_solo_muted(drop_which_t w, bool muted)
 {
-    if (s_drop.solo_muted == muted) return;
-    s_drop.solo_muted = muted;
+    if (!which_ok(w) || s_drop.voice[w].solo_muted == muted) return;
+    s_drop.voice[w].solo_muted = muted;
     drop_core_refresh();
 }
 
@@ -887,14 +894,15 @@ void drop_set_octaves(uint8_t octaves)
 }
 uint8_t drop_get_octaves(void) { return s_drop.octaves; }
 
-void drop_set_gate_pct(uint8_t gate_pct)
+void drop_set_gate_pct(drop_which_t w, uint8_t gate_pct)
 {
+    if (!which_ok(w)) return;
     gate_pct = SEQ_CLAMP_U8(gate_pct, 10, 100);
-    if (s_drop.gate_pct == gate_pct) return;
-    s_drop.gate_pct = gate_pct;
+    if (s_drop.voice[w].gate_pct == gate_pct) return;
+    s_drop.voice[w].gate_pct = gate_pct;
     drop_mark_dirty();
 }
-uint8_t drop_get_gate_pct(void) { return s_drop.gate_pct; }
+uint8_t drop_get_gate_pct(drop_which_t w) { return which_ok(w) ? s_drop.voice[w].gate_pct : 75; }
 
 void drop_set_seed(uint32_t seed)
 {

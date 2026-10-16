@@ -20,7 +20,7 @@ NAME_LEN = 16
 
 TAG = {k: struct.unpack('<I', k.encode())[0] for k in ('GLOB', 'LAYR', 'ARP ', 'DROP', 'DRON', 'DSTD', 'PROG', 'CHRD',
                                                        'CLIP', 'MIXR', 'PGEN', 'WTCU', 'FMCU')}
-VER = {'GLOB': 6, 'LAYR': 26, 'ARP ': 17, 'DROP': 2, 'DRON': 7, 'DSTD': 4, 'PROG': 1, 'CHRD': 1,
+VER = {'GLOB': 6, 'LAYR': 26, 'ARP ': 17, 'DROP': 3, 'DRON': 7, 'DSTD': 4, 'PROG': 1, 'CHRD': 1,
        'CLIP': 2, 'MIXR': 2, 'PGEN': 1, 'WTCU': 2, 'FMCU': 1}
 
 MAX_LAYERS = 4
@@ -337,9 +337,8 @@ def r_arp(r):
 def w_drop(d):
     """The ball drop: loop scalars, the field, then the DROP and SUB voices."""
     w = W()
-    for k in ('enabled', 'muted', 'solo'):
-        w.u8(1 if d[k] else 0)
-    for k in ('rate', 'loop_bars', 'octaves', 'gate_pct'):
+    w.u8(1 if d['enabled'] else 0)
+    for k in ('rate', 'loop_bars', 'octaves'):
         w.u8(d[k])
     w.u32(d['seed']); w.u8(1 if d['seed_frozen'] else 0)
     for k in ('scale', 'root', 'sub_root', 'quant_mode'):
@@ -353,12 +352,13 @@ def w_drop(d):
     for v in d['voices']:
         w.u16(v['patch']); w.u16(v['portamento_ms']); w_vp(w, v['vp'])
         w.u8(v['uni_count']); w.u8(v['uni_detune']); w.u8(v['uni_spread']); w.u8(v['uni_blend'])
+        w.u8(1 if v['muted'] else 0); w.u8(1 if v['solo'] else 0); w.u8(v['gate_pct'])
     return bytes(w.b)
 
 
 def r_drop(r):
-    d = dict(enabled=r.u8() != 0, muted=r.u8() != 0, solo=r.u8() != 0,
-             rate=r.u8(), loop_bars=r.u8(), octaves=r.u8(), gate_pct=r.u8(),
+    d = dict(enabled=r.u8() != 0,
+             rate=r.u8(), loop_bars=r.u8(), octaves=r.u8(),
              seed=r.u32(), seed_frozen=r.u8() != 0,
              scale=r.u8(), root=r.u8(), sub_root=r.u8(), quant_mode=r.u8())
     n = r.u8()
@@ -370,6 +370,7 @@ def r_drop(r):
         v = dict(patch=r.u16(), portamento_ms=r.u16(), vp=r_vp(r))
         v['uni_count'] = r.u8(); v['uni_detune'] = r.u8(); v['uni_spread'] = r.u8()
         v['uni_blend'] = r.u8()
+        v['muted'] = r.u8() != 0; v['solo'] = r.u8() != 0; v['gate_pct'] = r.u8()
         d['voices'].append(v)
     return d
 

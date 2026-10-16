@@ -331,8 +331,8 @@ static seq_transport_change_cb_t s_transport_change_cb = NULL;   /* likewise */
 
 /* The arp's membership in the solo set (sequencer_core_set_arp_solo). */
 static bool s_arp_solo = false;
-/* The ball drop's (sequencer_core_set_drop_solo). */
-static bool s_drop_solo = false;
+/* The ball drop synths' (sequencer_core_set_drop_solo). */
+static bool s_drop_solo[DROP_VOICE_COUNT];
 
 /* True when the arp or any track of any layer has solo engaged (solo is
  * global: sequencer_core.h). Scans only the rows each layer has (num_tracks):
@@ -340,7 +340,7 @@ static bool s_drop_solo = false;
  * rows still in use. */
 bool sequencer_core_any_solo(void)
 {
-    if (s_arp_solo || s_drop_solo) return true;
+    if (s_arp_solo || s_drop_solo[DROP_VOICE_MAIN] || s_drop_solo[DROP_VOICE_SUB]) return true;
     for (uint8_t li = 0; li < s_num_layers; li++) {
         for (uint8_t t = 0; t < s_layers[li].num_tracks; t++) {
             if (s_layers[li].solo[t]) return true;
@@ -1311,23 +1311,24 @@ bool sequencer_core_get_arp_solo(void)
     return s_arp_solo;
 }
 
-void sequencer_core_set_drop_solo(bool solo)
+void sequencer_core_set_drop_solo(uint8_t which, bool solo)
 {
-    if (s_drop_solo == solo) return;
-    s_drop_solo = solo;
+    if (which >= DROP_VOICE_COUNT || s_drop_solo[which] == solo) return;
+    s_drop_solo[which] = solo;
     sequencer_apply_solo_change();
 }
 
-bool sequencer_core_get_drop_solo(void)
+bool sequencer_core_get_drop_solo(uint8_t which)
 {
-    return s_drop_solo;
+    return which < DROP_VOICE_COUNT && s_drop_solo[which];
 }
 
 void sequencer_core_clear_all_solos(void)
 {
-    bool any = s_arp_solo || s_drop_solo;
+    bool any = s_arp_solo || s_drop_solo[DROP_VOICE_MAIN] || s_drop_solo[DROP_VOICE_SUB];
     s_arp_solo = false;
-    s_drop_solo = false;
+    s_drop_solo[DROP_VOICE_MAIN] = false;
+    s_drop_solo[DROP_VOICE_SUB]  = false;
     for (uint8_t li = 0; li < s_num_layers; li++) {
         for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
             if (s_layers[li].solo[t]) { s_layers[li].solo[t] = false; any = true; }

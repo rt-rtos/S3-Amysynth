@@ -124,7 +124,7 @@ bool vt_get_mute(voice_target_kind_t kind)
     case VT_ARP:
         return arp_get_muted();
     case VT_DROP:
-        return drop_get_muted();
+        return drop_get_muted(drop_get_focus());
     default:
         return false;
     }
@@ -141,7 +141,7 @@ void vt_set_mute(voice_target_kind_t kind, bool muted)
         arp_set_muted(muted);
         break;
     case VT_DROP:
-        drop_set_muted(muted);
+        drop_set_muted(drop_get_focus(), muted);
         break;
     default:
         break;
@@ -162,7 +162,7 @@ bool vt_get_solo(voice_target_kind_t kind)
     case VT_ARP:
         return sequencer_core_get_arp_solo();
     case VT_DROP:
-        return sequencer_core_get_drop_solo();
+        return sequencer_core_get_drop_solo((uint8_t)drop_get_focus());
     default:
         return false;
     }
@@ -179,7 +179,7 @@ void vt_set_solo(voice_target_kind_t kind, bool solo)
         sequencer_core_set_arp_solo(solo);
         break;
     case VT_DROP:
-        sequencer_core_set_drop_solo(solo);
+        sequencer_core_set_drop_solo((uint8_t)drop_get_focus(), solo);
         break;
     default:
         break;
@@ -199,7 +199,7 @@ uint16_t vt_get_gate_pct(voice_target_kind_t kind)
     case VT_ARP:
         return arp_get_gate_pct();
     case VT_DROP:
-        return drop_get_gate_pct();
+        return drop_get_gate_pct(drop_get_focus());
     default:
         return 0;
     }
@@ -215,7 +215,7 @@ void vt_set_gate_pct(voice_target_kind_t kind, uint16_t pct)
         arp_set_gate_pct((uint8_t)(pct > 100u ? 100u : pct));
         break;
     case VT_DROP:
-        drop_set_gate_pct((uint8_t)(pct > 100u ? 100u : pct));
+        drop_set_gate_pct(drop_get_focus(), (uint8_t)(pct > 100u ? 100u : pct));
         break;
     default:
         break;

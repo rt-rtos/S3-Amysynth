@@ -335,7 +335,10 @@ static void synth_ui_task(void *pvParameters)
 static void ui_solo_change(bool any_solo)
 {
     arp_set_solo_muted(any_solo && !sequencer_core_get_arp_solo());
-    drop_set_solo_muted(any_solo && !sequencer_core_get_drop_solo());
+    drop_set_solo_muted(DROP_VOICE_MAIN,
+                        any_solo && !sequencer_core_get_drop_solo(DROP_VOICE_MAIN));
+    drop_set_solo_muted(DROP_VOICE_SUB,
+                        any_solo && !sequencer_core_get_drop_solo(DROP_VOICE_SUB));
     drone_set_solo_muted(any_solo);
     drone_std_set_solo_muted(any_solo);
 }

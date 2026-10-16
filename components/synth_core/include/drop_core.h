@@ -89,19 +89,23 @@ void drop_core_mark_dirty(void);
 /* ── Loop parameters (each marks dirty) ── */
 void       drop_set_enabled(bool enabled);
 bool       drop_get_enabled(void);
-/* User mute, apart from enabled; muting clears and kills at once. Persisted. */
-void       drop_set_muted(bool muted);
-bool       drop_get_muted(void);
-/* Solo duck from the sequencer's solo hook; not persisted. */
-void       drop_set_solo_muted(bool muted);
+/* Per synth. The user mute, apart from
+ * enabled: muting clears and kills at once, the other synth re-emits.
+ * Persisted. Out-of-range `w` is ignored (get: false). */
+void       drop_set_muted(drop_which_t w, bool muted);
+bool       drop_get_muted(drop_which_t w);
+/* Solo duck from the sequencer's solo hook, per synth; not persisted. */
+void       drop_set_solo_muted(drop_which_t w, bool muted);
 void       drop_set_rate(note_div_t rate);        /* ids >= NOTE_DIV_STD_COUNT ignored */
 note_div_t drop_get_rate(void);
 void       drop_set_loop_bars(uint8_t bars);      /* clamped 1..DROP_LOOP_BARS_MAX */
 uint8_t    drop_get_loop_bars(void);
 void       drop_set_octaves(uint8_t octaves);     /* clamped 1..DROP_OCT_MAX */
 uint8_t    drop_get_octaves(void);
-void       drop_set_gate_pct(uint8_t gate_pct);   /* clamped 10..100 */
-uint8_t    drop_get_gate_pct(void);
+/* Per synth: the share of a note's span it sounds, clamped 10..100. DROP: of
+ * the air time to the ball's next impact; SUB: of the spawn interval. */
+void       drop_set_gate_pct(drop_which_t w, uint8_t gate_pct);
+uint8_t    drop_get_gate_pct(drop_which_t w);
 /* The seed the loop is simulated from. reroll draws a new one unless the
  * seed is frozen; set takes any value (a loaded project). */
 void       drop_set_seed(uint32_t seed);

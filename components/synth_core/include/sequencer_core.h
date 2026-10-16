@@ -1095,10 +1095,12 @@ bool sequencer_core_get_track_solo(uint8_t layer_idx, uint8_t track);
 void sequencer_core_set_arp_solo(bool solo);
 bool sequencer_core_get_arp_solo(void);
 
-/* The ball drop's solo flag, with the arp's semantics: a member of the solo
- * set that plays while soloed. UI task only. Persisted in the drop section. */
-void sequencer_core_set_drop_solo(bool solo);
-bool sequencer_core_get_drop_solo(void);
+/* The ball drop synths' solo flags, with the arp's semantics: each a member
+ * of the solo set that plays while soloed. `which` is a drop_which_t
+ * (drop_core.h); out of range is ignored (get: false). UI task only.
+ * Persisted in the drop section. */
+void sequencer_core_set_drop_solo(uint8_t which, bool solo);
+bool sequencer_core_get_drop_solo(uint8_t which);
 
 /* True when the arp or any track of any layer is soloed - i.e. when the solo
  * mode that silences everything else is in force. Drives the Trackopts clear
