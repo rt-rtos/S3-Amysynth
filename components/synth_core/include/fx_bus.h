@@ -54,6 +54,10 @@ uint8_t    fx_group_own_bus(fx_group_t g);
 /* Inverse of fx_group_own_bus for 1..3; bus 0 maps to MELODIC. */
 fx_group_t fx_group_of_bus(uint8_t bus);
 
+/* Split flags as a bit-per-fx_group_t mask: the fallback value of the project
+ * format and the boot value (no group split off; CLIPS reads split anyway). */
+#define FX_BUS_SPLIT_FLAGS_DEFAULT 0u
+
 /* Split flag of a group. MELODIC is always false (it owns bus 0 outright),
  * CLIPS always true (it owns its bus outright). */
 bool       fx_group_is_split(fx_group_t g);

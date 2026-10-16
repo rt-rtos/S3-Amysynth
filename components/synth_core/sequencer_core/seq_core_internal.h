@@ -207,6 +207,10 @@ extern uint8_t        s_lfo2_synth[][SEQ_TRACKS];
 
 /* Owned by seq_core_progression.c */
 extern chord_progression_t s_prog;
+/* Boot state of s_prog and the generator settings, from their fallback
+ * defaults (seq_prog_params_defaults(), prog_gen_params_defaults()).
+ * sequencer_core_init() only. */
+void seq_progression_init(void);
 extern volatile bool  s_prog_apply_pending;
 extern volatile bool  s_prog_apply_immediate;
 

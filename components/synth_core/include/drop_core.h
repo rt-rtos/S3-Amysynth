@@ -67,6 +67,37 @@ typedef struct {
 /* The two synths: the impact voice and the jackpot (sub) voice. */
 typedef enum { DROP_VOICE_MAIN = 0, DROP_VOICE_SUB = 1, DROP_VOICE_COUNT } drop_which_t;
 
+/* One drop voice's persisted state (part of the project's DROP section). */
+typedef struct {
+    uint16_t       patch;
+    uint16_t       portamento_ms;
+    voice_params_t vp;
+    voice_unison_t unison;          /* count 0 = never set */
+    bool           muted;
+    uint8_t        gate_pct;
+} drop_voice_params_t;
+
+/* The drop's persisted state (the project's DROP section). */
+typedef struct {
+    bool       enabled;
+    note_div_t rate;
+    uint8_t    loop_bars, octaves;
+    uint32_t   seed;
+    bool       seed_frozen;
+    uint8_t    scale, root, sub_root, quant_mode;   /* quant_mode: arp_quant_mode_t */
+    uint8_t    seg_count;
+    drop_seg_t segs[DROP_SEG_MAX];
+    uint8_t    jackpot[DROP_JACKPOT_BYTES];
+    drop_voice_params_t voice[DROP_VOICE_COUNT];
+} drop_params_t;
+
+/* Fallback values of the project format for the drop: off, 1/4 over two
+ * bars, the boot field (a floor under the spawner and one jackpot cell),
+ * root C3 with the sub an octave down, PULSE and SINE voices. Pure; any
+ * task; fills every field. Never reads Kconfig - drop_core_init() applies
+ * the CONFIG_SEQ_DROP_* overlay at boot. */
+void drop_params_defaults(drop_params_t *out);
+
 /* ── Lifecycle ── */
 void drop_core_init(void);
 

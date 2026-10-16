@@ -72,7 +72,13 @@ typedef struct {
     uint8_t fade_bars_idx;                      /* 0..MIXER_FADE_BARS_COUNT-1 */
 } mixer_snapshot_t;
 
-/* Defaults (all 100, no mute, no fade, FADE length 4 bars); nothing sent.
+/* Fallback values of the project format for the mixer (the project's MIXR
+ * section): every position 100, no mute, FADE length index
+ * MIXER_FADE_BARS_DEFAULT. Pure; any task; fills every field. Never reads
+ * Kconfig; mixer_init() seeds the boot mixer from it (no Kconfig overlay). */
+void    mixer_params_defaults(mixer_snapshot_t *out);
+
+/* Defaults (mixer_params_defaults(), no fade); nothing sent.
  * Once from synth_ui_init(), after synth_level_init(). */
 void    mixer_init(void);
 /* All 100, no mute, no fade, FADE length 4 bars; every present source is

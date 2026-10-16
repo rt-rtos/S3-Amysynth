@@ -62,8 +62,9 @@ static const uint8_t SEQ_MEL_DEFAULT_NOTE[] = {60, 64, 67, 71, 74};
 _Static_assert(sizeof(SEQ_MEL_DEFAULT_NOTE) == SEQ_TRACKS,
                "one default melodic note per row");
 
-/* The defaults the add-layer melodic branch gives one row, apart from the
- * voice params' own init: base note, patch and the default envelopes. */
+/* The defaults a grown melodic row takes, apart from the voice params' own
+ * init: base note, patch and the boot envelopes (seq_layer_defaults() plus
+ * the Kconfig overlay of sequencer_core_add_layer()). */
 static void seq_seed_melodic_row(uint8_t idx, seq_layer_t *layer, uint8_t t,
                                  uint16_t patch)
 {
@@ -79,6 +80,85 @@ static void seq_seed_melodic_row(uint8_t idx, seq_layer_t *layer, uint8_t t,
     }
     layer->vp[t].env  = seq_default_melodic_env();
     layer->vp[t].env1 = seq_default_melodic_env1();
+}
+
+/* Fallback values that stand in for Kconfig at the project format: the
+ * shipped defaults of CONFIG_SEQ_MELODIC_ENV_* (amp env), of the melodic
+ * patch choice (SINE), of CONFIG_SEQ_MEL_VOICES and of the expressive melodic
+ * gate. sequencer_core_add_layer() applies the configured values on top. */
+static const seq_env_t SEQ_MEL_ENV_FALLBACK = {
+    .eg_type = 0, .attack_ms = 4, .decay_ms = 100, .sustain_pct = 60, .release_ms = 200,
+};
+#define SEQ_MEL_PATCH_FALLBACK     SEQ_PATCH_SINE
+#define SEQ_MEL_VOICES_FALLBACK    1u
+#define SEQ_MEL_GATE_FALLBACK_PCT  92u
+
+void seq_layer_defaults(seq_layer_type_t type, seq_layer_t *L)
+{
+    memset(L, 0, sizeof *L);
+    /* Per-row voice params: unauthored with amp_trim at unity. */
+    for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
+        voice_params_init_defaults(&L->vp[t]);
+    }
+    voice_params_init_defaults(&L->vp_layer);
+    /* vp_src[] is TRACK (0) from the memset: every row reads its own block. */
+
+    L->type       = type;
+    L->num_steps  = SEQ_STEPS;
+    L->num_tracks = SEQ_TRACKS_DEFAULT;
+    /* Note FX defaults. Required after the memset: a 0% gate would silence
+     * every note and a 0% groove would flatten dynamics. */
+    L->gate_pct       = (type == SEQ_LAYER_DRUM) ? SEQ_DRUM_GATE_DEFAULT_PCT
+                                                 : SEQ_MEL_GATE_FALLBACK_PCT;
+    L->portamento_ms  = 0;
+    L->groove_pct     = 100;   /* full accent curve */
+    /* Required after the memset too: 0 is a real FM algorithm. */
+    L->fm_algo_override = SEQ_FM_ALGO_NONE;
+    L->synth_flags      = 0;
+
+    if (type == SEQ_LAYER_DRUM) {
+        /* Each track its own patch from the curated list, with note-offs
+         * honored (synth_flags = 0) so the patch's release shapes the tail. */
+        for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
+            L->track_patch[t] = SEQ_DRUM_DEFAULT_PATCH[seq_default_row(t)];
+        }
+        L->patch      = L->track_patch[0];  /* display fallback */
+        L->num_voices = SEQ_DRUM_VOICES;
+        /* Role-based pitches: pitch IS timbre for these tuned patches, and also
+         * tunes the samples in PCM mode (render_pcm shifts by midi_note).
+         * Seeded from the boot bank's ear-tuned notes[], the same source the
+         * bank selector re-seeds from. */
+        for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
+            uint8_t n = sequencer_drum_default_note(t);
+            L->track_base_note[t] = n;
+            for (uint8_t s = 0; s < SEQ_MAX_STEPS; s++) L->step_note[t][s] = n;
+        }
+    } else {
+        L->patch      = SEQ_MEL_PATCH_FALLBACK;
+        L->num_voices = SEQ_MEL_VOICES_FALLBACK;
+        for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
+            uint8_t n = SEQ_MEL_DEFAULT_NOTE[t];
+            L->track_base_note[t] = n;
+            /* LAYER scope (the memset default) means every row carries the
+             * layer patch; the configure path reads track_patch[] only. */
+            L->track_patch[t] = L->patch;
+            for (uint8_t s = 0; s < SEQ_MAX_STEPS; s++) L->step_note[t][s] = n;
+            L->vp[t].env  = SEQ_MEL_ENV_FALLBACK;
+            L->vp[t].env1 = seq_default_melodic_env1();
+        }
+        L->vp_layer.env  = SEQ_MEL_ENV_FALLBACK;
+        L->vp_layer.env1 = seq_default_melodic_env1();
+    }
+
+    /* step_prob, step_ratchet and step_every need explicit non-zero defaults
+     * (seq_model.h); prev and transform are correct zeroed. */
+    for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
+        for (uint8_t s = 0; s < SEQ_MAX_STEPS; s++) {
+            L->step_prob[t][s]    = 100;
+            L->step_ratchet[t][s] = 1;
+            L->step_every[t][s]   = 1;
+        }
+    }
 }
 
 void sequencer_core_init(void)
@@ -114,6 +194,8 @@ void sequencer_core_init(void)
     s_playing = true;
     s_bpm     = SEQ_DEFAULT_BPM;
     s_melodic_patch = SEQ_MEL_PATCH;
+    seq_progression_init();
+    /* Kconfig overlay on the quantizer's fallback (sequencer_core.h). */
     s_quantizer.enabled = CONFIG_SEQ_QUANTIZER_DEFAULT_ENABLED;
     s_quantizer.root_note = CONFIG_SEQ_QUANTIZER_DEFAULT_ROOT_NOTE;
     s_quantizer.scale_index = CONFIG_SEQ_QUANTIZER_DEFAULT_SCALE;
@@ -145,57 +227,19 @@ uint8_t sequencer_core_add_layer(seq_layer_type_t type, uint8_t num_steps)
      * s_num_layers++ waits until sequencer_configure_synth() completes. */
     uint8_t idx = s_num_layers;
     seq_layer_t *layer = &s_layers[idx];
-    memset(layer, 0, sizeof(seq_layer_t));
+    seq_layer_defaults(type, layer);
 #if CONFIG_SEQ_LFO_SHARED
     /* No row of a new layer holds a shared-LFO reference. */
     memset(s_lfo_synth[idx], LFO_BANK_NONE, sizeof(s_lfo_synth[idx]));
     memset(s_lfo2_synth[idx], LFO_BANK_NONE, sizeof(s_lfo2_synth[idx]));
 #endif
-
-    /* Per-row voice params: unauthored with amp_trim at unity. The single
-     * defaults source, so no field here needs post-memset repair. */
-    for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
-        voice_params_init_defaults(&layer->vp[t]);
-    }
-    voice_params_init_defaults(&layer->vp_layer);
-    /* vp_src[] is TRACK (0) from the memset: every row reads its own block. */
-
-    layer->type       = type;
-    layer->num_steps  = (num_steps == SEQ_MAX_STEPS) ? SEQ_MAX_STEPS : SEQ_STEPS;
-    layer->num_tracks = SEQ_TRACKS_DEFAULT;
-    /* Note FX defaults. Required after the memset: a 0% gate would silence
-     * every note and a 0% groove would flatten dynamics. */
-    layer->gate_pct       = (type == SEQ_LAYER_DRUM) ? SEQ_DRUM_GATE_DEFAULT_PCT
-                                                     : SEQ_MELODIC_GATE_DEFAULT_PCT;
-    layer->portamento_ms  = 0;
-    layer->groove_pct     = 100;   /* full accent curve */
-    /* Required after the memset too: 0 is a real FM algorithm. */
-    layer->fm_algo_override = SEQ_FM_ALGO_NONE;
+    layer->num_steps = (num_steps == SEQ_MAX_STEPS) ? SEQ_MAX_STEPS : SEQ_STEPS;
 
     if (type == SEQ_LAYER_DRUM) {
         /* Per-track drum layer: each track gets a fixed synth slot from the
-         * reserved block and its own patch from the curated list, with
-         * note-offs honored (synth_flags = 0) so the patch's release shapes
-         * the tail. */
+         * reserved block. */
         for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
-            layer->synth_id[t]   = (uint8_t)(SEQ_DRUM_SYNTH_BASE + t);
-            layer->track_patch[t] = SEQ_DRUM_DEFAULT_PATCH[seq_default_row(t)];
-        }
-        layer->patch       = layer->track_patch[0];  /* display fallback */
-        layer->synth_flags = 0;
-        layer->num_voices  = SEQ_DRUM_VOICES;
-        /* Role-based pitches: pitch IS timbre for these tuned patches, and also
-         * tunes the samples in PCM mode (render_pcm shifts by midi_note).
-         * Seeded from the boot bank's ear-tuned notes[], the same source the
-         * bank selector re-seeds from. */
-        for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
-            uint8_t n = sequencer_drum_default_note(t);
-            s_track_source_note[idx][t] = n;
-            s_track_prev_plain[idx][t]  = n;
-            layer->track_base_note[t] = n;
-            for (uint8_t s = 0; s < SEQ_MAX_STEPS; s++) {
-                layer->step_note[t][s] = n;
-            }
+            layer->synth_id[t] = (uint8_t)(SEQ_DRUM_SYNTH_BASE + t);
         }
     } else {
         /* Melodic: claim a contiguous block of SEQ_TRACKS slots from the running
@@ -214,24 +258,20 @@ uint8_t sequencer_core_add_layer(seq_layer_type_t type, uint8_t num_steps)
         for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
             layer->synth_id[t] = (uint8_t)(base + t);
         }
-        layer->patch       = s_melodic_patch;
-        layer->synth_flags = 0;
-        layer->num_voices  = SEQ_MEL_VOICES;
+        /* Kconfig overlay on seq_layer_defaults(): the configured melodic
+         * patch, voices, gate and amp envelope. */
+        layer->patch      = s_melodic_patch;
+        layer->num_voices = SEQ_MEL_VOICES;
+        layer->gate_pct   = SEQ_MELODIC_GATE_DEFAULT_PCT;
         for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
-            seq_seed_melodic_row(idx, layer, t, s_melodic_patch);
+            layer->track_patch[t] = s_melodic_patch;
+            layer->vp[t].env      = seq_default_melodic_env();
         }
-        layer->vp_layer.env  = seq_default_melodic_env();
-        layer->vp_layer.env1 = seq_default_melodic_env1();
+        layer->vp_layer.env = seq_default_melodic_env();
     }
-
-    /* step_prob, step_ratchet and step_every need explicit non-zero defaults
-     * (seq_model.h); prev and transform are correct zeroed. */
     for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
-        for (uint8_t s = 0; s < SEQ_MAX_STEPS; s++) {
-            layer->step_prob[t][s]    = 100;
-            layer->step_ratchet[t][s] = 1;
-            layer->step_every[t][s]   = 1;
-        }
+        s_track_source_note[idx][t] = layer->track_base_note[t];
+        s_track_prev_plain[idx][t]  = layer->track_base_note[t];
     }
 
     DIAG_HEAP_CHECK("add_layer: before configure_synth");

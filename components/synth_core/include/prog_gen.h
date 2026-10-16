@@ -44,6 +44,12 @@ typedef struct {
     uint16_t seed;   /* any value; same inputs -> same output */
 } prog_gen_params_t;
 
+/* Fallback values of the project format for the generator settings: style 0,
+ * four one-bar triads, no variation, seed 0. Pure; any task; fills every
+ * field. Never reads Kconfig; sequencer_core_init() seeds the boot settings
+ * from it (no Kconfig overlay). */
+void prog_gen_params_defaults(prog_gen_params_t *out);
+
 typedef struct {
     uint8_t      root;           /* pitch class 0..11 */
     chord_type_t chord_type;     /* never CHORD_OFF */

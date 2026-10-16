@@ -24,8 +24,7 @@ _Static_assert(AMY_NCHANS == 2, "the capture converts a stereo bus sum");
  * and the render tick must still be writing well inside the trimmed block. */
 #define CLIP_STOP_GUARD_TICKS 4u
 
-static clip_bounce_shape_t s_shape = { .max_bars = 4, .stereo = false, .tail = CLIP_TAIL_BAR,
-                                       .after = CLIP_AFTER_MUTE };
+static clip_bounce_shape_t s_shape;   /* clip_bounce_init() */
 
 static _Atomic(clip_bounce_state_t) s_state = CLIP_BOUNCE_IDLE;
 static _Atomic uint32_t s_write_idx;
@@ -140,8 +139,15 @@ static uint32_t tail_frames_for(clip_tail_t tail, uint32_t upt, uint32_t loop)
     return t;
 }
 
+void clip_bounce_params_defaults(clip_bounce_shape_t *out)
+{
+    *out = (clip_bounce_shape_t){ .max_bars = 4, .stereo = false, .tail = CLIP_TAIL_BAR,
+                                  .after = CLIP_AFTER_MUTE };
+}
+
 void clip_bounce_init(void)
 {
+    clip_bounce_params_defaults(&s_shape);
     atomic_store_explicit(&s_state, CLIP_BOUNCE_IDLE, memory_order_relaxed);
     atomic_store_explicit(&s_write_idx, 0, memory_order_relaxed);
     atomic_store_explicit(&s_tail_idx, 0, memory_order_relaxed);

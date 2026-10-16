@@ -58,6 +58,11 @@ bool    seq_chords_is_defined(uint8_t idx);
 uint8_t seq_chords_defined_count(void);
 void    seq_chords_reset_all(void);
 
+/* Fallback values of the project format for the chord table (the project's
+ * CHRD section): every slot empty. Pure; any task; fills every slot. Never
+ * reads Kconfig; the boot table is the same (no Kconfig overlay). */
+void    seq_chords_params_defaults(seq_chord_t out[SEQ_CHORD_SLOTS]);
+
 /* Bulk table replace for the project loader: normalizes and copies all slots
  * (NULL = clear) WITHOUT the per-slot engine sweep - the loader re-imports
  * every layer right afterwards, rebuilding voices/emits from scratch. */

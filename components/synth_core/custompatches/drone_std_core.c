@@ -318,44 +318,60 @@ static uint32_t drone_std_land_ms(uint32_t land_tick)
 
 /* ── Public API ── */
 
+void drone_std_params_defaults(drone_std_params_t *out)
+{
+    memset(out, 0, sizeof(*out));
+    voice_params_init_defaults(&out->vp);
+    out->enabled      = false;
+    out->chord        = CHORD_OFF;   /* root note only until a chord is chosen */
+    out->root         = 45;          /* A2, same default as the stutter drone */
+    out->follow       = DRONE_FOLLOW_OFF;
+    out->level        = 0.5f;
+    out->patch        = SEQ_PATCH_SAW_DOWN;
+    out->sub_enabled  = true;
+    out->sub_interval = -12;
+    /* Default ADSR: slow swell (unauthored until the graph editor commits). */
+    out->vp.env.attack_ms   = 200;
+    out->vp.env.decay_ms    = 300;
+    out->vp.env.sustain_pct = 100;
+    out->vp.env.release_ms  = 600;
+    out->vp.env.eg_type     = 0;
+    out->vp.env1.attack_ms   = 15;
+    out->vp.env1.decay_ms    = 400;
+    out->vp.env1.sustain_pct = 25;
+    out->vp.env1.release_ms  = 400;
+    out->vp.env1.eg_type     = 0;
+    /* Filter defaults: bypass, but a sensible LPF starting point for the
+     * editor to seed from when the user first enables one. */
+    out->vp.filter.filter_type = SEQ_FILTER_LPF;
+    out->vp.filter.cutoff_hz   = 1200.0f;
+    out->vp.filter.resonance   = 1.0f;
+    out->vp.filter.enabled     = false;
+    /* LFO defaults for the editor seed; inert until authored + enabled. */
+    out->vp.lfo.mode    = LFO_MODE_FREE;
+    out->vp.lfo.wave    = LFO_WAVE_SINE;
+    out->vp.lfo.rate    = NOTE_DIV_1_1;
+    out->vp.lfo.depth   = 50;
+    out->vp.lfo.targets = LFO_TGT_BIT(LFO_TARGET_FILTER);
+}
+
 void drone_std_core_init(void)
 {
     amy_helpers_init();
 
+    drone_std_params_t p;
+    drone_std_params_defaults(&p);
     memset(&s_ds, 0, sizeof(s_ds));
-    voice_params_init_defaults(&s_ds.vp);
-    s_ds.enabled      = false;
-    s_ds.chord        = CHORD_OFF;   /* root note only until a chord is chosen */
-    s_ds.root_note    = 45;          /* A2, same default as the stutter drone */
-    s_ds.follow       = DRONE_FOLLOW_OFF;
+    s_ds.vp           = p.vp;
+    s_ds.enabled      = p.enabled;
+    s_ds.chord        = p.chord;
+    s_ds.root_note    = p.root;
+    s_ds.follow       = p.follow;
     drone_notes_init(&s_ds.notes);
-    s_ds.level        = 0.5f;
-    s_ds.patch        = SEQ_PATCH_SAW_DOWN;
-    s_ds.sub_enabled  = true;
-    s_ds.sub_interval = -12;
-    /* Default ADSR: slow swell (unauthored until the graph editor commits). */
-    s_ds.vp.env.attack_ms   = 200;
-    s_ds.vp.env.decay_ms    = 300;
-    s_ds.vp.env.sustain_pct = 100;
-    s_ds.vp.env.release_ms  = 600;
-    s_ds.vp.env.eg_type     = 0;
-    s_ds.vp.env1.attack_ms   = 15;
-    s_ds.vp.env1.decay_ms    = 400;
-    s_ds.vp.env1.sustain_pct = 25;
-    s_ds.vp.env1.release_ms  = 400;
-    s_ds.vp.env1.eg_type     = 0;
-    /* Filter defaults: bypass, but a sensible LPF starting point for the
-     * editor to seed from when the user first enables one. */
-    s_ds.vp.filter.filter_type = SEQ_FILTER_LPF;
-    s_ds.vp.filter.cutoff_hz   = 1200.0f;
-    s_ds.vp.filter.resonance   = 1.0f;
-    s_ds.vp.filter.enabled     = false;
-    /* LFO defaults for the editor seed; inert until authored + enabled. */
-    s_ds.vp.lfo.mode    = LFO_MODE_FREE;
-    s_ds.vp.lfo.wave    = LFO_WAVE_SINE;
-    s_ds.vp.lfo.rate    = NOTE_DIV_1_1;
-    s_ds.vp.lfo.depth   = 50;
-    s_ds.vp.lfo.targets = LFO_TGT_BIT(LFO_TARGET_FILTER);
+    s_ds.level        = p.level;
+    s_ds.patch        = p.patch;
+    s_ds.sub_enabled  = p.sub_enabled;
+    s_ds.sub_interval = p.sub_interval;
 
     drone_std_rebuild();
     ESP_LOGI(TAG, "drone_std_core initialized (synths %u/%u)",

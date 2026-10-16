@@ -84,9 +84,14 @@ uint8_t seq_chords_defined_count(void)
     return n;
 }
 
+void seq_chords_params_defaults(seq_chord_t out[SEQ_CHORD_SLOTS])
+{
+    memset(out, 0, SEQ_CHORD_SLOTS * sizeof(out[0]));
+}
+
 void seq_chords_reset_all(void)
 {
-    memset(s_chords, 0, sizeof(s_chords));
+    seq_chords_params_defaults(s_chords);
 }
 
 uint8_t seq_chords_resolve(uint8_t idx, int transpose,

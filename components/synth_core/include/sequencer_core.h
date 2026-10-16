@@ -272,6 +272,13 @@ void sequencer_core_set_mute_masks(const uint8_t in[MAX_LAYERS]);
 uint8_t sequencer_core_pattern_period_bars(void);
 void sequencer_core_set_bpm(uint16_t bpm);
 uint16_t sequencer_core_get_bpm(void);
+/* Fallback values of the project format for the global quantizer (the
+ * Kconfig defaults of CONFIG_SEQ_QUANTIZER_DEFAULT_ROOT_NOTE / _SCALE; the
+ * enable falls back to off). sequencer_core_init() applies the Kconfig values
+ * at boot. */
+#define SEQ_QUANTIZER_FALLBACK_ENABLED   false
+#define SEQ_QUANTIZER_FALLBACK_ROOT_NOTE 60
+#define SEQ_QUANTIZER_FALLBACK_SCALE     3
 void sequencer_core_set_quantizer_enabled(bool enabled);
 void sequencer_core_set_quantizer_root_note(uint8_t root_note);
 void sequencer_core_set_quantizer_scale(uint8_t scale_index);
@@ -353,6 +360,9 @@ typedef enum {
     SEQ_DRUM_SYNTH = 0,
     SEQ_DRUM_PCM   = 1,
 } seq_drum_engine_t;
+
+/* Fallback value of the project format and boot value of the drum engine. */
+#define SEQ_DRUM_ENGINE_DEFAULT SEQ_DRUM_PCM
 
 void              sequencer_core_set_drum_engine(seq_drum_engine_t engine);
 seq_drum_engine_t sequencer_core_get_drum_engine(void);
@@ -684,6 +694,14 @@ uint8_t sequencer_core_get_current_step(uint8_t layer_idx);
  * synth_ui_request_delete_active_layer(). Registering the applier here lets debug
  * builds assert the contract; before registration the assert is skipped. */
 void             sequencer_core_set_layers_applier(TaskHandle_t applier);
+
+/* Fallback values of the project format for a layer of `type`: every
+ * persisted seq_layer_t field as sequencer_core_add_layer() seeds it (16
+ * steps, SEQ_TRACKS_DEFAULT rows, the default drum kit or melodic voicing,
+ * default note FX and voice blocks); runtime fields (synth_id) are zero.
+ * Pure; any task. Never reads Kconfig - sequencer_core_add_layer() applies
+ * the Kconfig overlay (melodic patch, voices, gate and envelopes) on top. */
+void             seq_layer_defaults(seq_layer_type_t type, seq_layer_t *L);
 
 /* Add a new layer, returning its index or 0xFF when the table is full.
  * Configures the AMY synth immediately. Applier-task only (see above). */
@@ -1132,6 +1150,27 @@ void sequencer_core_notify_solo_changed(void);
  * progression_service() must be called at ~20 Hz from the UI task. */
 void    sequencer_core_progression_set_enabled(bool en);
 bool    sequencer_core_progression_get_enabled(void);
+
+/* The progression's persisted state: enabled and count entries of (root
+ * pitch class, chord type, duration in bars). PROG_GEN_MAX_ENTRIES is the
+ * progression's entry capacity (sequencer_core_progression_get_max()). */
+typedef struct {
+    uint8_t      root;
+    chord_type_t chord_type;
+    uint8_t      duration_bars;
+} seq_prog_entry_t;
+
+typedef struct {
+    bool             enabled;
+    uint8_t          count;
+    seq_prog_entry_t entries[PROG_GEN_MAX_ENTRIES];
+} seq_prog_params_t;
+
+/* Fallback values of the project format for the progression: off, one
+ * one-bar Cmaj7 entry. Pure; any task; fills every field. Never reads
+ * Kconfig; sequencer_core_init() seeds the boot progression from it (no
+ * Kconfig overlay). */
+void    seq_prog_params_defaults(seq_prog_params_t *out);
 /* Launch quantization for chord applies: false (default) = instant, true =
  * musical edits hold until the next bar line while playing. */
 void    sequencer_core_progression_set_apply_at_bar(bool at_bar);

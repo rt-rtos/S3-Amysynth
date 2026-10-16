@@ -10,8 +10,10 @@
  *   (tlv_begin_block/tlv_get_block, project_tlv.h); blocks nest. A new field
  *   is appended at the end of the block of the record it belongs to, and that
  *   needs no version bump.
- * - Short records keep the seed: each parser seeds its record, then reads the
- *   fields in writer order. A field past the end of its block (the file
+ * - Short records keep the fallback default: each parser seeds its record
+ *   from the owner's fallback default (a pure *_defaults() function that
+ *   never reads Kconfig, so a file loads the same on every build), then reads
+ *   the fields in writer order. A field past the end of its block (the file
  *   predates it) fails to read and keeps the seed, as does every field after
  *   it, because a failed read leaves its output untouched and the block's
  *   reader stays failed. So parsers read straight through and clamp every
@@ -25,6 +27,8 @@
  * - A reshaped optional section (any but GLOB and LAYR) is skipped and loads
  *   as if absent; project_snapshot_skipped() reports it. A GLOB or LAYR at
  *   another version refuses the file.
+ * - An absent or skipped section applies its fallback defaults whole, through
+ *   the same apply_* as a parsed one.
  *
  * Two-phase load: parse_* stages into heap scratch, never touching live state;
  * apply runs only after every section parses clean. Any failure frees scratch
@@ -99,8 +103,8 @@ static void ser_env(tlv_writer_t *w, const seq_env_t *e)
     tlv_end_block(w, h);
 }
 
-/* Seed: *e as the caller left it; a field appended here takes its default
- * from this seed. */
+/* Seed: *e as the caller left it (its record's fallback default); a field
+ * appended here takes its value from this seed. */
 static bool de_env(tlv_reader_t *r, seq_env_t *e)
 {
     tlv_reader_t b;
@@ -133,9 +137,9 @@ static void ser_filter(tlv_writer_t *w, const seq_filter_t *f)
 
 /* Reads every field into temporaries first, then bypasses the whole record
  * if filter_type is out of range rather than passing a bogus enum
- * downstream. Seed: *f as the caller left it (the temporaries start from it,
- * so a short record validates the seed); a field appended here takes its
- * default from this seed. */
+ * downstream. Seed: *f as the caller left it (its record's fallback default;
+ * the temporaries start from it, so a short record validates the seed); a
+ * field appended here takes its value from this seed. */
 static bool de_filter(tlv_reader_t *r, seq_filter_t *f)
 {
     tlv_reader_t b;
@@ -194,8 +198,8 @@ static void ser_dist(tlv_writer_t *w, const seq_dist_t *d)
     tlv_end_block(w, h);
 }
 
-/* Seed: *d as the caller left it; a field appended here takes its default
- * from this seed. */
+/* Seed: *d as the caller left it (its record's fallback default); a field
+ * appended here takes its value from this seed. */
 static bool de_dist(tlv_reader_t *r, seq_dist_t *d)
 {
     tlv_reader_t b;
@@ -289,13 +293,12 @@ static void ser_vp(tlv_writer_t *w, const voice_params_t *vp)
     tlv_end_block(w, h);
 }
 
-/* Seed: voice_params_init_defaults() (zeroed baseline + unity amp_trim); a
- * field appended here takes its default from this seed. */
+/* Seed: *vp as the caller left it (its record's fallback default); a field
+ * appended here takes its value from this seed. */
 static bool de_vp(tlv_reader_t *r, voice_params_t *vp)
 {
     tlv_reader_t b;
     tlv_get_block(r, &b);
-    voice_params_init_defaults(vp);
     if (!de_env(&b, &vp->env))       return false;
     if (!de_env(&b, &vp->env1))      return false;
     if (!de_filter(&b, &vp->filter)) return false;
@@ -328,8 +331,8 @@ static void ser_unison(tlv_writer_t *w, const voice_unison_t *u)
 }
 
 /* Raw fields, clamped; count 0 (never set) survives the round trip. Seed: *u
- * as the caller left it; a field appended here takes its default from this
- * seed. */
+ * as the caller left it (its record's fallback default); a field appended
+ * here takes its value from this seed. */
 static bool de_unison(tlv_reader_t *r, voice_unison_t *u)
 {
     tlv_reader_t b;
@@ -361,6 +364,21 @@ typedef struct {
     bool     presets_alter_global;
     uint8_t  split_flags;   /* bit fx_group_t: that group renders on its own bus */
 } staged_glob_t;
+
+/* GLOB's fallback default, composed from the owners' fallback values. */
+static void glob_defaults(staged_glob_t *g)
+{
+    memset(g, 0, sizeof *g);
+    g->bpm           = SEQ_DEFAULT_BPM;
+    g->master_volume = AMY_FX_MASTER_VOLUME_DEFAULT;
+    g->quant_enabled = SEQ_QUANTIZER_FALLBACK_ENABLED;
+    g->quant_root    = SEQ_QUANTIZER_FALLBACK_ROOT_NOTE;
+    g->quant_scale   = SEQ_QUANTIZER_FALLBACK_SCALE;
+    g->drum_engine   = SEQ_DRUM_ENGINE_DEFAULT;
+    for (uint8_t bus = 0; bus < FX_BUS_COUNT; bus++) amy_fx_bus_defaults(bus, &g->fx[bus]);
+    g->presets_alter_global = AMY_FX_PRESETS_ALTER_GLOBAL_DEFAULT;
+    g->split_flags   = FX_BUS_SPLIT_FLAGS_DEFAULT;
+}
 
 static void ser_glob(tlv_writer_t *w)
 {
@@ -410,7 +428,7 @@ static void ser_glob(tlv_writer_t *w)
     tlv_end_section(w, h);
 }
 
-/* One FX bus record; seed: *f as parse_glob left it. */
+/* One FX bus record; seed: *f as parse_glob left it (amy_fx_bus_defaults). */
 static bool parse_glob_bus(tlv_reader_t *r, fx_state_t *f)
 {
     tlv_reader_t b;
@@ -448,20 +466,9 @@ static bool parse_glob_bus(tlv_reader_t *r, fx_state_t *f)
 
 static bool parse_glob(tlv_reader_t *b, staged_glob_t *g)
 {
-    /* Seed: live state; a field appended here takes its default from this
-     * seed. */
-    g->bpm           = sequencer_core_get_bpm();
-    g->master_volume = amy_fx_get_master_volume();
-    g->quant_enabled = sequencer_core_get_quantizer_enabled();
-    g->quant_root    = sequencer_core_get_quantizer_root_note();
-    g->quant_scale   = sequencer_core_get_quantizer_scale();
-    g->drum_engine   = sequencer_core_get_drum_engine();
-    memcpy(g->fx, s_fx, sizeof g->fx);
-    g->presets_alter_global = s_fx_presets_alter_global;
-    g->split_flags = 0;
-    for (fx_group_t grp = FX_GROUP_DRUMS; grp < FX_GROUP_COUNT; grp++) {
-        if (fx_group_is_split(grp)) g->split_flags |= (uint8_t)(1u << grp);
-    }
+    /* Seed: fallback default (glob_defaults); a field appended here takes
+     * its value from this seed. */
+    glob_defaults(g);
 
     tlv_get_u16(b, &g->bpm);
     tlv_get_f32(b, &g->master_volume);
@@ -713,12 +720,21 @@ static bool parse_layer_tail(tlv_reader_t *r, seq_layer_t *L)
     return true;
 }
 
-/* Seed: zero, each voice block at de_vp()'s seed; a field appended to any
- * LAYR record takes its default from this seed. The rules that span records
- * run after all four have parsed. */
+/* Seed: fallback default (seq_layer_defaults) for the layer type the head
+ * record names; a field appended to any LAYR record takes its value from this
+ * seed. The rules that span records run after all four have parsed. */
 static bool parse_layer(tlv_reader_t *b, seq_layer_t *L)
 {
-    memset(L, 0, sizeof *L);
+    /* The type is the head record's first field; a head too short to carry
+     * it seeds a drum layer. */
+    uint8_t type_raw = (uint8_t)SEQ_LAYER_DRUM;
+    {
+        tlv_reader_t peek = *b, hb;
+        tlv_get_block(&peek, &hb);
+        tlv_get_u8(&hb, &type_raw);
+    }
+    seq_layer_defaults((type_raw > SEQ_LAYER_MELODIC) ? SEQ_LAYER_MELODIC
+                                                      : (seq_layer_type_t)type_raw, L);
     if (!parse_layer_head(b, L)) return false;
     for (int t = 0; t < SEQ_TRACKS; t++) {
         if (!parse_layer_row(b, L, t)) return false;
@@ -765,29 +781,19 @@ static bool parse_layer(tlv_reader_t *b, seq_layer_t *L)
 
 /* ── ARP section ──────────────────────────────────────────────────────────── */
 
+/* The arp's record (arp_params_t, arp_core.h) plus its solo, which the
+ * sequencer owns. */
 typedef struct {
-    bool         enabled;
-    uint16_t     patch;
-    arp_dir_t    dir;
-    uint8_t      octaves;
-    note_div_t   rate;
-    uint8_t      gate_pct;
-    uint8_t      scale;
-    uint8_t      root;
-    uint8_t      quant_mode;
-    uint16_t     portamento_ms;
-    float        amp_scale;
-    int16_t      slots[ARP_MAX_SLOTS];
-    seq_env_t    env, env2;
-    seq_filter_t filter;
-    seq_lfo_t    lfo;
-    seq_lfo_t    lfo2;
-    bool         lfo2_authored;
-    seq_dist_t   dist;
-    bool         muted;
+    arp_params_t arp;
     bool         solo;
-    voice_unison_t unison;
 } staged_arp_t;
+
+/* Fallback default of the ARP section. */
+static void arp_section_defaults(staged_arp_t *st)
+{
+    arp_params_defaults(&st->arp);
+    st->solo = false;
+}
 
 /* One record: the arp's scalars, its slots as a raw array, and its env/
  * filter/lfo/dist/unison records nested. */
@@ -823,11 +829,14 @@ static void ser_arp(tlv_writer_t *w)
     tlv_end_section(w, h);
 }
 
-/* Seed: zero; a field appended here takes its default from this seed. */
-static bool parse_arp(tlv_reader_t *r, staged_arp_t *a)
+/* Seed: fallback default (arp_section_defaults); a field appended here takes
+ * its value from this seed. */
+static bool parse_arp(tlv_reader_t *r, staged_arp_t *st)
 {
     tlv_reader_t b;
     tlv_get_block(r, &b);
+    arp_section_defaults(st);
+    arp_params_t *a = &st->arp;
     uint8_t v;
     tlv_get_bool(&b, &a->enabled);
     tlv_get_u16(&b, &a->patch);
@@ -865,15 +874,16 @@ static bool parse_arp(tlv_reader_t *r, staged_arp_t *a)
     if (a->quant_mode >= ARP_QUANT_COUNT) a->quant_mode = ARP_QUANT_CHORD;
     if (!de_dist(&b, &a->dist)) return false;
     tlv_get_bool(&b, &a->muted);
-    tlv_get_bool(&b, &a->solo);
+    tlv_get_bool(&b, &st->solo);
     if (!de_unison(&b, &a->unison)) return false;
     return true;
 }
 
 /* patch, then unison (both may rebuild the slot), first so later param
  * pushes land on the rebuilt slot; enabled, then mute and solo, LAST. */
-static void apply_arp(const staged_arp_t *a)
+static void apply_arp(const staged_arp_t *st)
 {
+    const arp_params_t *a = &st->arp;
     arp_set_patch(a->patch);
     arp_set_unison(&a->unison);
     arp_set_direction(a->dir);
@@ -894,7 +904,7 @@ static void apply_arp(const staged_arp_t *a)
     arp_set_dist(&a->dist);
     arp_set_enabled(a->enabled);
     arp_set_muted(a->muted);
-    sequencer_core_set_arp_solo(a->solo);
+    sequencer_core_set_arp_solo(st->solo);
 }
 
 /* ── DROP section ──────────────────────────────────────────────────────────
@@ -907,27 +917,19 @@ static void apply_arp(const staged_arp_t *a)
 
 #define DROP_VERSION 4
 
+/* The drop's record (drop_params_t, drop_core.h) plus each voice's solo,
+ * which the sequencer owns. */
 typedef struct {
-    uint16_t       patch;
-    uint16_t       portamento_ms;
-    voice_params_t vp;
-    voice_unison_t unison;
-    bool           muted, solo;
-    uint8_t        gate_pct;
-} staged_drop_voice_t;
-
-typedef struct {
-    bool       enabled;
-    note_div_t rate;
-    uint8_t    loop_bars, octaves;
-    uint32_t   seed;
-    bool       seed_frozen;
-    uint8_t    scale, root, sub_root, quant_mode;
-    uint8_t    seg_count;
-    drop_seg_t segs[DROP_SEG_MAX];
-    uint8_t    jackpot[DROP_JACKPOT_BYTES];
-    staged_drop_voice_t voice[DROP_VOICE_COUNT];
+    drop_params_t drop;
+    bool          solo[DROP_VOICE_COUNT];
 } staged_drop_t;
+
+/* Fallback default of the DROP section. */
+static void drop_section_defaults(staged_drop_t *st)
+{
+    drop_params_defaults(&st->drop);
+    memset(st->solo, 0, sizeof st->solo);
+}
 
 static void ser_drop(tlv_writer_t *w)
 {
@@ -997,7 +999,7 @@ static bool parse_drop_seg(tlv_reader_t *r, drop_seg_t *s)
     return true;
 }
 
-static bool parse_drop_voice(tlv_reader_t *r, staged_drop_voice_t *dv)
+static bool parse_drop_voice(tlv_reader_t *r, drop_voice_params_t *dv, bool *solo)
 {
     tlv_reader_t b;
     tlv_get_block(r, &b);
@@ -1009,18 +1011,20 @@ static bool parse_drop_voice(tlv_reader_t *r, staged_drop_voice_t *dv)
     if (!de_unison(&b, &dv->unison)) return false;
     dv->unison.layout = 0u;
     tlv_get_bool(&b, &dv->muted);
-    tlv_get_bool(&b, &dv->solo);
+    tlv_get_bool(&b, solo);
     tlv_get_u8(&b, &dv->gate_pct);
     dv->gate_pct = SEQ_CLAMP_U8(dv->gate_pct, 10, 100);
     return true;
 }
 
-/* Seed: zero, each voice block at de_vp()'s seed; a field appended to any
- * DROP record takes its default from this seed. */
-static bool parse_drop(tlv_reader_t *r, staged_drop_t *d)
+/* Seed: fallback default (drop_section_defaults); a field appended to any
+ * DROP record takes its value from this seed. */
+static bool parse_drop(tlv_reader_t *r, staged_drop_t *st)
 {
     tlv_reader_t b;
     tlv_get_block(r, &b);
+    drop_section_defaults(st);
+    drop_params_t *d = &st->drop;
     uint8_t v;
     tlv_get_bool(&b, &d->enabled);
     v = (uint8_t)d->rate;
@@ -1047,17 +1051,18 @@ static bool parse_drop(tlv_reader_t *r, staged_drop_t *d)
     }
     tlv_get_bytes(&b, d->jackpot, sizeof d->jackpot);
     for (uint8_t i = 0; i < DROP_VOICE_COUNT; i++) {
-        if (!parse_drop_voice(r, &d->voice[i])) return false;
+        if (!parse_drop_voice(r, &d->voice[i], &st->solo[i])) return false;
     }
     return true;
 }
 
 /* Voices first (each rebuilds its slot), then the loop parameters and the
  * field (each marks dirty), enabled, then mute and solo last, as apply_arp. */
-static void apply_drop(const staged_drop_t *d)
+static void apply_drop(const staged_drop_t *st)
 {
+    const drop_params_t *d = &st->drop;
     for (uint8_t i = 0; i < DROP_VOICE_COUNT; i++) {
-        const staged_drop_voice_t *dv = &d->voice[i];
+        const drop_voice_params_t *dv = &d->voice[i];
         drop_set_voice((drop_which_t)i, dv->patch, dv->portamento_ms, &dv->vp, &dv->unison);
     }
     drop_set_rate(d->rate);
@@ -1082,29 +1087,13 @@ static void apply_drop(const staged_drop_t *d)
     drop_set_enabled(d->enabled);
     for (uint8_t i = 0; i < DROP_VOICE_COUNT; i++) {
         drop_set_muted((drop_which_t)i, d->voice[i].muted);
-        sequencer_core_set_drop_solo(i, d->voice[i].solo);
+        sequencer_core_set_drop_solo(i, st->solo[i]);
     }
 }
 
 /* ── DRON section ─────────────────────────────────────────────────────────── */
 
-typedef struct {
-    bool            enabled;
-    chord_type_t    chord;
-    uint8_t         root;
-    uint16_t        patch;
-    float           amp_peak;
-    float           amp_duck;
-    note_div_t      rate;
-    bool            sub_enabled;
-    int8_t          sub_interval;
-    float           gate_len;
-    uint8_t         swing;
-    float           blip;
-    drone_pattern_t pattern;
-    drone_follow_t  follow;
-    voice_params_t  vp;
-} staged_drone_t;
+typedef drone_params_t staged_drone_t;   /* drone_core.h */
 
 /* Records: the drone's scalars, then its voice block. */
 #define DRON_VERSION 8
@@ -1132,12 +1121,13 @@ static void ser_drone(tlv_writer_t *w)
     tlv_end_section(w, h);
 }
 
-/* Seed: zero, the voice block at de_vp()'s seed; a field appended to either
- * record takes its default from this seed. */
+/* Seed: fallback default (drone_params_defaults); a field appended to either
+ * record takes its value from this seed. */
 static bool parse_drone(tlv_reader_t *r, staged_drone_t *d)
 {
     tlv_reader_t b;
     tlv_get_block(r, &b);
+    drone_params_defaults(d);
     uint8_t v;
     tlv_get_bool(&b, &d->enabled);
     v = (uint8_t)d->chord;
@@ -1195,17 +1185,7 @@ static void apply_drone(const staged_drone_t *d)
 
 /* ── DSTD section (normal drone) ──────────────────────────────────────────── */
 
-typedef struct {
-    bool            enabled;
-    chord_type_t    chord;
-    uint8_t         root;
-    drone_follow_t  follow;
-    float           level;
-    uint16_t        patch;
-    bool            sub_enabled;
-    int8_t          sub_interval;
-    voice_params_t  vp;
-} staged_drone_std_t;
+typedef drone_std_params_t staged_drone_std_t;   /* drone_std_core.h */
 
 /* Records as DRON: the scalars, then the voice block. */
 #define DSTD_VERSION 5
@@ -1227,11 +1207,13 @@ static void ser_drone_std(tlv_writer_t *w)
     tlv_end_section(w, h);
 }
 
-/* Seed as parse_drone. */
+/* Seed: fallback default (drone_std_params_defaults); a field appended to
+ * either record takes its value from this seed. */
 static bool parse_drone_std(tlv_reader_t *r, staged_drone_std_t *d)
 {
     tlv_reader_t b;
     tlv_get_block(r, &b);
+    drone_std_params_defaults(d);
     uint8_t v;
     tlv_get_bool(&b, &d->enabled);
     v = (uint8_t)d->chord;
@@ -1272,13 +1254,16 @@ static void apply_drone_std(const staged_drone_std_t *d)
  * persisted (a clip is lost on power cycle); a load shows the slots empty
  * but configured. */
 typedef struct {
-    uint8_t bars;
-    bool    stereo;
-    uint8_t tail;
-    uint8_t level[CLIP_SLOT_COUNT];
-    uint8_t mode[CLIP_SLOT_COUNT];
-    uint8_t after;
+    clip_bounce_shape_t  shape;                  /* clip_bounce.h */
+    clip_player_params_t slot[CLIP_SLOT_COUNT];  /* clip_player.h */
 } staged_clip_t;
+
+/* Fallback default of the CLIP section. */
+static void clip_section_defaults(staged_clip_t *c)
+{
+    clip_bounce_params_defaults(&c->shape);
+    for (uint8_t s = 0; s < CLIP_SLOT_COUNT; s++) clip_player_params_defaults(&c->slot[s]);
+}
 
 /* One record: the shape, one record per clip slot nested, then after. */
 #define CLIP_VERSION 3
@@ -1304,41 +1289,44 @@ static void ser_clip(tlv_writer_t *w)
     tlv_end_section(w, h);
 }
 
-/* Seed: zero; a field appended to either record takes its default from this
- * seed. Slots beyond this build's count are consumed but not stored. */
+/* Seed: fallback default (clip_section_defaults); a field appended to either
+ * record takes its value from this seed. Slots beyond this build's count are
+ * consumed but not stored. */
 static bool parse_clip(tlv_reader_t *r, staged_clip_t *c)
 {
     tlv_reader_t b;
     tlv_get_block(r, &b);
-    uint8_t nslots = 0;
-    tlv_get_u8(&b, &c->bars);
-    tlv_get_bool(&b, &c->stereo);
-    tlv_get_u8(&b, &c->tail);
-    if (c->tail > CLIP_TAIL_BAR) c->tail = CLIP_TAIL_BAR;
+    clip_section_defaults(c);
+    uint8_t nslots = CLIP_SLOT_COUNT, v;
+    tlv_get_u8(&b, &c->shape.max_bars);
+    tlv_get_bool(&b, &c->shape.stereo);
+    v = (uint8_t)c->shape.tail;
+    tlv_get_u8(&b, &v);
+    c->shape.tail = (v > CLIP_TAIL_BAR) ? CLIP_TAIL_BAR : (clip_tail_t)v;
     tlv_get_u8(&b, &nslots);
     for (uint8_t s = 0; s < nslots; s++) {
         tlv_reader_t sb;
         tlv_get_block(&b, &sb);
         if (s >= CLIP_SLOT_COUNT) continue;
-        tlv_get_u8(&sb, &c->level[s]);
-        tlv_get_u8(&sb, &c->mode[s]);
-        if (c->level[s] > 100) c->level[s] = 100;
-        if (c->mode[s] > CLIP_TEMPO_VARI) c->mode[s] = CLIP_TEMPO_STRETCH;
+        clip_player_params_t *cp = &c->slot[s];
+        tlv_get_u8(&sb, &cp->level);
+        if (cp->level > 100) cp->level = 100;
+        v = (uint8_t)cp->mode;
+        tlv_get_u8(&sb, &v);
+        cp->mode = (v > CLIP_TEMPO_VARI) ? CLIP_TEMPO_STRETCH : (clip_tempo_mode_t)v;
     }
-    tlv_get_u8(&b, &c->after);
-    if (c->after > CLIP_AFTER_CLEAR) c->after = CLIP_AFTER_MUTE;
+    v = (uint8_t)c->shape.after;
+    tlv_get_u8(&b, &v);
+    c->shape.after = (v > CLIP_AFTER_CLEAR) ? CLIP_AFTER_MUTE : (clip_after_t)v;
     return true;
 }
 
 static void apply_clip(const staged_clip_t *c)
 {
-    clip_bounce_shape_t sh = { .max_bars = c->bars, .stereo = c->stereo,
-                               .tail = (clip_tail_t)c->tail,
-                               .after = (clip_after_t)c->after };
-    clip_bounce_set_shape(&sh);   /* clamps bars to the 1/2/4/8/16 list */
+    clip_bounce_set_shape(&c->shape);   /* clamps bars to the 1/2/4/8/16 list */
     for (uint8_t s = 0; s < CLIP_SLOT_COUNT; s++) {
-        clip_player_set_level(s, c->level[s]);
-        clip_player_set_tempo_mode(s, (clip_tempo_mode_t)c->mode[s]);
+        clip_player_set_level(s, c->slot[s].level);
+        clip_player_set_tempo_mode(s, c->slot[s].mode);
     }
 }
 
@@ -1379,12 +1367,13 @@ static void parse_mixr_pos(tlv_reader_t *b, uint8_t *out)
     if (*out > MIXER_POS_MAX) *out = MIXER_POS_MAX;
 }
 
-/* Seed: zero; a field appended to either record takes its default from this
- * seed. */
+/* Seed: fallback default (mixer_params_defaults); a field appended to either
+ * record takes its value from this seed. */
 static bool parse_mixr(tlv_reader_t *r, staged_mixr_t *m)
 {
     tlv_reader_t b;
     tlv_get_block(r, &b);
+    mixer_params_defaults(m);
     for (uint8_t L = 0; L < MAX_LAYERS; L++) parse_mixr_pos(&b, &m->layer_pos[L]);
     tlv_get_u8(&b, &m->layer_mute);
     m->layer_mute &= (uint8_t)((1u << MAX_LAYERS) - 1u);
@@ -1413,18 +1402,10 @@ static void apply_mixr(const staged_mixr_t *m)
 
 /* ── PROG section ─────────────────────────────────────────────────────────── */
 
-/* Static cap for the staged array; the real ceiling is
- * sequencer_core_progression_get_max() at runtime. Entries beyond either
- * bound are still consumed from the stream (reader position) but not stored. */
-#define PROJECT_PROG_MAX_ENTRIES 16
-
-typedef struct {
-    bool         enabled;
-    uint8_t      count;
-    uint8_t      root[PROJECT_PROG_MAX_ENTRIES];
-    chord_type_t chord_type[PROJECT_PROG_MAX_ENTRIES];
-    uint8_t      duration_bars[PROJECT_PROG_MAX_ENTRIES];
-} staged_prog_t;
+/* Entries beyond the progression's capacity
+ * (sequencer_core_progression_get_max()) are consumed from the stream but
+ * not stored. */
+typedef seq_prog_params_t staged_prog_t;   /* sequencer_core.h */
 
 /* Records: enabled and the entry count, then one record per entry. */
 #define PROG_VERSION 2
@@ -1449,29 +1430,31 @@ static void ser_prog(tlv_writer_t *w)
     tlv_end_section(w, h);
 }
 
-/* Seed: zero; a field appended to either record takes its default from this
- * seed. */
+/* Seed: fallback default (seq_prog_params_defaults); a field appended to
+ * either record takes its value from this seed. */
 static bool parse_prog(tlv_reader_t *r, staged_prog_t *p)
 {
     tlv_reader_t b;
     tlv_get_block(r, &b);
-    uint8_t raw_count = 0;
+    seq_prog_params_defaults(p);
+    uint8_t raw_count = p->count;
     tlv_get_bool(&b, &p->enabled);
     tlv_get_u8(&b, &raw_count);
 
     uint8_t max_entries = sequencer_core_progression_get_max();
-    if (max_entries > PROJECT_PROG_MAX_ENTRIES) max_entries = PROJECT_PROG_MAX_ENTRIES;
+    if (max_entries > PROG_GEN_MAX_ENTRIES) max_entries = PROG_GEN_MAX_ENTRIES;
     p->count = (raw_count > max_entries) ? max_entries : raw_count;
 
     for (uint8_t i = 0; i < raw_count; i++) {
         tlv_reader_t eb;
         tlv_get_block(r, &eb);
         if (i >= p->count) continue;
-        uint8_t ctraw = (uint8_t)p->chord_type[i];
-        tlv_get_u8(&eb, &p->root[i]);
+        seq_prog_entry_t *e = &p->entries[i];
+        uint8_t ctraw = (uint8_t)e->chord_type;
+        tlv_get_u8(&eb, &e->root);
         tlv_get_u8(&eb, &ctraw);
-        tlv_get_u8(&eb, &p->duration_bars[i]);
-        p->chord_type[i] = (ctraw >= CHORD_TYPE_COUNT) ? CHORD_MAJ : (chord_type_t)ctraw;
+        tlv_get_u8(&eb, &e->duration_bars);
+        e->chord_type = (ctraw >= CHORD_TYPE_COUNT) ? CHORD_MAJ : (chord_type_t)ctraw;
     }
     return true;
 }
@@ -1480,7 +1463,8 @@ static void apply_prog(const staged_prog_t *p)
 {
     sequencer_core_progression_set_count(p->count);
     for (uint8_t i = 0; i < p->count; i++) {
-        sequencer_core_progression_set_entry(i, p->root[i], p->chord_type[i], p->duration_bars[i]);
+        const seq_prog_entry_t *e = &p->entries[i];
+        sequencer_core_progression_set_entry(i, e->root, e->chord_type, e->duration_bars);
     }
     sequencer_core_progression_set_enabled(p->enabled);
 }
@@ -1511,12 +1495,14 @@ static void ser_pgen(tlv_writer_t *w)
     tlv_end_section(w, h);
 }
 
-/* Seed: zero; a field appended here takes its default from this seed. No
- * clamping here: the generator clamps every field on use. */
+/* Seed: fallback default (prog_gen_params_defaults); a field appended here
+ * takes its value from this seed. No clamping here: the generator clamps
+ * every field on use. */
 static bool parse_pgen(tlv_reader_t *r, staged_pgen_t *g)
 {
     tlv_reader_t b;
     tlv_get_block(r, &b);
+    prog_gen_params_defaults(&g->params);
     tlv_get_u8(&b, &g->params.style);
     tlv_get_u8(&b, &g->params.len);
     tlv_get_u8(&b, &g->params.bars);
@@ -1555,8 +1541,8 @@ static void ser_wtcu(tlv_writer_t *w)
     tlv_end_section(w, h);
 }
 
-/* Seed: wt_params_default(); a field appended here takes its default from
- * this seed. Clamped here (crash-safety for foreign data); the builder
+/* Seed: fallback default (wt_params_default); a field appended here takes
+ * its value from this seed. Clamped here (crash-safety for foreign data); the builder
  * clamps again. */
 static bool parse_wtcu(tlv_reader_t *r, wt_params_t *p)
 {
@@ -1593,8 +1579,8 @@ static void ser_fm_op_env(tlv_writer_t *w, const fm_op_env_t *e)
     tlv_end_block(w, h);
 }
 
-/* Seed: *e as parse_fmcu left it; fm_voice_clamp clamps the whole voice
- * afterwards. */
+/* Seed: *e as parse_fmcu left it (fm_voice_default); fm_voice_clamp clamps
+ * the whole voice afterwards. */
 static bool de_fm_op_env(tlv_reader_t *r, fm_op_env_t *e)
 {
     tlv_reader_t b;
@@ -1627,8 +1613,8 @@ static void ser_fmcu(tlv_writer_t *w)
     tlv_end_section(w, h);
 }
 
-/* Seed: fm_voice_default(); a field appended to either record takes its
- * default from this seed. Clamped here (crash-safety for foreign data);
+/* Seed: fallback default (fm_voice_default); a field appended to either
+ * record takes its value from this seed. Clamped here (crash-safety for foreign data);
  * fm_voice_clamp also reseeds a custom routing that would not compile, so
  * the voice always pushes. */
 static bool parse_fmcu(tlv_reader_t *r, fm_voice_t *v)
@@ -1682,12 +1668,13 @@ static void ser_chrd(tlv_writer_t *w)
     tlv_end_section(w, h);
 }
 
-/* Seed: zero; a field appended to either record takes its default from this
- * seed. */
+/* Seed: fallback default (seq_chords_params_defaults); a field appended to
+ * either record takes its value from this seed. */
 static bool parse_chrd(tlv_reader_t *r, seq_chord_t slots[SEQ_CHORD_SLOTS])
 {
     tlv_reader_t b;
     tlv_get_block(r, &b);
+    seq_chords_params_defaults(slots);
     uint8_t nslots = 0;
     tlv_get_u8(&b, &nslots);
     for (uint8_t s = 0; s < nslots; s++) {
@@ -1850,25 +1837,29 @@ bool project_snapshot_load_buffer(const uint8_t *payload, size_t len, const char
         return false;
     }
 
-    staged_glob_t  staged_glob;  memset(&staged_glob, 0, sizeof staged_glob);
-    staged_arp_t   staged_arp;   memset(&staged_arp, 0, sizeof staged_arp);
-    staged_prog_t  staged_prog;  memset(&staged_prog, 0, sizeof staged_prog);
-    staged_clip_t  staged_clip;  memset(&staged_clip, 0, sizeof staged_clip);
-    staged_mixr_t  staged_mixr;  memset(&staged_mixr, 0, sizeof staged_mixr);
-    staged_pgen_t  staged_pgen;  memset(&staged_pgen, 0, sizeof staged_pgen);
+    /* Every optional section starts at its fallback default: an absent or
+     * skipped one is applied as it stands (file header rules); a parsed one
+     * re-seeds it and overwrites what the file carries. */
+    staged_glob_t  staged_glob;  glob_defaults(&staged_glob);
+    staged_arp_t   staged_arp;   arp_section_defaults(&staged_arp);
+    staged_prog_t  staged_prog;  seq_prog_params_defaults(&staged_prog);
+    staged_clip_t  staged_clip;  clip_section_defaults(&staged_clip);
+    staged_mixr_t  staged_mixr;  mixer_params_defaults(&staged_mixr);
+    staged_pgen_t  staged_pgen;  prog_gen_params_defaults(&staged_pgen.params);
     seq_chord_t    staged_chords[SEQ_CHORD_SLOTS];
-    memset(staged_chords, 0, sizeof staged_chords);
+    seq_chords_params_defaults(staged_chords);
+    drop_section_defaults(&sd->drop);
+    drone_params_defaults(&sd->drone);
+    drone_std_params_defaults(&sd->dstd);
     uint8_t staged_layer_count = 0;
-    bool got_glob = false, got_arp = false, got_drone = false, got_prog = false;
-    bool got_chrd = false, got_clip = false, got_pgen = false, got_dstd = false;
-    bool got_mixr = false, got_drop = false;
+    bool got_glob = false;
 #if CONFIG_SYNTH_CUSTOM_WT
     wt_params_t staged_wtcu;
-    bool got_wtcu = false;
+    wt_params_default(&staged_wtcu);
 #endif
 #if CONFIG_SYNTH_CUSTOM_FM
     fm_voice_t staged_fmcu;
-    bool got_fmcu = false;
+    fm_voice_default(&staged_fmcu);
 #endif
 
     tlv_reader_t r;
@@ -1893,50 +1884,50 @@ bool project_snapshot_load_buffer(const uint8_t *payload, size_t len, const char
             break;
         case TAG_ARP:
             act = sect_check(&st, PROJECT_SECT_ARP, ver);
-            if (act == SECT_PARSE) { ok = parse_arp(&body, &staged_arp); got_arp = ok; }
+            if (act == SECT_PARSE) ok = parse_arp(&body, &staged_arp);
             break;
         case TAG_DROP:
             act = sect_check(&st, PROJECT_SECT_DROP, ver);
-            if (act == SECT_PARSE) { ok = parse_drop(&body, &sd->drop); got_drop = ok; }
+            if (act == SECT_PARSE) ok = parse_drop(&body, &sd->drop);
             break;
         case TAG_DRON:
             act = sect_check(&st, PROJECT_SECT_DRON, ver);
-            if (act == SECT_PARSE) { ok = parse_drone(&body, &sd->drone); got_drone = ok; }
+            if (act == SECT_PARSE) ok = parse_drone(&body, &sd->drone);
             break;
         case TAG_DSTD:
             act = sect_check(&st, PROJECT_SECT_DSTD, ver);
-            if (act == SECT_PARSE) { ok = parse_drone_std(&body, &sd->dstd); got_dstd = ok; }
+            if (act == SECT_PARSE) ok = parse_drone_std(&body, &sd->dstd);
             break;
         case TAG_PROG:
             act = sect_check(&st, PROJECT_SECT_PROG, ver);
-            if (act == SECT_PARSE) { ok = parse_prog(&body, &staged_prog); got_prog = ok; }
+            if (act == SECT_PARSE) ok = parse_prog(&body, &staged_prog);
             break;
         case TAG_CHRD:
             act = sect_check(&st, PROJECT_SECT_CHRD, ver);
-            if (act == SECT_PARSE) { ok = parse_chrd(&body, staged_chords); got_chrd = ok; }
+            if (act == SECT_PARSE) ok = parse_chrd(&body, staged_chords);
             break;
         case TAG_CLIP:
             act = sect_check(&st, PROJECT_SECT_CLIP, ver);
-            if (act == SECT_PARSE) { ok = parse_clip(&body, &staged_clip); got_clip = ok; }
+            if (act == SECT_PARSE) ok = parse_clip(&body, &staged_clip);
             break;
         case TAG_MIXR:
             act = sect_check(&st, PROJECT_SECT_MIXR, ver);
-            if (act == SECT_PARSE) { ok = parse_mixr(&body, &staged_mixr); got_mixr = ok; }
+            if (act == SECT_PARSE) ok = parse_mixr(&body, &staged_mixr);
             break;
         case TAG_PGEN:
             act = sect_check(&st, PROJECT_SECT_PGEN, ver);
-            if (act == SECT_PARSE) { ok = parse_pgen(&body, &staged_pgen); got_pgen = ok; }
+            if (act == SECT_PARSE) ok = parse_pgen(&body, &staged_pgen);
             break;
 #if CONFIG_SYNTH_CUSTOM_WT
         case TAG_WTCU:
             act = sect_check(&st, PROJECT_SECT_WTCU, ver);
-            if (act == SECT_PARSE) { ok = parse_wtcu(&body, &staged_wtcu); got_wtcu = ok; }
+            if (act == SECT_PARSE) ok = parse_wtcu(&body, &staged_wtcu);
             break;
 #endif
 #if CONFIG_SYNTH_CUSTOM_FM
         case TAG_FMCU:
             act = sect_check(&st, PROJECT_SECT_FMCU, ver);
-            if (act == SECT_PARSE) { ok = parse_fmcu(&body, &staged_fmcu); got_fmcu = ok; }
+            if (act == SECT_PARSE) ok = parse_fmcu(&body, &staged_fmcu);
             break;
 #endif
         default:
@@ -1971,10 +1962,8 @@ bool project_snapshot_load_buffer(const uint8_t *payload, size_t len, const char
 
     /* Chord table BEFORE the layer imports: import sizes each row's voice
      * count from the chord a loaded sentinel references (seq_track_num_voices),
-     * so the table must already hold the file's voicings. A file without a
-     * CHRD section clears the table - the project is the whole persisted
-     * state, chords included. */
-    seq_chords_import(got_chrd ? staged_chords : NULL);
+     * so the table must already hold the file's voicings. */
+    seq_chords_import(staged_chords);
 
     /* Split flags BEFORE the layer imports: a synth the import creates takes
      * its bus from the flags at send time (the amy_helpers ingress hook), and
@@ -1994,34 +1983,24 @@ bool project_snapshot_load_buffer(const uint8_t *payload, size_t len, const char
         sequencer_core_import_layer(i, &staged_layers[i]);
     }
 
+    /* The project is the whole persisted state: every section applies, an
+     * absent or skipped one at its fallback default. */
     apply_glob(&staged_glob);
-    if (got_arp)   apply_arp(&staged_arp);
-    /* A file without a drop section leaves the drop off, as the drones. */
-    if (got_drop)  apply_drop(&sd->drop);
-    else           drop_set_enabled(false);
-    /* A file without a drone section leaves that drone off, not playing
-     * whatever the session had (the project is the whole persisted state). */
-    if (got_drone) apply_drone(&sd->drone);
-    else           drone_set_enabled(false);
-    if (got_dstd)  apply_drone_std(&sd->dstd);
-    else           drone_std_set_enabled(false);
-    if (got_prog)  apply_prog(&staged_prog);
-    if (got_pgen)  apply_pgen(&staged_pgen);
-    if (got_clip)  apply_clip(&staged_clip);
-    /* A file without the section loads at unity (templates, older saves). */
-    if (got_mixr)  apply_mixr(&staged_mixr);
-    else           mixer_reset_defaults();
+    apply_arp(&staged_arp);
+    apply_drop(&sd->drop);
+    apply_drone(&sd->drone);
+    apply_drone_std(&sd->dstd);
+    apply_prog(&staged_prog);
+    apply_pgen(&staged_pgen);
+    apply_clip(&staged_clip);
+    apply_mixr(&staged_mixr);
 #if CONFIG_SYNTH_CUSTOM_WT
-    /* A file without the section leaves the builder at its defaults, as for
-     * the drones above. */
-    if (!got_wtcu) wt_params_default(&staged_wtcu);
     wt_builder_set_params(&staged_wtcu);
 #endif
 #if CONFIG_SYNTH_CUSTOM_FM
-    /* Same rule: no section, the default voice. The layers imported above
-     * configured their FM rows from the session's voice; the push re-sends the
-     * loaded one to them, the arp and the drones. */
-    if (!got_fmcu) fm_voice_default(&staged_fmcu);
+    /* The layers imported above configured their FM rows from the session's
+     * voice; the push re-sends the loaded one to them, the arp and the
+     * drones. */
     s_fm_voice = staged_fmcu;
     sequencer_core_fm_voice_changed(FM_PUSH_ALL);
 #endif

@@ -19,7 +19,7 @@ static void seq_push_melodic_portamento_rows(const seq_layer_t *layer,
 /* Drum sound source for the whole drum layer. SYNTH = tonal AMY patches per
  * track, PCM = built-in 808 samples. Switching reconfigures the drum layer's
  * synth slots in place. */
-seq_drum_engine_t s_drum_engine = SEQ_DRUM_PCM;
+seq_drum_engine_t s_drum_engine = SEQ_DRUM_ENGINE_DEFAULT;
 
 /* Curated drum-patch cycle list for SYNTH mode - the per-track patch control
  * wraps within this list, NOT the full 0..256 range. The DX7 idiophones have

@@ -246,14 +246,21 @@ static void retrigger_next_bar(uint8_t slot)
     schedule_start_at(slot, tick, false);
 }
 
+void clip_player_params_defaults(clip_player_params_t *out)
+{
+    *out = (clip_player_params_t){ .level = 100, .mode = CLIP_TEMPO_STRETCH };
+}
+
 void clip_player_init(void)
 {
+    clip_player_params_t p;
+    clip_player_params_defaults(&p);
     for (uint8_t i = 0; i < CLIP_SLOT_COUNT; i++) {
         atomic_store_explicit(&s_slot[i].state, CLIP_SLOT_EMPTY, memory_order_relaxed);
         atomic_store_explicit(&s_slot[i].reanchor_req, false, memory_order_relaxed);
         s_slot[i].playing = true;
-        s_slot[i].level   = 100;
-        s_slot[i].mode    = CLIP_TEMPO_STRETCH;
+        s_slot[i].level   = p.level;
+        s_slot[i].mode    = p.mode;
         s_slot[i].osc0    = 0xFFFF;
     }
     s_bus_active = false;

@@ -30,6 +30,7 @@
 #include "lfo_bank.h"       /* lfo_bank_service */
 #include "synth_level.h"
 #include "mixer.h"
+#include "amy_fx.h"
 #include "project_snapshot.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -362,6 +363,7 @@ void synth_ui_init(u8g2_t *u8g2)
     seq_state.menu_editing = false;
 
     DIAG_HEAP_CHECK("ui_init: entry");
+    amy_fx_init();   /* before anything reads or pushes the FX caches */
     amy_helpers_init();
     synth_level_init();
     mixer_init();

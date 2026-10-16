@@ -75,6 +75,33 @@ typedef enum {
     DRONE_FOLLOW_COUNT
 } drone_follow_t;
 
+/* The stutter drone's persisted state (the project's DRON section): the
+ * drone_get_* / drone_set_* values. */
+typedef struct {
+    bool            enabled;
+    chord_type_t    chord;
+    uint8_t         root;
+    uint16_t        patch;
+    float           amp_peak;
+    float           amp_duck;
+    note_div_t      rate;
+    bool            sub_enabled;
+    int8_t          sub_interval;
+    float           gate_len;
+    uint8_t         swing;
+    float           blip;
+    drone_pattern_t pattern;
+    drone_follow_t  follow;
+    voice_params_t  vp;
+} drone_params_t;
+
+/* Fallback values of the project format for the stutter drone: off, root A2
+ * alone, SAW_DOWN at 1/16 with the sub an octave down, a full gate pattern,
+ * and the authored LPF24 sweep. Pure; any task; fills every field. Never
+ * reads Kconfig; drone_core_init() seeds the boot drone from it (no Kconfig
+ * overlay). */
+void drone_params_defaults(drone_params_t *out);
+
 /* ── Lifecycle ── */
 void drone_core_init(void);
 

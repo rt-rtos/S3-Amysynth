@@ -785,11 +785,11 @@ static void drop_rebuild(drop_which_t w)
 
 /* ── Public API ──────────────────────────────────────────────────────── */
 
-static void drop_voice_defaults(drop_voice_t *v, uint16_t patch)
+static void drop_voice_defaults(drop_voice_params_t *v, uint16_t patch)
 {
     memset(v, 0, sizeof(*v));
     voice_params_init_defaults(&v->vp);
-    v->patch = SEQ_CLAMP_U16(patch, 0, SEQ_PATCH_FULL_MAX);
+    v->patch = patch;
     v->gate_pct = 75;
     /* As the arp's defaults: an envelope with a short decay and a slower
      * EG1 tail, both unauthored until an editor commits them. */
@@ -809,30 +809,66 @@ static void drop_voice_defaults(drop_voice_t *v, uint16_t patch)
     v->vp.lfo.targets = LFO_TGT_BIT(LFO_TARGET_FILTER);
 }
 
-void drop_core_init(void)
+void drop_params_defaults(drop_params_t *out)
 {
-    memset(&s_drop, 0, sizeof(s_drop));
-    s_drop.enabled       = CONFIG_SEQ_DROP_DEFAULT_ENABLED;
-    s_drop.rate          = NOTE_DIV_1_4;
-    s_drop.loop_bars     = 2;
-    s_drop.octaves       = 1;
-    s_drop.seed          = 0x1D0B5EEDu;
-    s_drop.scale_index   = 0;
-    s_drop.root_note     = SEQ_CLAMP_U8(CONFIG_SEQ_DROP_DEFAULT_ROOT_NOTE, 0, 127);
-    s_drop.sub_root_note = (s_drop.root_note >= 12u) ? (uint8_t)(s_drop.root_note - 12u)
-                                                     : s_drop.root_note;
-    s_drop.quant_mode    = ARP_QUANT_CHORD;
-    drop_voice_defaults(&s_drop.voice[DROP_VOICE_MAIN], CONFIG_SEQ_DROP_DEFAULT_PATCH);
-    drop_voice_defaults(&s_drop.voice[DROP_VOICE_SUB], CONFIG_SEQ_DROP_SUB_DEFAULT_PATCH);
+    memset(out, 0, sizeof(*out));
+    out->enabled     = false;
+    out->rate        = NOTE_DIV_1_4;
+    out->loop_bars   = 2;
+    out->octaves     = 1;
+    out->seed        = 0x1D0B5EEDu;
+    out->scale       = 0;
+    out->root        = 48;
+    out->sub_root    = 36;   /* an octave below root */
+    out->quant_mode  = ARP_QUANT_CHORD;
     /* The boot field: a plain floor under the spawner, so every ball lands
      * and bounces out its ritardando on the root, and a jackpot cell on the
      * way down, which the first fall and the first bounce cross. */
-    s_drop.segs[0] = (drop_seg_t){ .col = DROP_SPAWN_COL, .row = DROP_ROWS - 1,
-                                   .angle = 0, .type = DROP_SEG_PLAIN, .ratio = 50 };
-    s_drop.seg_count = 1;
+    out->segs[0] = (drop_seg_t){ .col = DROP_SPAWN_COL, .row = DROP_ROWS - 1,
+                                 .angle = 0, .type = DROP_SEG_PLAIN, .ratio = 50 };
+    out->seg_count = 1;
     {
         unsigned bit = 3u * DROP_COLS + DROP_SPAWN_COL;
-        s_drop.jackpot[bit >> 3] = (uint8_t)(1u << (bit & 7u));
+        out->jackpot[bit >> 3] = (uint8_t)(1u << (bit & 7u));
+    }
+    drop_voice_defaults(&out->voice[DROP_VOICE_MAIN], SEQ_PATCH_PULSE);
+    drop_voice_defaults(&out->voice[DROP_VOICE_SUB], SEQ_PATCH_SINE);
+}
+
+void drop_core_init(void)
+{
+    drop_params_t p;
+    drop_params_defaults(&p);
+    /* Kconfig overlay: the boot drop. */
+    p.enabled  = CONFIG_SEQ_DROP_DEFAULT_ENABLED;
+    p.root     = SEQ_CLAMP_U8(CONFIG_SEQ_DROP_DEFAULT_ROOT_NOTE, 0, 127);
+    p.sub_root = (p.root >= 12u) ? (uint8_t)(p.root - 12u) : p.root;
+    p.voice[DROP_VOICE_MAIN].patch = SEQ_CLAMP_U16(CONFIG_SEQ_DROP_DEFAULT_PATCH, 0, SEQ_PATCH_FULL_MAX);
+    p.voice[DROP_VOICE_SUB].patch  = SEQ_CLAMP_U16(CONFIG_SEQ_DROP_SUB_DEFAULT_PATCH, 0, SEQ_PATCH_FULL_MAX);
+
+    memset(&s_drop, 0, sizeof(s_drop));
+    s_drop.enabled       = p.enabled;
+    s_drop.rate          = p.rate;
+    s_drop.loop_bars     = p.loop_bars;
+    s_drop.octaves       = p.octaves;
+    s_drop.seed          = p.seed;
+    s_drop.seed_frozen   = p.seed_frozen;
+    s_drop.scale_index   = p.scale;
+    s_drop.root_note     = p.root;
+    s_drop.sub_root_note = p.sub_root;
+    s_drop.quant_mode    = (arp_quant_mode_t)p.quant_mode;
+    memcpy(s_drop.segs, p.segs, sizeof(s_drop.segs));
+    s_drop.seg_count     = p.seg_count;
+    memcpy(s_drop.jackpot, p.jackpot, sizeof(s_drop.jackpot));
+    for (uint8_t i = 0; i < DROP_VOICE_COUNT; i++) {
+        drop_voice_t *v = &s_drop.voice[i];
+        const drop_voice_params_t *pv = &p.voice[i];
+        v->patch         = pv->patch;
+        v->vp            = pv->vp;
+        v->portamento_ms = pv->portamento_ms;
+        v->unison        = pv->unison;
+        v->gate_pct      = pv->gate_pct;
+        v->muted         = pv->muted;
     }
 
     DIAG_HEAP_CHECK("drop_init: before configure");

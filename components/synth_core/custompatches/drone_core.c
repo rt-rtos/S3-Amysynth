@@ -518,58 +518,80 @@ static void drone_gate_schedule(void)
 
 /* ── Public API ── */
 
+void drone_params_defaults(drone_params_t *out)
+{
+    memset(out, 0, sizeof(*out));
+    voice_params_init_defaults(&out->vp);   /* unauthored, amp trim at unity */
+    out->enabled      = false;
+    out->chord        = CHORD_OFF;   /* root note only until a chord is chosen */
+    out->root         = DRONE_ROOT_DEFAULT;
+    out->follow       = DRONE_FOLLOW_OFF;
+    out->amp_peak     = 0.5f;     /* on-beat level (linear; 0.5 = -6 dB)   */
+    out->amp_duck     = 0.5f;     /* duck depth knob (0.5 -> 20 dB duck)   */
+    out->rate         = NOTE_DIV_1_16;
+    out->patch        = SEQ_PATCH_SAW_DOWN;
+    out->sub_enabled  = true;
+    out->sub_interval = -12;      /* one octave below */
+    out->gate_len     = 0.5f;     /* 50/50 square = legacy gate            */
+    out->swing        = 0;        /* straight grid                        */
+    out->blip         = 0.0f;     /* filter-zap off by default            */
+    out->pattern      = DRONE_PAT_FULL;
+    /* Default ADSR: slow drone swell. Stays unauthored until the user commits
+     * in the graph editor - an unauthored env is never pushed, so EG0 holds at
+     * 1.0 and the raw wave plays at full sustain. */
+    out->vp.env.attack_ms   = 200;
+    out->vp.env.decay_ms    = 300;
+    out->vp.env.sustain_pct = 100;
+    out->vp.env.release_ms  = 600;
+    out->vp.env.eg_type     = 0;   /* ENVELOPE_NORMAL */
+    /* EG1 timing for the filter editor's envelope routing; nothing routes to
+     * it until a depth is set. */
+    out->vp.env1.attack_ms   = 15;
+    out->vp.env1.decay_ms    = 400;
+    out->vp.env1.sustain_pct = 25;
+    out->vp.env1.release_ms  = 400;
+    out->vp.env1.eg_type     = 0;   /* ENVELOPE_NORMAL */
+    /* Authored filter and LFO: an LPF24 around ~1100 Hz swept +/-1 octave by
+     * a 4-bar sine, close to the former 600-2000 Hz, 4-bar sweep. */
+    out->vp.filter.filter_type = SEQ_FILTER_LPF24;
+    out->vp.filter.cutoff_hz   = 1100.0f;
+    out->vp.filter.resonance   = 1.5f;
+    out->vp.filter.enabled     = true;
+    out->vp.filter_authored    = true;
+    out->vp.lfo.enabled   = true;
+    out->vp.lfo.mode      = LFO_MODE_FREE;
+    out->vp.lfo.wave      = LFO_WAVE_SINE;
+    out->vp.lfo.rate      = NOTE_DIV_4BAR;
+    out->vp.lfo.depth     = 50;
+    out->vp.lfo.targets   = LFO_TGT_BIT(LFO_TARGET_FILTER);
+    out->vp.lfo.flt_oct_q = 4;      /* +/-1 octave */
+    out->vp.lfo_authored  = true;
+}
+
 void drone_core_init(void)
 {
     amy_helpers_init();
 
+    drone_params_t p;
+    drone_params_defaults(&p);
     memset(&s_d, 0, sizeof(s_d));
-    voice_params_init_defaults(&s_d.vp);   /* unauthored, amp trim at unity */
-    s_d.enabled      = false;
-    s_d.chord        = CHORD_OFF;   /* root note only until a chord is chosen */
-    s_d.root_note    = DRONE_ROOT_DEFAULT;
-    s_d.follow       = DRONE_FOLLOW_OFF;
+    s_d.vp           = p.vp;
+    s_d.enabled      = p.enabled;
+    s_d.chord        = p.chord;
+    s_d.root_note    = p.root;
+    s_d.follow       = p.follow;
     drone_notes_init(&s_d.notes);
-    s_d.amp_peak     = 0.5f;     /* on-beat level (linear; 0.5 = -6 dB)   */
-    s_d.amp_duck     = 0.5f;     /* duck depth knob (0.5 -> 20 dB duck)   */
-    s_d.rate         = NOTE_DIV_1_16;
-    s_d.patch        = SEQ_PATCH_SAW_DOWN;
-    s_d.sub_enabled  = true;
-    s_d.sub_interval = -12;      /* one octave below */
-    s_d.gate_len     = 0.5f;     /* 50/50 square = legacy gate            */
-    s_d.swing_pct    = 0;        /* straight grid                        */
-    s_d.blip_depth   = 0.0f;     /* filter-zap off by default            */
-    s_d.pattern      = DRONE_PAT_FULL;
+    s_d.amp_peak     = p.amp_peak;
+    s_d.amp_duck     = p.amp_duck;
+    s_d.rate         = p.rate;
+    s_d.patch        = p.patch;
+    s_d.sub_enabled  = p.sub_enabled;
+    s_d.sub_interval = p.sub_interval;
+    s_d.gate_len     = p.gate_len;
+    s_d.swing_pct    = p.swing;
+    s_d.blip_depth   = p.blip;
+    s_d.pattern      = p.pattern;
     s_d.last_blip_cutoff = -1.0f;
-    /* Default ADSR: slow drone swell. Stays unauthored until the user commits
-     * in the graph editor - an unauthored env is never pushed, so EG0 holds at
-     * 1.0 and the raw wave plays at full sustain. */
-    s_d.vp.env.attack_ms   = 200;
-    s_d.vp.env.decay_ms    = 300;
-    s_d.vp.env.sustain_pct = 100;
-    s_d.vp.env.release_ms  = 600;
-    s_d.vp.env.eg_type     = 0;   /* ENVELOPE_NORMAL */
-    /* EG1 timing for the filter editor's envelope routing; nothing routes to
-     * it until a depth is set. */
-    s_d.vp.env1.attack_ms   = 15;
-    s_d.vp.env1.decay_ms    = 400;
-    s_d.vp.env1.sustain_pct = 25;
-    s_d.vp.env1.release_ms  = 400;
-    s_d.vp.env1.eg_type     = 0;   /* ENVELOPE_NORMAL */
-    /* Authored filter and LFO: an LPF24 around ~1100 Hz swept +/-1 octave by
-     * a 4-bar sine, close to the former 600-2000 Hz, 4-bar sweep. */
-    s_d.vp.filter.filter_type = SEQ_FILTER_LPF24;
-    s_d.vp.filter.cutoff_hz   = 1100.0f;
-    s_d.vp.filter.resonance   = 1.5f;
-    s_d.vp.filter.enabled     = true;
-    s_d.vp.filter_authored    = true;
-    s_d.vp.lfo.enabled   = true;
-    s_d.vp.lfo.mode      = LFO_MODE_FREE;
-    s_d.vp.lfo.wave      = LFO_WAVE_SINE;
-    s_d.vp.lfo.rate      = NOTE_DIV_4BAR;
-    s_d.vp.lfo.depth     = 50;
-    s_d.vp.lfo.targets   = LFO_TGT_BIT(LFO_TARGET_FILTER);
-    s_d.vp.lfo.flt_oct_q = 4;      /* +/-1 octave */
-    s_d.vp.lfo_authored  = true;
 
     drone_rebuild();
     ESP_LOGI(TAG, "drone_core initialized (synths %u/%u)",

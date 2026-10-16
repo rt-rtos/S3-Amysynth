@@ -59,8 +59,24 @@ typedef struct {
 } fx_state_t;
 
 /* Live FX caches, one per bus: the FX menu updates fields directly, then calls
- * the matching fx_push_* below with that bus. */
+ * the matching fx_push_* below with that bus. amy_fx_init() fills them. */
 extern fx_state_t s_fx[FX_BUS_COUNT];
+
+/* Fallback values of the project format for one bus's FX cache: every level
+ * at zero, every extended param FX_PARAM_UNSET, echo synced on a dotted 8th,
+ * distortion off, level 100. Pure; any task; fills every field. Never reads
+ * Kconfig - amy_fx_init() applies the Kconfig overlay at boot. */
+void amy_fx_bus_defaults(uint8_t bus, fx_state_t *out);
+
+/* Boot state of the FX caches: amy_fx_bus_defaults() per bus, then the
+ * CONFIG_SEQ_FX_DEFAULT_ECHO/CHORUS/REVERB overlay on FX_BUS_HOME. Pushes
+ * nothing. Call once at boot before anything reads s_fx. */
+void amy_fx_init(void);
+
+/* Fallback values of the project format for the master volume and
+ * s_fx_presets_alter_global, and their boot values. */
+#define AMY_FX_MASTER_VOLUME_DEFAULT        1.0f
+#define AMY_FX_PRESETS_ALTER_GLOBAL_DEFAULT false
 
 /* False: loading a patch must NOT change the FX of the bus it loads onto
  * (mechanism: synth_ui_fx_reassert() below), making presets timbre-only.

@@ -215,6 +215,13 @@ static uint32_t prog_gen_draw(uint32_t *s)
     return *s >> 8;
 }
 
+void prog_gen_params_defaults(prog_gen_params_t *out)
+{
+    *out = (prog_gen_params_t){
+        .style = 0, .len = 4, .bars = 1, .ext = PROG_GEN_EXT_TRIAD, .var = 0, .seed = 0
+    };
+}
+
 uint8_t prog_gen_generate(const prog_gen_params_t *p, uint8_t root_pc,
                           uint8_t scale_index, prog_gen_entry_t out[PROG_GEN_MAX_ENTRIES])
 {

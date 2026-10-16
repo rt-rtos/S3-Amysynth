@@ -3,25 +3,41 @@
 #include "custompatches/drone_std_core.h"
 
 /* ── State definitions — owns chord progression ──────────────────────── */
-chord_progression_t s_prog = {
-    .entries = {
-        { .root = 0, .chord_type = CHORD_MAJ7, .duration_bars = 1 },  /* 1st chord -> 1b */
-    },
-    .count   = 1,
-    .current = 0,
-    .entry_start_bar = 0,
-    .enabled = false,
-};
+/* Persisted fields seeded by seq_progression_init() at boot. */
+chord_progression_t s_prog;
 
 /* The generator writes whole progressions into s_prog.entries, so its output
  * cap and the entry array must be the same size. */
 _Static_assert(PROG_GEN_MAX_ENTRIES == CHORD_PROG_MAX_ENTRIES,
                "prog_gen output must fit the progression entry array");
 
-/* Settings that produced the current progression; persisted alongside it. */
-static prog_gen_params_t s_prog_gen_params = {
-    .style = 0, .len = 4, .bars = 1, .ext = PROG_GEN_EXT_TRIAD, .var = 0, .seed = 0
-};
+/* Settings that produced the current progression; persisted alongside it.
+ * Seeded by seq_progression_init(). */
+static prog_gen_params_t s_prog_gen_params;
+
+void seq_prog_params_defaults(seq_prog_params_t *out)
+{
+    memset(out, 0, sizeof *out);
+    out->enabled = false;
+    out->count   = 1;
+    out->entries[0] = (seq_prog_entry_t){ .root = 0, .chord_type = CHORD_MAJ7,
+                                          .duration_bars = 1 };   /* 1st chord -> 1b */
+}
+
+void seq_progression_init(void)
+{
+    seq_prog_params_t p;
+    seq_prog_params_defaults(&p);
+    memset(&s_prog, 0, sizeof s_prog);
+    for (uint8_t i = 0; i < CHORD_PROG_MAX_ENTRIES; i++) {
+        s_prog.entries[i] = (chord_prog_entry_t){ .root = p.entries[i].root,
+                                                  .chord_type = p.entries[i].chord_type,
+                                                  .duration_bars = p.entries[i].duration_bars };
+    }
+    s_prog.count   = p.count;
+    s_prog.enabled = p.enabled;
+    prog_gen_params_defaults(&s_prog_gen_params);
+}
 
 /* Set by input-task entry points that change chord state, consumed once per
  * tick by sequencer_core_progression_service() on synth_ui_task. That makes

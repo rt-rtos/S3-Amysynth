@@ -27,45 +27,16 @@
 
 /* ── FX state ───────────────────────────────────────────────────────────── */
 
-/* The silent bus: every level at zero, every sentinel unset, distortion off.
- * Serves double duty as the boot state of the buses beyond 0 and as the shape
- * pushed to any bus that is not currently carrying a group. */
-#define FX_BUS_EMPTY_INIT { \
-    .eq_low_db  = 0, \
-    .eq_mid_db  = 0, \
-    .eq_high_db = 0, \
-    .echo_level   = 0, \
-    .chorus_level = 0, \
-    .reverb_level = 0, \
-    .echo_delay_ms   = FX_PARAM_UNSET, \
-    .echo_feedback   = FX_PARAM_UNSET, \
-    .echo_tone       = FX_PARAM_UNSET, \
-    .echo_sync       = true, \
-    .echo_div        = NOTE_DIV_1_8D, \
-    .reverb_liveness = FX_PARAM_UNSET, \
-    .reverb_damping  = FX_PARAM_UNSET, \
-    .reverb_xover_hz = FX_PARAM_UNSET, \
-    .chorus_rate     = FX_PARAM_UNSET, \
-    .chorus_depth    = FX_PARAM_UNSET, \
-    .chorus_delay    = FX_PARAM_UNSET, \
-    .bus_dist_type   = 0, \
-    .bus_dist_drive  = 1, \
-    .bus_dist_bits   = 16, \
-    .bus_dist_rate   = 1, \
-    .bus_dist_mix    = 0, \
-    .level           = 100, \
-}
-
-fx_state_t s_fx[FX_BUS_COUNT] = {
-    /* Bus 0 is where everything renders until a group is split off, so it
-     * carries the configured boot FX. */
-    [FX_BUS_HOME] = {
+void amy_fx_bus_defaults(uint8_t bus, fx_state_t *out)
+{
+    (void)bus;   /* every bus falls back alike; FX_BUS_HOME differs only at boot */
+    *out = (fx_state_t){
         .eq_low_db  = 0,
         .eq_mid_db  = 0,
         .eq_high_db = 0,
-        .echo_level          = CONFIG_SEQ_FX_DEFAULT_ECHO,
-        .chorus_level        = CONFIG_SEQ_FX_DEFAULT_CHORUS,
-        .reverb_level        = CONFIG_SEQ_FX_DEFAULT_REVERB,
+        .echo_level   = 0,
+        .chorus_level = 0,
+        .reverb_level = 0,
         /* Extended params start UNSET so AMY keeps its factory character until
          * edited. Load-bearing: designated-init would zero these, and 0
          * liveness/damping silently mangles the reverb. */
@@ -90,15 +61,27 @@ fx_state_t s_fx[FX_BUS_COUNT] = {
         .bus_dist_rate   = 1,
         .bus_dist_mix    = 0,
         .level           = 100,
-    },
-    [1] = FX_BUS_EMPTY_INIT,
-    [2] = FX_BUS_EMPTY_INIT,
-    [3] = FX_BUS_EMPTY_INIT,
-};
+    };
+}
 
-bool s_fx_presets_alter_global = false;
+fx_state_t s_fx[FX_BUS_COUNT];
 
-static const fx_state_t s_fx_muted = FX_BUS_EMPTY_INIT;
+/* The shape pushed to any bus that is not currently carrying a group: a
+ * non-home bus's defaults (amy_fx_init). */
+static fx_state_t s_fx_muted;
+
+void amy_fx_init(void)
+{
+    for (uint8_t bus = 0; bus < FX_BUS_COUNT; bus++) amy_fx_bus_defaults(bus, &s_fx[bus]);
+    amy_fx_bus_defaults(FX_BUS_COUNT - 1u, &s_fx_muted);
+    /* Bus 0 is where everything renders until a group is split off, so it
+     * carries the configured boot FX. */
+    s_fx[FX_BUS_HOME].echo_level   = CONFIG_SEQ_FX_DEFAULT_ECHO;
+    s_fx[FX_BUS_HOME].chorus_level = CONFIG_SEQ_FX_DEFAULT_CHORUS;
+    s_fx[FX_BUS_HOME].reverb_level = CONFIG_SEQ_FX_DEFAULT_REVERB;
+}
+
+bool s_fx_presets_alter_global = AMY_FX_PRESETS_ALTER_GLOBAL_DEFAULT;
 
 /* What the engine must be holding for this bus: its cache while the bus
  * carries a group, the silent shape otherwise. */
@@ -110,7 +93,7 @@ static const fx_state_t *fx_engine_state(uint8_t bus)
 /* ── Master volume ──────────────────────────────────────────────────────── */
 /* Range 0..2.0, unity=1.0. Matches AMY's own init (amy_start sets
  * amy_global.volume[bus]=1.0f), so no push is needed at boot. */
-static float s_master_volume = 1.0f;
+static float s_master_volume = AMY_FX_MASTER_VOLUME_DEFAULT;
 
 /* What amy_global.volume[bus] holds: master x trim, times the clip bus's
  * makeup (FX_BUS_CLIPS_MAKEUP). Direct write: an aligned float store, atomic

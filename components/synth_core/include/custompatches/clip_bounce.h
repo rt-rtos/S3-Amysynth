@@ -88,6 +88,13 @@ typedef struct {
 
 #define CLIP_SLOT_AUTO 0xFFu   /* start: pick the first empty slot */
 
+/* Fallback values of the project format for the bounce shape (the project's
+ * CLIP section): 4 bars, mono, one bar of tail, mute after. Pure; any task;
+ * fills every field. Never reads Kconfig; clip_bounce_init() seeds the boot
+ * shape from it (no Kconfig overlay). */
+void clip_bounce_params_defaults(clip_bounce_shape_t *out);
+
+/* Boot state: idle, no undo, the shape at clip_bounce_params_defaults(). */
 void clip_bounce_init(void);
 clip_bounce_state_t clip_bounce_get_state(void);
 

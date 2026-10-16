@@ -37,6 +37,17 @@ typedef enum {
     CLIP_TEMPO_VARI,          /* rate follows tempo, pitch follows rate */
 } clip_tempo_mode_t;
 
+/* One clip slot's persisted settings (part of the project's CLIP section). */
+typedef struct {
+    uint8_t           level;   /* percent, 0..100 */
+    clip_tempo_mode_t mode;
+} clip_player_params_t;
+
+/* Fallback values of the project format for one slot: level 100, STRETCH.
+ * Pure; any task; fills every field. Never reads Kconfig; clip_player_init()
+ * seeds every boot slot from it (no Kconfig overlay). */
+void clip_player_params_defaults(clip_player_params_t *out);
+
 void clip_player_init(void);
 
 clip_slot_state_t clip_player_slot_state(uint8_t slot);

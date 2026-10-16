@@ -39,6 +39,36 @@ typedef enum {
     ARP_QUANT_COUNT
 } arp_quant_mode_t;
 
+/* The arp's persisted state (the project's ARP record): the arp_get_* /
+ * arp_set_* values. env is EG0, env2 EG1; amp_scale is the voice's amp trim. */
+typedef struct {
+    bool           enabled;
+    uint16_t       patch;
+    arp_dir_t      dir;
+    uint8_t        octaves;
+    note_div_t     rate;
+    uint8_t        gate_pct;
+    uint8_t        scale;
+    uint8_t        root;
+    uint8_t        quant_mode;      /* arp_quant_mode_t */
+    uint16_t       portamento_ms;
+    float          amp_scale;
+    int16_t        slots[ARP_MAX_SLOTS];
+    seq_env_t      env, env2;
+    seq_filter_t   filter;
+    seq_lfo_t      lfo, lfo2;
+    bool           lfo2_authored;
+    seq_dist_t     dist;
+    bool           muted;
+    voice_unison_t unison;          /* count 0 = never set */
+} arp_params_t;
+
+/* Fallback values of the project format for the arp: off, UP at 1/16 over
+ * one octave, empty slots, the plucky default envelopes and an unauthored
+ * filter/LFO seed. Pure; any task; fills every field. Never reads Kconfig -
+ * arp_core_init() applies the CONFIG_SEQ_ARP_DEFAULT_* overlay at boot. */
+void arp_params_defaults(arp_params_t *out);
+
 /* ── Lifecycle ── */
 void arp_core_init(void);
 

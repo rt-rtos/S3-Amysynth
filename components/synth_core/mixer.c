@@ -79,12 +79,24 @@ static uint8_t clamp_pos(uint8_t pos)
     return (pos > MIXER_POS_MAX) ? (uint8_t)MIXER_POS_MAX : pos;
 }
 
+void mixer_params_defaults(mixer_snapshot_t *out)
+{
+    memset(out, 0, sizeof(*out));
+    memset(out->layer_pos, MIXER_POS_MAX, sizeof(out->layer_pos));
+    memset(out->track_pos, MIXER_POS_MAX, sizeof(out->track_pos));
+    memset(out->misc_pos, MIXER_POS_MAX, sizeof(out->misc_pos));
+    out->fade_bars_idx = MIXER_FADE_BARS_DEFAULT;
+}
+
+/* Layer L's entries back to mixer_params_defaults(). */
 static void layer_defaults(uint8_t L)
 {
-    s_mix.layer_pos[L] = MIXER_POS_MAX;
-    s_mix.layer_mute  &= (uint8_t)~(1u << L);
-    memset(s_mix.track_pos[L], MIXER_POS_MAX, sizeof(s_mix.track_pos[L]));
-    s_mix.track_mute[L] = 0;
+    mixer_snapshot_t d;
+    mixer_params_defaults(&d);
+    s_mix.layer_pos[L] = d.layer_pos[L];
+    s_mix.layer_mute  = (uint8_t)((s_mix.layer_mute & ~(1u << L)) | (d.layer_mute & (1u << L)));
+    memcpy(s_mix.track_pos[L], d.track_pos[L], sizeof(s_mix.track_pos[L]));
+    s_mix.track_mute[L] = d.track_mute[L];
 }
 
 static void fade_clear(int i)
@@ -170,10 +182,7 @@ static bool live_ready(void)
 
 void mixer_init(void)
 {
-    memset(&s_mix, 0, sizeof(s_mix));
-    for (uint8_t L = 0; L < MAX_LAYERS; L++) layer_defaults(L);
-    memset(s_mix.misc_pos, MIXER_POS_MAX, sizeof(s_mix.misc_pos));
-    s_mix.fade_bars_idx = MIXER_FADE_BARS_DEFAULT;
+    mixer_params_defaults(&s_mix);
     fade_clear_all();
     s_layer_dirty = 0;
     memset(s_track_dirty, 0, sizeof(s_track_dirty));
@@ -185,10 +194,7 @@ void mixer_init(void)
 
 void mixer_reset_defaults(void)
 {
-    for (uint8_t L = 0; L < MAX_LAYERS; L++) layer_defaults(L);
-    memset(s_mix.misc_pos, MIXER_POS_MAX, sizeof(s_mix.misc_pos));
-    s_mix.misc_mute = 0;
-    s_mix.fade_bars_idx = MIXER_FADE_BARS_DEFAULT;
+    mixer_params_defaults(&s_mix);
     fade_clear_all();
     mark_all_dirty();
 }

@@ -42,6 +42,27 @@ extern "C" {
  * drone's 2/3) so both drones can sound together; the slot map is in
  * synth_slots.h. AMY access goes through amy_helpers.h. */
 
+/* The normal drone's persisted state (the project's DSTD section): the
+ * drone_std_get_* / drone_std_set_* values. */
+typedef struct {
+    bool            enabled;
+    chord_type_t    chord;
+    uint8_t         root;
+    drone_follow_t  follow;
+    float           level;
+    uint16_t        patch;
+    bool            sub_enabled;
+    int8_t          sub_interval;
+    voice_params_t  vp;
+} drone_std_params_t;
+
+/* Fallback values of the project format for the normal drone: off, root A2
+ * alone, SAW_DOWN at level 0.5 with the sub an octave down, a slow swell and
+ * unauthored LPF/LFO seeds. Pure; any task; fills every field. Never reads
+ * Kconfig; drone_std_core_init() seeds the boot drone from it (no Kconfig
+ * overlay). */
+void drone_std_params_defaults(drone_std_params_t *out);
+
 /* ── Lifecycle ── */
 void drone_std_core_init(void);
 

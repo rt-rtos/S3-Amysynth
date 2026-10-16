@@ -436,49 +436,95 @@ static void arp_rebuild(void)
 
 /* ── Public API ──────────────────────────────────────────────────────── */
 
-void arp_core_init(void)
+void arp_params_defaults(arp_params_t *out)
 {
-    memset(&s_arp, 0, sizeof(s_arp));
-    voice_params_init_defaults(&s_arp.vp);   /* unauthored, amp trim at unity */
-    /* Seed the bipolar EG1->cutoff sweep so an enabled arp filter has its
-     * plucky-sweep character; the graph editor's EG1 page edits it
-     * (-8..+8 oct, 0 = no sweep). */
-    s_arp.vp.filter.eg_depth[1][SEQ_EGT_CUTOFF] = ARP_FILTER_EG1_DEPTH_OCT;
-    s_arp.enabled     = CONFIG_SEQ_ARP_DEFAULT_ENABLED;
-    s_arp.dir         = ARP_UP;
-    s_arp.octaves     = CONFIG_SEQ_ARP_DEFAULT_OCTAVES;
-    s_arp.rate        = NOTE_DIV_1_16;
-    s_arp.gate_pct    = CONFIG_SEQ_ARP_DEFAULT_GATE_PCT;
-    s_arp.scale_index = CONFIG_SEQ_ARP_DEFAULT_SCALE;
-    s_arp.root_note   = CONFIG_SEQ_ARP_DEFAULT_ROOT_NOTE;
-    s_arp.patch       = CONFIG_SEQ_ARP_DEFAULT_PATCH;
-    s_arp.quant_mode  = ARP_QUANT_CHORD;
+    memset(out, 0, sizeof(*out));
+    voice_params_t vp;
+    voice_params_init_defaults(&vp);   /* unauthored, amp trim at unity */
+    out->enabled    = false;
+    out->patch      = 138;             /* DX7 E.Piano, matches melodic default */
+    out->dir        = ARP_UP;
+    out->octaves    = 1;
+    out->rate       = NOTE_DIV_1_16;
+    out->gate_pct   = 75;
+    out->scale      = 0;               /* Chromatic */
+    out->root       = 40;              /* E2 */
+    out->quant_mode = ARP_QUANT_CHORD;
+    out->amp_scale  = vp.amp_trim;
+    for (uint8_t i = 0; i < ARP_MAX_SLOTS; i++) out->slots[i] = -1;
     /* Default ADSR mirrors the melodic compile-time defaults; unauthored until
      * the user commits in the graph editor (the patch's own env wins). */
-    s_arp.vp.env.attack_ms   = 4;    /* tiny curve, prevents a digital click */
-    s_arp.vp.env.decay_ms    = 250;
-    s_arp.vp.env.sustain_pct = 30;   /* low sustain keeps the sequence energetic */
-    s_arp.vp.env.release_ms  = 200;
-    s_arp.vp.env.eg_type     = 0;    /* ENVELOPE_NORMAL */
+    out->env = vp.env;
+    out->env.attack_ms   = 4;    /* tiny curve, prevents a digital click */
+    out->env.decay_ms    = 250;
+    out->env.sustain_pct = 30;   /* low sustain keeps the sequence energetic */
+    out->env.release_ms  = 200;
+    out->env.eg_type     = 0;    /* ENVELOPE_NORMAL */
     /* EG1 is deliberately slower than the amp env: the classic "plucky amp
      * decay, slower filter tail" shape. */
-    s_arp.vp.env1.attack_ms   = 15;
-    s_arp.vp.env1.decay_ms    = 400;
-    s_arp.vp.env1.sustain_pct = 20;
-    s_arp.vp.env1.release_ms  = 300;
-    s_arp.vp.env1.eg_type     = 0;   /* ENVELOPE_NORMAL */
-    /* Default filter: bypass (unauthored; patch's filter wins until commit). */
-    s_arp.vp.filter.filter_type = 0;   /* SEQ_FILTER_NONE */
-    s_arp.vp.filter.cutoff_hz   = 800.0f;
-    s_arp.vp.filter.resonance   = 1.0f;
+    out->env2 = vp.env1;
+    out->env2.attack_ms   = 15;
+    out->env2.decay_ms    = 400;
+    out->env2.sustain_pct = 20;
+    out->env2.release_ms  = 300;
+    out->env2.eg_type     = 0;   /* ENVELOPE_NORMAL */
+    /* Default filter: bypass (unauthored; patch's filter wins until commit).
+     * The bipolar EG1->cutoff sweep gives an enabled arp filter its
+     * plucky-sweep character; the graph editor's EG1 page edits it
+     * (-8..+8 oct, 0 = no sweep). */
+    out->filter = vp.filter;
+    out->filter.eg_depth[1][SEQ_EGT_CUTOFF] = ARP_FILTER_EG1_DEPTH_OCT;
+    out->filter.filter_type = 0;   /* SEQ_FILTER_NONE */
+    out->filter.cutoff_hz   = 800.0f;
+    out->filter.resonance   = 1.0f;
     /* Default LFO: disabled (bypass until the user commits). */
-    s_arp.vp.lfo.wave   = LFO_WAVE_SINE;
-    s_arp.vp.lfo.rate   = NOTE_DIV_1_1;
-    s_arp.vp.lfo.depth  = 50;
-    s_arp.vp.lfo.targets = LFO_TGT_BIT(LFO_TARGET_FILTER);
+    out->lfo = vp.lfo;
+    out->lfo.wave    = LFO_WAVE_SINE;
+    out->lfo.rate    = NOTE_DIV_1_1;
+    out->lfo.depth   = 50;
+    out->lfo.targets = LFO_TGT_BIT(LFO_TARGET_FILTER);
+    out->lfo2          = vp.lfo2;
+    out->lfo2_authored = vp.lfo2_authored;
+    out->dist          = vp.dist;
+}
+
+void arp_core_init(void)
+{
+    arp_params_t p;
+    arp_params_defaults(&p);
+    /* Kconfig overlay: the boot arp. */
+    p.enabled  = CONFIG_SEQ_ARP_DEFAULT_ENABLED;
+    p.octaves  = CONFIG_SEQ_ARP_DEFAULT_OCTAVES;
+    p.gate_pct = CONFIG_SEQ_ARP_DEFAULT_GATE_PCT;
+    p.scale    = CONFIG_SEQ_ARP_DEFAULT_SCALE;
+    p.root     = CONFIG_SEQ_ARP_DEFAULT_ROOT_NOTE;
+    p.patch    = CONFIG_SEQ_ARP_DEFAULT_PATCH;
+
+    memset(&s_arp, 0, sizeof(s_arp));
+    voice_params_init_defaults(&s_arp.vp);
+    s_arp.enabled       = p.enabled;
+    s_arp.dir           = p.dir;
+    s_arp.octaves       = p.octaves;
+    s_arp.rate          = p.rate;
+    s_arp.gate_pct      = p.gate_pct;
+    s_arp.scale_index   = p.scale;
+    s_arp.root_note     = p.root;
+    s_arp.patch         = p.patch;
+    s_arp.quant_mode    = (arp_quant_mode_t)p.quant_mode;
+    s_arp.portamento_ms = p.portamento_ms;
+    s_arp.muted         = p.muted;
+    s_arp.unison        = p.unison;
+    memcpy(s_arp.slots, p.slots, sizeof(s_arp.slots));
+    s_arp.vp.amp_trim      = p.amp_scale;
+    s_arp.vp.env           = p.env;
+    s_arp.vp.env1          = p.env2;
+    s_arp.vp.filter        = p.filter;
+    s_arp.vp.lfo           = p.lfo;
+    s_arp.vp.lfo2          = p.lfo2;
+    s_arp.vp.lfo2_authored = p.lfo2_authored;
+    s_arp.vp.dist          = p.dist;
     s_arp.octaves = SEQ_CLAMP_U8(s_arp.octaves, 1, ARP_OCT_MAX);
     if (s_arp.scale_index >= quantizer_scale_count()) s_arp.scale_index = 0;
-    for (uint8_t i = 0; i < ARP_MAX_SLOTS; i++) s_arp.slots[i] = -1;
 
     DIAG_HEAP_CHECK("arp_init: before arp_configure");
     arp_rebuild();
