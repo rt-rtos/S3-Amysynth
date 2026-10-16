@@ -26,7 +26,9 @@ const char *synth_ui_hint_text(void)
 
 bool synth_ui_hint_visible(void)
 {
-    if (seq_state.ui_mode == UI_MODE_PROG) {
+    /* PROG and DROP draw into the strip's rows (the field's bottom row of
+     * cells on DROP). */
+    if (seq_state.ui_mode == UI_MODE_PROG || seq_state.ui_mode == UI_MODE_DROP) {
         return false;
     }
     return true;

@@ -42,6 +42,7 @@ typedef enum {
     MI_SCREEN_SEQ,
     MI_SCREEN_MIXER,
     MI_SCREEN_ARP,
+    MI_SCREEN_DROP,
     MI_SCREEN_DRONE,
     MI_SCREEN_PROG,
 #if CONFIG_SYNTH_CUSTOM_FM
@@ -237,6 +238,7 @@ void menu_build_view(menu_view_t *out)
     snprintf(s_menu_items[MI_SCREEN_SEQ].label, MENU_LABEL_LEN, "Sequencer");
     snprintf(s_menu_items[MI_SCREEN_MIXER].label, MENU_LABEL_LEN, "Mixer");
     snprintf(s_menu_items[MI_SCREEN_ARP].label, MENU_LABEL_LEN, "Arpeggiator");
+    snprintf(s_menu_items[MI_SCREEN_DROP].label, MENU_LABEL_LEN, "Ball Drop");
     snprintf(s_menu_items[MI_SCREEN_DRONE].label, MENU_LABEL_LEN, "Drones");
     snprintf(s_menu_items[MI_SCREEN_PROG].label, MENU_LABEL_LEN, "Progression");
 #if CONFIG_SYNTH_CUSTOM_FM
@@ -847,6 +849,10 @@ bool synth_ui_menu_handle_button(void)
                 break;
             case MI_SCREEN_ARP:
                 seq_state.ui_mode = UI_MODE_ARP;
+                seq_state.menu_open = false;
+                break;
+            case MI_SCREEN_DROP:
+                seq_state.ui_mode = UI_MODE_DROP;
                 seq_state.menu_open = false;
                 break;
             case MI_SCREEN_DRONE:

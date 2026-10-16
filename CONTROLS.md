@@ -33,7 +33,7 @@ button input; the rest are mode screens. Resolved in one place,
 4. Step Trig popup
 5. ADSR (graph) editor
 6. Menu
-7. Mode screen: Arp, Stutter drone, Normal drone, Prog, FM, DEV, WT, Mixer, Seq (default at boot)
+7. Mode screen: Arp, Ball drop, Stutter drone, Normal drone, Prog, FM, DEV, WT, Mixer, Seq (default at boot)
 
 Screens are changed only through the Menu.
 
@@ -41,9 +41,9 @@ Screens are changed only through the Menu.
 
 | Gesture | Action |
 |---|---|
-| SHIFT + Button 0 (press) | Sequencer screen, no menu: toggle solo on the selected track. Arpeggiator screen, no menu: toggle the arp's solo. A SOLO / SOLO OFF banner shows the result. Elsewhere: nothing |
-| SHIFT + Button 0 (hold) | Sequencer or Arpeggiator screen, no menu: clear every solo, the arp's included (SOLO CLR banner). Elsewhere: nothing |
-| SHIFT + Button 1 | Open the ADSR editor on the current instrument (Seq, Arp, Drone screens, or the Wireless menu page). With an editor open: commit and close it |
+| SHIFT + Button 0 (press) | Sequencer screen, no menu: toggle solo on the selected track. Arpeggiator or Ball drop screen, no menu: toggle the arp's or the drop's solo. A SOLO / SOLO OFF banner shows the result. Elsewhere: nothing |
+| SHIFT + Button 0 (hold) | Sequencer, Arpeggiator or Ball drop screen, no menu: clear every solo, the arp's and the drop's included (SOLO CLR banner). Elsewhere: nothing |
+| SHIFT + Button 1 | Open the ADSR editor on the current instrument (Seq, Arp, Drone screens, or the Wireless menu page). With an editor open: commit and close it. Ball drop screen: reroll the seed (press) or freeze / unfreeze it (hold) |
 | SHIFT + Button 2 | Sequencer screen, no menu: open the Step Trig popup. Popup open: close it. Filter/LFO/DIST/ADSR editor open: release the open tab to the patch |
 | SHIFT + Button 3 | Sequencer screen, no menu: open the menu on the Layer page, on the row it was left on if the menu was closed on that page's layer entry, else on Gate. Arpeggiator screen, no menu: the same on the page's ARP entry, else on Level. Menu open on the Wireless page: switch to the Layer page's LIVE entry, on Level. Menu open on the Layer page: close it. Filter/LFO/DIST/ADSR editor open on a melodic row: flip the row between its own voice block and the layer's shared block |
 | Button 3 (tap) | Toggle the menu; it reopens on the page and row it was closed on. With an editor open: next editor. With the Step Trig popup open: close it |
@@ -64,6 +64,7 @@ screen; a DEV status bar replaces it on every screen while on.
 |---|---|---|---|
 | Seq | Patch | Pitch | Menu |
 | Arp, Stutter, Normal drone | Patch | - | Menu |
+| Ball drop | Focus | Jackpt | Menu (the strip is hidden; the field uses its rows) |
 | FM | Link (page 1), - (page 2) | Mute | Menu (Done while linking) |
 | WT | Copy (- on HRM and the S tab) | Reset (Blend on keyframe M, off HRM; - on the S tab) | Menu |
 | Mixer | Mute | Param (List in PARAM mode) | Menu (Back in a layer's track rows) |
@@ -136,7 +137,7 @@ Main list rows:
 
 | Kind | Rows |
 |---|---|
-| Screen (runs and closes the menu) | Sequencer, Arpeggiator, Drones (the normal drone, with the stutter drone behind its STUTTER row), Progression, FM (`CONFIG_SYNTH_CUSTOM_FM`), Wavetable (`CONFIG_SYNTH_CUSTOM_WT`), DEV (`CONFIG_SYNTH_DEV_MENU`) |
+| Screen (runs and closes the menu) | Sequencer, Arpeggiator, Ball Drop, Drones (the normal drone, with the stutter drone behind its STUTTER row), Progression, FM (`CONFIG_SYNTH_CUSTOM_FM`), Wavetable (`CONFIG_SYNTH_CUSTOM_WT`), DEV (`CONFIG_SYNTH_DEV_MENU`) |
 | Action (runs and closes the menu) | Add Layer, Del Layer |
 | Value (click to edit) | BPM, Quant, Scale, Root, Arp, Drone, Stutter, Drum Bank, Volume (5 % steps) |
 | Dive (open a sub-page) | Layer, Chords, Bounce, Prog Gen, FX, Projects (`CONFIG_SYNTH_PROJECT_STORE`), Wireless (`CONFIG_SYNTH_WIRELESS`) |
@@ -310,6 +311,35 @@ until Button 2 returns to LIST mode.
 | Button 3 (tap) | Menu |
 | SHIFT + Button 0 (press / hold) | Toggle the arp's solo / clear every solo (Global gestures) |
 | SHIFT + Button 1 | Open the ADSR editor on the arp |
+
+## Ball drop screen
+
+A field of 16 x 8 cells under a status row. Balls drop from the spawner
+(the chevron at the top of column 8) once per Rate; every segment they hit
+plays a note on the DROP synth (the bottom row is Root, each row up one
+scale degree), and a ball crossing the jackpot cells plays the SUB synth at
+its own root. The loop (Bars long) is simulated from the seed and repeats
+until an edit or a reroll changes it. The status row reads ON/OFF/MUTE,
+the focus (D or S), the focused synth's patch and root, the loop bars, the
+seed (a `*` when frozen) and the rate.
+
+| Input | Action |
+|---|---|
+| Encoder turn, browsing | Move the cursor over the cells, then the status fields (ON/OFF, focus, root, bars, seed, rate) |
+| Encoder click | Enter / leave editing |
+| Encoder turn, editing | A status field: change its value (the seed field rerolls). A cell: rotate the segment there (8 angles) |
+| Button 0 (tap) | Place a plain segment on the cursor cell, or remove the one there |
+| Button 0 hold + turn | Rotate the segment under the cursor |
+| SHIFT + turn | Cycle the segment's type: plain, split (a notch: balls leave left or right by its ratio), damp (dotted: ends the ball) |
+| SHIFT + Button 0 hold + turn | On a split segment: its ratio, 5 % steps |
+| Button 1 (tap) | Focus the other synth (DROP / SUB): what the patch gesture, the root field and the Layer entry address |
+| Button 1 hold + turn | Cycle the focused synth's patch |
+| Button 2 (tap) | Place the jackpot with the cursor cell as its left end, or remove it when the cursor is on that end |
+| Button 2 hold + turn | Widen or narrow the jackpot |
+| Button 0 (hold) | Play / stop, unless the hold turned something |
+| Button 3 (tap) | Menu |
+| SHIFT + Button 0 (press / hold) | Toggle the drop's solo / clear every solo (Global gestures) |
+| SHIFT + Button 1 (press / hold) | Reroll the seed / freeze or unfreeze it |
 
 ## Drone screens
 

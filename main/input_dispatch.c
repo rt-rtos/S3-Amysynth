@@ -22,8 +22,11 @@ static bool s_shift_chord_latched[MY_BUTTON_MAX] = { false };
 /* SHIFT+0 solo chord in flight: PRESS_DOWN seen with SHIFT held, waiting for
  * the release (press) or the long-press threshold. The target is fixed at the
  * press: the selected track on the sequencer screen, the arp on its screen. */
-typedef enum { CHORD0_NONE, CHORD0_SEQ, CHORD0_ARP } chord0_t;
+typedef enum { CHORD0_NONE, CHORD0_SEQ, CHORD0_ARP, CHORD0_DROP } chord0_t;
 static chord0_t s_chord0 = CHORD0_NONE;
+/* SHIFT+1 on the drop screen, same shape: the release rerolls the seed, the
+ * long-press threshold freezes it. */
+static bool s_chord1_drop = false;
 
 void input_dispatch_button(my_button_id_t button_id, button_event_t event)
 {
@@ -84,12 +87,22 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
             bool hold = (event == BUTTON_LONG_PRESS_START);
             chord0_t c = s_chord0;
             s_chord0 = CHORD0_NONE;
-            if (c == CHORD0_ARP) synth_ui_arp_solo_chord(hold);
-            else                 synth_ui_seq_solo_chord(hold);
+            if (c == CHORD0_ARP)       synth_ui_arp_solo_chord(hold);
+            else if (c == CHORD0_DROP) synth_ui_drop_solo_chord(hold);
+            else                       synth_ui_seq_solo_chord(hold);
             return;
         }
         if (event != BUTTON_PRESS_DOWN) return;
         s_chord0 = CHORD0_NONE;
+    }
+    if (button_id == MY_BUTTON_1 && s_chord1_drop) {
+        if (event == BUTTON_LONG_PRESS_START || event == BUTTON_PRESS_UP) {
+            s_chord1_drop = false;
+            synth_ui_drop_shift1(event == BUTTON_LONG_PRESS_START);
+            return;
+        }
+        if (event != BUTTON_PRESS_DOWN) return;
+        s_chord1_drop = false;
     }
 
     /* SHIFT chords, fired on the digit's PRESS_DOWN:
@@ -113,8 +126,9 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
     if (s_shift_held && event == BUTTON_PRESS_DOWN && button_id == MY_BUTTON_0) {
         s_shift_chord_latched[MY_BUTTON_0] = true;
         ui_view_id_t sv = synth_ui_active_view();
-        s_chord0 = (sv == UI_VIEW_SEQ) ? CHORD0_SEQ
-                 : (sv == UI_VIEW_ARP) ? CHORD0_ARP : CHORD0_NONE;
+        s_chord0 = (sv == UI_VIEW_SEQ)  ? CHORD0_SEQ
+                 : (sv == UI_VIEW_ARP)  ? CHORD0_ARP
+                 : (sv == UI_VIEW_DROP) ? CHORD0_DROP : CHORD0_NONE;
         return;
     }
     if (s_shift_held && event == BUTTON_PRESS_DOWN &&
@@ -123,6 +137,11 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
         s_shift_chord_latched[button_id] = true;
         ui_view_id_t sv = synth_ui_active_view();
         if (button_id == MY_BUTTON_1) {
+            if (sv == UI_VIEW_DROP) {
+                /* Seed reroll / freeze, decided on the release or the hold. */
+                s_chord1_drop = true;
+                return;
+            }
             bool open_from_screen = (sv == UI_VIEW_SEQ || sv == UI_VIEW_ARP ||
                                      sv == UI_VIEW_DRONE || sv == UI_VIEW_DRONE_STD);
 #if CONFIG_SYNTH_WIRELESS
@@ -276,6 +295,20 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
             return;
         }
 #endif
+        if (synth_ui_active_view() == UI_VIEW_DROP) {
+            /* The hold is the patch gesture as elsewhere; a tap flips the
+             * screen's focus, which its release decides. */
+            if (event == BUTTON_PRESS_DOWN) {
+                s_patch_held = true;
+                synth_ui_set_patch_select_mode(true);
+                synth_ui_drop_button_edge(1, true);
+            } else if (event == BUTTON_PRESS_UP) {
+                s_patch_held = false;
+                synth_ui_set_patch_select_mode(false);
+                synth_ui_drop_button_edge(1, false);
+            }
+            return;
+        }
         if (event == BUTTON_PRESS_DOWN) {
             s_patch_held = true;
             synth_ui_set_patch_select_mode(true);
@@ -284,6 +317,30 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
             synth_ui_set_patch_select_mode(false);
         }
         return;
+    }
+
+    /* Drop screen: buttons 0 and 2 belong to the field (taps on the
+     * release, holds as turn modifiers); a long press of 0 that turned
+     * nothing is still play/pause. */
+    if (synth_ui_drop_is_active()) {
+        switch (button_id) {
+            case MY_BUTTON_2:
+                s_drum_select_held = false;
+                synth_ui_set_drum_select_mode(false);
+                if (event == BUTTON_PRESS_DOWN)             synth_ui_drop_button_edge(2, true);
+                else if (event == BUTTON_PRESS_UP)          synth_ui_drop_button_edge(2, false);
+                else if (event == BUTTON_LONG_PRESS_START)  (void)synth_ui_drop_button_long(2);
+                return;
+            case MY_BUTTON_0:
+                if (event == BUTTON_PRESS_DOWN)             synth_ui_drop_button_edge(0, true);
+                else if (event == BUTTON_PRESS_UP)          synth_ui_drop_button_edge(0, false);
+                else if (event == BUTTON_LONG_PRESS_START) {
+                    if (!synth_ui_drop_button_long(0)) synth_ui_toggle_playing();
+                }
+                return;
+            default:
+                break;
+        }
     }
 
     /* Arp screen isolation: sequencer editing gestures must not leak through
@@ -448,6 +505,9 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
             case UI_VIEW_ARP:
                 if (event == BUTTON_PRESS_DOWN)  synth_ui_arp_handle_button();
                 return;
+            case UI_VIEW_DROP:
+                if (event == BUTTON_PRESS_DOWN)  synth_ui_drop_handle_button();
+                return;
             case UI_VIEW_DRONE:
                 if (event == BUTTON_PRESS_DOWN)  synth_ui_drone_handle_button();
                 return;
@@ -550,6 +610,8 @@ void input_dispatch_encoder_steps(long steps)
             synth_ui_drone_std_cycle_patch((int)steps);
         } else if (v == UI_VIEW_ARP) {
             synth_ui_arp_cycle_patch((int)steps);
+        } else if (v == UI_VIEW_DROP) {
+            synth_ui_drop_cycle_patch((int)steps);
         } else if (sequencer_core_get_layer_type(seq_get_active_layer_idx())
                    == SEQ_LAYER_DRUM) {
             synth_ui_cycle_drum_patch((int)steps);
@@ -560,6 +622,9 @@ void input_dispatch_encoder_steps(long steps)
         synth_ui_drone_handle_encoder(steps);
     } else if (v == UI_VIEW_DRONE_STD) {
         synth_ui_drone_std_handle_encoder(steps);
+    } else if (v == UI_VIEW_DROP) {
+        // SHIFT+Turn cycles the type of the segment under the cursor.
+        synth_ui_drop_handle_encoder(steps, s_shift_held);
     } else if (s_drum_select_held) {
         // Pitch-edit hold: transpose the selected track (drum or
         // melodic).

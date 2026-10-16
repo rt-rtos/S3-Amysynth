@@ -20,6 +20,7 @@ ui_view_id_t synth_ui_active_view(void)
     if (seq_state.menu_open)            return UI_VIEW_MENU;
     switch (seq_state.ui_mode) {
         case UI_MODE_ARP:       return UI_VIEW_ARP;
+        case UI_MODE_DROP:      return UI_VIEW_DROP;
         case UI_MODE_DRONE:     return UI_VIEW_DRONE;
         case UI_MODE_DRONE_STD: return UI_VIEW_DRONE_STD;
         case UI_MODE_PROG:      return UI_VIEW_PROG;
@@ -45,6 +46,7 @@ static uint32_t sig_stepedit(ui_view_vw_t *vw)  { return stepedit_view_signature
 static uint32_t sig_graph(ui_view_vw_t *vw)     { (void)vw; return graph_view_signature(); }
 static uint32_t sig_menu(ui_view_vw_t *vw)      { return menu_view_signature(&vw->menu); }
 static uint32_t sig_arp(ui_view_vw_t *vw)       { return arp_view_signature(&vw->arp); }
+static uint32_t sig_drop(ui_view_vw_t *vw)      { return drop_view_signature(&vw->drop); }
 static uint32_t sig_drone(ui_view_vw_t *vw)     { return drone_view_signature(&vw->drone); }
 static uint32_t sig_drone_std(ui_view_vw_t *vw) { return drone_std_view_signature(&vw->drone); }
 static uint32_t sig_prog(ui_view_vw_t *vw)      { return prog_view_signature(&vw->prog); }
@@ -59,6 +61,7 @@ static void draw_stepedit(u8g2_t *g, ui_view_vw_t *vw)  { display_stepedit_draw_
 static void draw_graph(u8g2_t *g, ui_view_vw_t *vw)     { (void)vw; synth_ui_graph_view_draw(g); }
 static void draw_menu(u8g2_t *g, ui_view_vw_t *vw)      { display_menu_draw_frame_titled(g, menu_page_title(), &vw->menu); }
 static void draw_arp(u8g2_t *g, ui_view_vw_t *vw)       { display_arp_draw_frame(g, &vw->arp); }
+static void draw_drop(u8g2_t *g, ui_view_vw_t *vw)      { display_drop_draw_frame(g, &vw->drop); }
 static void draw_drone(u8g2_t *g, ui_view_vw_t *vw)     { display_drone_draw_frame_titled(g, "STUTTER", &vw->drone); }
 static void draw_drone_std(u8g2_t *g, ui_view_vw_t *vw) { display_drone_draw_frame_titled(g, "DRONE", &vw->drone); }
 static void draw_prog(u8g2_t *g, ui_view_vw_t *vw)      { display_prog_draw_frame(g, &vw->prog); }
@@ -167,6 +170,7 @@ const ui_view_desc_t ui_view_table[UI_VIEW_COUNT] = {
     [UI_VIEW_MENU]      = { "MENU",   sig_menu,      draw_menu,      NULL,     NULL,    "Menu",  .badge_x =  52,
                             .b1_fn = hint_menu_b1, .b2_fn = hint_menu_b2, .bs_fn = hint_menu_bs },
     [UI_VIEW_ARP]       = { "ARP",    sig_arp,       draw_arp,       "Patch",  "-",     "Menu",  .badge_x =  52 },
+    [UI_VIEW_DROP]      = { "DROP",   sig_drop,      draw_drop,      "Focus",  "Jackpt", "Menu", .badge_x = 108 },
     [UI_VIEW_DRONE]     = { "DRONE",  sig_drone,     draw_drone,     "Patch",  "-",     "Menu",  .badge_x =  52 },
     [UI_VIEW_DRONE_STD] = { "DRONST", sig_drone_std, draw_drone_std, "Patch",  "-",     "Menu",  .badge_x =  52 },
     [UI_VIEW_PROG]      = { "PROG",   sig_prog,      draw_prog,      "Del",    "+Add",  "Menu",  .badge_x =  30 },

@@ -8,6 +8,7 @@
 #include "display_dev.h"       /* dev_view_t (CONFIG_SYNTH_DEV_MENU) */
 #include "display_menu.h"      /* menu_view_t */
 #include "display_arp.h"       /* arp_view_t */
+#include "display_drop.h"      /* drop_view_t */
 #include "display_stepedit.h"  /* stepedit_view_t */
 #include "display_fm.h"        /* fm_view_t (CONFIG_SYNTH_CUSTOM_FM) */
 #include "display_wt.h"        /* wt_view_t (CONFIG_SYNTH_CUSTOM_WT) */
@@ -94,6 +95,7 @@ uint32_t filter_view_signature(void);
 uint32_t lfo_view_signature(void);
 uint32_t dist_view_signature(void);
 uint32_t arp_view_signature(arp_view_t *out);
+uint32_t drop_view_signature(drop_view_t *out);
 uint32_t menu_view_signature(menu_view_t *out);
 uint32_t drone_view_signature(drone_view_t *out);
 uint32_t drone_std_view_signature(drone_view_t *out);
@@ -148,6 +150,7 @@ typedef union {
     wt_view_t        wt;
     mixer_view_t     mixer;
     arp_view_t       arp;
+    drop_view_t      drop;
     drone_view_t     drone;      /* DRONE and DRONE_STD */
     prog_view_t      prog;
     stepedit_view_t  stepedit;
@@ -190,6 +193,9 @@ void     drone_std_build_view(drone_view_t *out);
 void     prog_build_view(prog_view_t *out);
 void     menu_build_view(menu_view_t *out);
 void     arp_build_view(arp_view_t *out);
+void     drop_build_view(drop_view_t *out);
+/* Drop screen: the patch hold+turn cycled a patch (ui_patch_cycle.c). */
+void     synth_ui_drop_patch_turned(void);
 void     stepedit_build_view(stepedit_view_t *out);
 void     fm_build_view(fm_view_t *out);
 void     wt_build_view(wt_view_t *out);

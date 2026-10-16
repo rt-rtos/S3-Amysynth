@@ -6,7 +6,8 @@
 /* ─── Voice-target provider: the per-voice controls one Layer page entry edits
  *     (level, filter key tracking, mute, solo, gate, glide), behind one call
  *     per control so the page builds the same rows for a sequencer track, the
- *     arpeggiator and the BLE live-play voice.
+ *     arpeggiator, the BLE live-play voice and the ball drop (VT_DROP: the
+ *     synth its screen focuses, drop_get_focus()).
  *
  * VT_MELODIC is the Layer page's track: seq_state.active_layer_idx and
  * seq_state.selected_track, read by the backend itself on every call. VT_ARP
@@ -19,7 +20,7 @@
  * contract; nothing here touches AMY directly. A vt_has_*() of false means
  * the matching getter returns a neutral value and the setter is a no-op. ── */
 
-typedef enum { VT_MELODIC = 0, VT_ARP, VT_LIVE } voice_target_kind_t;
+typedef enum { VT_MELODIC = 0, VT_ARP, VT_LIVE, VT_DROP } voice_target_kind_t;
 
 /* Amp trim, 0..1. */
 float    vt_get_level(voice_target_kind_t kind);

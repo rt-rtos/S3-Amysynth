@@ -2,6 +2,7 @@
 #include "synth_ui.h"
 #include "sequencer_core.h"
 #include "arp_core.h"
+#include "drop_core.h"
 #include "custompatches/drone_core.h"
 #include "custompatches/drone_std_core.h"
 #include "patch_names.h"
@@ -196,6 +197,19 @@ void synth_ui_cycle_fm_algo(int delta)
         (a >= 0) ? (uint8_t)a : DISPLAY_ALGO_BANNER_NOFM;
     seq_state.algo_banner_ticks = 24;   /* ~1.2 s at the 20 Hz UI rate */
     s_force_redraw = true;
+}
+
+/* Cycle the focused drop synth's patch (the DROP or the SUB voice). */
+void synth_ui_drop_cycle_patch(int delta)
+{
+    if (delta == 0) return;
+    int dir = (delta > 0) ? 1 : -1;
+    drop_which_t w = drop_get_focus();
+    uint16_t next = patch_domain_step(&s_melodic_domain, drop_get_patch(w), dir);
+    drop_set_patch(w, next);
+    synth_ui_drop_patch_turned();
+    ESP_LOGI(TAG, "drop %s patch cycle -> %u", w == DROP_VOICE_SUB ? "sub" : "main",
+             (unsigned)next);
 }
 
 /* Cycle the arp's OWN patch, independent of the melodic patch. */

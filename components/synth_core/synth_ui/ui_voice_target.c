@@ -4,6 +4,7 @@
 #include "sequencer_core.h"
 #include "seq_core_config.h"   /* SEQ_MELODIC_PORTAMENTO_MAX_MS */
 #include "arp_core.h"
+#include "drop_core.h"
 #if CONFIG_SYNTH_WIRELESS
 #include "live_play.h"
 #endif
@@ -26,6 +27,8 @@ float vt_get_level(voice_target_kind_t kind)
                                                     seq_state.selected_track);
     case VT_ARP:
         return arp_get_amp_scale();
+    case VT_DROP:
+        return drop_get_amp_scale(drop_get_focus());
 #if CONFIG_SYNTH_WIRELESS
     case VT_LIVE:
         return live_play_get_amp_scale();
@@ -44,6 +47,9 @@ void vt_set_level(voice_target_kind_t kind, float v)
         break;
     case VT_ARP:
         arp_set_amp_scale(v);
+        break;
+    case VT_DROP:
+        drop_set_amp_scale(drop_get_focus(), v);
         break;
 #if CONFIG_SYNTH_WIRELESS
     case VT_LIVE:
@@ -100,7 +106,7 @@ void vt_set_filter(voice_target_kind_t kind, const seq_filter_t *f)
 
 bool vt_has_mute(voice_target_kind_t kind)
 {
-    return kind == VT_MELODIC || kind == VT_ARP;
+    return kind == VT_MELODIC || kind == VT_ARP || kind == VT_DROP;
 }
 
 bool vt_get_mute(voice_target_kind_t kind)
@@ -111,6 +117,8 @@ bool vt_get_mute(voice_target_kind_t kind)
                                              seq_state.selected_track);
     case VT_ARP:
         return arp_get_muted();
+    case VT_DROP:
+        return drop_get_muted();
     default:
         return false;
     }
@@ -126,6 +134,9 @@ void vt_set_mute(voice_target_kind_t kind, bool muted)
     case VT_ARP:
         arp_set_muted(muted);
         break;
+    case VT_DROP:
+        drop_set_muted(muted);
+        break;
     default:
         break;
     }
@@ -133,7 +144,7 @@ void vt_set_mute(voice_target_kind_t kind, bool muted)
 
 bool vt_has_solo(voice_target_kind_t kind)
 {
-    return kind == VT_MELODIC || kind == VT_ARP;
+    return kind == VT_MELODIC || kind == VT_ARP || kind == VT_DROP;
 }
 
 bool vt_get_solo(voice_target_kind_t kind)
@@ -144,6 +155,8 @@ bool vt_get_solo(voice_target_kind_t kind)
                                              seq_state.selected_track);
     case VT_ARP:
         return sequencer_core_get_arp_solo();
+    case VT_DROP:
+        return sequencer_core_get_drop_solo();
     default:
         return false;
     }
@@ -159,6 +172,9 @@ void vt_set_solo(voice_target_kind_t kind, bool solo)
     case VT_ARP:
         sequencer_core_set_arp_solo(solo);
         break;
+    case VT_DROP:
+        sequencer_core_set_drop_solo(solo);
+        break;
     default:
         break;
     }
@@ -166,7 +182,7 @@ void vt_set_solo(voice_target_kind_t kind, bool solo)
 
 bool vt_has_gate(voice_target_kind_t kind)
 {
-    return kind == VT_MELODIC || kind == VT_ARP;
+    return kind == VT_MELODIC || kind == VT_ARP || kind == VT_DROP;
 }
 
 uint16_t vt_get_gate_pct(voice_target_kind_t kind)
@@ -176,6 +192,8 @@ uint16_t vt_get_gate_pct(voice_target_kind_t kind)
         return sequencer_core_get_layer_gate_pct(seq_state.active_layer_idx);
     case VT_ARP:
         return arp_get_gate_pct();
+    case VT_DROP:
+        return drop_get_gate_pct();
     default:
         return 0;
     }
@@ -189,6 +207,9 @@ void vt_set_gate_pct(voice_target_kind_t kind, uint16_t pct)
         break;
     case VT_ARP:
         arp_set_gate_pct((uint8_t)(pct > 100u ? 100u : pct));
+        break;
+    case VT_DROP:
+        drop_set_gate_pct((uint8_t)(pct > 100u ? 100u : pct));
         break;
     default:
         break;
@@ -214,6 +235,8 @@ uint16_t vt_get_glide_ms(voice_target_kind_t kind)
     }
     case VT_ARP:
         return arp_get_portamento_ms();
+    case VT_DROP:
+        return drop_get_portamento_ms(drop_get_focus());
 #if CONFIG_SYNTH_WIRELESS
     case VT_LIVE:
         return live_play_get_glide_ms();
@@ -237,6 +260,10 @@ void vt_set_glide_ms(voice_target_kind_t kind, uint16_t ms)
         if (ms > ARP_PORTAMENTO_MAX_MS) ms = ARP_PORTAMENTO_MAX_MS;
         arp_set_portamento_ms(ms);
         break;
+    case VT_DROP:
+        if (ms > DROP_PORTAMENTO_MAX_MS) ms = DROP_PORTAMENTO_MAX_MS;
+        drop_set_portamento_ms(drop_get_focus(), ms);
+        break;
 #if CONFIG_SYNTH_WIRELESS
     case VT_LIVE:
         if (ms > LIVE_PLAY_GLIDE_MAX_MS) ms = LIVE_PLAY_GLIDE_MAX_MS;
@@ -253,6 +280,7 @@ bool vt_has_unison(voice_target_kind_t kind)
     switch (kind) {
     case VT_MELODIC: return vt_melodic_layer() != 0xFF;
     case VT_ARP:     return true;
+    case VT_DROP:    return true;
 #if CONFIG_SYNTH_WIRELESS
     case VT_LIVE:    return true;
 #endif
@@ -269,6 +297,9 @@ void vt_get_unison(voice_target_kind_t kind, voice_unison_t *out)
         break;
     case VT_ARP:
         arp_get_unison(out);
+        break;
+    case VT_DROP:
+        drop_get_unison(drop_get_focus(), out);
         break;
 #if CONFIG_SYNTH_WIRELESS
     case VT_LIVE:
@@ -289,6 +320,8 @@ uint8_t vt_unison_max(voice_target_kind_t kind)
                                                layermenu_menu_track());
     case VT_ARP:
         return arp_unison_max();
+    case VT_DROP:
+        return drop_unison_max(drop_get_focus());
 #if CONFIG_SYNTH_WIRELESS
     case VT_LIVE:
         return live_play_unison_max();
@@ -327,6 +360,7 @@ const char *vt_title(voice_target_kind_t kind)
 {
     switch (kind) {
     case VT_ARP:  return "ARP";
+    case VT_DROP: return "DROP";
     case VT_LIVE: return "LIVE";
     default:      return NULL;
     }

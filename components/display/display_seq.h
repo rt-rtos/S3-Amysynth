@@ -22,6 +22,7 @@ typedef enum {
     UI_MODE_DEV       = 7,   /* DEV menu (CONFIG_SYNTH_DEV_MENU) */
     UI_MODE_WT        = 8,   /* custom wavetable editor (CONFIG_SYNTH_CUSTOM_WT) */
     UI_MODE_MIXER     = 9,   /* mixer page */
+    UI_MODE_DROP      = 10,  /* ball drop screen */
 } ui_mode_t;
 
 /* algo_banner_value sentinel: Shift+Turn landed on a patch with no FM

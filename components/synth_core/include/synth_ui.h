@@ -175,6 +175,22 @@ void synth_ui_arp_cycle_patch(int delta);
 /* Live-play slot patch (Wireless menu page); defined under CONFIG_SYNTH_WIRELESS. */
 void synth_ui_cycle_live_patch(int delta);
 
+/* ── Ball drop screen ────────────────────────────────────────────────────
+ * Active when seq_state.ui_mode == UI_MODE_DROP and no overlay is up. The
+ * encoder takes the SHIFT state so one turn can cycle a segment's type;
+ * button_edge/button_long feed the screen the press edges of buttons 0..2
+ * (its taps act on the release, holds are turn modifiers); button_long
+ * returns true when the hold already turned something, so the dispatcher
+ * keeps its own long-press meaning (play/stop) otherwise. shift1 is the
+ * SHIFT + Button 1 chord: a press rerolls the seed, a hold freezes it. */
+bool synth_ui_drop_is_active(void);
+void synth_ui_drop_handle_encoder(long delta, bool shift);
+void synth_ui_drop_handle_button(void);
+void synth_ui_drop_cycle_patch(int delta);   /* the focused synth's patch */
+void synth_ui_drop_button_edge(uint8_t btn, bool down);
+bool synth_ui_drop_button_long(uint8_t btn);
+void synth_ui_drop_shift1(bool hold);
+
 /* ── Drone screen ────────────────────────────────────────────────────────
  * Standalone "stutter house drone" synth (custompatches/drone_core). Active
  * when seq_state.ui_mode == UI_MODE_DRONE and no overlay is up. */
@@ -321,6 +337,7 @@ void synth_ui_graph_open_envelope(void);
  * input path only. */
 void synth_ui_seq_solo_chord(bool long_press);
 void synth_ui_arp_solo_chord(bool long_press);
+void synth_ui_drop_solo_chord(bool long_press);
 
 /* Route input to the pop-up while it is active. Each returns true if the
  * pop-up consumed the event (caller should then skip normal sequencer input).
@@ -434,6 +451,7 @@ typedef enum {
     UI_VIEW_GRAPH,
     UI_VIEW_MENU,
     UI_VIEW_ARP,
+    UI_VIEW_DROP,
     UI_VIEW_DRONE,
     UI_VIEW_DRONE_STD,
     UI_VIEW_PROG,

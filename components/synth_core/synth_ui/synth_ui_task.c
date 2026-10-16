@@ -20,6 +20,7 @@
 #include "display_prog.h"
 #include "display_menu.h"
 #include "display_arp.h"
+#include "display_drop.h"
 #include "display_hint.h"
 #include "display_badge.h"
 #include "display_flush.h"
@@ -617,8 +618,8 @@ static void solo_chord(voice_target_kind_t kind, bool long_press)
         vt_set_solo(kind, on);
         seq_state.algo_banner_value = on ? DISPLAY_SEQ_BANNER_SOLO_ON
                                          : DISPLAY_SEQ_BANNER_SOLO_OFF;
-        if (kind == VT_ARP) {
-            ESP_LOGI(TAG_TASK, "solo arp %s", on ? "on" : "off");
+        if (kind == VT_ARP || kind == VT_DROP) {
+            ESP_LOGI(TAG_TASK, "solo %s %s", kind == VT_ARP ? "arp" : "drop", on ? "on" : "off");
         } else {
             ESP_LOGI(TAG_TASK, "solo L%u T%u %s", seq_state.active_layer_idx + 1u,
                      seq_state.selected_track + 1u, on ? "on" : "off");
@@ -630,6 +631,7 @@ static void solo_chord(voice_target_kind_t kind, bool long_press)
 
 void synth_ui_seq_solo_chord(bool long_press) { solo_chord(VT_MELODIC, long_press); }
 void synth_ui_arp_solo_chord(bool long_press) { solo_chord(VT_ARP, long_press); }
+void synth_ui_drop_solo_chord(bool long_press) { solo_chord(VT_DROP, long_press); }
 
 /* Encoder push: in edit mode toggles the step under the cursor on/off;
  * otherwise it acts as a play/pause toggle. */
