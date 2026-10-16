@@ -51,9 +51,8 @@ int32_t max_sequences = 0;
 // scheduled now.
 int32_t first_active = -1;
 // LOCAL EDIT (S3-Amysynth): free_hint, the lowest-free search hint.
-// Lowest tagged slot that may be free; every slot below it is occupied.
-// alloc_tagged_slot() starts its search here instead of at 0, so an add does
-// not rescan the occupied front of the pool.  Lowered by every release,
+// Lowest tagged slot that may be free: every slot below it is occupied, so
+// alloc_tagged_slot() starts its search here.  Lowered by every release,
 // reset to 0 with the table.
 static int32_t free_hint = 0;
 // Anonymous (no-tag) entries live past the user-addressable tag range, at
@@ -236,29 +235,37 @@ static void active_unlink(int32_t slot)
 }
 
 // LOCAL EDIT (S3-Amysynth): free_hint.
-// A slot just became free: keep free_hint at or below it.  Anonymous slots
-// sit past max_sequences, above any hint.  Caller holds the amy lock.
-static inline void slot_freed(int32_t slot)
+// Anonymous slots sit past max_sequences, above any hint.  Caller holds the
+// amy lock.
+static void slot_freed(int32_t slot)
 {
     if (slot < free_hint) free_hint = slot;
 }
 
-// Empty a slot and take it out of the walk.  Caller holds the amy lock.
-static void slot_release(int32_t slot)
+// LOCAL EDIT (S3-Amysynth): slot_empty(), shared by slot_release() and the
+// clear walk.
+// Empty a slot that is already out of the walk.  Caller holds the amy lock.
+static void slot_empty(int32_t slot)
 {
     if (sequences[slot].wire) free(sequences[slot].wire);
     sequences[slot].wire = NULL;
     sequences[slot].tick = 0;
     sequences[slot].period = 0;
+    slot_freed(slot);
+}
+
+// Take a slot out of the walk and empty it.  Caller holds the amy lock.
+static void slot_release(int32_t slot)
+{
     active_unlink(slot);
-    slot_freed(slot);  // LOCAL EDIT (S3-Amysynth): free_hint
+    slot_empty(slot);  // LOCAL EDIT (S3-Amysynth): slot_empty()
 }
 
 // Lowest free slot in the tagged region, or -1 if the pool is full.  Lowest
 // rather than round-robin so a "clear the tag, re-add the pattern" cycle --
 // the normal way a sequencer edits itself -- lands on the same slots every
-// time and stays reproducible.  The search starts at free_hint, below which
-// every slot is taken.  Caller holds the amy lock.
+// time and stays reproducible.  Searches from free_hint.  Caller holds the
+// amy lock.
 static int32_t alloc_tagged_slot(void)
 {
     // LOCAL EDIT (S3-Amysynth): start at free_hint, not 0
@@ -286,22 +293,16 @@ void sequencer_clear_tag(uint32_t tag)
     }
     amy_grab_lock();
     // LOCAL EDIT (S3-Amysynth): walk the active list, not the pool
-    // Every occupied slot is on the active list, sorted by tag with a tag's
-    // events adjacent, so the tag's run is found by walking up to it and
-    // ends at the first entry past it.  The cost follows what is scheduled
-    // below the tag, not the size of the pool.  Each unlink is the same
-    // single store active_unlink() makes.
+    // The active list holds every occupied slot, sorted by tag with a tag's
+    // events adjacent: walk to the tag's run and unlink it in place.  One
+    // store per unlink, as in active_unlink(), for the unlocked tick walk.
     int32_t *prev = &first_active;
     while (*prev != -1 && sequences[*prev].tag < tag)
         prev = &sequences[*prev].next_active;
     while (*prev != -1 && sequences[*prev].tag == tag) {
         int32_t slot = *prev;
         *prev = sequences[slot].next_active;
-        if (sequences[slot].wire) free(sequences[slot].wire);
-        sequences[slot].wire = NULL;
-        sequences[slot].tick = 0;
-        sequences[slot].period = 0;
-        slot_freed(slot);  // LOCAL EDIT (S3-Amysynth): free_hint
+        slot_empty(slot);
     }
     amy_release_lock();
 }
@@ -374,6 +375,10 @@ uint8_t sequencer_add_wire(uint32_t tick, uint32_t period, uint32_t tag, bool ha
             return 0;
         }
     }
+    // LOCAL EDIT (S3-Amysynth): NULL-wire guard.
+    // Nothing to schedule (a caller's failed copy).  Stored, it would sit in
+    // the walk as a slot that reads as free.
+    if (wire == NULL) return 0;
     if (period == 0 && tick <= amy_global.sequencer_tick_count) {
         // A one-off that is already due or overdue.  Play it NOW rather than
         // dropping it: a caller that reads the tick clock and schedules
@@ -425,6 +430,30 @@ uint8_t sequencer_add_wire(uint32_t tick, uint32_t period, uint32_t tag, bool ha
     return 1;
 }
 
+// LOCAL EDIT (S3-Amysynth): slot_due(), with the periodic horizon.
+// Whether `slot` fires on this tick; *one_shot says whether firing empties
+// it.  period is read once, so a concurrent clear zeroing it cannot land
+// between the test and the modulo.
+static bool slot_due(int32_t slot, bool *one_shot)
+{
+    uint32_t period = sequences[slot].period;
+    if (period != 0) {
+        *one_shot = false;
+        // See periodic_horizon_blocks().
+        return amy_global.sequencer_tick_count % period == sequences[slot].tick
+            && !periodic_horizon_blocks();
+    }
+    // Absolute tick.  <= rather than ==: the walk runs without the lock, and
+    // a stale link can make it skip an entry for a single tick (see the
+    // thread safety note).  Under ==, a slot skipped on exactly its tick
+    // would sit there forever, holding a slot and never playing.  <= lets it
+    // fire on the next tick instead, matching the play-it-late rule
+    // sequencer_add_wire() uses for a one-off that is already due when it
+    // arrives.
+    *one_shot = true;
+    return sequences[slot].tick <= amy_global.sequencer_tick_count;
+}
+
 static void sequencer_process_tick(void) {
     amy_global.sequencer_tick_count++;
     midi_clock_out_tick();  // no-op unless in AMY_MIDI_SYNC_SEND mode
@@ -445,58 +474,43 @@ static void sequencer_process_tick(void) {
     while (slot != -1 && steps-- > 0) {
         // Read the link BEFORE anything below can unlink this entry.
         int32_t next = sequences[slot].next_active;
-        if (sequences[slot].wire != NULL) {
-            bool hit = false;
-            bool delete = false;
-            if(sequences[slot].period != 0) { // period set
-                uint32_t offset = amy_global.sequencer_tick_count % sequences[slot].period;
-                if (offset == sequences[slot].tick) hit = true;
-                // LOCAL EDIT (S3-Amysynth): see periodic_horizon_blocks().
-                if (hit && periodic_horizon_blocks()) hit = false;
-            } else {
-                // Test for absolute tick (no period set).  <= rather than ==:
-                // the walk above runs without the lock, and a stale link can
-                // make it skip an entry for a single tick (see the thread
-                // safety note).  Under ==, a slot skipped on exactly its tick
-                // would sit there forever, holding a slot and never playing.
-                // <= lets it fire on the next tick instead, matching the
-                // play-it-late rule sequencer_add_wire() uses for a one-off
-                // that is already due when it arrives.
-                if (sequences[slot].tick <= amy_global.sequencer_tick_count) { hit = true; delete = true; }
+        bool delete;
+        // LOCAL EDIT (S3-Amysynth): slot_due() decides, here and again under
+        // the lock.
+        if (sequences[slot].wire != NULL && slot_due(slot, &delete)) {
+            // Take the message out (one-shot) or a copy of it (repeating)
+            // under the lock, so an ingest thread rewriting the slot can't
+            // free the string while we parse it.  Ask again whether it is
+            // due: a clear and re-add can refill this slot with another
+            // event between the unlocked test above and here.
+            char *wire = NULL;
+            amy_grab_lock();
+            if (sequences[slot].wire != NULL && slot_due(slot, &delete)) {
+                if (delete) {
+                    wire = sequences[slot].wire;
+                    sequences[slot].wire = NULL;   // slot_release, but we
+                    sequences[slot].tick = 0;      // keep the string to
+                    sequences[slot].period = 0;    // play it below
+                    active_unlink(slot);
+                    slot_freed(slot);  // LOCAL EDIT (S3-Amysynth): free_hint
+                } else {
+                    size_t len = strlen(sequences[slot].wire);
+                    wire = (char *)malloc_caps(len + 1, amy_global.config.ram_caps_sequencer);
+                    // LOCAL EDIT (S3-Amysynth): sequencer caps + events-
+                    // pool fallback, matching amy_add_event (api.c) - a
+                    // periodic fire must not go silent because osc state
+                    // exhausted a pool.
+                    if (wire == NULL)
+                        wire = (char *)malloc_caps(len + 1, amy_global.config.ram_caps_events);
+                    if (wire != NULL) memcpy(wire, sequences[slot].wire, len + 1);
+                    else amy_oom("sequencer fire");
+                }
             }
-            if(hit) {
-                // Take the message out (one-shot) or a copy of it (repeating)
-                // under the lock, so an ingest thread rewriting the slot can't
-                // free the string while we parse it.
-                char *wire = NULL;
-                amy_grab_lock();
-                if (sequences[slot].wire != NULL) {
-                    if (delete) {
-                        wire = sequences[slot].wire;
-                        sequences[slot].wire = NULL;   // slot_release, but we
-                        sequences[slot].tick = 0;      // keep the string to
-                        sequences[slot].period = 0;    // play it below
-                        active_unlink(slot);
-                        slot_freed(slot);  // LOCAL EDIT (S3-Amysynth): free_hint
-                    } else {
-                        size_t len = strlen(sequences[slot].wire);
-                        wire = (char *)malloc_caps(len + 1, amy_global.config.ram_caps_sequencer);
-                        // LOCAL EDIT (S3-Amysynth): sequencer caps + events-
-                        // pool fallback, matching amy_add_event (api.c) - a
-                        // periodic fire must not go silent because osc state
-                        // exhausted a pool.
-                        if (wire == NULL)
-                            wire = (char *)malloc_caps(len + 1, amy_global.config.ram_caps_events);
-                        if (wire != NULL) memcpy(wire, sequences[slot].wire, len + 1);
-                        else amy_oom("sequencer fire");
-                    }
-                }
-                amy_release_lock();
-                if (wire != NULL) {
-                    // Parse and play now; the deltas play back within this block.
-                    amy_play_message(wire);
-                    free(wire);
-                }
+            amy_release_lock();
+            if (wire != NULL) {
+                // Parse and play now; the deltas play back within this block.
+                amy_play_message(wire);
+                free(wire);
             }
         }
         slot = next;

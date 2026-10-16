@@ -565,7 +565,21 @@ unlinks it in place, and `alloc_tagged_slot()` starts at `free_hint`, the
 lowest slot that may be free (every slot below it is occupied), which
 `slot_freed()` lowers at each release (`slot_release()`, the clear, a fired
 one-shot) and init and reset return to 0. Lowest-free placement and the
-firing order are unchanged.
+firing order are unchanged. `slot_release()` and the clear share
+`slot_empty()`, and `sequencer_add_wire()` refuses a NULL wire once past the
+cancel forms (it would sit in the walk reading as free, behind the hint).
+
+The tick walk decides whether a slot is due through `slot_due()`, unlocked
+and again under the lock before it acts, so a clear and re-add on another
+thread cannot fire the new event on the old event's schedule; `period` is
+read once (two reads let a clear zero it between the test and the modulo).
+Here `slot_due()` also applies the periodic horizon (entry above), which the
+upstream version does not have; the ram_caps_sequencer fallback in the
+periodic copy stays as before.
+
+The vendored hunks are the upstream PR's two commits plus markers, the
+horizon term in `slot_due()`, and no sort-order sentence in the comment
+above `active_link()` (a marker cannot sit inside that block comment).
 
 Host test (upstream `tests/` style, built against this tree with ASan and
 UBSan): the same edit with the same 20 events scheduled costs 24x more in a
@@ -778,6 +792,13 @@ component files). Besides the Kconfig flags in the entries above it:
 # AMY Local Edits
 
 Track local, project-specific changes made against the upstream AMY component here.
+
+## 2026-10-16 — Sequencer: helper, NULL-wire guard, tick re-check
+
+- **`src/sequencer.c`**: `slot_empty()` shared by `slot_release()` and the
+  clear; NULL-wire guard in `sequencer_add_wire()`; `slot_due()` decides
+  firing unlocked and again under the lock (with the periodic horizon).
+  Matches the upstream PR's two commits. See the active entry.
 
 ## 2026-10-16 — Sequencer clear and alloc cost
 
