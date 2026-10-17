@@ -8,7 +8,6 @@
 
 #include "custompatches/drone_core.h"
 #include "custompatches/drone_common.h"
-#include "synth_ui.h"      /* seq_get_bpm() (live global BPM) */
 #include "sequencer_core.h"    /* shared apply path, envelope pushes, tick time */
 #include "seq_clamp.h"
 #include "chord_types.h"   /* chord_type_t, chord_type_name() */
@@ -279,7 +278,7 @@ static bool drone_lfo_target_map(lfo_target_map_t *map)
 static void drone_apply_lfo(void)
 {
     const seq_lfo_t *lfo = drone_lfo_on() ? &s_d.vp.lfo : NULL;
-    uint16_t bpm = seq_get_bpm();
+    uint16_t bpm = sequencer_core_get_bpm();
 #if CONFIG_SEQ_LFO_SHARED
     lfo_target_map_t map;
     if (drone_lfo_target_map(&map))
@@ -302,7 +301,7 @@ static void drone_wire_lfo2(const seq_lfo_t *lfo)
     lfo_target_map_t map;
     if (drone_lfo_target_map(&map))
         (void)lfo_bank_bind(DRONE_SYNTH_MAIN, VOICE_LFO_SLOT_LFO2, &map, lfo,
-                            seq_get_bpm(), &s_d_lfo2_ref);
+                            sequencer_core_get_bpm(), &s_d_lfo2_ref);
     else
         lfo_bank_unbind(&s_d_lfo2_ref);
 #else

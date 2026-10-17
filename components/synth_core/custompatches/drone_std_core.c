@@ -10,7 +10,6 @@
 
 #include "custompatches/drone_std_core.h"
 #include "custompatches/drone_common.h"
-#include "synth_ui.h"          /* seq_get_bpm() */
 #include "sequencer_core.h"    /* shared apply path, envelope/filter pushes */
 #include "seq_clamp.h"
 #include "amy.h"
@@ -108,7 +107,7 @@ static bool drone_std_lfo_target_map(lfo_target_map_t *map)
 static void drone_std_apply_lfo(void)
 {
     const seq_lfo_t *lfo = drone_std_lfo_on() ? &s_ds.vp.lfo : NULL;
-    uint16_t bpm = seq_get_bpm();
+    uint16_t bpm = sequencer_core_get_bpm();
 #if CONFIG_SEQ_LFO_SHARED
     lfo_target_map_t map;
     if (drone_std_lfo_target_map(&map))
@@ -140,7 +139,7 @@ static void drone_std_wire_lfo2(const seq_lfo_t *lfo)
     lfo_target_map_t map;
     if (drone_std_lfo_target_map(&map))
         (void)lfo_bank_bind(DRONE_STD_SYNTH_MAIN, VOICE_LFO_SLOT_LFO2, &map, lfo,
-                            seq_get_bpm(), &s_ds_lfo2_ref);
+                            sequencer_core_get_bpm(), &s_ds_lfo2_ref);
     else
         lfo_bank_unbind(&s_ds_lfo2_ref);
 #else
@@ -260,7 +259,7 @@ static void drone_std_rebuild(void)
         if (s_ds.vp.env_authored)
             sequencer_core_push_envelope(DRONE_STD_SYNTH_SUB, &s_ds.vp.env);
     }
-    s_ds.last_lfo_bpm = (float)seq_get_bpm();
+    s_ds.last_lfo_bpm = (float)sequencer_core_get_bpm();
 }
 
 /* Whether the drone should be making sound right now: the user's switch AND not
@@ -431,7 +430,7 @@ void drone_std_core_refresh_lfo_freq(void)
      * retunes the shared synths. */
 #if !CONFIG_SEQ_LFO_SHARED
     if (!drone_std_lfo_on()) return;
-    float bpm = (float)seq_get_bpm();
+    float bpm = (float)sequencer_core_get_bpm();
     if (fabsf(bpm - s_ds.last_lfo_bpm) < 0.5f) return;
     s_ds.last_lfo_bpm = bpm;
     drone_std_apply_lfo();   /* no-op on a patch string */
