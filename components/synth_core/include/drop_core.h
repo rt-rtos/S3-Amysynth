@@ -49,9 +49,16 @@ extern "C" {
 #define DROP_LOOP_BARS_MAX 8
 #define DROP_SPAWN_COL  8      /* the spawner's column */
 #define DROP_PORTAMENTO_MAX_MS 100u   /* as ARP_PORTAMENTO_MAX_MS */
+/* Bounciness: the restitution of PLAIN and SPLIT segments in Q8 (256 = 1).
+ * A bounce's air time is the previous one's times this, so 128 (0.5) halves
+ * it every bounce: after the one-beat first fall the bounces run 1, 1/2,
+ * 1/4, 1/8 beat. */
+#define DROP_BOUNCE_MIN     26u    /* 0.10 */
+#define DROP_BOUNCE_MAX     243u   /* 0.95 */
+#define DROP_BOUNCE_DEFAULT 179u   /* 0.70 */
 
 typedef enum {
-    DROP_SEG_PLAIN = 0,   /* reflect, restitution DROP_RESTITUTION */
+    DROP_SEG_PLAIN = 0,   /* reflect, restitution: the drop's bounce */
     DROP_SEG_SPLIT = 1,   /* reflect left or right by `ratio` from the PRNG */
     DROP_SEG_DAMP  = 2,   /* reflect at a fifth of the speed: ends a ball */
     DROP_SEG_TYPE_COUNT
@@ -95,6 +102,7 @@ typedef struct {
     drop_seg_t segs[DROP_SEG_MAX];
     uint8_t    jackpot[DROP_JACKPOT_BYTES];
     drop_voice_params_t voice[DROP_VOICE_COUNT];
+    uint8_t    bounce;      /* DROP_BOUNCE_MIN..MAX, Q8 */
 } drop_params_t;
 
 /* Fallback values of the project format for the drop: off, 1/4 over two
@@ -139,6 +147,10 @@ void       drop_set_loop_bars(uint8_t bars);      /* clamped 1..DROP_LOOP_BARS_M
 uint8_t    drop_get_loop_bars(void);
 void       drop_set_octaves(uint8_t octaves);     /* clamped 1..DROP_OCT_MAX */
 uint8_t    drop_get_octaves(void);
+/* Restitution of PLAIN and SPLIT segments, Q8, clamped to
+ * DROP_BOUNCE_MIN..DROP_BOUNCE_MAX (DAMP keeps its own 0.2). */
+void       drop_set_bounce(uint8_t q8);
+uint8_t    drop_get_bounce(void);
 /* Per synth: the share of a note's span it sounds, clamped 10..100. DROP: of
  * the air time to the ball's next impact; SUB: of the spawn interval. */
 void       drop_set_gate_pct(drop_which_t w, uint8_t gate_pct);

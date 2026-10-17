@@ -15,7 +15,8 @@ extern "C" {
  * Layout, on the panel's yellow (rows 0..15) / blue (16..63) split:
  *   ON  D  138  C3                 <- header row 1 (yellow): enable, focus,
  *                                     patch (display only), root
- *   2b  1A2F*  1/4                 <- header row 2 (yellow): bars, seed, rate
+ *   2b  1A2F*  1/4  B.70           <- header row 2 (yellow): bars, seed, rate,
+ *                                     bounce
  *   [16 x 8 cells, 8 x 6 px each]  <- the field (blue), y 16..63: segments as
  *                                     lines at their angle, jackpot cells as
  *                                     hatched boxes, balls as 2 x 2 dots, the
@@ -40,7 +41,8 @@ extern "C" {
 #define DROP_CUR_BARS    3
 #define DROP_CUR_SEED    4
 #define DROP_CUR_RATE    5
-#define DROP_CUR_CELL0   6
+#define DROP_CUR_BOUNCE  6
+#define DROP_CUR_CELL0   7
 #define DROP_CUR_COUNT   (DROP_CUR_CELL0 + DROP_VIEW_CELLS)
 
 typedef struct {
@@ -62,6 +64,7 @@ typedef struct {
     uint8_t     loop_bars;
     uint16_t    seed16;         /* low 16 bits of the seed */
     bool        seed_frozen;
+    uint8_t     bounce_q8;      /* restitution, Q8 (256 = 1) */
     uint8_t     seg_count;
     drop_view_seg_t segs[DROP_VIEW_SEGS];
     uint8_t     jackpot[(DROP_VIEW_CELLS + 7) / 8];   /* one bit per cell, row-major */

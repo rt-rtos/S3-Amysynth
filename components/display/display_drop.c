@@ -111,8 +111,10 @@ void display_drop_draw_frame(u8g2_t *u8g2, const drop_view_t *view)
     x = draw_field(u8g2, x, 8, buf, view->cursor == DROP_CUR_SEED, view->editing);
     {
         const char *rs = view->rate_str ? view->rate_str : "?";
-        draw_field(u8g2, x, 8, rs, view->cursor == DROP_CUR_RATE, view->editing);
+        x = draw_field(u8g2, x, 8, rs, view->cursor == DROP_CUR_RATE, view->editing);
     }
+    snprintf(buf, sizeof(buf), "B.%02u", (unsigned)((view->bounce_q8 * 100u + 128u) / 256u));
+    draw_field(u8g2, x, 8, buf, view->cursor == DROP_CUR_BOUNCE, view->editing);
 
     /* ── Field ── */
     /* Spawner: a chevron on the top edge of its column. */

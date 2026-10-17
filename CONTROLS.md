@@ -326,13 +326,18 @@ until an edit or a reroll changes it. It has no seam: balls still bouncing
 at the loop's end land on into its start. A field busier than the loop's
 note budget loses its softest hits, spread over the whole loop. The header reads ON/OFF (MUTE when the focused synth is
 muted), the focus (DROP or SUB), the focused synth's patch and root on its first row,
-the loop bars, the seed (a `*` when frozen) and the rate on its second. The
+the loop bars, the seed (a `*` when frozen), the rate and the bounce on its
+second. Bounce is how much speed a ball keeps at each bounce on a plain or
+split segment, and with it each bounce's air time against the last: B.50
+halves it every bounce (after the one-beat first fall: 1, 1/2, 1/4, 1/8
+beat), B.70 is the default, B.71 halves it every second bounce, B.85 rolls
+into long trills. The
 screen opens with the cursor on ON/OFF. The boot field is a floor under the
 spawner and a jackpot cell above it, so ON plays at once.
 
 | Input | Action |
 |---|---|
-| Encoder turn, browsing | Move the cursor over the header fields (ON/OFF, focus, root, bars, seed, rate), then the cells, row by row |
+| Encoder turn, browsing | Move the cursor over the header fields (ON/OFF, focus, root, bars, seed, rate, bounce), then the cells, row by row |
 | Encoder click | Enter / leave editing |
 | Encoder turn, editing | A header field: change its value (the seed field rerolls). A cell: rotate the segment there (8 angles) |
 | Button 0 (tap) | Place a plain segment on the cursor cell, or remove the one there |

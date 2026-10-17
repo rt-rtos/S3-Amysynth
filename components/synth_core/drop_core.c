@@ -40,7 +40,6 @@ _Static_assert(DROP_FIELD_W <= 128 && DROP_FIELD_H + 16 <= 64, "field fits under
 #define PX(n)            ((int32_t)(n) << DROP_Q)
 #define DROP_GRAVITY     ((2 * PX(DROP_FIELD_H)) / (AMY_SEQUENCER_PPQ * AMY_SEQUENCER_PPQ))
 #define DROP_REF_SPEED   (DROP_GRAVITY * AMY_SEQUENCER_PPQ)
-#define DROP_RESTITUTION      179   /* 0.7 in Q8 */
 #define DROP_DAMP_RESTITUTION 51    /* 0.2 in Q8 */
 #define DROP_MIN_SPEED   (PX(1) / 4) /* below this after a bounce the ball ends */
 #define DROP_SEG_HALF    PX(DROP_CELL_W / 2)   /* half a segment's length */
@@ -77,6 +76,7 @@ typedef struct {
     note_div_t rate;              /* spawn interval */
     uint8_t    loop_bars;
     uint8_t    octaves;
+    uint8_t    bounce;            /* PLAIN/SPLIT restitution, Q8 */
     uint32_t   seed;
     bool       seed_frozen;
     uint8_t    scale_index;
@@ -264,7 +264,7 @@ static bool seg_bounce(const drop_seg_geom_t *g, drop_ball_t *b,
 
     int32_t vn = (int32_t)(((int64_t)b->vx * g->nx + (int64_t)b->vy * g->ny) >> DROP_Q);
     int32_t speed = (vn < 0) ? -vn : vn;
-    int32_t e = (g->type == DROP_SEG_DAMP) ? DROP_DAMP_RESTITUTION : DROP_RESTITUTION;
+    int32_t e = (g->type == DROP_SEG_DAMP) ? DROP_DAMP_RESTITUTION : (int32_t)s_drop.bounce;
     int32_t term = (int32_t)(((int64_t)(256 + e) * vn) >> 8);
     b->vx -= (int32_t)(((int64_t)term * g->nx) >> DROP_Q);
     b->vy -= (int32_t)(((int64_t)term * g->ny) >> DROP_Q);
@@ -672,11 +672,11 @@ void drop_core_refresh(void)
 unsigned drop_core_dump(void)
 {
     unsigned n = 0;
-    printf("DROP en=%u mute=%u/%u rate=%u bars=%u oct=%u gate=%u/%u seed=%08X%s root=%u sub=%u q=%u"
-           " patch=%u/%u segs=%u jpcells=%u loop=%u\n",
+    printf("DROP en=%u mute=%u/%u rate=%u bars=%u oct=%u bounce=%u gate=%u/%u seed=%08X%s root=%u"
+           " sub=%u q=%u patch=%u/%u segs=%u jpcells=%u loop=%u\n",
            (unsigned)s_drop.enabled, (unsigned)s_drop.voice[0].muted,
            (unsigned)s_drop.voice[1].muted, (unsigned)s_drop.rate,
-           (unsigned)s_drop.loop_bars, (unsigned)s_drop.octaves,
+           (unsigned)s_drop.loop_bars, (unsigned)s_drop.octaves, (unsigned)s_drop.bounce,
            (unsigned)s_drop.voice[0].gate_pct, (unsigned)s_drop.voice[1].gate_pct,
            (unsigned)s_drop.seed, s_drop.seed_frozen ? "*" : "",
            (unsigned)s_drop.root_note, (unsigned)s_drop.sub_root_note,
@@ -937,6 +937,7 @@ void drop_params_defaults(drop_params_t *out)
     out->root        = 48;
     out->sub_root    = 36;   /* an octave below root */
     out->quant_mode  = ARP_QUANT_CHORD;
+    out->bounce      = DROP_BOUNCE_DEFAULT;
     /* The boot field: a plain floor under the spawner, so every ball lands
      * and bounces out its ritardando on the root, and a jackpot cell on the
      * way down, which the first fall and the first bounce cross. */
@@ -967,6 +968,7 @@ void drop_core_init(void)
     s_drop.rate          = p.rate;
     s_drop.loop_bars     = p.loop_bars;
     s_drop.octaves       = p.octaves;
+    s_drop.bounce        = p.bounce;
     s_drop.seed          = p.seed;
     s_drop.seed_frozen   = p.seed_frozen;
     s_drop.scale_index   = p.scale;
@@ -1046,6 +1048,15 @@ void drop_set_octaves(uint8_t octaves)
     drop_mark_dirty();
 }
 uint8_t drop_get_octaves(void) { return s_drop.octaves; }
+
+void drop_set_bounce(uint8_t q8)
+{
+    q8 = SEQ_CLAMP_U8(q8, DROP_BOUNCE_MIN, DROP_BOUNCE_MAX);
+    if (s_drop.bounce == q8) return;
+    s_drop.bounce = q8;
+    drop_mark_dirty();
+}
+uint8_t drop_get_bounce(void) { return s_drop.bounce; }
 
 void drop_set_gate_pct(drop_which_t w, uint8_t gate_pct)
 {

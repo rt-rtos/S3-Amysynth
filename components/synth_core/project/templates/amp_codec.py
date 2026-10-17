@@ -47,6 +47,7 @@ FX_BUS_COUNT = 4
 ARP_MAX_SLOTS = 8
 DROP_SEG_MAX = 16
 DROP_JACKPOT_BYTES = 16   # one bit per cell of the 16 x 8 field
+DROP_BOUNCE_DEFAULT = 179  # restitution 0.70 in Q8
 SEQ_CHORD_SLOTS = 8
 SEQ_CHORD_MAX_NOTES = 5
 CLIP_SLOT_COUNT = 2
@@ -480,6 +481,7 @@ def w_drop(d):
             s = d['segs'][i] if i < len(d['segs']) else (0, 0, 0, 0, 0)
             b.block(bytes(v & 0xFF for v in s))
         b.raw(bytes(d['jackpot']).ljust(DROP_JACKPOT_BYTES, b'\0')[:DROP_JACKPOT_BYTES])
+        b.u8(d.get('bounce', DROP_BOUNCE_DEFAULT))
 
     def voice(b, v):
         b.put(v, DROP_VOICE_HEAD)
@@ -502,6 +504,8 @@ def r_drop(r):
     d['segs'] = segs[:n]
     jp = b.raw(DROP_JACKPOT_BYTES)
     d['jackpot'] = bytes(jp) if jp is not None else bytes(DROP_JACKPOT_BYTES)
+    bounce = b.u8()
+    d['bounce'] = DROP_BOUNCE_DEFAULT if bounce is None else bounce
     d['voices'] = []
     for _ in range(2):
         vb = r.block()

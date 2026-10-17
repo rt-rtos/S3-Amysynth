@@ -911,7 +911,8 @@ static void apply_arp(const staged_arp_t *st)
  * Records: the loop record (enabled, rate, loop_bars, octaves, seed,
  * seed_frozen, scale_index, root_note, sub_root_note, quant_mode, seg_count,
  * DROP_SEG_MAX segment records of 5 bytes nested, the jackpot cell map as a
- * raw DROP_JACKPOT_BYTES array), then one record per DROP and SUB voice:
+ * raw DROP_JACKPOT_BYTES array, bounce), then one record per DROP and SUB
+ * voice:
  * patch, glide, the voice_params_t block (ser_vp, authored flags included),
  * the unison block, muted, solo and gate_pct. */
 
@@ -960,6 +961,7 @@ static void ser_drop(tlv_writer_t *w)
     uint8_t jp[DROP_JACKPOT_BYTES];
     drop_jackpot_get_map(jp);
     for (uint8_t i = 0; i < DROP_JACKPOT_BYTES; i++) tlv_put_u8(w, jp[i]);
+    tlv_put_u8(w, drop_get_bounce());
     tlv_end_block(w, hb);
     for (uint8_t v = 0; v < DROP_VOICE_COUNT; v++) {
         drop_which_t which = (drop_which_t)v;
@@ -1050,6 +1052,8 @@ static bool parse_drop(tlv_reader_t *r, staged_drop_t *st)
         if (!parse_drop_seg(&b, &d->segs[i])) return false;
     }
     tlv_get_bytes(&b, d->jackpot, sizeof d->jackpot);
+    tlv_get_u8(&b, &d->bounce);
+    d->bounce = SEQ_CLAMP_U8(d->bounce, DROP_BOUNCE_MIN, DROP_BOUNCE_MAX);
     for (uint8_t i = 0; i < DROP_VOICE_COUNT; i++) {
         if (!parse_drop_voice(r, &d->voice[i], &st->solo[i])) return false;
     }
@@ -1068,6 +1072,7 @@ static void apply_drop(const staged_drop_t *st)
     drop_set_rate(d->rate);
     drop_set_loop_bars(d->loop_bars);
     drop_set_octaves(d->octaves);
+    drop_set_bounce(d->bounce);
     for (uint8_t i = 0; i < DROP_VOICE_COUNT; i++) {
         drop_set_gate_pct((drop_which_t)i, d->voice[i].gate_pct);
     }

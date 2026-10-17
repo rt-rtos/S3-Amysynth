@@ -60,6 +60,7 @@ void drop_build_view(drop_view_t *out)
     out->loop_bars = drop_get_loop_bars();
     out->seed16    = (uint16_t)(drop_get_seed() & 0xFFFFu);
     out->seed_frozen = drop_get_seed_frozen();
+    out->bounce_q8 = drop_get_bounce();
     out->seg_count = drop_get_seg_count();
     for (uint8_t i = 0; i < out->seg_count && i < DROP_VIEW_SEGS; i++) {
         drop_seg_t s;
@@ -153,6 +154,26 @@ static void drop_toggle_jackpot(void)
     drop_jackpot_set(cur_col(), cur_row(), !drop_jackpot_at(cur_col(), cur_row()));
 }
 
+/* The bounce field's stops, Q8: 0.50 halves each bounce's air time (1, 1/2,
+ * 1/4 beat ...), 0.71 every second one, 0.85 rolls into long trills; 0.70 is
+ * the default. A loaded value between stops moves to the next one. */
+static const uint8_t s_bounce_stops[] = { 128, 179, 181, 218 };
+
+static void drop_step_bounce(int dir)
+{
+    const int n = (int)(sizeof(s_bounce_stops) / sizeof(s_bounce_stops[0]));
+    uint8_t cur = drop_get_bounce();
+    if (dir > 0) {
+        for (int i = 0; i < n; i++) {
+            if (s_bounce_stops[i] > cur) { drop_set_bounce(s_bounce_stops[i]); return; }
+        }
+    } else {
+        for (int i = n - 1; i >= 0; i--) {
+            if (s_bounce_stops[i] < cur) { drop_set_bounce(s_bounce_stops[i]); return; }
+        }
+    }
+}
+
 static void drop_edit_field(uint8_t cursor, int dir)
 {
     if (dir == 0) return;
@@ -180,6 +201,9 @@ static void drop_edit_field(uint8_t cursor, int dir)
             drop_set_rate((note_div_t)r);
             break;
         }
+        case DROP_CUR_BOUNCE:
+            drop_step_bounce(dir);
+            break;
         default:
             drop_rotate_seg(dir);
             break;
