@@ -322,9 +322,9 @@ scale degree), and a ball crossing the jackpot cells plays the SUB synth at
 its own root; place jackpot cells one at a time, anywhere, as many as you
 like (adjacent cells form one region, separate ones fire separately, all on
 the SUB). The loop (Bars long) is simulated from the seed and repeats
-until an edit or a reroll changes it. Each bar of the loop keeps an even
-share of the loop's notes: a field busier than that share is cut short
-within each bar, never at the loop's end. The header reads ON/OFF (MUTE when the focused synth is
+until an edit or a reroll changes it. It has no seam: balls still bouncing
+at the loop's end land on into its start. A field busier than the loop's
+note budget loses its softest hits, spread over the whole loop. The header reads ON/OFF (MUTE when the focused synth is
 muted), the focus (DROP or SUB), the focused synth's patch and root on its first row,
 the loop bars, the seed (a `*` when frozen) and the rate on its second. The
 screen opens with the cursor on ON/OFF. The boot field is a floor under the

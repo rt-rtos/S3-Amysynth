@@ -135,10 +135,10 @@
  * jackpot crossings, so two voices cover a crossing landing on a tail. */
 #define SEQ_DROP_VOICES       4
 #define SEQ_DROP_SUB_VOICES   2
-/* Per loop: impacts and jackpot crossings the sim emits, shared out evenly
- * over the loop's bars (each bar keeps MAX / loop_bars; a bar's later events
- * are silent). Each takes a tag pair in the drop tag space, and every tag one
- * 20-byte entry in AMY's internal-RAM sequence table. */
+/* Per loop: impacts and jackpot crossings the sim emits; past the cap the
+ * softest give way (drop_core.h). Each takes a tag pair in the drop tag
+ * space, and every tag one 20-byte entry in AMY's internal-RAM sequence
+ * table. */
 #define SEQ_DROP_IMPACT_MAX   192
 #define SEQ_DROP_JACKPOT_MAX  64
 

@@ -19,6 +19,12 @@ extern "C" {
  * from a seed on the UI task and handed to AMY as repeating tagged events,
  * exactly as the arp's slots are; nothing here runs on the render task.
  *
+ * The loop is seamless: balls never meet, so each ball the spawner drops in
+ * the loop is simulated alone for up to one loop length and its notes are
+ * folded onto the loop, the balls of one pass landing on into the next.
+ * Past SEQ_DROP_IMPACT_MAX impacts or SEQ_DROP_JACKPOT_MAX crossings a loop
+ * keeps the hardest-hit ones, ties spread over the loop.
+ *
  * Field: DROP_COLS x DROP_ROWS cells over the OLED's blue band, DROP_CELL_W x
  * DROP_CELL_H pixels each, the header in the yellow band. Row DROP_ROWS-1 (the
  * bottom) plays the root; each row up is `octaves` scale degrees higher.
@@ -37,7 +43,7 @@ extern "C" {
 #define DROP_FIELD_H    (DROP_ROWS * DROP_CELL_H)   /* 48 px: the blue band */
 
 #define DROP_SEG_MAX    16
-#define DROP_BALL_MAX   8
+#define DROP_BALL_MAX   8      /* balls the view draws at once */
 #define DROP_SEG_ANGLES 8      /* 22.5 degree steps, 0 = horizontal */
 #define DROP_OCT_MAX    4
 #define DROP_LOOP_BARS_MAX 8
@@ -220,8 +226,10 @@ void         drop_set_focus(drop_which_t w);
 typedef struct { uint8_t x, y; } drop_ball_pos_t;   /* field pixels */
 
 /* Ball positions at `loop_tick` (0..drop_loop_ticks()-1) of the current
- * loop: the deterministic sim replayed from the seed up to that tick, kept
- * incrementally between calls. Returns the count written. UI task only. */
+ * loop, the balls of the previous pass included: the deterministic sim
+ * stepped on from the last call (a playhead that moved back has wrapped).
+ * At most DROP_BALL_MAX are tracked; the rest still play, undrawn. Returns
+ * the count written. UI task only. */
 uint8_t  drop_view_balls(uint32_t loop_tick, drop_ball_pos_t out[DROP_BALL_MAX]);
 /* The loop length in sequencer ticks (loop_bars x SEQ_TICKS_PER_BAR). */
 uint32_t drop_loop_ticks(void);
