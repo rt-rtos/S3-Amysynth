@@ -95,7 +95,7 @@ screen; a DEV status bar replaces it on every screen while on.
 ## Step Trig popup
 
 Addressed by the grid cursor (layer, track, step). Eight fields in a
-five-row window that scrolls with the cursor; a ninth, FRM, is listed while
+four-row window that scrolls with the cursor; a ninth, FRM, is listed while
 the track plays a wavetable patch.
 
 | Input | Action |

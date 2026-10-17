@@ -9,7 +9,7 @@ extern "C" {
 #endif
 
 /* Step Trig popup for the step under the sequencer grid cursor: eight fields
- * (nine with Frame, present only on a wavetable track) in a five-row window
+ * (nine with Frame, present only on a wavetable track) in a four-row window
  * that scrolls with the cursor, a triangle marking the hidden direction.
  * Controls: CONTROLS.md. */
 
