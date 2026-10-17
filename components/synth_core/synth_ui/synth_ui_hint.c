@@ -27,9 +27,9 @@ const char *synth_ui_hint_text(void)
 bool synth_ui_hint_visible(void)
 {
     /* PROG and DROP draw into the strip's rows (the field's bottom row of
-     * cells on DROP). */
-    if (seq_state.ui_mode == UI_MODE_PROG || seq_state.ui_mode == UI_MODE_DROP) {
-        return false;
-    }
-    return true;
+     * cells on DROP). Keyed on the resolved view, not ui_mode: a menu or
+     * editor opened from either screen leaves ui_mode unchanged but draws
+     * above the strip. */
+    ui_view_id_t v = synth_ui_active_view();
+    return v != UI_VIEW_PROG && v != UI_VIEW_DROP;
 }
