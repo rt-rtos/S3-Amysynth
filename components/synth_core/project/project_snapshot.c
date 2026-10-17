@@ -910,7 +910,7 @@ static void apply_arp(const staged_arp_t *st)
 /* ── DROP section ──────────────────────────────────────────────────────────
  * Records: the loop record (enabled, rate, loop_bars, octaves, seed,
  * seed_frozen, scale_index, root_note, sub_root_note, quant_mode, seg_count,
- * DROP_SEG_MAX segment records of 5 bytes nested, the jackpot cell map as a
+ * DROP_SEG_MAX segment records of 7 bytes nested, the jackpot cell map as a
  * raw DROP_JACKPOT_BYTES array, bounce), then one record per DROP and SUB
  * voice:
  * patch, glide, the voice_params_t block (ser_vp, authored flags included),
@@ -956,6 +956,8 @@ static void ser_drop(tlv_writer_t *w)
         tlv_put_u8(w, s.angle);
         tlv_put_u8(w, s.type);
         tlv_put_u8(w, s.ratio);
+        tlv_put_i8(w, s.pitch_ofs);
+        tlv_put_i8(w, s.vel_adj);
         tlv_end_block(w, hs);
     }
     uint8_t jp[DROP_JACKPOT_BYTES];
@@ -993,11 +995,15 @@ static bool parse_drop_seg(tlv_reader_t *r, drop_seg_t *s)
     tlv_get_u8(&b, &s->angle);
     tlv_get_u8(&b, &s->type);
     tlv_get_u8(&b, &s->ratio);
+    tlv_get_i8(&b, &s->pitch_ofs);
+    tlv_get_i8(&b, &s->vel_adj);
     /* A cell out of the field drops the segment (drop_set_seg refuses
      * it); the rest clamps there. */
     s->angle = SEQ_CLAMP_U8(s->angle, 0, DROP_SEG_ANGLES - 1);
     s->type  = SEQ_CLAMP_U8(s->type, 0, DROP_SEG_TYPE_COUNT - 1);
     s->ratio = SEQ_CLAMP_U8(s->ratio, 0, 100);
+    s->pitch_ofs = (int8_t)SEQ_CLAMP_INT(s->pitch_ofs, -SEQ_STEP_PITCH_OFS_MAX, SEQ_STEP_PITCH_OFS_MAX);
+    s->vel_adj   = (int8_t)SEQ_CLAMP_INT(s->vel_adj, -SEQ_STEP_VEL_ADJ_MAX, SEQ_STEP_VEL_ADJ_MAX);
     return true;
 }
 

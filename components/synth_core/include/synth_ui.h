@@ -193,6 +193,9 @@ void synth_ui_cycle_live_patch(int delta);
  * keeps its own long-press meaning (play/stop) otherwise. shift0 is the
  * SHIFT + Button 0 chord: a press rerolls the seed, a hold freezes it. */
 bool synth_ui_drop_is_active(void);
+/* The field cell under the drop screen's cursor: true and both filled while
+ * the cursor is on a cell, false (outputs untouched) on a header field. */
+bool synth_ui_drop_cursor_cell(uint8_t *col, uint8_t *row);
 void synth_ui_drop_handle_encoder(long delta, bool shift);
 void synth_ui_drop_handle_button(void);
 void synth_ui_drop_cycle_patch(int delta);   /* the focused synth's patch */
@@ -445,14 +448,43 @@ void synth_ui_stepedit_close(void);
 bool synth_ui_stepedit_handle_encoder(long delta);
 bool synth_ui_stepedit_handle_button(void);
 
+/* ── Ball drop segment popup (per-segment pitch offset / velocity) ─────────
+ * Full-screen popup for the segment on the drop cursor's cell, addressed by
+ * that cell (col, row), never by segment index. Opened and closed from the
+ * gesture dispatcher's SHIFT+2 chord; controls in CONTROLS.md. UI input task
+ * only.
+ *
+ * is_active: true while the popup is open on a cell that still holds a
+ * segment, seq_state.ui_mode == UI_MODE_DROP and no menu is open. Side
+ * effect: when the popup is open but that condition fails, the call closes it
+ * and returns false, so leaving the screen (or removing the segment) never
+ * brings the popup back on a later visit.
+ *
+ * open: call from the dispatcher while the drop screen is the active view.
+ * Silent no-op unless the drop cursor is on a cell (not a header field) that
+ * holds a segment; otherwise the popup is active on that cell, PITCH
+ * selected, not editing, and the next frame redraws.
+ *
+ * handle_button: the encoder click, toggles adjust mode. handle_encoder: not
+ * adjusting, the sign of `delta` moves the field cursor (wrapping over the
+ * two rows); adjusting, its magnitude counts: pitch +-1 semitone per detent,
+ * velocity +-5 points, clamped to the drop_seg_t ranges and stored through
+ * drop_set_seg(). Closes when the segment is gone. Both return false while
+ * the popup is closed. */
+bool synth_ui_dropseg_is_active(void);
+void synth_ui_dropseg_open(void);
+void synth_ui_dropseg_close(void);
+bool synth_ui_dropseg_handle_encoder(long delta);
+bool synth_ui_dropseg_handle_button(void);
+
 /* ─── View precedence - the single source of truth ──────────────────────
  * synth_ui_active_view() is the ONLY place the "which screen/overlay is
  * showing" precedence lives. Every consumer (draw, hint strip, both gesture
  * dispatcher entry points, ui_view_table[]) resolves once and dispatches on
  * the result, so input and draw can never disagree.
  *
- * Order (high to low): FILTER > LFO > DIST > STEPEDIT > GRAPH > MENU >
- * mode-tail. The first six are the input-capturing overlays
+ * Order (high to low): FILTER > LFO > DIST > STEPEDIT > DROP_SEG > GRAPH >
+ * MENU > mode-tail. The first seven are the input-capturing overlays
  * (UI_VIEW_IS_OVERLAY); the mode-tail comes from seq_state.ui_mode when no
  * overlay is up. */
 typedef enum {
@@ -460,6 +492,7 @@ typedef enum {
     UI_VIEW_LFO,
     UI_VIEW_DIST,
     UI_VIEW_STEPEDIT,
+    UI_VIEW_DROP_SEG,
     UI_VIEW_GRAPH,
     UI_VIEW_MENU,
     UI_VIEW_ARP,
@@ -475,7 +508,7 @@ typedef enum {
     UI_VIEW_COUNT
 } ui_view_id_t;
 
-/* True for the six leading overlays, which capture encoder/button input
+/* True for the seven leading overlays, which capture encoder/button input
  * outright ahead of any mode screen. */
 #define UI_VIEW_IS_OVERLAY(v)  ((v) <= UI_VIEW_MENU)
 

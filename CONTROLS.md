@@ -23,7 +23,7 @@ Pin assignments: `components/my_buttons/my_buttons.c` (`s_button_gpios[]`).
 
 ## Screen and overlay precedence
 
-Highest first. The first six are overlays that capture the encoder and all
+Highest first. The first seven are overlays that capture the encoder and all
 button input; the rest are mode screens. Resolved in one place,
 `synth_ui_active_view()` (`components/synth_core/include/synth_ui.h`).
 
@@ -31,9 +31,10 @@ button input; the rest are mode screens. Resolved in one place,
 2. LFO editor
 3. Distortion (DIST) editor
 4. Step Trig popup
-5. ADSR (graph) editor
-6. Menu
-7. Mode screen: Arp, Ball drop, Stutter drone, Normal drone, Prog, FM, DEV, WT, Mixer, Seq (default at boot)
+5. Ball drop segment popup
+6. ADSR (graph) editor
+7. Menu
+8. Mode screen: Arp, Ball drop, Stutter drone, Normal drone, Prog, FM, DEV, WT, Mixer, Seq (default at boot)
 
 Screens are changed only through the Menu.
 
@@ -44,9 +45,9 @@ Screens are changed only through the Menu.
 | SHIFT + Button 0 (press) | Sequencer screen, no menu: toggle solo on the selected track. Arpeggiator screen, no menu: toggle the arp's solo. A SOLO / SOLO OFF banner shows the result. Ball drop screen: reroll the seed on the release, unless a turn set a splitter's ratio during the press. Elsewhere: nothing |
 | SHIFT + Button 0 (hold) | Sequencer or Arpeggiator screen, no menu: clear every solo, the arp's included (SOLO CLR banner). Ball drop screen: freeze / unfreeze the seed on the release, unless a turn set a splitter's ratio during the hold. Elsewhere: nothing |
 | SHIFT + Button 1 | Open the ADSR editor on the current instrument (Seq, Arp, Ball drop, Drone screens, or the Wireless menu page; on the Ball drop screen the focused synth, DROP or SUB). With an editor open: commit and close it |
-| SHIFT + Button 2 | Sequencer screen, no menu: open the Step Trig popup. Popup open: close it. Filter/LFO/DIST/ADSR editor open: release the open tab to the patch |
+| SHIFT + Button 2 | Sequencer screen, no menu: open the Step Trig popup. Ball drop screen, cursor on a segment: open its segment popup. Popup open: close it. Filter/LFO/DIST/ADSR editor open: release the open tab to the patch |
 | SHIFT + Button 3 | Sequencer screen, no menu: open the menu on the Layer page, on the row it was left on if the menu was closed on that page's layer entry, else on Gate. Arpeggiator screen, no menu: the same on the page's ARP entry, else on Level. Ball drop screen: the same on the entry of the focused synth (DROP or SUB). Menu open on the Wireless page: switch to the Layer page's LIVE entry, on Level. Menu open on the Layer page: close it. Filter/LFO/DIST/ADSR editor open on a melodic row: flip the row between its own voice block and the layer's shared block |
-| Button 3 (tap) | Toggle the menu; it reopens on the page and row it was closed on. With an editor open: next editor. With the Step Trig popup open: close it |
+| Button 3 (tap) | Toggle the menu; it reopens on the page and row it was closed on. With an editor open: next editor. With the Step Trig or segment popup open: close it |
 
 A SHIFT chord is latched on its digit's press and swallows the rest of that
 press, so the button's own tap/hold gesture never fires. A chord whose
@@ -76,6 +77,7 @@ screen; a DEV status bar replaces it on every screen while on.
 | LFO editor | On/Off | +LFO2 while LFO2 is collapsed, -LFO2 while it is open (- where LFO2 is unavailable) | Next |
 | DIST editor | - | - | Next |
 | Step Trig popup | - | - | Close |
+| Ball drop segment popup | - | - | Close |
 
 ## Sequencer screen (Seq)
 
@@ -357,6 +359,7 @@ spawner and a jackpot cell above it, so ON plays at once.
 | SHIFT + Button 0 (press / hold) | Reroll the seed / freeze or unfreeze it, on the release |
 | SHIFT + Button 1 | The ADSR editor on the focused synth; Button 3 cycles to EG1, filter, LFO, LFO2 and DIST as on every instrument |
 | SHIFT + Button 3 | The Layer page's DROP or SUB entry, the focused synth's own: Level, Key, Mute, Solo, ClrSolo, Unison, Gate, Glide |
+| SHIFT + Button 2 | Cursor on a segment: open its popup, titled with the cell (`SEG C<col> R<row>`, row 1 at the top). Pitch: semitones added to the row's note, 1 per detent, +/- `SEQ_STEP_PITCH_OFS_MAX`. Vel: points added to the hit's velocity, 5 per detent, +/- `SEQ_STEP_VEL_ADJ_MAX` (the sum stays within 0..100 %, so a low enough value silences the hit). Turn, click and close as in the Step Trig popup: Button 0 (tap or hold), Button 3 (tap) or SHIFT + Button 2 close it. It closes on its own when the segment goes |
 
 ## Drone screens
 

@@ -48,8 +48,9 @@ extern "C" {
 #define DROP_OCT_MAX    4
 #define DROP_LOOP_BARS_MAX 8
 #define DROP_SPAWN_COL  8      /* the spawner's column */
-/* Ceiling of the impact voice count: AMY keeps one voice per sounding pitch
- * and a row plays one pitch, so DROP_ROWS voices never cut a held note. */
+/* Ceiling of the impact voice count: AMY keeps one voice per sounding pitch.
+ * With segment pitch offsets up to DROP_SEG_MAX distinct pitches can sound,
+ * and past the voice count a held note is cut. */
 #define DROP_VOICES_MAX DROP_ROWS
 #define DROP_PORTAMENTO_MAX_MS 100u   /* as ARP_PORTAMENTO_MAX_MS */
 /* Bounciness: the restitution of PLAIN and SPLIT segments in Q8 (256 = 1).
@@ -73,6 +74,13 @@ typedef struct {
     uint8_t angle;    /* 0..DROP_SEG_ANGLES-1 */
     uint8_t type;     /* drop_seg_type_t */
     uint8_t ratio;    /* SPLIT: percent of balls sent left, 0..100 */
+    /* Chromatic semitones added to the row's note, never re-quantized,
+     * +-SEQ_STEP_PITCH_OFS_MAX. */
+    int8_t  pitch_ofs;
+    /* Percentage points of full scale added to the impact velocity,
+     * +-SEQ_STEP_VEL_ADJ_MAX; the sum is clamped to 0..1, so 0 can silence a
+     * hit. */
+    int8_t  vel_adj;
 } drop_seg_t;
 
 /* Jackpot cells: one bit per cell, row-major (bit col + row * DROP_COLS).
@@ -181,7 +189,8 @@ bool    drop_get_seg(uint8_t idx, drop_seg_t *out);
 /* Index of the segment on a cell, or -1. */
 int     drop_find_seg(uint8_t col, uint8_t row);
 /* Place `seg` on its cell, replacing the one there; false when the field is
- * full or a field is out of range. Angle, type and ratio are clamped. */
+ * full or a field is out of range. Angle, type, ratio, pitch_ofs and vel_adj
+ * are clamped. */
 bool    drop_set_seg(const drop_seg_t *seg);
 bool    drop_remove_seg(uint8_t col, uint8_t row);
 bool    drop_jackpot_at(uint8_t col, uint8_t row);

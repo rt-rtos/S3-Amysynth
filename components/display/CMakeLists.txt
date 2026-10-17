@@ -1,6 +1,6 @@
 idf_component_register(
     SRCS "display_prog.c" "display_lfo.c" "display_dist.c" "patch_names.c" "priv_i2c_u8g2.c" "display_seq.c" "graph_popup.c"
-         "display_menu.c" "display_arp.c" "display_drop.c" "display_drone.c" "filter_graph.c" "display_stepedit.c" "display_hint.c" "display_badge.c"
+         "display_menu.c" "display_arp.c" "display_drop.c" "display_drone.c" "filter_graph.c" "display_stepedit.c" "display_dropseg.c" "display_hint.c" "display_badge.c"
          "display_dev.c" "display_env.c" "display_fm.c" "display_wt.c" "display_mixer.c" "display_text.c" "display_flush.c" "display_flush_runs.c"
     INCLUDE_DIRS "."
     # synth_core provides seq_model.h (engine-owned data model consumed by the

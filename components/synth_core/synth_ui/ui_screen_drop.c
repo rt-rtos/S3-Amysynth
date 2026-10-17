@@ -88,6 +88,14 @@ static inline bool    on_cell(void) { return s_cursor >= DROP_CUR_CELL0; }
 static inline uint8_t cur_col(void) { return (uint8_t)((s_cursor - DROP_CUR_CELL0) % DROP_COLS); }
 static inline uint8_t cur_row(void) { return (uint8_t)((s_cursor - DROP_CUR_CELL0) / DROP_COLS); }
 
+bool synth_ui_drop_cursor_cell(uint8_t *col, uint8_t *row)
+{
+    if (!on_cell()) return false;
+    *col = cur_col();
+    *row = cur_row();
+    return true;
+}
+
 void drop_build_view(drop_view_t *out)
 {
     memset(out, 0, sizeof(*out));

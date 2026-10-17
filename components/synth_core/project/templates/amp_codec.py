@@ -478,7 +478,8 @@ def w_drop(d):
         b.put(d, DROP_HEAD)
         b.u8(len(d['segs']))
         for i in range(DROP_SEG_MAX):
-            s = d['segs'][i] if i < len(d['segs']) else (0, 0, 0, 0, 0)
+            # col, row, angle, type, ratio, then pitch_ofs and vel_adj signed
+            s = d['segs'][i] if i < len(d['segs']) else (0, 0, 0, 0, 0, 0, 0)
             b.block(bytes(v & 0xFF for v in s))
         b.raw(bytes(d['jackpot']).ljust(DROP_JACKPOT_BYTES, b'\0')[:DROP_JACKPOT_BYTES])
         b.u8(d.get('bounce', DROP_BOUNCE_DEFAULT))
@@ -500,7 +501,10 @@ def r_drop(r):
     b = r.block()
     d = b.fill(_zero(DROP_HEAD), DROP_HEAD)
     n = b.u8() or 0
-    segs = [tuple(b.block().fill_list([0] * 5, 'u8')) for _ in range(DROP_SEG_MAX)]
+    segs = []
+    for _ in range(DROP_SEG_MAX):
+        sb = b.block()
+        segs.append(tuple(sb.fill_list([0] * 5, 'u8') + sb.fill_list([0] * 2, 'i8')))
     d['segs'] = segs[:n]
     jp = b.raw(DROP_JACKPOT_BYTES)
     d['jackpot'] = bytes(jp) if jp is not None else bytes(DROP_JACKPOT_BYTES)

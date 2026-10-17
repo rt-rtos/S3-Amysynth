@@ -111,8 +111,9 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
      *              ratio (held + turn) or the seed reroll / freeze on the
      *              drop screen (above); latched but inert elsewhere
      *   SHIFT+1 -> open the ADSR/graph editor, or close+commit an open one
-     *   SHIFT+2 -> toggle the step probability/trig editor; inside an
-     *              effects editor: release the open tab to the patch
+     *   SHIFT+2 -> toggle the step probability/trig editor (the segment
+     *              popup on the drop screen); inside an effects editor:
+     *              release the open tab to the patch
      *   SHIFT+3 -> inside an effects editor: flip the row between its own
      *              voice block and the layer's shared one; on the sequencer
      *              screen: open the menu's Layer page, or close it
@@ -175,6 +176,10 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
                 /* stepedit has no discard path, so close == commit.
                  * synth_ui_stepedit_open() self-gates to the sequencer screen. */
                 synth_ui_stepedit_close();
+            } else if (synth_ui_dropseg_is_active()) {
+                synth_ui_dropseg_close();   /* no discard path either */
+            } else if (sv == UI_VIEW_DROP) {
+                synth_ui_dropseg_open();
             } else if (!synth_ui_menu_is_active()) {
                 synth_ui_stepedit_open();
             }
@@ -424,6 +429,7 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
                 if (event == BUTTON_PRESS_DOWN) synth_ui_lfo_button2();
                 return;
             case UI_VIEW_STEPEDIT:
+            case UI_VIEW_DROP_SEG:
                 /* Popup owns the encoder; suppress drum-select hold. */
                 return;
 #if CONFIG_SYNTH_CUSTOM_FM
@@ -448,7 +454,7 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
     }
 
     // MY_BUTTON_3: inside an editor, click cycles editor pages (EG0 -> EG1 ->
-    // filter -> LFO1 -> LFO2 while open -> DIST); in STEPEDIT it closes; in
+    // filter -> LFO1 -> LFO2 while open -> DIST); in either popup it closes; in
     // FM link mode it ends linking; in the mixer's track rows it returns to
     // the overview; otherwise it is the menu toggle.
     if (button_id == MY_BUTTON_3) {
@@ -469,6 +475,12 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
         if (v == UI_VIEW_STEPEDIT) {
             if (event == BUTTON_SINGLE_CLICK) {
                 synth_ui_stepedit_close();
+            }
+            return;
+        }
+        if (v == UI_VIEW_DROP_SEG) {
+            if (event == BUTTON_SINGLE_CLICK) {
+                synth_ui_dropseg_close();
             }
             return;
         }
@@ -495,6 +507,9 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
                 return;
             case UI_VIEW_STEPEDIT:
                 if (event == BUTTON_PRESS_DOWN)  synth_ui_stepedit_handle_button();
+                return;
+            case UI_VIEW_DROP_SEG:
+                if (event == BUTTON_PRESS_DOWN)  synth_ui_dropseg_handle_button();
                 return;
             case UI_VIEW_GRAPH:
                 if (event == BUTTON_PRESS_DOWN)  synth_ui_graph_handle_button(false);
@@ -542,22 +557,25 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
     }
 
     /* MY_BUTTON_0 while an editor is open: tap = commit & close, long press =
-     * cancel/discard (STEPEDIT has no discard path; both just close it). All
-     * events consumed, so transport is unavailable until the editor closes. */
+     * cancel/discard (the STEPEDIT and DROP_SEG popups have no discard path;
+     * both just close them). All events consumed, so transport is unavailable
+     * until the editor closes. */
     if (button_id == MY_BUTTON_0 &&
         (v == UI_VIEW_GRAPH || v == UI_VIEW_FILTER || v == UI_VIEW_LFO ||
-         v == UI_VIEW_DIST  || v == UI_VIEW_STEPEDIT)) {
+         v == UI_VIEW_DIST  || v == UI_VIEW_STEPEDIT || v == UI_VIEW_DROP_SEG)) {
         if (event == BUTTON_SINGLE_CLICK) {              /* tap = commit & close */
             if (v == UI_VIEW_FILTER)        synth_ui_filter_close_commit();
             else if (v == UI_VIEW_LFO)      synth_ui_lfo_close_commit();
             else if (v == UI_VIEW_DIST)     synth_ui_dist_close_commit();
             else if (v == UI_VIEW_STEPEDIT) synth_ui_stepedit_close();
+            else if (v == UI_VIEW_DROP_SEG) synth_ui_dropseg_close();
             else                            synth_ui_graph_close_commit();
         } else if (event == BUTTON_LONG_PRESS_START) {   /* hold = cancel / discard */
             if (v == UI_VIEW_FILTER)        synth_ui_filter_handle_button(true);
             else if (v == UI_VIEW_LFO)      synth_ui_lfo_handle_button(true);
             else if (v == UI_VIEW_DIST)     synth_ui_dist_handle_button(true);
             else if (v == UI_VIEW_STEPEDIT) synth_ui_stepedit_close(); /* no discard path */
+            else if (v == UI_VIEW_DROP_SEG) synth_ui_dropseg_close();  /* no discard path */
             else                            synth_ui_graph_handle_button(true);
         }
         return;
@@ -596,6 +614,7 @@ void input_dispatch_encoder_steps(long steps)
         case UI_VIEW_LFO:      synth_ui_lfo_handle_encoder(steps);      return;
         case UI_VIEW_DIST:     synth_ui_dist_handle_encoder(steps);     return;
         case UI_VIEW_STEPEDIT: synth_ui_stepedit_handle_encoder(steps); return;
+        case UI_VIEW_DROP_SEG: synth_ui_dropseg_handle_encoder(steps);  return;
         case UI_VIEW_GRAPH:    synth_ui_graph_handle_encoder(steps);    return;
         case UI_VIEW_MENU:     synth_ui_menu_handle_encoder(steps);     return;
         default:               break;  /* fall through to the mode-tail */

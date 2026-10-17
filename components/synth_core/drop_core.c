@@ -149,6 +149,7 @@ typedef struct {
 typedef struct {
     bool    impact, jackpot;
     uint8_t row;           /* impact: the segment's row */
+    uint8_t seg;           /* impact: the segment's index in s_drop.segs */
     int32_t speed;         /* impact: normal speed */
     int32_t jp_speed;      /* crossing: vertical speed */
 } drop_ball_ev_t;
@@ -158,7 +159,9 @@ typedef struct {
     uint16_t gate;         /* ticks to the ball's next impact or end */
     uint16_t speed;        /* normal speed at impact, DROP_Q */
     uint8_t  row;
+    uint8_t  seg;          /* index in s_drop.segs at the refresh */
 } drop_impact_t;
+_Static_assert(sizeof(drop_impact_t) == 8, "the segment index fills the record's padding");
 
 typedef struct {
     uint16_t tick;
@@ -188,8 +191,8 @@ static drop_seg_geom_t s_geom[DROP_SEG_MAX];
 static uint8_t         s_geom_count;
 static bool            s_geom_jackpot;   /* any jackpot cell set */
 
-/* The refresh's record, static: it is over two kilobytes, which the UI
- * task's frame cannot carry. */
+/* The refresh's record, static: it is 1800 bytes, which the UI task's frame
+ * cannot carry. */
 static drop_rec_t s_rec_loop;
 
 /* The view: up to DROP_BALL_MAX of the loop's balls, stepped on from one
@@ -310,6 +313,7 @@ static void ball_step(drop_ball_t *b, uint32_t life, drop_ball_ev_t *ev)
         hit = true;
         ev->impact = true;
         ev->row = s_geom[k].row;
+        ev->seg = k;
         ev->speed = speed;
         int32_t ax = (b->vx < 0) ? -b->vx : b->vx;
         int32_t ay = (b->vy < 0) ? -b->vy : b->vy;
@@ -453,6 +457,7 @@ static void sim_run_loop(drop_rec_t *rec)
                 im.tick  = (uint16_t)(t % loop);
                 im.speed = clamp_u16((uint32_t)ev.speed);
                 im.row   = ev.row;
+                im.seg   = ev.seg;
                 im_at    = t;
                 pending  = true;
             }
@@ -602,6 +607,24 @@ static float drop_velocity(uint16_t speed, float amp_trim)
     return (v > 1.0f) ? 1.0f : v;
 }
 
+/* An impact's pitch: its row's note plus the segment's offset. An index past
+ * the field counts as no offset: the dump reads the record after segments may
+ * have been removed. */
+static uint8_t drop_impact_note(const drop_impact_t *im)
+{
+    int32_t ofs = (im->seg < s_drop.seg_count) ? s_drop.segs[im->seg].pitch_ofs : 0;
+    return sequencer_core_clamp_melodic_note((int32_t)drop_snap(im->row) + ofs);
+}
+
+/* An impact's velocity: the speed's plus the segment's adjustment. 0 is a
+ * silent hit that still plays its note pair, as on a sequencer step. */
+static float drop_impact_velocity(const drop_impact_t *im, float amp_trim)
+{
+    int32_t adj = (im->seg < s_drop.seg_count) ? s_drop.segs[im->seg].vel_adj : 0;
+    float v = drop_velocity(im->speed, amp_trim) + (float)adj * 0.01f;
+    return SEQ_CLAMP_F32(v, 0.0f, 1.0f);
+}
+
 /* The gate of impact i, shortened to end before the next impact at the same
  * pitch (the loop wrapping around counts), clamped to 1..period-1. */
 static uint32_t gate_before_repeat(uint32_t gate, uint32_t tick, uint16_t i,
@@ -642,10 +665,10 @@ void drop_core_refresh(void)
     uint32_t sub_base = drop_tag_pair(DROP_VOICE_SUB);
     float    trim   = s_drop.voice[DROP_VOICE_MAIN].vp.amp_trim;
     uint8_t  notes[SEQ_DROP_IMPACT_MAX];
-    for (uint16_t i = 0; i < s->n_impacts; i++) notes[i] = drop_snap(s->impacts[i].row);
+    for (uint16_t i = 0; i < s->n_impacts; i++) notes[i] = drop_impact_note(&s->impacts[i]);
     for (uint16_t i = 0; main_on && i < s->n_impacts; i++) {
         const drop_impact_t *im = &s->impacts[i];
-        /* Two balls landing on one row on one tick play one note. */
+        /* Two balls landing on one pitch on one tick play one note. */
         bool twin = false;
         for (uint16_t k = i; k > 0 && s->impacts[k - 1].tick == im->tick && !twin; k--) {
             twin = notes[k - 1] == notes[i];
@@ -657,7 +680,7 @@ void drop_core_refresh(void)
          * or the next. */
         gate = gate_before_repeat(gate, im->tick, i, s, notes, period);
         sequencer_core_drop_emit_note(DROP_SYNTH, base,
-                                      notes[i], drop_velocity(im->speed, trim),
+                                      notes[i], drop_impact_velocity(im, trim),
                                       1u + im->tick, gate, period);
     }
     float sub_trim = s_drop.voice[DROP_VOICE_SUB].vp.amp_trim;
@@ -701,8 +724,8 @@ unsigned drop_core_dump(void)
     }
     for (uint8_t i = 0; i < s_drop.seg_count; i++) {
         const drop_seg_t *g = &s_drop.segs[i];
-        printf("  SEG%u c=%u r=%u a=%u t=%u ratio=%u\n", i, g->col, g->row, g->angle,
-               g->type, g->ratio);
+        printf("  SEG%u c=%u r=%u a=%u t=%u ratio=%u pofs=%d vadj=%d\n", i, g->col, g->row,
+               g->angle, g->type, g->ratio, (int)g->pitch_ofs, (int)g->vel_adj);
         n++;
     }
     const drop_rec_t *s = &s_rec_loop;
@@ -710,7 +733,7 @@ unsigned drop_core_dump(void)
     for (uint16_t i = 0; i < s_last_impacts; i++) {
         const drop_impact_t *im = &s->impacts[i];
         printf("  IMP%u tick=%u row=%u note=%u vel=%.2f air=%u\n", i, im->tick, im->row,
-               (unsigned)drop_snap(im->row), (double)drop_velocity(im->speed, trim),
+               (unsigned)drop_impact_note(im), (double)drop_impact_velocity(im, trim),
                (unsigned)im->gate);
         n++;
     }
@@ -1163,6 +1186,8 @@ bool drop_set_seg(const drop_seg_t *seg)
     v.angle = SEQ_CLAMP_U8(v.angle, 0, DROP_SEG_ANGLES - 1);
     v.type  = SEQ_CLAMP_U8(v.type, 0, DROP_SEG_TYPE_COUNT - 1);
     v.ratio = SEQ_CLAMP_U8(v.ratio, 0, 100);
+    v.pitch_ofs = (int8_t)SEQ_CLAMP_INT(v.pitch_ofs, -SEQ_STEP_PITCH_OFS_MAX, SEQ_STEP_PITCH_OFS_MAX);
+    v.vel_adj   = (int8_t)SEQ_CLAMP_INT(v.vel_adj, -SEQ_STEP_VEL_ADJ_MAX, SEQ_STEP_VEL_ADJ_MAX);
     int idx = drop_find_seg(v.col, v.row);
     if (idx < 0) {
         if (s_drop.seg_count >= DROP_SEG_MAX) return false;

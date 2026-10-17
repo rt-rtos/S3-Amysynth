@@ -38,6 +38,7 @@ only draws the flat view structs it is handed)
 | `display_mixer.{c,h}` | mixer screen renderer: rows of name, level bar, mute cell and two 4-char quick cells from a flat view struct, each row underlined out to its last cell; the selected quick cell outlined, or filled while editing |
 | `display_text.{c,h}` | shared value-to-text formatters (`display_hz_label`: a frequency in four characters) |
 | `display_stepedit.{c,h}` | per-step probability / ratchet / conditional-trig popup |
+| `display_dropseg.{c,h}` | ball drop segment popup (pitch offset, velocity) |
 | `display_hint.{c,h}` | bottom hint-strip compositor (rows 57–63) |
 | `display_lfo.{c,h}` | LFO editor overlay renderer |
 | `display_dist.{c,h}` | DIST editor overlay renderer |

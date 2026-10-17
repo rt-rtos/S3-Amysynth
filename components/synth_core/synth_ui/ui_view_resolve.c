@@ -16,6 +16,7 @@ ui_view_id_t synth_ui_active_view(void)
     if (s_lfo_active)                   return UI_VIEW_LFO;
     if (s_dist_active)                  return UI_VIEW_DIST;
     if (synth_ui_stepedit_is_active())  return UI_VIEW_STEPEDIT; /* self-gated */
+    if (synth_ui_dropseg_is_active())   return UI_VIEW_DROP_SEG; /* self-gated */
     if (synth_ui_graph_is_active())     return UI_VIEW_GRAPH;
     if (seq_state.menu_open)            return UI_VIEW_MENU;
     switch (seq_state.ui_mode) {
@@ -43,6 +44,7 @@ static uint32_t sig_filter(ui_view_vw_t *vw)    { (void)vw; return filter_view_s
 static uint32_t sig_lfo(ui_view_vw_t *vw)       { (void)vw; return lfo_view_signature(); }
 static uint32_t sig_dist(ui_view_vw_t *vw)      { (void)vw; return dist_view_signature(); }
 static uint32_t sig_stepedit(ui_view_vw_t *vw)  { return stepedit_view_signature(&vw->stepedit); }
+static uint32_t sig_dropseg(ui_view_vw_t *vw)   { return dropseg_view_signature(&vw->dropseg); }
 static uint32_t sig_graph(ui_view_vw_t *vw)     { (void)vw; return graph_view_signature(); }
 static uint32_t sig_menu(ui_view_vw_t *vw)      { return menu_view_signature(&vw->menu); }
 static uint32_t sig_arp(ui_view_vw_t *vw)       { return arp_view_signature(&vw->arp); }
@@ -58,6 +60,7 @@ static void draw_filter(u8g2_t *g, ui_view_vw_t *vw)    { (void)vw; synth_ui_fil
 static void draw_lfo(u8g2_t *g, ui_view_vw_t *vw)       { (void)vw; synth_ui_lfo_view_draw(g); }
 static void draw_dist(u8g2_t *g, ui_view_vw_t *vw)      { (void)vw; synth_ui_dist_view_draw(g); }
 static void draw_stepedit(u8g2_t *g, ui_view_vw_t *vw)  { display_stepedit_draw_frame(g, &vw->stepedit); }
+static void draw_dropseg(u8g2_t *g, ui_view_vw_t *vw)   { display_dropseg_draw_frame(g, &vw->dropseg); }
 static void draw_graph(u8g2_t *g, ui_view_vw_t *vw)     { (void)vw; synth_ui_graph_view_draw(g); }
 static void draw_menu(u8g2_t *g, ui_view_vw_t *vw)      { display_menu_draw_frame_titled(g, menu_page_title(), &vw->menu); }
 static void draw_arp(u8g2_t *g, ui_view_vw_t *vw)       { display_arp_draw_frame(g, &vw->arp); }
@@ -165,6 +168,7 @@ const ui_view_desc_t ui_view_table[UI_VIEW_COUNT] = {
                             .b2_fn = synth_ui_lfo_hint_b2 },
     [UI_VIEW_DIST]      = { "DIST",   sig_dist,      draw_dist,      "-",      "-",     "Next",  .badge_x =   0 },
     [UI_VIEW_STEPEDIT]  = { "STEP",   sig_stepedit,  draw_stepedit,  "-",      "-",     "Close", .badge_x =   0 },
+    [UI_VIEW_DROP_SEG]  = { "SEG",    sig_dropseg,   draw_dropseg,   "-",      "-",     "Close", .badge_x =   0 },
     [UI_VIEW_GRAPH]     = { "GRAPH",  sig_graph,     draw_graph,     "Type",   NULL,    "Next",  .badge_x =  52,
                             .b2_fn = synth_ui_graph_hint_b2 },
     [UI_VIEW_MENU]      = { "MENU",   sig_menu,      draw_menu,      NULL,     NULL,    "Menu",  .badge_x =  52,

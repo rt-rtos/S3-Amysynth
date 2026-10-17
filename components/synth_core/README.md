@@ -35,7 +35,7 @@ drum Synth/PCM engines), `seq_core_editors.c` (envelope/filter/LFO/distortion co
 handlers (`ui_screen_menu.c`, `ui_screen_arp.c`, `ui_screen_drone.c`,
 `ui_screen_drone_std.c`, `ui_screen_prog.c`, `ui_screen_proggen.c`,
 `ui_screen_chords.c`, `ui_screen_layermenu.c`, `ui_screen_stepedit.c`,
-`ui_screen_fxmenu.c`, `ui_screen_bounce.c`, `ui_screen_projects.c`,
+`ui_screen_dropseg.c`, `ui_screen_fxmenu.c`, `ui_screen_bounce.c`, `ui_screen_projects.c`,
 `ui_screen_wireless.c`, `ui_screen_fm.c`, `ui_screen_dev.c`), the modal
 editors (`ui_editors.c`: ADSR graph, filter, LFO, DIST), the screen/overlay
 precedence resolver (`ui_view_resolve.c`), patch cycling
