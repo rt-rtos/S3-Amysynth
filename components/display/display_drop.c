@@ -101,7 +101,9 @@ void display_drop_draw_frame(u8g2_t *u8g2, const drop_view_t *view)
     }
     u8g2_DrawStr(u8g2, x, 6, buf);
     x = (uint8_t)(x + u8g2_GetStrWidth(u8g2, buf) + 6);
-    draw_field(u8g2, x, 0, view->root_name, view->cursor == DROP_CUR_ROOT, view->editing);
+    x = draw_field(u8g2, x, 0, view->root_name, view->cursor == DROP_CUR_ROOT, view->editing);
+    draw_field(u8g2, x, 0, view->scale_str ? view->scale_str : "?",
+               view->cursor == DROP_CUR_SCALE, view->editing);
 
     /* ── Header row 2 (yellow): bars | seed | rate ── */
     x = 2;
@@ -113,6 +115,8 @@ void display_drop_draw_frame(u8g2_t *u8g2, const drop_view_t *view)
         const char *rs = view->rate_str ? view->rate_str : "?";
         x = draw_field(u8g2, x, 8, rs, view->cursor == DROP_CUR_RATE, view->editing);
     }
+    snprintf(buf, sizeof(buf), "R+%u", (unsigned)view->step);
+    x = draw_field(u8g2, x, 8, buf, view->cursor == DROP_CUR_STEP, view->editing);
     snprintf(buf, sizeof(buf), "B.%02u", (unsigned)((view->bounce_q8 * 100u + 128u) / 256u));
     draw_field(u8g2, x, 8, buf, view->cursor == DROP_CUR_BOUNCE, view->editing);
 

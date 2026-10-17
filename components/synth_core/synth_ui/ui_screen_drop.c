@@ -5,6 +5,7 @@
 #include "sequencer.h"     /* sequencer_ticks (AMY) */
 #include "patch_names.h"
 #include "seq_clamp.h"
+#include "quantizer.h"
 #include <string.h>
 
 /* ════════════════════════════════════════════════════════════════════════
@@ -40,6 +41,49 @@ static bool    s_held[3];
 static bool    s_turned[3];
 static bool    s_long[3];
 
+/* The scale field: GLOB and CHRD (the global quantizer and the progression
+ * chord's scale), then each of the drop's own scales by quantizer index.
+ * Short names in quantizer.c's table order; an index past it shows its full
+ * name. */
+static const char *const s_scale_short[] = {
+    "CHRM", "MAJ", "MIN", "DOR", "PHRY", "LYD", "MIXO", "mPNT", "MPNT", "HMIN", "LOCR", "WHOL",
+};
+
+static inline int scale_pos_count(void) { return 2 + (int)quantizer_scale_count(); }
+
+static int scale_pos(void)
+{
+    switch (drop_get_quant_mode()) {
+        case ARP_QUANT_GLOBAL: return 0;
+        case ARP_QUANT_CHORD:  return 1;
+        default:               return 2 + (int)drop_get_scale();
+    }
+}
+
+static void set_scale_pos(int pos)
+{
+    pos = SEQ_CLAMP_INT(pos, 0, scale_pos_count() - 1);
+    if (pos == 0) {
+        drop_set_quant_mode(ARP_QUANT_GLOBAL);
+    } else if (pos == 1) {
+        drop_set_quant_mode(ARP_QUANT_CHORD);
+    } else {
+        drop_set_scale((uint8_t)(pos - 2));
+        drop_set_quant_mode(ARP_QUANT_OWN);
+    }
+}
+
+static const char *scale_label(void)
+{
+    int pos = scale_pos();
+    if (pos == 0) return "GLOB";
+    if (pos == 1) return "CHRD";
+    unsigned idx = (unsigned)(pos - 2);
+    if (idx < sizeof(s_scale_short) / sizeof(s_scale_short[0])) return s_scale_short[idx];
+    const musical_scale_t *sc = quantizer_get_scale((uint8_t)idx);
+    return sc ? sc->name : "?";
+}
+
 static inline bool    on_cell(void) { return s_cursor >= DROP_CUR_CELL0; }
 static inline uint8_t cur_col(void) { return (uint8_t)((s_cursor - DROP_CUR_CELL0) % DROP_COLS); }
 static inline uint8_t cur_row(void) { return (uint8_t)((s_cursor - DROP_CUR_CELL0) / DROP_COLS); }
@@ -56,6 +100,8 @@ void drop_build_view(drop_view_t *out)
     out->patch_name   = patch_name_for(out->patch);
     ui_note_name(focus == DROP_VOICE_SUB ? drop_get_sub_root_note() : drop_get_root_note(),
                  out->root_name);
+    out->scale_str = scale_label();
+    out->step      = drop_get_octaves();
     out->rate_str  = note_div_label(drop_get_rate());
     out->loop_bars = drop_get_loop_bars();
     out->seed16    = (uint16_t)(drop_get_seed() & 0xFFFFu);
@@ -189,6 +235,12 @@ static void drop_edit_field(uint8_t cursor, int dir)
                 drop_set_sub_root_note((uint8_t)SEQ_CLAMP_INT((int)drop_get_sub_root_note() + dir, 0, 127));
             else
                 drop_set_root_note((uint8_t)SEQ_CLAMP_INT((int)drop_get_root_note() + dir, 0, 127));
+            break;
+        case DROP_CUR_SCALE:
+            set_scale_pos(scale_pos() + dir);
+            break;
+        case DROP_CUR_STEP:
+            drop_set_octaves((uint8_t)SEQ_CLAMP_INT((int)drop_get_octaves() + dir, 1, DROP_OCT_MAX));
             break;
         case DROP_CUR_BARS:
             drop_set_loop_bars((uint8_t)SEQ_CLAMP_INT((int)drop_get_loop_bars() + dir, 1, DROP_LOOP_BARS_MAX));
