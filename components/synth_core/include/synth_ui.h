@@ -36,10 +36,19 @@ void synth_ui_init(u8g2_t *u8g2);
  * concurrently with itself. Task context; may block on the display bus. */
 void synth_ui_slice(uint8_t phase);
 
-/* Add a new sequencer layer (drum or melodic). Returns the layer index
- * or 0xFF if the layer table is full. Safe to call after init. */
-uint8_t synth_ui_add_layer(seq_layer_type_t type, uint8_t num_steps);
+/* Request a new melodic layer. Any Core-0 task, never an ISR. Does not add
+ * synchronously: it sets a pending flag that synth_ui_task, the single
+ * applier of structural layer edits, drains on its next 50 ms services pass.
+ * The layer cap is checked at the call and again at the drain, a request that
+ * finds the table full is dropped without an error, and requests made before
+ * the drain coalesce into one add. */
 void    synth_ui_request_add_layer(void);
+/* Request deletion of the layer on the grid (seq_state.active_layer_idx at
+ * the call). Any Core-0 task, never an ISR. Deferred like the add, and
+ * drained before any pending add so an add never lands in a slot the delete
+ * has not freed. A no-op, with no error, when the target is layer 0, a drum
+ * layer, out of range or the only layer. A second request before the drain
+ * replaces the first. */
 void    synth_ui_request_delete_active_layer(void);
 /* Resize layer li to 16 or 32 steps: core first, then the UI mirror; the
  * step cursor is clamped into the new range. Input/UI path only. */

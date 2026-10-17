@@ -69,6 +69,11 @@ static volatile bool    s_layer_rows_pending   = false;
 static volatile uint8_t s_layer_rows_idx       = 0;
 static volatile uint8_t s_layer_rows_count     = 0;
 
+/* Applier-only: the single-applier contract for structural layer edits is on
+ * sequencer_core_set_layers_applier(); every other context goes through
+ * synth_ui_request_add_layer(). */
+static uint8_t synth_ui_add_layer(seq_layer_type_t type, uint8_t num_steps);
+
 static uint32_t s_last_sig = 0;
 /* Which top-level view was rendered last frame; a change forces a redraw. */
 static ui_view_id_t s_last_view = UI_VIEW_SEQ;
@@ -449,7 +454,7 @@ void synth_ui_init(u8g2_t *u8g2)
     ESP_LOGI(TAG_TASK, "Sequencer UI + Core initialized");
 }
 
-uint8_t synth_ui_add_layer(seq_layer_type_t type, uint8_t num_steps)
+static uint8_t synth_ui_add_layer(seq_layer_type_t type, uint8_t num_steps)
 {
     uint8_t li = sequencer_core_add_layer(type, num_steps);
     if (li == 0xFF) return 0xFF;
