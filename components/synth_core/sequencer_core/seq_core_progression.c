@@ -1,6 +1,7 @@
 #include "sequencer_core/seq_core_internal.h"
 #include "custompatches/drone_core.h"
 #include "custompatches/drone_std_core.h"
+#include "drop_core.h"
 
 /* ── State definitions — owns chord progression ──────────────────────── */
 /* Persisted fields seeded by seq_progression_init() at boot. */
@@ -173,6 +174,7 @@ static struct {
 static void prog_applied_changed(void)
 {
     arp_core_mark_dirty();
+    if (drop_get_quant_mode() == ARP_QUANT_CHORD) drop_core_mark_dirty();
     drone_core_follow_changed();
     drone_std_core_follow_changed();
 }
