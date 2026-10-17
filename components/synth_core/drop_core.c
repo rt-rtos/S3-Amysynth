@@ -91,6 +91,11 @@ typedef struct {
 
 static drop_state_t s_drop;
 static volatile bool s_drop_dirty = false;
+/* Impact voice count (DEV menu, volatile). The sub slot is fixed at
+ * SEQ_DROP_SUB_VOICES. */
+static uint8_t s_drop_voices = SEQ_DROP_VOICES;
+_Static_assert(SEQ_DROP_VOICES >= 1 && SEQ_DROP_VOICES <= DROP_VOICES_MAX,
+               "boot voice count outside the settable range");
 /* Bumped by every edit that changes the loop; the view sim restarts on a
  * change so it never continues from a field that is gone. */
 static uint32_t s_drop_gen = 1;
@@ -117,6 +122,11 @@ static inline uint8_t slot_of(drop_which_t w)
 static inline bool which_ok(drop_which_t w)
 {
     return (unsigned)w < DROP_VOICE_COUNT;
+}
+
+static inline uint8_t voices_of(drop_which_t w)
+{
+    return (w == DROP_VOICE_SUB) ? SEQ_DROP_SUB_VOICES : s_drop_voices;
 }
 
 /* ── Simulation ──────────────────────────────────────────────────────────
@@ -731,7 +741,7 @@ static uint8_t drop_unison_copies(drop_which_t w)
 {
     const drop_voice_t *v = &s_drop.voice[w];
     return sequencer_core_unison_copies_for(v->patch, v->unison.count,
-                                            sequencer_core_drop_voices(slot_of(w)));
+                                            voices_of(w));
 }
 
 static voice_unison_t drop_unison_eff(drop_which_t w)
@@ -882,7 +892,7 @@ static void drop_rebuild(drop_which_t w)
     drop_voice_t *v = &s_drop.voice[w];
     uint8_t synth = slot_of(w);
     voice_unison_t eff = drop_unison_eff(w);
-    sequencer_core_drop_configure(synth, v->patch, sequencer_core_drop_voices(synth),
+    sequencer_core_drop_configure(synth, v->patch, voices_of(w),
                                   v->vp.filter_authored, v->vp.filter.feedback,
                                   v->vp.filter.ks_duty_ofs,
                                   (eff.count > 1u) ? &eff : NULL);
@@ -1232,6 +1242,19 @@ uint16_t drop_get_patch(drop_which_t w)
     return which_ok(w) ? s_drop.voice[w].patch : 0u;
 }
 
+void drop_set_voices(uint8_t n)
+{
+    n = SEQ_CLAMP_U8(n, 1u, DROP_VOICES_MAX);
+    if (n == s_drop_voices) return;
+    s_drop_voices = n;
+    drop_rebuild(DROP_VOICE_MAIN);
+}
+
+uint8_t drop_get_voices(void)
+{
+    return s_drop_voices;
+}
+
 void drop_set_portamento_ms(drop_which_t w, uint16_t ms)
 {
     if (!which_ok(w)) return;
@@ -1279,7 +1302,7 @@ uint8_t drop_unison_max(drop_which_t w)
 {
     if (!which_ok(w)) return 0u;
     return sequencer_core_unison_max_for(s_drop.voice[w].patch,
-                                         sequencer_core_drop_voices(slot_of(w)));
+                                         voices_of(w));
 }
 
 static voice_unison_t drop_unison_clamp(const voice_unison_t *u)

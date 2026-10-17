@@ -48,6 +48,9 @@ extern "C" {
 #define DROP_OCT_MAX    4
 #define DROP_LOOP_BARS_MAX 8
 #define DROP_SPAWN_COL  8      /* the spawner's column */
+/* Ceiling of the impact voice count: AMY keeps one voice per sounding pitch
+ * and a row plays one pitch, so DROP_ROWS voices never cut a held note. */
+#define DROP_VOICES_MAX DROP_ROWS
 #define DROP_PORTAMENTO_MAX_MS 100u   /* as ARP_PORTAMENTO_MAX_MS */
 /* Bounciness: the restitution of PLAIN and SPLIT segments in Q8 (256 = 1).
  * A bounce's air time is the previous one's times this, so 128 (0.5) halves
@@ -190,6 +193,14 @@ void    drop_jackpot_set_map(const uint8_t map[DROP_JACKPOT_BYTES]);
 /* ── Per-synth voice (DROP_VOICE_MAIN / DROP_VOICE_SUB) ── */
 void     drop_set_patch(drop_which_t w, uint16_t patch);   /* rebuilds the slot */
 uint16_t drop_get_patch(drop_which_t w);
+/* Impact voice count of the DROP slot, 1..DROP_VOICES_MAX (clamped); the SUB
+ * slot always has SEQ_DROP_SUB_VOICES. Boots at SEQ_DROP_VOICES. Volatile: not
+ * in drop_params_t, not saved, untouched by a project load. A change rebuilds
+ * the DROP slot as drop_set_patch() does, which ends sounding notes, and the
+ * loop re-emits on the next service frame. The patch's osc budget can hold the
+ * built count below this (sequencer_core_clamp_patch_voices()). */
+void     drop_set_voices(uint8_t n);
+uint8_t  drop_get_voices(void);
 void     drop_set_portamento_ms(drop_which_t w, uint16_t ms);
 uint16_t drop_get_portamento_ms(drop_which_t w);
 void     drop_set_amp_scale(drop_which_t w, float v);     /* 0..1, marks dirty */

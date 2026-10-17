@@ -4,6 +4,7 @@
 #include "synth_ui/synth_ui_internal.h"
 #include "synth_ui.h"
 #include "sequencer_core.h"
+#include "drop_core.h"
 #include "seq_clamp.h"
 #include "amy.h"
 #include "esp_heap_caps.h"
@@ -88,6 +89,29 @@ static void ksv_adjust(int delta, int arg)
     (void)arg;
     int v = (int)sequencer_core_get_ks_voices() + delta;
     sequencer_core_set_ks_voices((uint8_t)SEQ_CLAMP_INT(v, 1, CONFIG_SEQ_KS_VOICES_MAX));
+}
+
+/* Ball drop impact voices (drop_set_voices, 1..DROP_VOICES_MAX; a change
+ * rebuilds the slot and ends the sounding notes). A string patch whose osc
+ * budget holds the built count lower shows it after "=". Volatile. */
+static void dropv_fmt(char *buf, size_t n, int arg)
+{
+    (void)arg;
+    unsigned want = drop_get_voices();
+    unsigned built = sequencer_core_clamp_patch_voices(drop_get_patch(DROP_VOICE_MAIN),
+                                                       (uint16_t)want);
+    if (built < want) {
+        snprintf(buf, n, "%u/%u =%u", want, (unsigned)DROP_VOICES_MAX, built);
+    } else {
+        snprintf(buf, n, "%u/%u", want, (unsigned)DROP_VOICES_MAX);
+    }
+}
+
+static void dropv_adjust(int delta, int arg)
+{
+    (void)arg;
+    int v = (int)drop_get_voices() + delta;
+    drop_set_voices((uint8_t)SEQ_CLAMP_INT(v, 1, DROP_VOICES_MAX));
 }
 
 /* Row count of the active layer, melodic or drum
@@ -313,9 +337,16 @@ static const dev_item_t s_ksloop_items[] = {
 static const dev_page_t s_page_ksloop = { "KS", s_ksloop_items,
                                           sizeof s_ksloop_items / sizeof *s_ksloop_items };
 
+static const dev_item_t s_drop_items[] = {
+    { .label = "Voices", .fmt = dropv_fmt, .adjust = dropv_adjust },
+};
+static const dev_page_t s_page_drop = { "DROP", s_drop_items,
+                                        sizeof s_drop_items / sizeof *s_drop_items };
+
 static const dev_item_t s_root_items[] = {
     { .label = "Unison",      .sub = &s_page_uni },
     { .label = "KS",          .sub = &s_page_ksloop },
+    { .label = "Ball drop",   .sub = &s_page_drop },
     { .label = "AMY OOM",     .fmt = oom_fmt },
     { .label = "Heap int",    .fmt = heap_fmt },
     { .label = "CPU c0/c1",   .fmt = cpu_fmt },
@@ -325,6 +356,8 @@ static const dev_item_t s_root_items[] = {
 };
 static const dev_page_t s_page_root = { "", s_root_items,
                                         sizeof s_root_items / sizeof *s_root_items };
+_Static_assert(sizeof s_root_items / sizeof *s_root_items + 1 <= DEV_VIEW_MAX_ROWS,
+               "DEV root page rows (with \"< back\") exceed the view");
 
 /* ── Navigation (row 0 of every page is the synthetic "< back" row) ────── */
 

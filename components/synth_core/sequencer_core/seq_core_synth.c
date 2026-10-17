@@ -1543,10 +1543,6 @@ uint32_t sequencer_core_arp_tag_base(void) { return SEQ_ARP_TAG_BASE; }
 
 /* ── Ball drop support ───────────────────────────────────────────────────── */
 
-uint8_t sequencer_core_drop_voices(uint8_t synth)
-{
-    return (synth == DROP_SUB_SYNTH) ? SEQ_DROP_SUB_VOICES : SEQ_DROP_VOICES;
-}
 uint32_t sequencer_core_drop_tag_base(void) { return SEQ_DROP_TAG_BASE; }
 
 uint8_t sequencer_core_clamp_melodic_note(int32_t midi_note)

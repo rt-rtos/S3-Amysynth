@@ -131,9 +131,11 @@
 
 /* ── Ball drop synth slots ───────────────────────────────────────────────
  * DROP_SYNTH / DROP_SUB_SYNTH (synth_slots.h) sit in the static pool with
- * the arp. The impact voice overlaps as the arp does; the sub fires only on
- * jackpot crossings, so two voices cover a crossing landing on a tail. */
-#define SEQ_DROP_VOICES       4
+ * the arp. SEQ_DROP_VOICES is the boot value of the impact voice count, which
+ * the DEV menu changes at run time (drop_set_voices(), up to
+ * DROP_VOICES_MAX); the sub fires only on jackpot crossings, so two voices
+ * cover a crossing landing on a tail. */
+#define SEQ_DROP_VOICES       6
 #define SEQ_DROP_SUB_VOICES   2
 /* Per loop: impacts and jackpot crossings the sim emits; past the cap the
  * softest give way (drop_core.h). Each takes a tag pair in the drop tag

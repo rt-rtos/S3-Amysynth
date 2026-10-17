@@ -1001,9 +1001,6 @@ uint32_t sequencer_core_arp_tag_base(void);
  * helpers, which take the slot (DROP_SYNTH or DROP_SUB_SYNTH, synth_slots.h)
  * as a parameter and otherwise follow the arp's. */
 
-/* Voice count the slot is built with (SEQ_DROP_VOICES / SEQ_DROP_SUB_VOICES). */
-uint8_t sequencer_core_drop_voices(uint8_t synth);
-
 /* (Re)configure one drop slot; arguments as sequencer_core_arp_configure().
  * Any other slot is ignored. */
 void sequencer_core_drop_configure(uint8_t synth, uint16_t patch_number,
