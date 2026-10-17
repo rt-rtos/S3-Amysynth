@@ -71,6 +71,10 @@ melodic layer, running at 108 BPM. From there:
   slowly sweeping filter with per-step "blip" zaps, and a sine sub up to
   three octaves below. See
   [DRONE.md](components/synth_core/custompatches/DRONE.md).
+- **Ball drop (very early prototype)** - a 16 x 8 field where balls fall from
+  a spawner, bounce off segments you place and play a note on each hit, with
+  jackpot cells that play a second synth. Work in progress; see
+  [Ball drop](#ball-drop-early-prototype).
 - **BLE MIDI live play** - the device advertises as a BLE-MIDI peripheral
   (`Amysynth`); note on/off from any BLE-MIDI host (DAW, phone app, hardware
   controller) plays a dedicated live voice with its own patch, glide and
@@ -533,6 +537,7 @@ is open, `MY_BUTTON_3` cycles editor pages instead of toggling the menu.
 | Sequencer | Step sequencer grid (default at boot) |
 | Mixer | A fader and a mute per sound source (see [Mixer](#mixer)) |
 | Arpeggiator | Arpeggiator |
+| Ball Drop | Ball drop screen, an early prototype (see [Ball drop](#ball-drop-early-prototype)) |
 | Drones | Free-running drone (the stutter drone is a dive row inside it) |
 | Progression | Chord progression editor |
 | FM | 6-op FM operator editor for patch 276 (with `CONFIG_SYNTH_CUSTOM_FM`) - see [VOICE-BUILDERS.md](VOICE-BUILDERS.md#fm-custom-patch-276) |
@@ -872,6 +877,35 @@ preset, keeping its balance), so they work the same on every entry; the
 gate's LEVEL replaces the patch's own head level. The filter sweep is the LFO's
 FILTER target: a fresh drone starts on an LPF24 at 1100 Hz swept +/-1 octave
 by a 4-bar sine, and the LFO editor shows the swept range in Hz.
+
+### Ball drop (early prototype)
+
+> **Work in progress.** Ball drop is a very early prototype. Controls,
+> defaults and the saved data can change between builds, and parts of it are
+> unfinished (list at the end of this section). A project saved with ball
+> drop may load without its field in a later build.
+
+Menu → Ball Drop opens a field of 16 x 8 cells. A spawner at the top of
+column 8 releases a ball once per rate step. Balls fall, bounce off the
+segments you place and play the DROP synth on each hit, at a pitch set by
+the segment's row. A ball that crosses a jackpot cell plays the SUB synth
+instead. The loop is simulated from a seed and repeats until an edit or a
+reroll changes it.
+
+Segments are plain, split (a share of the balls leaves left, the rest
+right) or damp (the ball ends there). Each segment can carry a pitch offset
+and a velocity adjustment, set in a popup on SHIFT + Button 2. The header
+sets on/off, the focused synth with its patch and root, the scale, loop
+length, seed, rate, step and bounce. The gestures are in
+[CONTROLS.md](CONTROLS.md#ball-drop-screen).
+
+Unfinished:
+
+- Per-segment parameters stop at pitch offset and velocity.
+- The impact voice count (DEV → Ball drop → Voices) is a tuning row with an
+  undecided default. With pitch offsets, more distinct pitches than voices
+  cut each other.
+- A field busier than the loop's note budget loses its softest hits.
 
 ---
 
