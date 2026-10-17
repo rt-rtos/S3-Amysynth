@@ -16,6 +16,7 @@ the `display` component for rendering.
 | `amy_fx.c` | per-bus FX caches and post-patch-load reassert (`synth_ui_fx_reassert`) |
 | `fx_bus.c` | synth-group -> AMY bus routing table (the Split toggles) |
 | `quantizer.c` | scale tables and chord math (shared by grid, arp, progression, drone) |
+| `include/chord_types.h` | chord type enum and the type/root name lookup tables (header-only; the engine, the drones and the Prog screen include it) |
 | `arp_core.c` | arpeggiator engine — see [ARP-ARCHITECTURE.md](ARP-ARCHITECTURE.md) |
 | `voice_config.c` | shared voice-parameter layer: builds 2-osc WAVE voices, wires the native AMY LFO |
 

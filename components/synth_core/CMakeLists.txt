@@ -125,7 +125,7 @@ if(CONFIG_SYNTH_PROJECT_STORE)
                 "${CMAKE_CURRENT_LIST_DIR}/include/seq_chords.h"
                 "${CMAKE_CURRENT_LIST_DIR}/include/synth_slots.h"
                 "${CMAKE_CURRENT_LIST_DIR}/include/custompatches/drone_core.h"
-                "${comp_dir}/display/chord_types.h"
+                "${CMAKE_CURRENT_LIST_DIR}/include/chord_types.h"
                 "${comp_dir}/amy/src/amy.h"
         WORKING_DIRECTORY "${tpl_dir}"
         VERBATIM)

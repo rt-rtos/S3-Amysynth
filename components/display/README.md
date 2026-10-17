@@ -44,7 +44,6 @@ only draws the flat view structs it is handed)
 | `graph_popup.{c,h}` | reusable graph/curve editor widget (ADSR) |
 | `filter_graph.{c,h}` | per-synth filter frequency-response renderer |
 | `patch_names.{c,h}` | AMY patch number → name tables for the browser |
-| `chord_types.h` | shared chord type/root name lookup tables |
 | `Kconfig` | display menuconfig options |
 
 ## Design

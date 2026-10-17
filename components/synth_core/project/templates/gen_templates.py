@@ -46,7 +46,7 @@ CHORDS_H = 'synth_core/include/seq_chords.h'
 SLOTS_H = 'synth_core/include/synth_slots.h'
 DRONE_H = 'synth_core/include/custompatches/drone_core.h'
 FM_VOICE_H = 'synth_core/include/custompatches/fm_voice.h'
-CHORD_TYPES_H = 'display/chord_types.h'
+CHORD_TYPES_H = 'synth_core/include/chord_types.h'
 AMY_H = 'amy/src/amy.h'
 
 
