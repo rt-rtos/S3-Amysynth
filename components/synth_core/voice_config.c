@@ -298,6 +298,9 @@ static void unison_engine_coefs(amy_event *e, uint8_t group, uint8_t n,
         e->unison_blend   = blend;
         e->pan_coefs[COEF_CONST] = 0.5f;
         e->amp_coefs[COEF_CONST] = base_amp;
+        /* Restart the cluster from phase 0 on each note-on, as the pair
+         * does, so Fixed means the same waveform every time. */
+        e->trigger_phase = 0.0f;
         return;
     }
     /* An odd m leaves R one grid step short of the group's edge. */

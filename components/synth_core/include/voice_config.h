@@ -242,7 +242,7 @@ void voice_build_wave(const voice_wave_cfg_t *cfg);
 
 /* Re-send only the unison fields (unison count/spacing/offset/blend, groups
  * and intervals, pan and
- * amp CONST, and on a stereo pair trigger_phase) to the cluster oscs of a
+ * amp CONST, and trigger_phase) to the cluster oscs of a
  * synth built by voice_build_wave() with this same count and stereo flag - a
  * live detune/stack/shift/spread/blend/phase turn without a rebuild (mirrors
  * fm_voice_push_live). A bypass, count or stereo change needs a rebuild
