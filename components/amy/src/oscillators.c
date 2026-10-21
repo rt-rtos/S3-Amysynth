@@ -399,8 +399,9 @@ static float unison_top_offset(uint16_t osc) {
 }
 
 // Step, amp ramp and table of each copy for this block, packed into c[] with
-// the copies at weight 0 left out; returns the count packed.  Copy j of group g plays at logfreq + offset + j * spacing + the
-// group's interval.  Its weight falls linearly with its distance from the
+// the copies at weight 0 left out; returns the count packed.  Copy j of group
+// g plays at logfreq + offset + j * spacing + the group's interval.  Its
+// weight falls linearly with its distance from the
 // group's center, to blend at the farthest copy of the largest group, and the
 // weights are power-normalized so the cluster's level tracks one copy.  Group
 // 0 renders from synth->lut, the others from the entry of lutset for their
