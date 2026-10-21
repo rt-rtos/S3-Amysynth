@@ -584,7 +584,11 @@ the arp screen (Level, Key, Mute, Solo, Unison, Gate, Glide; a soloed arp
 plays alongside soloed rows) and on a **LIVE** entry from the Wireless page
 (Level, Key, Unison, Glide for the BLE live-play voice). Their Unison page
 stacks detuned copies on the arp or live voice the way a melodic track's
-does. A track's repeat rate (play the first of every 1/2/4/8 loops; a
+does: Count copies dealt over the notes of a **Stack** (octave, sub, fifth,
+power chord, chord tones or harmonics), each note spread by **Detune**,
+with **Stereo**, **Spread**, **Shift**, **Blend** and a **Phase** row
+(Fixed or Random start phases); rows and ranges in
+[CONTROLS.md](CONTROLS.md). A track's repeat rate (play the first of every 1/2/4/8 loops; a
 32-step layer's loop is two bars) is on the mixer's track rows, as the
 RPT quick cell.
 
