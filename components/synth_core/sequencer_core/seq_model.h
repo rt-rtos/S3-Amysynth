@@ -352,7 +352,10 @@ typedef enum {
  * remainder is not rendered). With stereo on the copies of each group
  * alternate between an L and an R cluster osc, panned spread_pct of full
  * width. bypass = 1 or count = 1 plays the single-osc build exactly; bypass
- * keeps every other field for when unison is switched back on.
+ * keeps every other field for when unison is switched back on. phase_random
+ * draws the copies' start phases at each note-on instead of the engine's fixed
+ * rule, so a stack does not restart identically; fixed is the default and
+ * renders the same every time.
  * Raw-wave/wavetable patches only (KS excluded). Defaults: voice_unison_defaults()
  * (voice_config.h), Off with an Oct+Sub stack of three. Storage and scope:
  * sequencer_core.h, "Melodic per-track unison".
@@ -390,6 +393,8 @@ typedef struct {
     uint8_t shift;        /* group centre, 0..200: 100 = on the note */
     uint8_t interval_unused; /* retired semitone interval; stored as 0, ignored */
     uint8_t stack;        /* voice_unison_stack_t, 0..VOICE_UNISON_MAX_STACK */
+    uint8_t phase_random; /* 1 = copies start at random phases on each note-on;
+                             0 = the engine's fixed rule (deterministic) */
 } voice_unison_t;
 
 #define VOICE_UNISON_MAX_COPIES  8u

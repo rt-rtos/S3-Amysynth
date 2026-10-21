@@ -413,6 +413,7 @@ void live_play_set_unison(const voice_unison_t *u)
     v.bypass       = SEQ_CLAMP_U8(v.bypass, 0u, 1u);
     v.shift        = SEQ_CLAMP_U8(v.shift, 0u, VOICE_UNISON_MAX_SHIFT);
     v.stack        = SEQ_CLAMP_U8(v.stack, 0u, VOICE_UNISON_MAX_STACK);
+    v.phase_random = SEQ_CLAMP_U8(v.phase_random, 0u, 1u);
     s_unison = v;
     if (!s_ready) return;   /* live_play_ensure_ready() builds it */
     uint8_t now = live_unison_copies();

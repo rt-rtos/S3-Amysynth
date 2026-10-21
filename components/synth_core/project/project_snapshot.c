@@ -334,6 +334,7 @@ static void ser_unison(tlv_writer_t *w, const voice_unison_t *u)
     tlv_put_u8(w, u->shift);
     tlv_put_u8(w, 0u);           /* retired semitone interval, kept in place */
     tlv_put_u8(w, u->stack);
+    tlv_put_u8(w, u->phase_random);
     tlv_end_block(w, h);
 }
 
@@ -353,6 +354,7 @@ static bool de_unison(tlv_reader_t *r, voice_unison_t *u)
     tlv_get_u8(&b, &u->shift);
     tlv_get_u8(&b, &u->interval_unused);
     tlv_get_u8(&b, &u->stack);
+    tlv_get_u8(&b, &u->phase_random);
     u->count        = SEQ_CLAMP_U8(u->count, 0u, VOICE_UNISON_MAX_COPIES);
     u->detune_cents = SEQ_CLAMP_U8(u->detune_cents, 0u, VOICE_UNISON_MAX_DETUNE);
     u->spread_pct   = SEQ_CLAMP_U8(u->spread_pct, 0u, 100u);
@@ -362,6 +364,7 @@ static bool de_unison(tlv_reader_t *r, voice_unison_t *u)
     u->shift        = SEQ_CLAMP_U8(u->shift, 0u, VOICE_UNISON_MAX_SHIFT);
     u->interval_unused = 0u;
     u->stack        = SEQ_CLAMP_U8(u->stack, 0u, VOICE_UNISON_MAX_STACK);
+    u->phase_random = SEQ_CLAMP_U8(u->phase_random, 0u, 1u);
     return true;
 }
 

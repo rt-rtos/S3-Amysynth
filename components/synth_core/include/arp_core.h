@@ -247,7 +247,7 @@ uint16_t arp_get_portamento_ms(void);
  * serves voice_unison_defaults() until first set. set clamps count
  * 1..VOICE_UNISON_MAX_COPIES, detune 0..VOICE_UNISON_MAX_DETUNE, spread/blend
  * 0..100, stereo/bypass 0..1, shift 0..VOICE_UNISON_MAX_SHIFT, stack
- * 0..VOICE_UNISON_MAX_STACK, and stores; a moved effective count (bypass
+ * 0..VOICE_UNISON_MAX_STACK, phase_random 0..1, and stores; a moved effective count (bypass
  * included), or a stereo change while the slot carries copies, rebuilds the
  * arp slot (sounding notes stop, like a patch change), an unchanged shape
  * above 1 pushes detune/stack/shift/spread/blend live. unison_max: the highest effective count the

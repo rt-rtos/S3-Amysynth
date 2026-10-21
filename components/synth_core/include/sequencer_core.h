@@ -451,11 +451,11 @@ uint8_t sequencer_core_get_drum_pcm_mode(uint8_t layer_idx, uint8_t track);
  * A change that moves any row's pool shape - its EFFECTIVE copy count
  * (bypass ? 1 : count), or the stereo flag while the row carries copies -
  * rebuilds the whole layer (sounding notes stop, like a wave change);
- * detune/stack/shift/spread/blend changes push live to the rows that carry
+ * detune/stack/shift/spread/blend/phase changes push live to the rows that carry
  * copies. The getter serves voice_unison_defaults() until the row is
  * first set; setters clamp count 1..VOICE_UNISON_MAX_COPIES, detune
  * 0..VOICE_UNISON_MAX_DETUNE, spread/blend 0..100, stereo/bypass 0..1, shift
- * 0..VOICE_UNISON_MAX_SHIFT, stack 0..VOICE_UNISON_MAX_STACK.
+ * 0..VOICE_UNISON_MAX_SHIFT, stack 0..VOICE_UNISON_MAX_STACK, phase_random 0..1.
  * track_unison_max: the highest effective count the row's patch and as-built
  * voice count allow (the UI caps Count with it), 0 = the row cannot carry
  * unison.

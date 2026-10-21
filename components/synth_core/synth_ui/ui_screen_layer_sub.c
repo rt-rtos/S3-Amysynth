@@ -26,7 +26,8 @@
  * Off, Oct, Sub, Oct+Sub, 5th, Power); Count then steps in multiples of the
  * stack's group count and snaps down to one when the stack changes, so every
  * note gets the same copies. Shift slides each group from -100 % (all copies
- * flat) to +100 % (all sharp), 1 % per detent. Stereo toggles On/Off with one detent; while Off,
+ * flat) to +100 % (all sharp), 1 % per detent. Phase toggles Fixed/Random
+ * (the copies' start phases per note-on). Stereo toggles On/Off with one detent; while Off,
  * Spread reads "n/a" and does not edit (its value is kept). On a layer, LAYER
  * patch scope writes every track (the title names the layer), TRACK scope the
  * one track (the title names it too).
@@ -45,6 +46,7 @@ typedef enum {
     LU_SPREAD,
     LU_BLEND,
     LU_STEREO,
+    LU_PHASE,
     LU_BACK,
     LU_ROWS
 } layer_uni_item_id_t;
@@ -79,7 +81,7 @@ uint8_t layer_uni_menu_item_count(void)
 const menu_item_view_t *layer_uni_menu_build_items(void)
 {
     static const char *const labels[LU_ROWS] = {
-        "Unison", "Count", "Detune", "Stack", "Shift", "Spread", "Blend", "Stereo",
+        "Unison", "Count", "Detune", "Stack", "Shift", "Spread", "Blend", "Stereo", "Phase",
         "< Back"
     };
     voice_target_kind_t kind = layermenu_menu_kind();
@@ -120,6 +122,9 @@ const menu_item_view_t *layer_uni_menu_build_items(void)
             break;
         case LU_STEREO:
             snprintf(it->value, MENU_VALUE_LEN, "%s", u.stereo ? "On" : "Off");
+            break;
+        case LU_PHASE:
+            snprintf(it->value, MENU_VALUE_LEN, "%s", u.phase_random ? "Random" : "Fixed");
             break;
         case LU_BLEND:
         default:
@@ -203,6 +208,9 @@ void layer_uni_menu_edit_value(uint8_t idx, int delta)
         break;
     case LU_STEREO:
         u.stereo = u.stereo ? 0u : 1u;
+        break;
+    case LU_PHASE:
+        u.phase_random = u.phase_random ? 0u : 1u;
         break;
     default:
         return;

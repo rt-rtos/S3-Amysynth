@@ -244,7 +244,7 @@ void voice_build_wave(const voice_wave_cfg_t *cfg);
  * and intervals, pan and
  * amp CONST, and on a stereo pair trigger_phase) to the cluster oscs of a
  * synth built by voice_build_wave() with this same count and stereo flag - a
- * live detune/stack/shift/spread/blend turn without a rebuild (mirrors
+ * live detune/stack/shift/spread/blend/phase turn without a rebuild (mirrors
  * fm_voice_push_live). A bypass, count or stereo change needs a rebuild
  * instead (the pool shape moves). base_amp = the build's osc0_amp_const.
  * No-op under bypass or when count <= 1. Known interaction: an LFO PAN target writes pan CONST 0.5 on

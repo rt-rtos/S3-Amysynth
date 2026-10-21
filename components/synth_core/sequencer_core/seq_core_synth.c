@@ -501,6 +501,7 @@ static bool seq_unison_store_rows(uint8_t layer_idx, uint8_t first, uint8_t end,
     v.bypass       = SEQ_CLAMP_U8(v.bypass, 0u, 1u);
     v.shift        = SEQ_CLAMP_U8(v.shift, 0u, VOICE_UNISON_MAX_SHIFT);
     v.stack        = SEQ_CLAMP_U8(v.stack, 0u, VOICE_UNISON_MAX_STACK);
+    v.phase_random = SEQ_CLAMP_U8(v.phase_random, 0u, 1u);
     bool shape = false;
     *push_mask = 0u;
     for (uint8_t t = first; t < end; t++) {
@@ -518,6 +519,7 @@ static bool seq_unison_store_rows(uint8_t layer_idx, uint8_t first, uint8_t end,
         }
         if (now > 1u && (v.detune_cents != old.detune_cents ||
                          v.stack        != old.stack ||
+                         v.phase_random != old.phase_random ||
                          v.shift        != old.shift ||
                          v.spread_pct   != old.spread_pct ||
                          v.blend_pct    != old.blend_pct))

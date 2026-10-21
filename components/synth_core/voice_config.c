@@ -109,7 +109,7 @@ voice_unison_t voice_unison_defaults(void)
     return (voice_unison_t){
         .count = 3u, .detune_cents = 0u, .spread_pct = 50u, .blend_pct = 100u,
         .stereo = 1u, .bypass = 1u, .shift = 100u, .interval_unused = 0u,
-        .stack = VOICE_UNISON_STACK_OCT_SUB,
+        .stack = VOICE_UNISON_STACK_OCT_SUB, .phase_random = 0u,
     };
 }
 
@@ -275,6 +275,7 @@ static void unison_engine_coefs(amy_event *e, uint8_t group, uint8_t n,
     e->unison_interval1 = (G >= 2u) ? st->interval[0] : 0.0f;
     e->unison_interval2 = (G >= 3u) ? st->interval[1] : 0.0f;
     e->unison_interval3 = (G >= 4u) ? st->interval[2] : 0.0f;
+    e->unison_random    = u->phase_random ? 1u : 0u;
     if (!unison_pair_split(u, n)) {
         if (group) {
             /* Stereo on with one copy per group: nothing for the R osc. */
@@ -283,6 +284,7 @@ static void unison_engine_coefs(amy_event *e, uint8_t group, uint8_t n,
             e->unison_interval1 = 0.0f;
             e->unison_interval2 = 0.0f;
             e->unison_interval3 = 0.0f;
+            e->unison_random    = 0u;
             e->unison_spacing = 0.0f;
             e->unison_offset  = 0.0f;
             e->unison_blend   = 1.0f;

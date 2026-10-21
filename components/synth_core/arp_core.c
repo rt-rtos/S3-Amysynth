@@ -772,6 +772,7 @@ void arp_set_unison(const voice_unison_t *u)
     v.bypass       = SEQ_CLAMP_U8(v.bypass, 0u, 1u);
     v.shift        = SEQ_CLAMP_U8(v.shift, 0u, VOICE_UNISON_MAX_SHIFT);
     v.stack        = SEQ_CLAMP_U8(v.stack, 0u, VOICE_UNISON_MAX_STACK);
+    v.phase_random = SEQ_CLAMP_U8(v.phase_random, 0u, 1u);
     s_arp.unison = v;
     uint8_t now = arp_unison_copies();
     if (now != was || (now > 1u && (v.stereo != 0u) != was_stereo)) {
