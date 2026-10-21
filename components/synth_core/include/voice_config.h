@@ -205,17 +205,22 @@ typedef struct {
 /* ── Unison index map ────────────────────────────────────────────────────
  * Shared by the build, the live push and the sequencer's layout query, so the
  * pool shape and the osc masks cannot disagree. n = EFFECTIVE copy count;
- * n <= 1 is the single-osc build. Copies are numbered i = 0..n-1 by pitch
- * position (i = 0 most flat) and render inside AMY unison-cluster oscs.
- * Stereo off (or n <= 1): every copy is in osc 0. Stereo on with n >= 2:
- * even i in group L, odd i in R (an odd n puts the extra copy in L); L is
- * osc 0, R is osc 1, so copy_osc returns the group osc and the "heads"
- * (the oscs carrying envelope, filter, dist and pan) are the cluster oscs
- * themselves. Pure; any task. */
+ * n <= 1 is the single-osc build. The stack deals the copies over G groups
+ * (voice_unison_groups(stack); G is cut to n), m = n / G each, a remainder
+ * unrendered; copies are numbered i = 0..n-1 group by group, by pitch
+ * position inside the group (j = i mod m, j = 0 most flat), and render
+ * inside AMY unison-cluster oscs. Stereo off (or n <= 1): every copy is in
+ * osc 0. Stereo on with n >= 2 and m >= 2: even j in side L, odd j in R (an
+ * odd m puts the extra copy of every group in L); L is osc 0, R is osc 1, so
+ * copy_osc returns the side osc and the "heads" (the oscs carrying envelope,
+ * filter, dist and pan) are the cluster oscs themselves. Stereo on with
+ * m = 1 keeps the two-osc pool but plays every copy centred on osc 0; osc 1
+ * is built silent. Pure; any task. */
 /* Pool shape: 2 for a stereo pair (stereo, n >= 2), else 1; plus
  * VOICE_LFO_PAIR_OSCS. */
 uint8_t voice_unison_oscs_per_voice(uint8_t n, bool stereo);
-uint8_t voice_unison_copy_osc(uint8_t i, uint8_t n, bool stereo);
+uint8_t voice_unison_groups(uint8_t stack);                  /* notes in a voice_unison_stack_t */
+uint8_t voice_unison_copy_osc(const voice_unison_t *u, uint8_t i, uint8_t n);
 uint8_t voice_unison_head_osc(uint8_t group, uint8_t n, bool stereo); /* 0: L, 1: R */
 uint8_t voice_unison_copies_mask(uint8_t n, bool stereo);    /* bit = osc */
 uint8_t voice_unison_heads_mask(uint8_t n, bool stereo);     /* 0 when n <= 1 */
@@ -231,10 +236,11 @@ float voice_unison_osc_level(const voice_unison_t *u, uint8_t group, uint8_t n);
 /* Core-0 / UI-task only; pushes through amy_helpers (never amy_queue_lock). */
 void voice_build_wave(const voice_wave_cfg_t *cfg);
 
-/* Re-send only the unison fields (unison count/spacing/offset/blend, pan and
+/* Re-send only the unison fields (unison count/spacing/offset/blend, groups
+ * and intervals, pan and
  * amp CONST, and on a stereo pair trigger_phase) to the cluster oscs of a
  * synth built by voice_build_wave() with this same count and stereo flag - a
- * live detune/interval/shift/spread/blend turn without a rebuild (mirrors
+ * live detune/stack/shift/spread/blend turn without a rebuild (mirrors
  * fm_voice_push_live). A bypass, count or stereo change needs a rebuild
  * instead (the pool shape moves). base_amp = the build's osc0_amp_const.
  * No-op under bypass or when count <= 1. Known interaction: an LFO PAN target writes pan CONST 0.5 on

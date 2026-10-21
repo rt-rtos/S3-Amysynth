@@ -204,7 +204,7 @@ def default_layer(kind):
                 chord_root=0, chord_type=0, swing_pct=0,
                 tracks=[dict(base_note=60, patch=0, pcm_preset=0, pcm_mode=0,
                              uni_count=1, uni_detune=12, uni_spread=50, uni_blend=100, uni_stereo=1,
-                             uni_bypass=0, uni_shift=100, uni_interval=0,
+                             uni_bypass=0, uni_shift=100, uni_interval=0, uni_stack=0,
                              repeat_rate=1, mute=False, solo=False, follow=0, wt_frame=0, vp=default_vp())
                         for _ in range(SEQ_TRACKS)],
                 grid=grid(0), step_note=grid(60), step_pitch_ofs=grid(0), step_prob=grid(100),
@@ -320,7 +320,8 @@ def r_vp(r):
 
 # voice_unison_t (ser_unison): flat uni_* keys of the owning dict.
 UNISON_FIELDS = [('uni_count', 'u8'), ('uni_detune', 'u8'), ('uni_spread', 'u8'), ('uni_blend', 'u8'),
-                 ('uni_stereo', 'u8'), ('uni_bypass', 'u8'), ('uni_shift', 'u8'), ('uni_interval', 'u8')]
+                 ('uni_stereo', 'u8'), ('uni_bypass', 'u8'), ('uni_shift', 'u8'), ('uni_interval', 'u8'),
+                 ('uni_stack', 'u8')]
 
 
 def w_unison(w, d):
@@ -553,7 +554,7 @@ DSTD_FIELDS = [('enabled', 'b1'), ('chord', 'u8'), ('root', 'u8'), ('follow', 'u
 
 # drone_params_defaults / drone_std_params_defaults unison: the row defaults at count 1.
 DRONE_UNISON_SEED = dict(uni_count=1, uni_detune=12, uni_spread=50, uni_blend=100, uni_stereo=1,
-                         uni_bypass=0, uni_shift=100, uni_interval=0)
+                         uni_bypass=0, uni_shift=100, uni_interval=0, uni_stack=0)
 
 
 def w_fields_vp(fields, d):

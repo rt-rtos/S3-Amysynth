@@ -70,17 +70,68 @@ uint8_t voice_wob_db_to_depth(uint8_t db)
 }
 
 /* ── Unison copy math (spec: voice_unison_t, seq_model.h) ───────────────
- * Copy i of n sits at position s in -1..+1 (0 alone for n = 1; the center
- * copy of an odd n at 0) and at s * D octaves from the cluster centre, D =
- * (100 * interval + detune_cents) / 1200; shift moves that centre to
- * (shift - 100) / 100 * D from the note. Blend tapers the outer copies (weight
- * 1 - (1-blend)*|s|), normalized so summed power stays at the single-copy
+ * The stack deals the n copies over G groups (voice_unison_groups), m = n / G
+ * copies each; a remainder is not rendered. Inside a group copy j of m sits
+ * at position p in -1..+1 (0 alone for m = 1; the centre copy of an odd m at
+ * 0) and at (s + p) D octaves from the group's note, D = detune_cents / 1200,
+ * s = (shift - 100) / 100. Blend tapers the outer copies (weight
+ * 1 - (1-blend)*|p|), normalized so summed power stays at the single-copy
  * level (detuned copies decorrelate, so power - not amplitude - is what
  * adds). The copies render inside AMY unison-cluster oscs: one osc, or an
- * L/R pair when stereo. Index map: contract in voice_config.h. */
+ * L/R pair when stereo; each osc deals its own copies into the same G groups
+ * through the engine's unison_groups and interval fields, so one grid per
+ * osc serves every group. Index map: contract in voice_config.h. */
+typedef struct {
+    uint8_t groups;
+    float   interval1;   /* octaves of group 1 */
+    float   interval2;   /* octaves of group 2 */
+} unison_stack_def_t;
+
+static const unison_stack_def_t UNISON_STACKS[VOICE_UNISON_STACK_COUNT] = {
+    [VOICE_UNISON_STACK_OFF]     = { 1u,  0.0f,          0.0f },
+    [VOICE_UNISON_STACK_OCT]     = { 2u,  1.0f,          0.0f },
+    [VOICE_UNISON_STACK_SUB]     = { 2u, -1.0f,          0.0f },
+    [VOICE_UNISON_STACK_OCT_SUB] = { 3u, -1.0f,          1.0f },
+    [VOICE_UNISON_STACK_FIFTH]   = { 2u,  7.0f / 12.0f,  0.0f },
+    [VOICE_UNISON_STACK_POWER]   = { 3u,  7.0f / 12.0f,  1.0f },
+};
+
+static const unison_stack_def_t *unison_stack(const voice_unison_t *u)
+{
+    uint8_t s = (u && u->stack < VOICE_UNISON_STACK_COUNT) ? u->stack : 0u;
+    return &UNISON_STACKS[s];
+}
+
+uint8_t voice_unison_groups(uint8_t stack)
+{
+    return (stack < VOICE_UNISON_STACK_COUNT) ? UNISON_STACKS[stack].groups : 1u;
+}
+
+/* Groups actually dealt under n copies (the stack's, cut to n) and the
+ * copies each one takes. */
+static uint8_t unison_groups_of(const voice_unison_t *u, uint8_t n)
+{
+    uint8_t g = unison_stack(u)->groups;
+    if (g < 1u) g = 1u;
+    return (g > n) ? n : g;
+}
+
+static uint8_t unison_group_size(const voice_unison_t *u, uint8_t n)
+{
+    uint8_t g = unison_groups_of(u, n);
+    return (g > 0u) ? (uint8_t)(n / g) : n;
+}
+
 static inline bool unison_is_pair(uint8_t n, bool stereo)
 {
     return stereo && n >= 2u;
+}
+
+/* With stereo on, R carries a copy of a group only when the group has two
+ * or more; one copy per group plays centred on osc 0 and osc 1 stays silent. */
+static bool unison_pair_split(const voice_unison_t *u, uint8_t n)
+{
+    return u && u->stereo && n >= 2u && unison_group_size(u, n) >= 2u;
 }
 
 uint8_t voice_unison_oscs_per_voice(uint8_t n, bool stereo)
@@ -93,9 +144,11 @@ uint8_t voice_unison_head_osc(uint8_t group, uint8_t n, bool stereo)
     return (unison_is_pair(n, stereo) && group) ? 1u : 0u;
 }
 
-uint8_t voice_unison_copy_osc(uint8_t i, uint8_t n, bool stereo)
+uint8_t voice_unison_copy_osc(const voice_unison_t *u, uint8_t i, uint8_t n)
 {
-    return voice_unison_head_osc((uint8_t)(i & 1u), n, stereo);
+    if (!unison_pair_split(u, n)) return 0u;
+    uint8_t m = unison_group_size(u, n);
+    return voice_unison_head_osc((uint8_t)((i % m) & 1u), n, true);
 }
 
 uint8_t voice_unison_copies_mask(uint8_t n, bool stereo)
@@ -108,43 +161,45 @@ uint8_t voice_unison_heads_mask(uint8_t n, bool stereo)
     return (n >= 2u) ? voice_unison_copies_mask(n, stereo) : 0u;
 }
 
-static float unison_pos(uint8_t i, uint8_t n)
+static float unison_pos(uint8_t j, uint8_t m)
 {
-    return (n > 1u) ? (2.0f * (float)i / (float)(n - 1u) - 1.0f) : 0.0f;
+    return (m > 1u) ? (2.0f * (float)j / (float)(m - 1u) - 1.0f) : 0.0f;
 }
 
-static float unison_weight(uint8_t i, uint8_t n, float blend)
+static float unison_weight(uint8_t j, uint8_t m, float blend)
 {
-    return 1.0f - (1.0f - blend) * fabsf(unison_pos(i, n));
+    return 1.0f - (1.0f - blend) * fabsf(unison_pos(j, m));
 }
 
-static float unison_amp_norm(uint8_t n, float blend)
+static float unison_amp_norm(uint8_t m, float blend)
 {
     float sum = 0.0f;
-    for (uint8_t i = 0; i < n; i++) {
-        float w = unison_weight(i, n, blend);
+    for (uint8_t j = 0; j < m; j++) {
+        float w = unison_weight(j, m, blend);
         sum += w * w;
     }
-    /* blend 0 with no center copy (even n) zeroes every weight; fall back to
+    /* blend 0 with no center copy (even m) zeroes every weight; fall back to
      * the equal-weight norm instead of dividing by zero. */
-    if (sum < 1e-6f) return 1.0f / sqrtf((float)n);
+    if (sum < 1e-6f) return 1.0f / sqrtf((float)m);
     return 1.0f / sqrtf(sum);
 }
 
-/* Stereo pair: one AMY unison-cluster osc per group. The engine renders copy
- * k at logfreq + offset + k * spacing (octaves) and power-normalizes the
- * weights over its own copies. Group g takes the even (L) or odd (R)
- * positions of the n-copy grid, so spacing = 4D/(n-1) and offset_g =
- * -D + 2gD/(n-1) - together the pitch set of the centred cluster. An odd n
- * puts (n+1)/2 copies in L (both outermost ones among them) and (n-1)/2 in
- * R. The amp CONST carries the ratio between the all-n normalization and the
- * engine's per-group one (1/sqrt(2) at blend 1, even n), so the pair sums to
- * the level of the centred cluster. */
-static float unison_group_power(uint8_t n, uint8_t group, float blend)
+/* Stereo pair: one AMY unison-cluster osc per side. The engine renders copy
+ * k of each group at logfreq + offset + k * spacing (octaves), group g
+ * transposed by its interval, and power-normalizes the weights over the
+ * osc's own copies. Side g takes the even (L) or odd (R) positions of every
+ * group's m-copy grid, so spacing = 4D/(m-1) and offset_g = -D + 2gD/(m-1) -
+ * together the pitch set of the centred group. An odd m puts (m+1)/2 copies
+ * of each group in L (both outermost ones among them) and (m-1)/2 in R. The
+ * amp CONST carries the ratio between the all-m normalization and the
+ * engine's per-side one (1/sqrt(2) at blend 1, even m), so the pair sums to
+ * the level of the centred cluster; every group shares the same split, so
+ * the per-group ratio is the voice's. */
+static float unison_side_power(uint8_t m, uint8_t side, float blend)
 {
     float sum = 0.0f;
-    for (uint8_t i = group; i < n; i = (uint8_t)(i + 2u)) {
-        float w = unison_weight(i, n, blend);
+    for (uint8_t j = side; j < m; j = (uint8_t)(j + 2u)) {
+        float w = unison_weight(j, m, blend);
         sum += w * w;
     }
     return sum;
@@ -153,21 +208,24 @@ static float unison_group_power(uint8_t n, uint8_t group, float blend)
 float voice_unison_osc_level(const voice_unison_t *u, uint8_t group, uint8_t n)
 {
     if (!u || !u->stereo || n < 2u) return 1.0f;
+    if (!unison_pair_split(u, n)) return group ? 0.0f : 1.0f;
+    uint8_t m = unison_group_size(u, n);
     float blend = (float)u->blend_pct / 100.0f;
-    return unison_amp_norm(n, blend) * sqrtf(unison_group_power(n, group, blend));
+    return unison_amp_norm(m, blend) * sqrtf(unison_side_power(m, group, blend));
 }
 
 /* Pair pans. spread is the pair's width: 0 keeps both clusters at the
  * centre, 100 % puts them hard left and right, the docs' stereo-pair recipe.
- * With an odd n the clusters differ in power (L has the extra copy); the
- * louder one sits nearer the centre by the power ratio so the image stays
- * centred under AMY's equal-power pan (gains sqrt(1-p), sqrt(p)). */
+ * With an odd m the sides differ in power (L has the extra copy); the louder
+ * one sits nearer the centre by the power ratio so the image stays centred
+ * under AMY's equal-power pan (gains sqrt(1-p), sqrt(p)). */
 static float unison_engine_pan(const voice_unison_t *u, uint8_t group, uint8_t n)
 {
+    uint8_t m = unison_group_size(u, n);
     float spread = (float)u->spread_pct / 100.0f;
     float blend  = (float)u->blend_pct / 100.0f;
-    float pl = unison_group_power(n, 0u, blend);
-    float pr = unison_group_power(n, 1u, blend);
+    float pl = unison_side_power(m, 0u, blend);
+    float pr = unison_side_power(m, 1u, blend);
     if (pl < 1e-6f || pr < 1e-6f) pl = pr = 1.0f;
     float r_l = (pl > pr) ? pr / pl : 1.0f;
     float r_r = (pr > pl) ? pl / pr : 1.0f;
@@ -175,35 +233,56 @@ static float unison_engine_pan(const voice_unison_t *u, uint8_t group, uint8_t n
 }
 
 /* The unison fields of cluster osc `group` for n >= 2 copies. The engine
- * tapers each copy by its distance from the osc's pitch (the note), reaching
- * its blend at the copy farthest from it, so a shifted cluster's far side
- * plays quieter. The app's blend is the weight at the farthest point the
- * whole cluster can reach, (1 + |s|) D from the note; each osc's blend is
- * rescaled from its own farthest copy to that. Stereo off: osc 0 carries all
- * n copies and reaches that point itself, so blend passes through; pan stays
- * centred and the engine's power normalization is the level. Stereo on: the
- * pair above, whose power split keeps the centred law. */
+ * tapers each copy by its distance from its group's note, reaching its blend
+ * at the copy farthest from it, so a shifted group's far side plays quieter.
+ * The app's blend is the weight at the farthest point a group can reach,
+ * (1 + |s|) D from its note; each osc's blend is rescaled from its own
+ * farthest copy to that. Stereo off: osc 0 carries all n copies and reaches
+ * that point itself, so blend passes through; pan stays centred and the
+ * engine's power normalization is the level. Stereo on: the pair above,
+ * whose power split keeps the centred law. The groups and their intervals
+ * go to every osc as they are; the engine deals each osc's copies into them
+ * in the same order the grid interleaves, so the sides stay aligned. */
 static void unison_engine_coefs(amy_event *e, uint8_t group, uint8_t n,
                                 const voice_unison_t *u, float base_amp)
 {
+    const unison_stack_def_t *st = unison_stack(u);
+    uint8_t G     = unison_groups_of(u, n);
+    uint8_t m     = unison_group_size(u, n);
     float blend = (float)u->blend_pct / 100.0f;
-    float d     = (float)(100u * u->interval + u->detune_cents) / 1200.0f;
+    float d     = (float)u->detune_cents / 1200.0f;
     float s     = ((float)u->shift - 100.0f) / 100.0f;
     float reach = 1.0f + fabsf(s);
-    float grid  = (n > 1u) ? 1.0f / (float)(n - 1u) : 0.0f;
-    if (!u->stereo) {
-        e->unison_count   = n;
+    float grid  = (m > 1u) ? 1.0f / (float)(m - 1u) : 0.0f;
+    e->unison_groups    = G;
+    e->unison_interval1 = (G >= 2u) ? st->interval1 : 0.0f;
+    e->unison_interval2 = (G >= 3u) ? st->interval2 : 0.0f;
+    if (!unison_pair_split(u, n)) {
+        if (group) {
+            /* Stereo on with one copy per group: nothing for the R osc. */
+            e->unison_count   = 1u;
+            e->unison_groups  = 1u;
+            e->unison_interval1 = 0.0f;
+            e->unison_interval2 = 0.0f;
+            e->unison_spacing = 0.0f;
+            e->unison_offset  = 0.0f;
+            e->unison_blend   = 1.0f;
+            e->pan_coefs[COEF_CONST] = 0.5f;
+            e->amp_coefs[COEF_CONST] = 0.0f;
+            return;
+        }
+        e->unison_count   = (uint8_t)(G * m);
         e->unison_spacing = 2.0f * d * grid;
-        e->unison_offset  = -d + s * d;
+        e->unison_offset  = d * (s + unison_pos(0u, m));
         e->unison_blend   = blend;
         e->pan_coefs[COEF_CONST] = 0.5f;
         e->amp_coefs[COEF_CONST] = base_amp;
         return;
     }
-    /* An odd n leaves R one grid step short of the cluster's edge. */
-    uint8_t last = (uint8_t)(n - 1u - ((n - 1u - group) & 1u));
-    float span   = fmaxf(fabsf(s + unison_pos(group, n)), fabsf(s + unison_pos(last, n)));
-    e->unison_count   = (uint8_t)((n + 1u - group) / 2u);
+    /* An odd m leaves R one grid step short of the group's edge. */
+    uint8_t last = (uint8_t)(m - 1u - ((m - 1u - group) & 1u));
+    float span   = fmaxf(fabsf(s + unison_pos(group, m)), fabsf(s + unison_pos(last, m)));
+    e->unison_count   = (uint8_t)(G * ((m + 1u - group) / 2u));
     e->unison_spacing = 4.0f * d * grid;
     e->unison_offset  = -d + s * d + 2.0f * (float)group * d * grid;
     e->unison_blend   = 1.0f - (1.0f - blend) * span / reach;

@@ -246,11 +246,11 @@ uint16_t arp_get_portamento_ms(void);
  * sequencer_core_unison_copies_for() at the arp's patch and voice count. get
  * serves {1, 12, 50, 100, 1, 0, 100, 0} until first set. set clamps count
  * 1..VOICE_UNISON_MAX_COPIES, detune 0..VOICE_UNISON_MAX_DETUNE, spread/blend
- * 0..100, stereo/bypass 0..1, shift 0..VOICE_UNISON_MAX_SHIFT, interval
- * 0..VOICE_UNISON_MAX_INTERVAL, and stores; a moved effective count (bypass
+ * 0..100, stereo/bypass 0..1, shift 0..VOICE_UNISON_MAX_SHIFT, stack
+ * 0..VOICE_UNISON_MAX_STACK, and stores; a moved effective count (bypass
  * included), or a stereo change while the slot carries copies, rebuilds the
  * arp slot (sounding notes stop, like a patch change), an unchanged shape
- * above 1 pushes detune/interval/shift/spread/blend live. unison_max: the highest effective count the
+ * above 1 pushes detune/stack/shift/spread/blend live. unison_max: the highest effective count the
  * current patch allows, 0 = it cannot carry unison. UI task only. Persisted
  * in the project. */
 void    arp_get_unison(voice_unison_t *out);

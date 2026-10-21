@@ -1,6 +1,7 @@
 #include "synth_ui/synth_ui_internal.h"
 #include "synth_ui.h"
 #include "sequencer_core.h"
+#include "voice_config.h"
 #include "seq_clamp.h"
 #include <stdio.h>
 
@@ -20,10 +21,12 @@
  * other row keeps its value and stays editable while it is Off. Count runs 1
  * up to the voice's ceiling (vt_unison_max), "n/a" and not editable when its
  * patch cannot carry unison. A stored count above a since-shrunk ceiling is
- * shown as stored; the next turn clamps it. Detune is cents (1 per detent),
- * Interval whole semitones (1 per detent) added to it at the outer copy,
- * Shift the cluster centre from -100 % (all copies flat) to +100 % (all
- * sharp), 5 % per detent. Stereo toggles On/Off with one detent; while Off,
+ * shown as stored; the next turn clamps it. Detune is cents (1 per detent).
+ * Stack picks the notes the copies are dealt over (voice_unison_stack_t:
+ * Off, Oct, Sub, Oct+Sub, 5th, Power); Count then steps in multiples of the
+ * stack's group count and snaps down to one when the stack changes, so every
+ * note gets the same copies. Shift slides each group from -100 % (all copies
+ * flat) to +100 % (all sharp), 5 % per detent. Stereo toggles On/Off with one detent; while Off,
  * Spread reads "n/a" and does not edit (its value is kept). On a layer, LAYER
  * patch scope writes every track (the title names the layer), TRACK scope the
  * one track (the title names it too).
@@ -37,7 +40,7 @@ typedef enum {
     LU_ENABLE = 0,
     LU_COUNT,
     LU_DETUNE,
-    LU_INTERVAL,
+    LU_STACK,
     LU_SHIFT,
     LU_SPREAD,
     LU_BLEND,
@@ -47,6 +50,11 @@ typedef enum {
 } layer_uni_item_id_t;
 
 static menu_item_view_t s_lu_items[LU_ROWS];
+
+/* Indexed by voice_unison_stack_t. */
+static const char *const UNISON_STACK_NAMES[VOICE_UNISON_STACK_COUNT] = {
+    "Off", "Oct", "Sub", "Oct+Sub", "5th", "Power"
+};
 
 const char *layer_uni_menu_title(void)
 {
@@ -71,7 +79,7 @@ uint8_t layer_uni_menu_item_count(void)
 const menu_item_view_t *layer_uni_menu_build_items(void)
 {
     static const char *const labels[LU_ROWS] = {
-        "Unison", "Count", "Detune", "Interval", "Shift", "Spread", "Blend", "Stereo",
+        "Unison", "Count", "Detune", "Stack", "Shift", "Spread", "Blend", "Stereo",
         "< Back"
     };
     voice_target_kind_t kind = layermenu_menu_kind();
@@ -97,8 +105,9 @@ const menu_item_view_t *layer_uni_menu_build_items(void)
         case LU_DETUNE:
             snprintf(it->value, MENU_VALUE_LEN, "%uc", (unsigned)u.detune_cents);
             break;
-        case LU_INTERVAL:
-            snprintf(it->value, MENU_VALUE_LEN, "%ust", (unsigned)u.interval);
+        case LU_STACK:
+            snprintf(it->value, MENU_VALUE_LEN, "%s",
+                     UNISON_STACK_NAMES[u.stack < VOICE_UNISON_STACK_COUNT ? u.stack : 0u]);
             break;
         case LU_SHIFT:
             snprintf(it->value, MENU_VALUE_LEN, "%+d%%", (int)u.shift - 100);
@@ -153,18 +162,34 @@ void layer_uni_menu_edit_value(uint8_t idx, int delta)
     case LU_COUNT: {
         int max = (int)vt_unison_max(kind);
         if (max == 0) return;
+        int g   = (int)voice_unison_groups(u.stack);
         int dir = (delta > 0) ? 1 : -1;
-        u.count = (uint8_t)SEQ_CLAMP_INT((int)u.count + dir, 1, max);
+        int c   = ((int)u.count / g + dir) * g;
+        if (c > max) c = (max / g) * g;
+        if (c < g) c = g;
+        if (c > max) return;            /* the ceiling is below one copy per note */
+        u.count = (uint8_t)c;
         break;
     }
     case LU_DETUNE:
         u.detune_cents = (uint8_t)SEQ_CLAMP_INT((int)u.detune_cents + delta,
                                                 0, (int)VOICE_UNISON_MAX_DETUNE);
         break;
-    case LU_INTERVAL:
-        u.interval = (uint8_t)SEQ_CLAMP_INT((int)u.interval + delta,
-                                            0, (int)VOICE_UNISON_MAX_INTERVAL);
+    case LU_STACK: {
+        u.stack = (uint8_t)SEQ_CLAMP_INT((int)u.stack + delta,
+                                         0, (int)VOICE_UNISON_MAX_STACK);
+        /* Count snaps down to a multiple of the new group count, at least
+         * one copy per note, within the voice's ceiling. */
+        int max = (int)vt_unison_max(kind);
+        int g   = (int)voice_unison_groups(u.stack);
+        int c   = ((int)u.count / g) * g;
+        if (c < g) c = g;
+        if (max >= g) {
+            if (c > max) c = (max / g) * g;
+            u.count = (uint8_t)c;
+        }
         break;
+    }
     case LU_SHIFT:
         u.shift = (uint8_t)SEQ_CLAMP_INT((int)u.shift + 5 * delta,
                                          0, (int)VOICE_UNISON_MAX_SHIFT);

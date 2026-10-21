@@ -342,20 +342,35 @@ typedef enum {
 } seq_vp_src_t;
 
 /* ── Unison spec (per melodic track: seq_layer_t.track_unison) ──
- * N detuned copies of the wave build's audible osc, spread in pitch over
- * +/-(interval semitones + detune_cents) around a centre that shift slides
- * from all copies flat (0) through the note (100) to all copies sharp (200),
- * and, with stereo on, in stereo (spread_pct of full width), blend_pct
- * tapering the copies farthest from the note. bypass = 1 or count = 1 plays
- * the single-osc build exactly; bypass keeps every other field for when
- * unison is switched back on. Raw-wave/wavetable patches only (KS excluded).
- * Storage and scope: sequencer_core.h, "Melodic per-track unison".
+ * N copies of the wave build's audible osc, dealt over the notes of a stack
+ * (voice_unison_stack_t: the note alone, or with its octave, its sub octave,
+ * both, its fifth, or fifth and octave). Every note takes count / groups
+ * copies, spread in pitch over +/-detune_cents around that note; shift
+ * slides each group from all copies flat (0) through the note (100) to all
+ * copies sharp (200); blend_pct tapers the copies farthest from their note.
+ * count is a multiple of the stack's group count (the page keeps it so; a
+ * remainder is not rendered). With stereo on the copies of each group
+ * alternate between an L and an R cluster osc, panned spread_pct of full
+ * width. bypass = 1 or count = 1 plays the single-osc build exactly; bypass
+ * keeps every other field for when unison is switched back on.
+ * Raw-wave/wavetable patches only (KS excluded). Storage and scope:
+ * sequencer_core.h, "Melodic per-track unison".
  *
- * The copies render inside AMY oscs (the unison cluster, components/amy):
- * stereo off puts all of them in one centred osc; stereo on splits them
- * into an L and an R cluster osc (odd counts give L the extra copy), panned
- * by spread_pct. Either way the filter, envelope and dist stage run once per
- * cluster osc. */
+ * The copies render inside AMY oscs (the unison cluster and its groups,
+ * components/amy): stereo off puts all of them in one centred osc; stereo on
+ * splits each group between the L and the R cluster osc (odd group sizes
+ * give L the extra copy). Either way the filter, envelope and dist stage run
+ * once per cluster osc. */
+typedef enum {
+    VOICE_UNISON_STACK_OFF = 0,  /* the note alone                         */
+    VOICE_UNISON_STACK_OCT,      /* note, octave up                        */
+    VOICE_UNISON_STACK_SUB,      /* note, octave down                      */
+    VOICE_UNISON_STACK_OCT_SUB,  /* note, octave down, octave up           */
+    VOICE_UNISON_STACK_FIFTH,    /* note, fifth up                         */
+    VOICE_UNISON_STACK_POWER,    /* note, fifth up, octave up              */
+    VOICE_UNISON_STACK_COUNT
+} voice_unison_stack_t;
+
 typedef struct {
     uint8_t count;        /* audible copies per voice, 1..VOICE_UNISON_MAX_COPIES */
     uint8_t detune_cents; /* outermost copy's offset, 0..VOICE_UNISON_MAX_DETUNE */
@@ -365,15 +380,15 @@ typedef struct {
                              100 = equal, 0 = nearest copies only */
     uint8_t stereo;       /* 1 = L/R cluster pair, 0 = one centred cluster */
     uint8_t bypass;       /* 1 = unison off (one copy), 0 = count copies */
-    uint8_t shift;        /* cluster centre, 0..200: 100 = on the note */
-    uint8_t interval;     /* outer copy's whole semitones, 0..VOICE_UNISON_MAX_INTERVAL,
-                             added to detune_cents */
+    uint8_t shift;        /* group centre, 0..200: 100 = on the note */
+    uint8_t interval_unused; /* retired semitone interval; stored as 0, ignored */
+    uint8_t stack;        /* voice_unison_stack_t, 0..VOICE_UNISON_MAX_STACK */
 } voice_unison_t;
 
 #define VOICE_UNISON_MAX_COPIES  8u
 #define VOICE_UNISON_MAX_DETUNE  99u
 #define VOICE_UNISON_MAX_SHIFT   200u
-#define VOICE_UNISON_MAX_INTERVAL 12u
+#define VOICE_UNISON_MAX_STACK   ((uint8_t)(VOICE_UNISON_STACK_COUNT - 1u))
 
 /* One editable parameter group of a voice_params_t; the granularity of the
  * authored flags and of "release to patch". */

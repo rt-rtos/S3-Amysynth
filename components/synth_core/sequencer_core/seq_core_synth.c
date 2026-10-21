@@ -476,7 +476,7 @@ uint8_t sequencer_core_get_track_wt_frame(uint8_t layer_idx, uint8_t track)
 voice_unison_t sequencer_core_get_track_unison(uint8_t layer_idx, uint8_t track)
 {
     /* First-turn defaults; count 1 keeps them inert until authored. */
-    voice_unison_t u = { 1u, 12u, 50u, 100u, 1u, 0u, 100u, 0u };
+    voice_unison_t u = { 1u, 12u, 50u, 100u, 1u, 0u, 100u, 0u, 0u };
     if (layer_idx < s_num_layers && track < SEQ_TRACKS &&
         s_layers[layer_idx].track_unison[track].count != 0u)   /* 0 = never set */
         u = s_layers[layer_idx].track_unison[track];
@@ -500,7 +500,7 @@ static bool seq_unison_store_rows(uint8_t layer_idx, uint8_t first, uint8_t end,
     v.stereo       = SEQ_CLAMP_U8(v.stereo, 0u, 1u);
     v.bypass       = SEQ_CLAMP_U8(v.bypass, 0u, 1u);
     v.shift        = SEQ_CLAMP_U8(v.shift, 0u, VOICE_UNISON_MAX_SHIFT);
-    v.interval     = SEQ_CLAMP_U8(v.interval, 0u, VOICE_UNISON_MAX_INTERVAL);
+    v.stack        = SEQ_CLAMP_U8(v.stack, 0u, VOICE_UNISON_MAX_STACK);
     bool shape = false;
     *push_mask = 0u;
     for (uint8_t t = first; t < end; t++) {
@@ -517,7 +517,7 @@ static bool seq_unison_store_rows(uint8_t layer_idx, uint8_t first, uint8_t end,
             continue;
         }
         if (now > 1u && (v.detune_cents != old.detune_cents ||
-                         v.interval     != old.interval ||
+                         v.stack        != old.stack ||
                          v.shift        != old.shift ||
                          v.spread_pct   != old.spread_pct ||
                          v.blend_pct    != old.blend_pct))

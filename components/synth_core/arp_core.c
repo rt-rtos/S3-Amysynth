@@ -747,7 +747,7 @@ void arp_get_unison(voice_unison_t *out)
 {
     if (!out) return;
     /* First-turn defaults, as on a row; count 1 keeps them inert. */
-    voice_unison_t u = { 1u, 12u, 50u, 100u, 1u, 0u, 100u, 0u };
+    voice_unison_t u = { 1u, 12u, 50u, 100u, 1u, 0u, 100u, 0u, 0u };
     if (s_arp.unison.count != 0u) u = s_arp.unison;
     *out = u;
 }
@@ -771,7 +771,7 @@ void arp_set_unison(const voice_unison_t *u)
     v.stereo       = SEQ_CLAMP_U8(v.stereo, 0u, 1u);
     v.bypass       = SEQ_CLAMP_U8(v.bypass, 0u, 1u);
     v.shift        = SEQ_CLAMP_U8(v.shift, 0u, VOICE_UNISON_MAX_SHIFT);
-    v.interval     = SEQ_CLAMP_U8(v.interval, 0u, VOICE_UNISON_MAX_INTERVAL);
+    v.stack        = SEQ_CLAMP_U8(v.stack, 0u, VOICE_UNISON_MAX_STACK);
     s_arp.unison = v;
     uint8_t now = arp_unison_copies();
     if (now != was || (now > 1u && (v.stereo != 0u) != was_stereo)) {

@@ -392,7 +392,7 @@ void drone_std_params_defaults(drone_std_params_t *out)
     out->vp.lfo.depth   = 50;
     out->vp.lfo.targets = LFO_TGT_BIT(LFO_TARGET_FILTER);
     /* The row defaults (drone_std_get_unison); count 1 keeps them inert. */
-    out->unison = (voice_unison_t){ 1u, 12u, 50u, 100u, 1u, 0u, 100u, 0u };
+    out->unison = (voice_unison_t){ 1u, 12u, 50u, 100u, 1u, 0u, 100u, 0u, 0u };
 }
 
 void drone_std_core_init(void)
@@ -753,7 +753,7 @@ void drone_std_set_voice_params(const voice_params_t *vp)
 void drone_std_get_unison(voice_unison_t *out)
 {
     if (!out) return;
-    voice_unison_t u = { 1u, 12u, 50u, 100u, 1u, 0u, 100u, 0u };
+    voice_unison_t u = { 1u, 12u, 50u, 100u, 1u, 0u, 100u, 0u, 0u };
     if (s_ds.unison.count != 0u) u = s_ds.unison;
     *out = u;
 }
@@ -776,7 +776,7 @@ void drone_std_set_unison(const voice_unison_t *u)
     v.stereo       = SEQ_CLAMP_U8(v.stereo, 0u, 1u);
     v.bypass       = SEQ_CLAMP_U8(v.bypass, 0u, 1u);
     v.shift        = SEQ_CLAMP_U8(v.shift, 0u, VOICE_UNISON_MAX_SHIFT);
-    v.interval     = SEQ_CLAMP_U8(v.interval, 0u, VOICE_UNISON_MAX_INTERVAL);
+    v.stack        = SEQ_CLAMP_U8(v.stack, 0u, VOICE_UNISON_MAX_STACK);
     s_ds.unison = v;
     uint8_t now = drone_std_unison_copies();
     if (now != was || (now > 1u && (v.stereo != 0u) != was_stereo)) {
