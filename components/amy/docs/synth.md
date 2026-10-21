@@ -280,12 +280,12 @@ Oscillators will not become audible until a `velocity` over 0 is set for the osc
 
 ### Unison
 
-An oscillator can render several detuned copies of its wave into its own output. `unison` (wire code `C`) takes up to eight values: count, spacing, offset, blend, groups, interval1, interval2, interval3.
+An oscillator can render several detuned copies of its wave into its own output. `unison` (wire code `C`) takes up to nine values: count, spacing, offset, blend, groups, interval1, interval2, interval3, random.
 
  - `count` (1-8, default 1) is the number of copies.
  - Copy i (from 0) plays at the osc's pitch + `offset` + i * `spacing` octaves (both default 0, clamped to +/-4 octaves).
  - `blend` (0-1, default 1) is the weight of the copy farthest from the osc's pitch; weights fall linearly with a copy's distance from the osc's pitch, so a cluster centred on the note (`offset = -(count - 1) * spacing / 2`) tapers symmetrically. 1 gives every copy the same weight. The weights are power-normalized, so the cluster plays at about the level of one copy.
- - The copies share the osc's envelope, filter, distortion, pan and modulation; note, pitch bend, portamento and pitch modulation move the whole cluster. At each note-on the copies of group 0 are spread evenly over one cycle from the osc's phase; a group a whole number of octaves away starts each copy a quarter cycle of the shared partial away from the root copy with the same index (its fundamental is a harmonic of that copy at exactly the same frequency, so the two would otherwise add or cancel for the whole note); other groups spread inside themselves, staggered by group. A copy whose weight is 0 is not rendered.
+ - The copies share the osc's envelope, filter, distortion, pan and modulation; note, pitch bend, portamento and pitch modulation move the whole cluster. At each note-on the copies of group 0 are spread evenly over one cycle from the osc's phase; a group at a whole-number frequency ratio to the root, above or below (an octave, a twelfth, two octaves), starts each copy 0.211 cycle of the shared partial away from the root copy with the same index (their shared partials have exactly the same frequencies, so they would otherwise add or cancel for the whole note; at this offset a saw's shared partials sum to the power of uncorrelated ones); other groups spread inside themselves, staggered by group. This rule is deterministic and renders identically on every note-on; `random` 1 draws the phases of copies 1 onward at each note-on instead, for a stack that does not restart identically. A copy whose weight is 0 is not rendered.
  - SINE, PULSE, SAW_DOWN, SAW_UP, TRIANGLE and WAVETABLE render the cluster; other waves ignore it. Switching the osc to PCM, KS or ALGO drops the cluster's phases with that kind's state; switching back to one of these waves picks the cluster up again, since the unison parameters persist on the osc.
 
 ```python

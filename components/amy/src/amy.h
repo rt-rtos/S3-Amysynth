@@ -565,6 +565,7 @@ enum params{
     UNISON_INTERVAL1,           // octaves from the osc's pitch to group 1
     UNISON_INTERVAL2,           // octaves from the osc's pitch to group 2
     UNISON_INTERVAL3,           // octaves from the osc's pitch to group 3
+    UNISON_RANDOM,              // 1 = random start phases for copies 1..n-1
     // LOCAL EDIT (S3-Amysynth, 2026-10-12, experimental): see amy_event.
     MOD_SYNTH_START,
     MOD_SYNTH_END = MOD_SYNTH_START + NUM_MOD_SOURCES,
@@ -749,6 +750,7 @@ typedef struct amy_event {
     float unison_interval1;  // octaves from the osc's pitch to group 1, default 0
     float unison_interval2;  // octaves from the osc's pitch to group 2, default 0
     float unison_interval3;  // octaves from the osc's pitch to group 3, default 0
+    uint8_t unison_random;  // 1 = copies 1..n-1 start at random phases, default 0
     // LOCAL EDIT (S3-Amysynth, 2026-10-12, experimental): moves the osc's
     // running phase without storing it, so later note-ons do not reset it
     // (trigger_phase both stores and moves). Struct-only: no wire letter.
@@ -926,6 +928,7 @@ struct synthinfo {
     float unison_interval1;
     float unison_interval2;
     float unison_interval3;
+    uint8_t unison_random;
     uint16_t sample_offset;  // PCM note-on start offset in samples within its block
     float logratio;
     float portamento_alpha;

@@ -947,6 +947,7 @@ void amy_event_to_deltas_queue(amy_event *e, uint16_t base_osc, uint16_t oscs_pe
     EVENT_TO_DELTA_F(unison_interval1, UNISON_INTERVAL1)
     EVENT_TO_DELTA_F(unison_interval2, UNISON_INTERVAL2)
     EVENT_TO_DELTA_F(unison_interval3, UNISON_INTERVAL3)
+    EVENT_TO_DELTA_I(unison_random, UNISON_RANDOM)
     EVENT_TO_DELTA_F(phase_warp, PHASE_WARP)  // LOCAL EDIT (S3-Amysynth): see amy_event.
     EVENT_TO_DELTA_I(sample_offset, SAMPLE_OFFSET)
     EVENT_TO_DELTA_F(fit_ticks, FIT)
@@ -1222,6 +1223,7 @@ void reset_osc_params(struct synthinfo *psynth) {
     psynth->unison_interval1 = 0;
     psynth->unison_interval2 = 0;
     psynth->unison_interval3 = 0;
+    psynth->unison_random = 0;
     AMY_UNSET(psynth->sample_offset);
     AMY_UNSET(psynth->logratio);
     psynth->portamento_alpha = 0;
@@ -1903,7 +1905,8 @@ void play_delta(struct delta *d) {
     DELTA_TO_SYNTH_F_CLAMPED(UNISON_INTERVAL1, unison_interval1, -AMY_UNISON_MAX_OCTAVES, AMY_UNISON_MAX_OCTAVES)
     DELTA_TO_SYNTH_F_CLAMPED(UNISON_INTERVAL2, unison_interval2, -AMY_UNISON_MAX_OCTAVES, AMY_UNISON_MAX_OCTAVES)
     DELTA_TO_SYNTH_F_CLAMPED(UNISON_INTERVAL3, unison_interval3, -AMY_UNISON_MAX_OCTAVES, AMY_UNISON_MAX_OCTAVES)
-    if (d->param >= UNISON_COUNT && d->param <= UNISON_INTERVAL3) unison_claim_kind(d->osc);
+    DELTA_TO_SYNTH_I_CLAMPED(UNISON_RANDOM, unison_random, 0, 1)
+    if (d->param >= UNISON_COUNT && d->param <= UNISON_RANDOM) unison_claim_kind(d->osc);
     // Copies added mid-note start spread from copy 0, not where they were left.
     if (d->param == UNISON_COUNT && unison_active(synth[d->osc]))
         unison_note_on(d->osc);

@@ -329,15 +329,37 @@ static inline uint8_t unison_group_size(uint8_t n, uint8_t groups, uint8_t g) {
     return n / groups + (g < n % groups ? 1 : 0);
 }
 
+// Offset, in cycles of the shared partial, between a locked group's copy and
+// its root copy: with saw amplitudes 1/k, sum_k cos(2 pi k THETA) / k^2 = 0,
+// so the shared partials add with the power of uncorrelated ones.
+#define UNISON_THETA 0.21132487f  // (1 - 1/sqrt(3)) / 2
+
+// The frequency ratio r of a group locked to the root group: an integer >= 2,
+// or the inverse of one, within 1e-3; 0 when the group is not locked.
+static float unison_locked_ratio(float interval) {
+    float r = exp2f(interval);
+    float big = (r >= 1.0f) ? r : 1.0f / r;
+    float k = roundf(big);
+    return (k >= 2.0f && fabsf(big - k) <= 1e-3f * big) ? r : 0;
+}
+
+static inline SAMPLE amy_get_random(void);
+
 // Start phases from copy 0's phase P, whatever it restarts with.  The root
 // group spreads its m_0 copies evenly over one cycle, P + j / m_0.  A group
-// an integer k octaves away shares exact partials with the root copy of the
-// same in-group index, so it starts at 2^k times that copy's phase plus a
-// quarter cycle of the shared partial (0.25 up, 0.25 * 2^k down): the shared
-// partials sit in quadrature and add in power, as the weights assume.  Any
-// other group spreads inside itself, staggered by group, P + (j + g / G) / m_g.
+// locked to the root by an integer frequency ratio r (or 1/r) shares exact
+// partials with the root copy of the same in-group index, so it starts at
+// r times that copy's phase plus THETA * min(r, 1): the shared partials add
+// in power, as the weights assume.  Any other group spreads inside itself,
+// staggered by group, P + (j + g / G) / m_g.  With unison_random, copies
+// 1..n-1 instead start at random phases, drawn at every note-on.
 void unison_note_on(uint16_t osc) {
     uint8_t n = synth[osc]->unison_count;
+    if (synth[osc]->unison_random) {
+        for (uint8_t i = 1; i < n; ++i)
+            synth[osc]->unison_phase[i - 1] = F2P(S2F(amy_get_random()) + 0.5f);
+        return;
+    }
     uint8_t groups = MIN(synth[osc]->unison_groups, n);
     float interval[AMY_UNISON_GROUPS_MAX] = {0, synth[osc]->unison_interval1, synth[osc]->unison_interval2,
                                              synth[osc]->unison_interval3};
@@ -348,12 +370,10 @@ void unison_note_on(uint16_t osc) {
     uint8_t i = m_0;
     for (uint8_t g = 1; g < groups; ++g) {
         uint8_t m = unison_group_size(n, groups, g);
-        float k = roundf(interval[g]);
-        bool octave = k != 0 && fabsf(interval[g] - k) < 1e-3f;
+        float r = unison_locked_ratio(interval[g]);
         for (uint8_t j = 0; j < m; ++j, ++i) {
-            if (octave) {
-                float scale = ldexpf(1.0f, (int)k);
-                float phi = scale * P2F(*unison_phase(osc, j % m_0)) + ((k > 0) ? 0.25f : 0.25f * scale);
+            if (r > 0) {
+                float phi = r * P2F(*unison_phase(osc, j % m_0)) + UNISON_THETA * MIN(r, 1.0f);
                 synth[osc]->unison_phase[i - 1] = F2P(phi - floorf(phi));
             } else {
                 synth[osc]->unison_phase[i - 1] = P_WRAPPED_SUM(synth[osc]->phase,
