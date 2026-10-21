@@ -324,6 +324,11 @@ static inline PHASOR *unison_phase(uint16_t osc, uint8_t i) {
     return i ? &synth[osc]->unison_phase[i - 1] : &synth[osc]->phase;
 }
 
+// A copy's offset in octaves, bounded: each field is clamped, their sum is not.
+static inline float unison_clamp_offset(float d) {
+    return MAX(-AMY_UNISON_MAX_OCTAVES, MIN(AMY_UNISON_MAX_OCTAVES, d));
+}
+
 // Copies in group g when n copies are dealt into the given number of groups.
 static inline uint8_t unison_group_size(uint8_t n, uint8_t groups, uint8_t g) {
     return n / groups + (g < n % groups ? 1 : 0);
@@ -390,7 +395,7 @@ static float unison_top_offset(uint16_t osc) {
     uint8_t n = synth[osc]->unison_count;
     uint8_t m = unison_group_size(n, MIN(synth[osc]->unison_groups, n), 0);
     float last = synth[osc]->unison_offset + (float)(m - 1) * synth[osc]->unison_spacing;
-    return MAX(synth[osc]->unison_offset, last);
+    return unison_clamp_offset(MAX(synth[osc]->unison_offset, last));
 }
 
 // Step, amp ramp and table of each copy for this block, packed into c[] with
@@ -428,15 +433,15 @@ static uint8_t unison_prepare(uint16_t osc, unison_copy *c, float freq, SAMPLE l
         uint8_t m = unison_group_size(n, groups, g);
         const LUT *lut = synth[osc]->lut;
         if (g > 0 && lutset != NULL) {
-            float top = interval[g] + MAX(offset, offset + (float)(m - 1) * spacing);
+            float top = unison_clamp_offset(interval[g] + MAX(offset, offset + (float)(m - 1) * spacing));
             lut = choose_from_lutset((float)AMY_SAMPLE_RATE / freq_of_logfreq(msynth[osc]->logfreq + top), lutset);
         }
         for (uint8_t j = 0; j < m; ++j, ++i) {
-            float d = offset + (float)j * spacing;
-            c[i].step = F2P(freq_of_logfreq(msynth[osc]->logfreq + d + interval[g]) / (float)AMY_SAMPLE_RATE);
+            float d = unison_clamp_offset(offset + (float)j * spacing + interval[g]);
+            c[i].step = F2P(freq_of_logfreq(msynth[osc]->logfreq + d) / (float)AMY_SAMPLE_RATE);
             c[i].lut = lut;
             c[i].idx = i;
-            w[i] = 1.0f - taper * fabsf(d);
+            w[i] = 1.0f - taper * fabsf(d - interval[g]);
             sum += w[i] * w[i];
         }
     }
