@@ -329,6 +329,16 @@ static inline float unison_clamp_offset(float d) {
     return MAX(-AMY_UNISON_MAX_OCTAVES, MIN(AMY_UNISON_MAX_OCTAVES, d));
 }
 
+// Octaves from the osc's pitch to group g.
+static inline float unison_interval(const struct synthinfo *s, uint8_t g) {
+    switch (g) {
+    case 1: return s->unison_interval1;
+    case 2: return s->unison_interval2;
+    case 3: return s->unison_interval3;
+    default: return 0;
+    }
+}
+
 // Copies in group g when n copies are dealt into the given number of groups.
 static inline uint8_t unison_group_size(uint8_t n, uint8_t groups, uint8_t g) {
     return n / groups + (g < n % groups ? 1 : 0);
@@ -362,7 +372,7 @@ void unison_note_on(uint16_t osc) {
     uint8_t n = synth[osc]->unison_count;
     if (synth[osc]->unison_random) {
         for (uint8_t i = 1; i < n; ++i) {
-            // amy_get_random() returns [-0.5, 0.5) in both builds; wrap anyway.
+            // amy_get_random() can return 0.5 in a float build; wrap it to 0.
             float p = S2F(amy_get_random()) + 0.5f;
             p -= floorf(p);
             synth[osc]->unison_phase[i - 1] = F2P(p);
@@ -370,8 +380,6 @@ void unison_note_on(uint16_t osc) {
         return;
     }
     uint8_t groups = MIN(synth[osc]->unison_groups, n);
-    float interval[AMY_UNISON_GROUPS_MAX] = {0, synth[osc]->unison_interval1, synth[osc]->unison_interval2,
-                                             synth[osc]->unison_interval3};
     uint8_t m_0 = unison_group_size(n, groups, 0);
     float spread = 1.0f / (float)m_0;
     for (uint8_t j = 1; j < m_0; ++j)
@@ -379,7 +387,7 @@ void unison_note_on(uint16_t osc) {
     uint8_t i = m_0;
     for (uint8_t g = 1; g < groups; ++g) {
         uint8_t m = unison_group_size(n, groups, g);
-        float r = unison_locked_ratio(interval[g]);
+        float r = unison_locked_ratio(unison_interval(synth[osc], g));
         for (uint8_t j = 0; j < m; ++j, ++i) {
             if (r > 0) {
                 float phi = r * P2F(*unison_phase(osc, j % m_0)) + UNISON_THETA * MIN(r, 1.0f);
@@ -393,7 +401,8 @@ void unison_note_on(uint16_t osc) {
 }
 
 // Octaves from the osc's pitch to the highest copy of group 0, which renders
-// from synth->lut: the table must not alias on its sharpest copy.
+// from synth->lut: the table must not alias on its sharpest copy.  The lazy
+// note-on pick uses it; unison_prepare re-picks per block.
 static float unison_top_offset(uint16_t osc) {
     if (!unison_active(synth[osc])) return 0;
     uint8_t n = synth[osc]->unison_count;
@@ -407,10 +416,10 @@ static float unison_top_offset(uint16_t osc) {
 // g plays at logfreq + offset + j * spacing + the group's interval.  Its
 // weight falls linearly with its distance from the
 // group's center, to blend at the farthest copy of the largest group, and the
-// weights are power-normalized so the cluster's level tracks one copy.  Group
-// 0 renders from synth->lut, the others from the entry of lutset for their
-// own sharpest copy (lutset NULL: synth->lut too).  Without a cluster this is
-// exactly the osc's own step, amps and table.
+// weights are power-normalized so the cluster's level tracks one copy.  Each
+// group renders from the entry of lutset for its own sharpest copy, group 0's
+// stored back to synth->lut (lutset NULL: every group keeps synth->lut).
+// Without a cluster this is exactly the osc's own step, amps and table.
 static uint8_t unison_prepare(uint16_t osc, unison_copy *c, float freq, SAMPLE last_amp, SAMPLE amp, const LUT *lutset) {
     if (!unison_active(synth[osc])) {
         c[0].step = F2P(freq / (float)AMY_SAMPLE_RATE);  // cycles per sec / samples per sec -> cycles per sample
@@ -422,8 +431,6 @@ static uint8_t unison_prepare(uint16_t osc, unison_copy *c, float freq, SAMPLE l
     }
     uint8_t n = synth[osc]->unison_count;
     uint8_t groups = MIN(synth[osc]->unison_groups, n);
-    float interval[AMY_UNISON_GROUPS_MAX] = {0, synth[osc]->unison_interval1, synth[osc]->unison_interval2,
-                                             synth[osc]->unison_interval3};
     float offset = synth[osc]->unison_offset;
     float spacing = synth[osc]->unison_spacing;
     // Group 0 is the largest.
@@ -436,17 +443,19 @@ static uint8_t unison_prepare(uint16_t osc, unison_copy *c, float freq, SAMPLE l
     uint8_t i = 0;
     for (uint8_t g = 0; g < groups; ++g) {
         uint8_t m = unison_group_size(n, groups, g);
+        float interval = unison_interval(synth[osc], g);
         const LUT *lut = synth[osc]->lut;
-        if (g > 0 && lutset != NULL) {
-            float top = unison_clamp_offset(interval[g] + MAX(offset, offset + (float)(m - 1) * spacing));
+        if (lutset != NULL) {
+            float top = unison_clamp_offset(interval + MAX(offset, offset + (float)(m - 1) * spacing));
             lut = choose_from_lutset((float)AMY_SAMPLE_RATE / freq_of_logfreq(msynth[osc]->logfreq + top), lutset);
+            if (g == 0) synth[osc]->lut = lut;
         }
         for (uint8_t j = 0; j < m; ++j, ++i) {
-            float d = unison_clamp_offset(offset + (float)j * spacing + interval[g]);
+            float d = unison_clamp_offset(offset + (float)j * spacing + interval);
             c[i].step = F2P(freq_of_logfreq(msynth[osc]->logfreq + d) / (float)AMY_SAMPLE_RATE);
             c[i].lut = lut;
             c[i].idx = i;
-            w[i] = 1.0f - taper * fabsf(d - interval[g]);
+            w[i] = 1.0f - taper * fabsf(d - interval);
             sum += w[i] * w[i];
         }
     }
@@ -841,7 +850,7 @@ SAMPLE render_sine(SAMPLE* buf, uint16_t osc) {
     SAMPLE max_value = 0;
     for (uint8_t i = 0; i < n; ++i) {
         PHASOR *phase = unison_phase(osc, copies[i].idx);
-        *phase = render_lut_256(buf, *phase, copies[i].step, copies[i].last_amp, copies[i].amp, copies[i].lut, &max_value);
+        *phase = render_lut_256(buf, *phase, copies[i].step, copies[i].last_amp, copies[i].amp, /* synth[osc]->lut */ &sine_fxpt_lutset[0], &max_value);
     }
     msynth[osc]->last_amp = msynth[osc]->amp;
     return max_value;
@@ -896,7 +905,7 @@ static inline int32_t my_mrand48(void) {
 #include "pico/rand.h"
 #endif
 
-// Returns a SAMPLE between -1 and 1.
+// Returns a SAMPLE in [-0.5, 0.5); a float build can also return 0.5.
 inline static SAMPLE amy_get_random() {
 #ifndef AMY_USE_FIXEDPOINT
     return ((float)drand48()) - 0.5f;
