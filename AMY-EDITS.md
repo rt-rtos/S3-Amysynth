@@ -181,15 +181,16 @@ a bus > 0 synth now allocates it. Not posted upstream; upstream
 ### `amy.h` + `amy.c` + `oscillators.c` + `parse.c` + `patches.c` + `api.c` + `midi_mappings.c` — per-osc unison cluster (upstream PR, `feat/unison-cluster`)
 
 Vendored ahead of merge: the upstream PR draft "unison: one osc renders a
-cluster of detuned copies of its LUT wave" (branch `feat/unison-cluster`, two
+cluster of detuned copies of its LUT wave" (branch `feat/unison-cluster`, three
 commits on v1.2.200), merged into the vendor base unchanged. Not posted yet.
 
 - A LUT-wave osc (sine, saw, pulse, triangle, wavetable) renders `unison_count` copies at its pitch + `unison_offset` + `i * unison_spacing` octaves, tapered by `unison_blend` and power-normalized; wire letter `C<count>,<spacing>,<offset>,<blend>`.
 - Copies 1..n-1 keep their phases in the `WAVE_KIND_LUT` union member (`unison_phase[]`) and spread evenly over one cycle from copy 0 at note-on; copy 0 keeps the cubic kernel, the others render through the generic `render_lut`.
-- Ids `UNISON_COUNT..UNISON_BLEND` (234-237) follow the upstream ids at the enum tail; `play_delta` clamps the count to 1..`AMY_UNISON_MAX` (8), spacing and offset to +/-4 octaves, blend to 0..1.
+- Groups (the branch's third commit): `unison_groups` (1..`AMY_UNISON_GROUPS_MAX` = 3) deals the copies into contiguous groups, each spread from `unison_offset` in steps of `unison_spacing`, group 1 and 2 transposed by `unison_interval1` / `unison_interval2` octaves; blend tapers inside the group; a saw, pulse or triangle group renders from the table chosen for its own highest copy (`unison_copy.lut`), sine and wavetable share the osc's. Wire letter `C` takes seven values. One group is byte-identical to the two-commit cluster.
+- Ids `UNISON_COUNT..UNISON_INTERVAL2` (234-240) follow the upstream ids at the enum tail; `play_delta` clamps the count to 1..`AMY_UNISON_MAX` (8), groups to 1..3, spacing, offset and the intervals to +/-4 octaves, blend to 0..1.
 
-The local `MOD_SYNTH_START..PHASE_WARP` block sits after the four ids, so its
-ids moved from 234-236 to 238-240.
+The local `MOD_SYNTH_START..PHASE_WARP` block sits after the seven ids, so its
+ids moved from 234-236 to 241-243.
 
 Dropped with the earlier local cluster edit:
 

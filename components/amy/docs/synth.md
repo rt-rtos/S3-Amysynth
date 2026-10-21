@@ -278,6 +278,53 @@ Oscillators will not become audible until a `velocity` over 0 is set for the osc
  - Internally each cycle is 256 samples; full table length is typically 16384 samples (64 complete cycles).
  - You can load new wavetables using `load_sample` and use your new preset number. Ensure they are 16,384 samples long. Find more on [waveeditonline.com](http://waveeditonline.com).
 
+### Unison
+
+An oscillator can render several detuned copies of its wave into its own output. `unison` (wire code `C`) takes up to seven values: count, spacing, offset, blend, groups, interval1, interval2.
+
+ - `count` (1-8, default 1) is the number of copies.
+ - Copy i (from 0) plays at the osc's pitch + `offset` + i * `spacing` octaves (both default 0, clamped to +/-4 octaves).
+ - `blend` (0-1, default 1) is the weight of the copy farthest from the osc's pitch; weights fall linearly with a copy's distance from the osc's pitch, so a cluster centred on the note (`offset = -(count - 1) * spacing / 2`) tapers symmetrically. 1 gives every copy the same weight. The weights are power-normalized, so the cluster plays at about the level of one copy.
+ - The copies share the osc's envelope, filter, distortion, pan and modulation; note, pitch bend, portamento and pitch modulation move the whole cluster. At each note-on the copies are spread evenly over one cycle from the osc's phase.
+ - SINE, PULSE, SAW_DOWN, SAW_UP, TRIANGLE and WAVETABLE render the cluster; other waves ignore it. Switching the osc to PCM, KS or ALGO drops the cluster's phases with that kind's state; switching back to one of these waves picks the cluster up again, since the unison parameters persist on the osc.
+
+```python
+# Four saws spread over +/-20 cents (20/1200 octave) around the note, outer copies at 0.8.
+D = 20 / 1200
+amy.send(osc=0, wave=amy.SAW_DOWN, unison=[4, 2 * D / 3, -D, 0.8], note=48, vel=1)
+```
+
+`groups` (1-3, default 1) deals the copies in order into that many groups of consecutive copies; when `count` does not divide evenly, the first `count % groups` groups take one copy more. Copy j of each group plays at `offset` + j * `spacing`, so every group carries the same spread, and the group as a whole is transposed: group 0 stays at the osc's pitch, group 1 moves by `interval1` and group 2 by `interval2` octaves (both default 0, clamped to +/-4 octaves). `blend` tapers each copy by its distance from its own group's pitch, reaching `blend` at the edge of the largest group. A saw, pulse or triangle group renders from the table chosen for its own highest copy, so an upper group does not alias and the root group keeps its full bandwidth; sine and wavetable groups share the osc's table. More groups than copies deals one copy to each of the first `count` groups.
+
+```python
+# Four saws as an octave stack: a pair at +/-10 cents around the note and a pair around the octave above.
+D = 10 / 1200
+amy.send(osc=0, wave=amy.SAW_DOWN, unison=[4, 2 * D, -D, 1, 2, 1.0], note=48, vel=1)
+```
+
+The cluster takes the osc's one pan. For a stereo cluster, put the copies on two oscs panned apart, each with half of them on an interleaved pitch grid, so each channel carries copies from across the spread; the two oscs sit one grid step apart, and an odd count gives one osc the extra copy. Each osc of the pair takes its own envelope, filter and modulation, and blend tapers within each osc over its own copies.
+
+```python
+# Six copies over +/-20 cents as a stereo pair: osc 0 (pan 0, left) takes grid copies 0, 2, 4, osc 1 (pan 1, right) 1, 3, 5.
+# A hard-panned osc lands 3 dB over a centred one, so vel 0.7.
+D = 20 / 1200
+G = 2 * D / 5    # grid step for six copies
+for osc, pan in ((0, 0), (1, 1)):
+    amy.send(osc=osc, wave=amy.SAW_DOWN, pan=pan, unison=[3, 2 * G, -D + osc * G, 1], note=48, vel=0.7)
+```
+
+A grouped cluster splits the same way, by position within the group: each osc of the pair keeps all the groups and takes its share of each group's copies.
+
+```python
+# A power stack of six saws (root, fifth and octave, each a pair at +/-10 cents) as a stereo pair.
+# On one osc it is unison=[6, 2 * D, -D, 1, 3, 7 / 12, 1.0]: three groups of two copies.
+# Osc 0 (left) takes copy 0 of each group (offset -D), osc 1 (right) copy 1 (offset +D),
+# so each osc is three groups of one copy and its spacing has no effect.
+D = 10 / 1200
+for osc, pan in ((0, 0), (1, 1)):
+    amy.send(osc=osc, wave=amy.SAW_DOWN, pan=pan, unison=[3, 0, -D + osc * 2 * D, 1, 3, 7 / 12, 1.0], note=48, vel=0.7)
+```
+
 
 ## LFOs & modulators
 
