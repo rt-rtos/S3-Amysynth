@@ -119,6 +119,8 @@ void drone_std_build_view(drone_view_t *out)
     out->count   = n;
     out->cursor  = s_dstd_cursor;
     out->editing = s_dstd_editing;
+    out->patch_select = seq_state.patch_select_mode;
+    out->patch_name   = patch_name_for(drone_std_get_patch());
 }
 
 static void drone_std_edit_row(drone_std_row_t r, int delta)
@@ -139,10 +141,9 @@ static void drone_std_edit_row(drone_std_row_t r, int delta)
         }
         case DSROW_CHORD: {
             /* Wraps, unlike the clamped rows around it: CHORD_OFF is the
-             * default and sits last, so wrapping keeps it one detent from the
-             * first chord instead of stranding it at the end. */
-            int c = ((int)drone_std_get_chord() + dir + CHORD_TYPE_COUNT) % CHORD_TYPE_COUNT;
-            drone_std_set_chord((chord_type_t)c);
+             * default and sits last in display order, so wrapping keeps it one
+             * detent from the first chord instead of stranding it at the end. */
+            drone_std_set_chord(chord_type_next(drone_std_get_chord(), dir));
             break;
         }
         case DSROW_FOLLOW: {
@@ -216,6 +217,7 @@ uint32_t drone_std_view_signature(drone_view_t *out)
     drone_std_build_view(out);
     h = fnv1a_bytes(h, &out->cursor, sizeof(out->cursor));
     h = fnv1a_bytes(h, &out->editing, sizeof(out->editing));
+    h = fnv1a_bytes(h, &out->patch_select, sizeof(out->patch_select));
     h = fnv1a_bytes(h, &out->count, sizeof(out->count));
     for (uint8_t i = 0; i < out->count; i++) {
         h = fnv1a_bytes(h, out->rows[i].label, sizeof(out->rows[i].label));

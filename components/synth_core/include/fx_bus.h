@@ -82,7 +82,7 @@ void       fx_bus_set_clips_loaded(bool loaded);
 const char *fx_group_name(fx_group_t g);
 const char *fx_bus_label(uint8_t bus);
 
-/* The group's fixed slots, written into out[]; returns the count (DRUMS 4,
+/* The group's fixed slots, written into out[]; returns the count (DRUMS SEQ_TRACKS,
  * DRONES 4, CLIPS CLIP_SLOT_COUNT, MELODIC 0 - the melodic arena is
  * open-ended and never re-tagged, since it stays on bus 0). out must hold 8
  * entries. */

@@ -1,5 +1,6 @@
 #include "display_mixer.h"
 #include "display_seq.h"   /* display_drum_track_label */
+#include <string.h>
 
 /* Header in the panel's yellow band (y 0..15) as the menu draws it: title
  * in u8g2_font_6x10_tf at baseline 8, divider at y 15. Rows in
@@ -15,12 +16,14 @@
 #define MIX_BAR_H     5
 #define MIX_FILL_X    23
 #define MIX_FILL_MAX  48
+#define MIX_LINK_X    66     /* link group letter, x 66..70 inside the bar */
 #define MIX_M_X       74     /* M cell x 74..80 */
 #define MIX_M_W       7
 #define MIX_Q1_X      84     /* quick cells x 84..103 and 106..125, 4 chars */
 #define MIX_Q2_X      106
 #define MIX_Q_W       20
 #define MIX_SCROLL_X  125    /* 3 px triangles in x 125..127 */
+#define MIX_CLOCK_X1  108    /* clock ends at x 107; x 108..127 is the watchdog box and badge area */
 
 static uint8_t bar_px(uint8_t pos)
 {
@@ -93,6 +96,16 @@ static void draw_row(u8g2_t *u8g2, const mixer_view_row_t *r, uint8_t y,
 
     if (r->has_level) {
         draw_bar(u8g2, y, r->pos, r->fade_to, focus == MIXER_FOCUS_LEVEL, fg);
+        if (r->link) {
+            char l[2] = { (char)('A' + r->link - 1u), '\0' };
+            /* XOR reads over the fill and the empty bar; transparent font
+             * mode so the glyph's background pixels are left alone. */
+            u8g2_SetFontMode(u8g2, 1);
+            u8g2_SetDrawColor(u8g2, 2);
+            u8g2_DrawStr(u8g2, MIX_LINK_X, (uint8_t)(y + 6), l);
+            u8g2_SetDrawColor(u8g2, fg);
+            u8g2_SetFontMode(u8g2, 0);
+        }
     } else {
         draw_cell(u8g2, (uint8_t)(MIX_BAR_X - 1), y, MIX_BAR_W + 1, r->text,
                   focus == MIXER_FOCUS_LEVEL, fg);
@@ -127,6 +140,9 @@ void display_mixer_draw_frame(u8g2_t *u8g2, const mixer_view_t *view)
     u8g2_SetDrawColor(u8g2, 1);
     u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
     u8g2_DrawStr(u8g2, 2, MIX_TITLE_Y, view->title);
+    if (view->clock[0] != '\0')
+        u8g2_DrawStr(u8g2, (uint8_t)(MIX_CLOCK_X1 - 6u * strlen(view->clock)), MIX_TITLE_Y,
+                     view->clock);
     u8g2_DrawHLine(u8g2, 0, 15, 128);
     u8g2_SetFont(u8g2, u8g2_font_5x7_tr);
 

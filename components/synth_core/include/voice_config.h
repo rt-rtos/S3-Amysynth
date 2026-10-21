@@ -22,8 +22,8 @@
  * level (the LFO cap factor of amy_event.synth_level, owned by synth_level.h)
  * by the same 10^(-3w): the swing then runs from 10^(-6w) up to the unmodulated
  * level, a 30 dB tremolo at 100 % depth that is never louder than the note.
- * The software stepper's AMP (lfo_push_amp) dips linearly from unity to
- * 1 - depth. */
+ * The software stepper's AMP (synth_level_set_sw_lfo) dips linearly from
+ * unity to 1 - depth. */
 #define VOICE_LFO_DEPTH_AMP    0.25f
 /* Pitch is log2: 1.0 = a full octave at 100% depth, which made even 5%
  * (+-60 cents) heavy vibrato. One semitone at 100% puts the whole musical
@@ -102,7 +102,7 @@ uint8_t voice_wob_depth_to_db(uint8_t wob_depth);
 uint8_t voice_wob_db_to_depth(uint8_t db);
 
 /* ── Note-triggered envelope bounds ──────────────────────────────────────
- * The melodic sequencer, arp and graph editor all drive the same seq_env_t
+ * The melodic sequencer, arp and ADSR editor all drive the same seq_env_t
  * into AMY breakpoint sets and need the same guard rails. Clamp against these
  * names, not respelled numbers, so UI/store/push path cannot drift apart.
  *
@@ -110,7 +110,7 @@ uint8_t voice_wob_db_to_depth(uint8_t db);
  * their envelopes are free-running and open over hundreds of ms, so a shared
  * declick policy would encode a constraint they do not have.
  *
- * The graph editor derives its minimum marker spacing from ATTACK_MIN_MS (via
+ * The ADSR editor derives its minimum marker spacing from ATTACK_MIN_MS (via
  * graph_popup_set_min_x_gap()) so the plot cannot enforce a stricter floor
  * than the engine.
  */
@@ -124,7 +124,7 @@ uint8_t voice_wob_db_to_depth(uint8_t db);
  * held, so the tail needs a few blocks to reach zero without a tick. */
 #define VOICE_ENV_RELEASE_MIN_MS  5u
 
-/* Ceiling for any single envelope segment. Far past the graph editor's longest
+/* Ceiling for any single envelope segment. Far past the ADSR editor's longest
  * axis (15 s); exists to reject restored garbage, not to constrain authoring. */
 #define VOICE_ENV_TIME_MAX_MS     60000u
 
@@ -190,52 +190,56 @@ typedef struct {
     const seq_dist_t *dist;        /* re-pushed on every build so a rebuild
                                       never drops the stage; NULL = leave the
                                       synth's distortion untouched            */
-    const voice_unison_t *unison;  /* copy-fan spec (seq_model.h); NULL or
-                                      count <= 1 = the single-osc build. The
+    const voice_unison_t *unison;  /* unison spec (seq_model.h); NULL,
+                                      bypass or count <= 1 = the single-osc
+                                      build. The
                                       caller passes the EFFECTIVE count: it
                                       has sized oscs_per_voice for count
                                       copies plus any reserved pair, excluded
                                       KS and clamped against the osc budget.
-                                      `layout` picks the layout; size
-                                      oscs_per_voice with
+                                      `stereo` picks one cluster osc or the
+                                      L/R pair; size oscs_per_voice with
                                       voice_unison_oscs_per_voice()          */
 } voice_wave_cfg_t;
 
 /* ── Unison index map ────────────────────────────────────────────────────
  * Shared by the build, the live push and the sequencer's layout query, so the
- * pool shape and the osc masks cannot disagree. n = EFFECTIVE copy count
- * (>= 2, and even when headed; n <= 1 is the single-osc build and
- * reads as the fan). Copies are numbered i = 0..n-1 by pitch position (i = 0
- * most flat); mirror pair p = min(i, n-1-i), p = 0 outermost. Headed: pair p
- * sits in group L when p is even, else R; copy i goes to the group of pair p
- * if i == p, the other group otherwise, and within a group the copies occupy
- * ascending osc indices in ascending i order. Engine: even i in L, odd i in
- * R (for even n the headed reading; an odd n puts the extra copy in L), and
- * a group is one AMY unison-cluster osc - L is
- * osc 0, R is osc 1 - so copy_osc returns the group osc and the "heads" are
- * the two cluster oscs. Fan: copy i is osc i. `layout` is a
- * voice_unison_layout_t (seq_model.h). */
-/* Pool shape: fan n, headed n + 2, engine 2, each plus VOICE_LFO_PAIR_OSCS. */
-uint8_t voice_unison_oscs_per_voice(uint8_t n, uint8_t layout);
-uint8_t voice_unison_copy_osc(uint8_t i, uint8_t n, uint8_t layout);
-uint8_t voice_unison_head_osc(uint8_t group, uint8_t n, uint8_t layout); /* 0: L, 1: R */
-uint8_t voice_unison_copies_mask(uint8_t n, uint8_t layout);    /* bit = osc */
-uint8_t voice_unison_heads_mask(uint8_t n, uint8_t layout);     /* 0 when fan */
+ * pool shape and the osc masks cannot disagree. n = EFFECTIVE copy count;
+ * n <= 1 is the single-osc build. Copies are numbered i = 0..n-1 by pitch
+ * position (i = 0 most flat) and render inside AMY unison-cluster oscs.
+ * Stereo off (or n <= 1): every copy is in osc 0. Stereo on with n >= 2:
+ * even i in group L, odd i in R (an odd n puts the extra copy in L); L is
+ * osc 0, R is osc 1, so copy_osc returns the group osc and the "heads"
+ * (the oscs carrying envelope, filter, dist and pan) are the cluster oscs
+ * themselves. Pure; any task. */
+/* Pool shape: 2 for a stereo pair (stereo, n >= 2), else 1; plus
+ * VOICE_LFO_PAIR_OSCS. */
+uint8_t voice_unison_oscs_per_voice(uint8_t n, bool stereo);
+uint8_t voice_unison_copy_osc(uint8_t i, uint8_t n, bool stereo);
+uint8_t voice_unison_head_osc(uint8_t group, uint8_t n, bool stereo); /* 0: L, 1: R */
+uint8_t voice_unison_copies_mask(uint8_t n, bool stereo);    /* bit = osc */
+uint8_t voice_unison_heads_mask(uint8_t n, bool stereo);     /* 0 when n <= 1 */
+
+/* The factor the build and the live push multiply base_amp by for the amp
+ * CONST of cluster osc `group` (0: L, 1: R) under n effective copies: 1.0 for
+ * stereo off or n < 2, else the pair's share of the centred cluster's level.
+ * For a caller that writes amp CONST itself on a unison synth (the stutter
+ * gate): writing level * this per head keeps the pair's L/R balance. Pure,
+ * no AMY access; any task, render-path safe. */
+float voice_unison_osc_level(const voice_unison_t *u, uint8_t group, uint8_t n);
 
 /* Core-0 / UI-task only; pushes through amy_helpers (never amy_queue_lock). */
 void voice_build_wave(const voice_wave_cfg_t *cfg);
 
-/* Re-send only the per-copy unison fields (freq/pan/amp CONST, trigger_phase)
- * to a synth built by voice_build_wave() with this same count - a live
- * detune/spread/blend turn without a rebuild (mirrors fm_voice_push_live).
- * On the headed layout the copies take detune and blend and the two heads take
- * the spread on their pan CONST; on the engine layout each cluster osc takes
- * its unison fields, group gain, pan and start phase. A count or layout change needs a
- * rebuild instead (the pool shape moves). base_amp = the build's
- * osc0_amp_const (the heads carry it on the headed layout, so the copies
- * ignore it). No-op when count <= 1. Known interaction: an
- * LFO PAN target writes pan CONST 0.5 on the coupled oscs and flattens the
- * spread until the next push. Core-0 / UI-task only. */
+/* Re-send only the unison fields (unison count/spacing/offset/blend, pan and
+ * amp CONST, and on a stereo pair trigger_phase) to the cluster oscs of a
+ * synth built by voice_build_wave() with this same count and stereo flag - a
+ * live detune/interval/shift/spread/blend turn without a rebuild (mirrors
+ * fm_voice_push_live). A bypass, count or stereo change needs a rebuild
+ * instead (the pool shape moves). base_amp = the build's osc0_amp_const.
+ * No-op under bypass or when count <= 1. Known interaction: an LFO PAN target writes pan CONST 0.5 on
+ * the coupled oscs and flattens the spread until the next push. Core-0 /
+ * UI-task only. */
 void voice_push_unison_live(uint8_t synth, const voice_unison_t *u,
                             float base_amp);
 
@@ -266,7 +270,7 @@ void voice_dist_clamp(seq_dist_t *d);
 void voice_apply_dist(uint8_t synth, const seq_dist_t *d);
 
 /* Same as voice_apply_dist, addressed to one voice-relative osc instead of
- * the base osc - the SILENT-head layout carries the stage on each head. */
+ * the base osc - a unison voice carries the stage on each cluster osc. */
 void voice_apply_dist_osc(uint8_t synth, uint8_t osc, const seq_dist_t *d);
 
 /* One distortion-target stepper tick, the PATCH-mode fallback. Computes the
@@ -314,8 +318,9 @@ void voice_apply_native_lfo(uint8_t synth, const seq_lfo_t *lfo, uint16_t bpm);
  * of the reserved LFO carrier (wobble = carrier+1). Two masks select where each
  * target's COEF_MOD lands (bit n = osc n): pitch_mask takes the PITCH and SCAN
  * rails, voice_mask the FILTER, AMP, PAN and DIST rails. They are the same mask
- * on a flat layout; the SILENT-head layout splits them, since the copies carry
- * the pitch and the heads carry the per-voice stages. Every osc in either mask
+ * on the wave build, unison cluster oscs included, which carry both the pitch
+ * and the per-voice stages; a topology whose sounding oscs differ from the
+ * oscs carrying those stages splits them. Every osc in either mask
  * gets mod_source and a full sibling clear. Derive the masks from
  * seq_track_voice_layout() / sequencer_core_lfo_native_layout(), never hardcode
  * osc indices. The carrier pair itself is configured by

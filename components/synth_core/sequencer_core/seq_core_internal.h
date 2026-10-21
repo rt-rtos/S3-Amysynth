@@ -35,13 +35,14 @@ extern uint32_t sequencer_ticks(void);
 /* ── Shared step math (single owners) ── */
 
 /* Which step the playhead sits on for `layer` at `ticks`: position within the
- * bar divided by ticks-per-step. Returns 0 for an empty (num_steps == 0) layer;
+ * layer's loop (counted from the bar baseline, sequencer_core_loop_pos)
+ * divided by ticks-per-step. Returns 0 for an empty (num_steps == 0) layer;
  * callers that must SKIP such a layer keep their own num_steps guard. */
 static inline uint8_t seq_playhead_step(const seq_layer_t *layer, uint32_t ticks)
 {
     uint32_t bar_ticks = (uint32_t)layer->num_steps * SEQ_TICKS_PER_STEP;
     if (bar_ticks == 0) return 0;
-    return (uint8_t)((ticks % bar_ticks) / SEQ_TICKS_PER_STEP);
+    return (uint8_t)(sequencer_core_loop_pos(ticks, bar_ticks) / SEQ_TICKS_PER_STEP);
 }
 
 /* Swing: delay ODD 16th-steps by swing_pct% of one step so off-beats land late.
@@ -78,8 +79,8 @@ static inline uint32_t seq_step_gate(const seq_layer_t *layer, uint8_t step)
     return gate;
 }
 
-/* Ticks in one loop of `track`: the layer's bar, times the row's repeat rate
- * (a repeat_rate=N row fires every N bars). */
+/* Ticks in one period of `track`: the layer's loop, times the row's repeat
+ * rate (a repeat_rate=N row plays its first loop and is silent for N-1). */
 static inline uint32_t seq_track_period(const seq_layer_t *layer, uint8_t track)
 {
     uint32_t rr = (layer->repeat_rate[track] >= SEQ_REPEAT_2)
@@ -140,6 +141,18 @@ typedef struct {
     bool               apply_at_bar;
 } chord_progression_t;
 
+/* Editor live-preview slot; seqlock and contract at s_preview in seq_core_lfo.c. */
+typedef struct {
+    bool         active;
+    uint8_t      li, tr;
+    bool         filter_valid;
+    seq_filter_t filter;
+    bool         lfo_valid;
+    seq_lfo_t    lfo;
+    bool         lfo2_valid;
+    seq_lfo_t    lfo2;
+} melodic_preview_t;
+
 /* ── Shared state — defined (non-static) in the owning .c file ───────── */
 
 /* Owned by seq_core_state.c. Storage is behind a pointer so
@@ -170,6 +183,7 @@ extern uint8_t        s_next_melodic_synth;
 extern uint16_t       s_melodic_patch;
 extern volatile bool  s_layers_mutating;      /* guards delete_layer's compaction vs. the tick */
 extern volatile bool  s_transport_mutating;   /* guards set_playing()'s transition vs. the tick */
+extern bool           s_silent_run;           /* this run started silent (sequencer_core_set_silent_start) */
 
 /* Owned by seq_core_engine.c */
 extern uint8_t        s_cached_step[];
@@ -193,7 +207,7 @@ extern uint8_t        s_voices_applied[][SEQ_TRACKS];
 extern uint16_t       s_bpm;
 extern quantizer_state_t s_quantizer;
 
-/* Owned by seq_core_editors.c */
+/* Owned by seq_core_lfo.c */
 extern float          s_lfo_phase[][SEQ_TRACKS];
 extern float          s_lfo_hz[][SEQ_TRACKS];
 extern float          s_lfo_rnd[][SEQ_TRACKS];
@@ -205,6 +219,9 @@ extern uint32_t       s_lfo_rng_state;
 extern uint8_t        s_lfo_synth[][SEQ_TRACKS];
 extern uint8_t        s_lfo2_synth[][SEQ_TRACKS];
 #endif
+/* The active editor-preview slot and its seqlock generation (odd = writer mid-update). */
+extern melodic_preview_t s_preview;
+extern volatile uint32_t s_preview_gen;
 
 /* Owned by seq_core_progression.c */
 extern chord_progression_t s_prog;
@@ -216,7 +233,7 @@ extern volatile bool  s_prog_apply_pending;
 extern volatile bool  s_prog_apply_immediate;
 
 /* Owned by seq_core_trig.c */
-extern uint32_t s_layer_loop_count[];              /* MAX_LAYERS   */
+extern int32_t  s_layer_loop_count[];              /* MAX_LAYERS   */
 extern uint8_t  s_layer_last_step[];                /* MAX_LAYERS, 0xFF = unseen */
 extern bool     s_track_last_played[][SEQ_TRACKS];  /* MAX_LAYERS x SEQ_TRACKS */
 
@@ -291,7 +308,7 @@ seq_env_t *seq_layer_env1(uint8_t layer_idx, uint8_t track);
 voice_params_t *seq_track_vp(uint8_t layer_idx, uint8_t track);
 
 /* LFO / push layout for one melodic track: sequencer_core_voice_layout() for
- * the row's patch and AS-BUILT unison copy count. Every per-track
+ * the row's patch, AS-BUILT unison copy count and stereo flag. Every per-track
  * osc-addressed consumer (LFO wiring, BPM refresh, filter and dist pushes)
  * resolves through this. Returns false for rows that are not wave-topology
  * or out of range. */
@@ -300,10 +317,32 @@ bool seq_track_voice_layout(uint8_t layer_idx, uint8_t track,
 /* Effective unison copy count the track's synth is built with (1 = none). */
 uint8_t seq_track_unison_copies(uint8_t layer_idx, uint8_t track);
 
-/* From seq_core_editors.c */
+/* From seq_core_env.c */
 void sequencer_configure_melodic_envelope_track(uint8_t layer_idx, uint8_t track);
 void sequencer_configure_melodic_envelope1_track(uint8_t layer_idx, uint8_t track);
+/* One EG1 breakpoint set to every osc of the row that can carry a filter-env rail. */
+void melodic_eg1_push(uint8_t layer_idx, uint8_t track, const seq_env_t *env);
+
+/* From seq_core_filter.c */
 void sequencer_configure_melodic_filter_track(uint8_t layer_idx, uint8_t track);
+/* One filter config (stored or an editor's scratch) to a row's AMY synth. */
+void melodic_filter_apply(uint8_t layer_idx, uint8_t track, const seq_filter_t *f);
+/* A committed filter edit on a stored row, re-emitting a wavetable row. */
+void melodic_filter_commit_track(uint8_t layer_idx, uint8_t track);
+
+/* From seq_core_editors.c */
+/* The row's SILENT-head osc mask, 0 for a flat (broadcast / base osc) layout. */
+uint8_t melodic_heads_mask(uint8_t layer_idx, uint8_t track);
+/* EG routing depths: into a pending event, DRIVE/MIX alone to osc 0, SCAN per osc in `mask`. */
+void filter_push_eg_depths(amy_event *e, bool own, const seq_filter_t *f);
+void dist_push_eg_depths(uint8_t synth, bool own, const seq_filter_t *f);
+void scan_push_eg_depths(uint8_t synth, uint8_t mask, bool own,
+                         const seq_filter_t *f);
+/* Run `push` on every row reading (layer_idx, track)'s voice block. */
+void melodic_push_peers(uint8_t layer_idx, uint8_t track,
+                        void (*push)(uint8_t, uint8_t));
+/* Log tag naming the block a row's commit landed in ("layer" / "track"). */
+const char *melodic_vp_where(uint8_t layer_idx, uint8_t track);
 
 /* Resting wavetable scan position for a filter block's EG -> SCN routing:
  * 0.0 when any routed depth is positive, 1.0 when every one is negative,
@@ -320,7 +359,13 @@ float seq_scan_rest(const seq_filter_t *f);
  * (v - 1) / 63. A step >= SEQ_MAX_STEPS skips the lock. Pure read of `layer`;
  * any Core-0 task that may read s_layers (emit, trig pump). */
 float seq_track_frame_duty(const seq_layer_t *layer, uint8_t track, uint8_t step);
+
+/* From seq_core_dist.c */
 void sequencer_configure_melodic_dist_track(uint8_t layer_idx, uint8_t track);
+/* One dist block (stored or an editor's scratch) where the row's layout carries the stage. */
+void melodic_dist_apply(uint8_t layer_idx, uint8_t track, const seq_dist_t *d);
+
+/* From seq_core_lfo.c */
 void sequencer_configure_melodic_lfo(uint8_t layer_idx, uint8_t rows);
 void melodic_lfo_refresh_native_freq(void);
 /* Release every row's shared-LFO references of a layer (s_lfo_synth and
@@ -331,6 +376,20 @@ void melodic_lfo_bank_drop_layer(uint8_t layer_idx);
  * for a row whose synth goes away (layer shrink). Sends no AMY event; UI task
  * (the layers applier). No-op without CONFIG_SEQ_LFO_SHARED. */
 void melodic_lfo_bank_drop_row(uint8_t layer_idx, uint8_t track);
+/* Re-point the preview slot at (li, tr); caller holds the write side (odd s_preview_gen). */
+void preview_slot_touch(uint8_t li, uint8_t tr);
+/* An explicit LFO1 struct to the row's engine state, store untouched. */
+void melodic_lfo_apply_runtime(uint8_t layer_idx, uint8_t track,
+                               const seq_lfo_t *lfo);
+/* The LFO (idx 0 = LFO1, 1 = LFO2) the row runs: preview, else stored while authored, else disabled. */
+seq_lfo_t melodic_effective_lfo_idx(uint8_t layer_idx, uint8_t track,
+                                    uint8_t idx);
+/* LFO2 open on this row: authored, or on an open LFO2 editor page. */
+bool melodic_lfo2_open(uint8_t layer_idx, uint8_t track);
+/* Runtime re-push of the row's effective LFO1 / LFO2; unwire LFO2 from slot 0. */
+void melodic_reapply_lfo_track(uint8_t layer_idx, uint8_t track);
+void melodic_reapply_lfo2_track(uint8_t layer_idx, uint8_t track);
+void melodic_unwire_lfo2_track(uint8_t layer_idx, uint8_t track);
 
 /* From seq_core_tempo.c */
 uint16_t sequencer_clamp_bpm(uint16_t b);
@@ -346,8 +405,6 @@ static inline float seq_lfo_sw_hz(note_div_t rate, uint16_t bpm)
     return (hz > SEQ_LFO_SW_MAX_HZ) ? SEQ_LFO_SW_MAX_HZ : hz;
 }
 float    lfo_next_rand(void);
-/* Software-LFO AMP write, addressed per sequencer_core_patch_amp_osc(). */
-void     lfo_push_amp(uint8_t synth_id, uint16_t patch, float amp);
 void     lfo_push_target_neutral(uint8_t synth_id, uint16_t patch,
                                  lfo_target_t target);
 

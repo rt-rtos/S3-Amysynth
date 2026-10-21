@@ -102,6 +102,13 @@ void seq_layer_defaults(seq_layer_type_t type, seq_layer_t *L)
     }
     voice_params_init_defaults(&L->vp_layer);
     /* vp_src[] is TRACK (0) from the memset: every row reads its own block. */
+    /* Unison stereo falls back on: a file without the flag predates it and
+     * played the L/R pair. Shift falls back centred; bypass and interval
+     * fall back 0 from the memset. */
+    for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
+        L->track_unison[t].stereo = 1u;
+        L->track_unison[t].shift  = 100u;
+    }
 
     L->type       = type;
     L->num_steps  = SEQ_STEPS;

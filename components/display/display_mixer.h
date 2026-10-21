@@ -8,10 +8,12 @@ extern "C" {
 #endif
 
 /* ── Mixer screen ────────────────────────────────────────────────────────
- * Header in the yellow band (title, divider at y 15), then up to
+ * Header in the yellow band (title, the transport clock at the right of
+ * the title, divider at y 15), then up to
  * MIXER_VIS_ROWS rows of 8 px below the seam: the row name
  * (a drum-layer track row prints its role label instead), a level bar whose
- * fill is the fader position, and an M cell: "M" filled for the mixer's own
+ * fill is the fader position, with the row's link group letter XORed over
+ * its right end, and an M cell: "M" filled for the mixer's own
  * mute, a plain "m" when only the source's own mute is set. Two 4-char quick
  * cells follow the M cell (values only; the page puts the selected cell's
  * label in the title); a settings row shows its value text where the
@@ -49,10 +51,12 @@ typedef struct {
     uint8_t has_mute;
     char    q1[5], q2[5]; /* quick cells, up to 4 chars, "" none */
     char    text[8];      /* settings rows: value text in place of the bar */
+    uint8_t link;         /* MIXER_LINK_NONE or the group, shown as A..C in the bar */
 } mixer_view_row_t;
 
 typedef struct {
     char    title[12];
+    char    clock[9];         /* transport clock text, "" while stopped */
     uint8_t row_count;        /* rows filled, <= MIXER_VIS_ROWS */
     uint8_t cursor;           /* index into rows[], MIXER_NO_CURSOR none */
     uint8_t focus;            /* MIXER_FOCUS_* */

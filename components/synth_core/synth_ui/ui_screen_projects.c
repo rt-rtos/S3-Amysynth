@@ -60,14 +60,21 @@ static char    s_status_msg[MENU_VALUE_LEN];
 
 /* Deferred Load/Save request, executed by projects_menu_service() on the
  * synth_ui task (the s_layers applier, sequencer_core.h). Save defers too,
- * keeping project flash I/O off the input path. */
-typedef enum { PREQ_NONE = 0, PREQ_LOAD, PREQ_SAVE, PREQ_LOAD_TPL } proj_req_t;
-static volatile proj_req_t s_req = PREQ_NONE;   /* set last: publishes the fields below */
-static uint8_t             s_req_slot     = 0;   /* template index for PREQ_LOAD_TPL */
-static bool                s_req_quiet    = false; /* no row status: not from the menu */
-static uint8_t             s_req_idx      = 0;
-static bool                s_req_has_name = false;
-static char                s_req_name[PROJECT_NAME_LEN];
+ * keeping project flash I/O off the input path. Two tasks write it (menu
+ * input, synth_ui_projects_request_template), so it travels as one request
+ * by value in a depth-1 queue: a full queue is the busy signal, and the
+ * drain never sees a half-written request. */
+typedef enum { PREQ_LOAD = 0, PREQ_SAVE, PREQ_LOAD_TPL } proj_req_kind_t;
+typedef struct {
+    proj_req_kind_t kind;
+    uint8_t         slot;       /* template index for PREQ_LOAD_TPL */
+    uint8_t         idx;        /* acted-on menu row */
+    bool            quiet;      /* no row status: not from the menu */
+    bool            has_name;
+    char            name[PROJECT_NAME_LEN];
+} proj_req_t;
+
+static QueueHandle_t s_req_q = NULL;
 
 static void set_status(uint8_t idx, const char *msg)
 {
@@ -353,9 +360,9 @@ void projects_menu_edit_value(uint8_t idx, int delta)
 bool projects_menu_handle_click(uint8_t idx)
 {
     if (!projects_menu_item_is_value(idx)) return false;
-    /* A queued load/save is still in flight: ignore clicks so a second request
-     * cannot clobber the pending one's fields. */
-    if (s_req != PREQ_NONE) return seq_state.menu_editing;
+    /* A queued load/save is still in flight (or the queue does not exist):
+     * ignore clicks, as a second request has nowhere to go. */
+    if (s_req_q == NULL || uxQueueMessagesWaiting(s_req_q) != 0) return seq_state.menu_editing;
 
     if (s_tpl_list) {
         if (idx == 0) {
@@ -363,9 +370,8 @@ bool projects_menu_handle_click(uint8_t idx)
             return false;
         }
         if (!seq_state.menu_editing) return true;   /* show the Load action */
-        s_req_slot = (uint8_t)(idx - 1);
-        s_req_idx  = idx;
-        s_req      = PREQ_LOAD_TPL;
+        proj_req_t r = { .kind = PREQ_LOAD_TPL, .slot = (uint8_t)(idx - 1), .idx = idx };
+        if (xQueueSend(s_req_q, &r, 0) != pdTRUE) return seq_state.menu_editing;
         set_status(idx, "LOAD..");
         return false;
     }
@@ -405,34 +411,34 @@ bool projects_menu_handle_click(uint8_t idx)
     }
 
     switch (s_action) {
-        case PA_LOAD:
+        case PA_LOAD: {
             if (!info->used || corrupt) {
                 set_status(idx, "NO PROJ");
                 s_armed = false;
                 return false;
             }
-            s_req_slot = slot;
-            s_req_idx  = idx;
-            s_req      = PREQ_LOAD;
+            proj_req_t r = { .kind = PREQ_LOAD, .slot = slot, .idx = idx };
+            if (xQueueSend(s_req_q, &r, 0) != pdTRUE) return seq_state.menu_editing;
             set_status(idx, "LOAD..");
             s_armed = false;
             return false;
+        }
 
-        case PA_SAVE:
+        case PA_SAVE: {
             if (info->used && !s_armed) {
                 s_armed = true;
                 return true;   /* second click required to overwrite */
             }
-            s_req_slot     = slot;
-            s_req_idx      = idx;
-            s_req_has_name = info->used;
+            proj_req_t r = { .kind = PREQ_SAVE, .slot = slot, .idx = idx,
+                             .has_name = info->used };
             if (info->used) {
-                snprintf(s_req_name, sizeof(s_req_name), "%s", info->name);
+                snprintf(r.name, sizeof(r.name), "%s", info->name);
             }
-            s_req = PREQ_SAVE;
+            if (xQueueSend(s_req_q, &r, 0) != pdTRUE) return seq_state.menu_editing;
             set_status(idx, "SAVE..");
             s_armed = false;
             return false;
+        }
 
         case PA_REN:
             if (!info->used || corrupt) {
@@ -492,33 +498,29 @@ static void report_load(uint8_t idx, bool ok, bool quiet)
  * layers-applier task, then rewrites the acted-on row's inline status. */
 void projects_menu_service(void)
 {
-    if (s_req == PREQ_NONE) return;
+    proj_req_t r;
+    if (s_req_q == NULL || xQueueReceive(s_req_q, &r, 0) != pdTRUE) return;
 
-    if (s_req == PREQ_LOAD) {
-        report_load(s_req_idx, project_snapshot_load(s_req_slot), false);
-    } else if (s_req == PREQ_LOAD_TPL) {
-        report_load(s_req_idx, project_templates_load(s_req_slot), s_req_quiet);
+    if (r.kind == PREQ_LOAD) {
+        report_load(r.idx, project_snapshot_load(r.slot), false);
+    } else if (r.kind == PREQ_LOAD_TPL) {
+        report_load(r.idx, project_templates_load(r.slot), r.quiet);
     } else {
-        bool ok = project_snapshot_save(s_req_slot,
-                                        s_req_has_name ? s_req_name : NULL);
-        set_status(s_req_idx, ok ? "SAVED" : "SAVE FAIL");
+        bool ok = project_snapshot_save(r.slot, r.has_name ? r.name : NULL);
+        set_status(r.idx, ok ? "SAVED" : "SAVE FAIL");
         s_dirty = true;
     }
-    s_req_quiet = false;
-    s_req = PREQ_NONE;
 }
 
 bool synth_ui_projects_request_template(size_t i)
 {
-    if (i >= project_templates_count() || s_req != PREQ_NONE) return false;
-    s_req_slot  = (uint8_t)i;
-    s_req_quiet = true;
-    s_req       = PREQ_LOAD_TPL;
-    return true;
+    if (i >= project_templates_count() || s_req_q == NULL) return false;
+    proj_req_t r = { .kind = PREQ_LOAD_TPL, .slot = (uint8_t)i, .quiet = true };
+    return xQueueSend(s_req_q, &r, 0) == pdTRUE;
 }
 
 /* File imports (synth_ui_projects_request_import, synth_ui.h): one request
- * by value in a depth-1 queue, separate from the menu's s_req. */
+ * by value in a depth-1 queue, separate from the menu's s_req_q. */
 typedef struct {
     uint8_t                *img;
     size_t                  len;
@@ -533,6 +535,10 @@ static QueueHandle_t s_import_q = NULL;
 
 void projects_import_init(void)
 {
+    if (s_req_q == NULL) {
+        s_req_q = xQueueCreate(1, sizeof(proj_req_t));
+        if (s_req_q == NULL) ESP_LOGW(TAG, "request queue alloc failed");
+    }
     if (s_import_q != NULL) return;
     s_import_q = xQueueCreate(1, sizeof(proj_import_req_t));
     if (s_import_q == NULL) ESP_LOGW(TAG, "import queue alloc failed");

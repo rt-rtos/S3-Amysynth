@@ -35,6 +35,13 @@ uint32_t sequencer_core_next_bar_tick(void)
     return (t / SEQ_TICKS_PER_BAR + 1u) * SEQ_TICKS_PER_BAR;
 }
 
+uint32_t sequencer_core_next_period_tick(uint32_t period)
+{
+    if (!s_playing || period == 0) return 0;
+    uint32_t t = sequencer_ticks();
+    return t + period - sequencer_core_loop_pos(t, period);
+}
+
 uint32_t sequencer_core_tick_to_amy_ms(uint32_t tick)
 {
     uint32_t now = amy_sysclock();
@@ -47,6 +54,19 @@ uint32_t sequencer_core_tick_to_amy_ms(uint32_t tick)
 uint32_t sequencer_core_bar_baseline_tick(void)
 {
     return s_bar_baseline;
+}
+
+int32_t sequencer_core_play_ticks(void)
+{
+    return (int32_t)(sequencer_ticks() - s_bar_baseline);
+}
+
+uint32_t sequencer_core_loop_pos(uint32_t tick, uint32_t period)
+{
+    if (period == 0) return 0;
+    /* Reduce both terms first: in the pre-roll tick - baseline wraps by 2^32,
+     * which is not a multiple of period. */
+    return (tick % period + period - s_bar_baseline % period) % period;
 }
 
 _Atomic uint32_t s_freeze_tick = 0;
@@ -456,6 +476,14 @@ void seq_resolve_layer_rows(uint8_t layer_idx, uint8_t root,
 
 /* ── Low-level AMY helpers ───────────────────────────────────────────── */
 
+/* Inverse of sequencer_core_loop_pos: the AMY tick for a periodic entry that
+ * fires at loop position `pos`. One-shots (period 0) pass through. */
+static inline uint32_t seq_loop_tick(uint32_t pos, uint32_t period)
+{
+    if (period == 0) return pos;
+    return (pos + s_bar_baseline % period) % period;
+}
+
 void sequencer_emit_clear_tag(uint32_t tag)
 {
     amy_event *e = amy_helpers_event_begin();
@@ -537,7 +565,7 @@ void sequencer_emit_step(uint8_t layer_idx, uint8_t track, uint8_t step)
     sequencer_emit_clear_tag(tag_on);
     /* The wavetable frame rides the note-on only (seq_track_frame_duty). */
     amy_helpers_note_send_duty(synth, note, note_velocity,
-                               tag_on, tick_on, period,
+                               tag_on, seq_loop_tick(tick_on, period), period,
                                seq_track_frame_duty(layer, track, step));
     /* PCM drums get no scheduled note-off: pcm_note_off() is a hard phase-jump
      * to the sample end, so the gate would truncate even the natural tail. The
@@ -550,7 +578,7 @@ void sequencer_emit_step(uint8_t layer_idx, uint8_t track, uint8_t step)
     sequencer_emit_clear_tag(tag_off);
     if (layer->type != SEQ_LAYER_DRUM || s_drum_engine != SEQ_DRUM_PCM) {
         amy_helpers_note_send(synth, note, 0.0f,
-                            tag_off, tick_off, period);
+                            tag_off, seq_loop_tick(tick_off, period), period);
     }
 }
 
@@ -854,6 +882,27 @@ void sequencer_core_oom_service(void)
  * bookkeeping arrays. Sole writer is sequencer_core_set_playing(). */
 volatile bool s_transport_mutating = false;
 
+static bool s_silent_start = false;
+/* s_silent_start as latched by the last Play, so a settings change applies
+ * from the next Play and never to the run in progress. */
+bool s_silent_run = false;
+
+void sequencer_core_set_silent_start(bool silent)
+{
+    s_silent_start = silent;
+}
+
+bool sequencer_core_get_silent_start(void)
+{
+    return s_silent_start;
+}
+
+bool sequencer_core_in_silent_preroll(void)
+{
+    return s_playing && s_silent_run
+        && (int32_t)(sequencer_ticks() - s_bar_baseline) < 0;
+}
+
 void sequencer_core_set_playing(bool p)
 {
     if (s_playing == p) return;
@@ -862,15 +911,22 @@ void sequencer_core_set_playing(bool p)
     s_transport_mutating = true;
     s_playing = p;
     if (s_playing) {
-        /* Anchor the bar counter to the NEXT absolute bar boundary, not the
-         * play-press tick: AMY fires periodic events on tick % period, so
-         * pattern loops are phase-locked to the absolute tick grid, and
-         * rounding up makes progression bar lines coincide with step 0. The
-         * partial pre-boundary stretch counts as bar 0 (bars_elapsed clamps),
-         * so the first chord keeps its full duration. */
+        /* The baseline is the NEXT absolute bar line, not the play-press tick.
+         * Every periodic source counts its loop from it (sequencer_core_loop_pos
+         * / seq_loop_tick), so step 0 of every layer, the arp cycle start and
+         * the drop loop start land on progression bar 0. Before the bar line
+         * the progression counts bar 0 (bars_elapsed clamps), so the first
+         * chord keeps its full duration, and each source plays the tail of
+         * its loop. */
         uint32_t t = sequencer_ticks();
         s_bar_baseline = ((t + SEQ_TICKS_PER_BAR - 1) / SEQ_TICKS_PER_BAR)
                          * SEQ_TICKS_PER_BAR;
+        /* Silent start: AMY holds every periodic entry until the baseline
+         * (set before the resync below re-emits them); the trig service holds
+         * decorated fires the same way. */
+        s_silent_run = s_silent_start;
+        if (s_silent_run) sequencer_set_periodic_start(s_bar_baseline);
+        else              sequencer_clear_periodic_start();
         s_prog.entry_start_bar = 0;
         s_prog.current = 0;
         /* The progression restarts from entry 0, but the layers/arp may still
@@ -1066,8 +1122,8 @@ void sequencer_core_arp_emit_note(uint32_t tag_base, uint8_t midi_note,
      * the arp's repeating schedule while paused, or an arp refresh during a
      * pause (param edit, progression apply, project load) leaves the arp
      * playing alone. sequencer_core_set_playing() marks the arp dirty on
-     * resume; periodic events are phase-locked to the absolute tick grid, so
-     * the rebuild lands back in sync. */
+     * resume; periodic events count their loop from the bar baseline, so the
+     * rebuild lands back in sync. */
     if (!s_playing) return;
 
     /* Never let an out-of-range tag reach AMY: sequences[] is sized to
@@ -1085,9 +1141,9 @@ void sequencer_core_arp_emit_note(uint32_t tag_base, uint8_t midi_note,
     if (tick_on  == 0) tick_on  = 1;
 
     amy_helpers_note_send(SEQ_ARP_SYNTH, midi_note, velocity,
-                        tag_base, tick_on, period);
+                        tag_base, seq_loop_tick(tick_on, period), period);
     amy_helpers_note_send(SEQ_ARP_SYNTH, midi_note, 0.0f,
-                        tag_base + 1, tick_off, period);
+                        tag_base + 1, seq_loop_tick(tick_off, period), period);
 }
 
 void sequencer_core_arp_clear_note(uint32_t tag_base)
@@ -1102,8 +1158,8 @@ void sequencer_core_drop_emit_note(uint8_t synth, uint32_t tag_base,
                                    uint32_t period)
 {
     /* Transport-slaved as the arp's emit: sequencer_core_set_playing() marks
-     * the drop dirty on resume, and the loop is phase-locked to the absolute
-     * tick grid like every periodic entry. */
+     * the drop dirty on resume, and the loop counts from the bar baseline like
+     * every periodic entry. */
     if (!s_playing) return;
     if (synth != DROP_SYNTH && synth != DROP_SUB_SYNTH) return;
     if (tag_base < SEQ_DROP_TAG_BASE || tag_base + 1 > SEQ_DROP_TAG_MAX) {
@@ -1118,8 +1174,10 @@ void sequencer_core_drop_emit_note(uint8_t synth, uint32_t tag_base,
     if (tick_on  == 0) tick_on  = 1; /* tick 0 is reserved (clear) */
     if (tick_off == 0) tick_off = 1;
 
-    amy_helpers_note_send(synth, midi_note, velocity, tag_base + 1, tick_on, period);
-    amy_helpers_note_send(synth, midi_note, 0.0f, tag_base, tick_off, period);
+    amy_helpers_note_send(synth, midi_note, velocity, tag_base + 1,
+                          seq_loop_tick(tick_on, period), period);
+    amy_helpers_note_send(synth, midi_note, 0.0f, tag_base,
+                          seq_loop_tick(tick_off, period), period);
 }
 
 void sequencer_core_drop_clear_note(uint32_t tag_base)

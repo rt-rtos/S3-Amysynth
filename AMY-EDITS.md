@@ -45,7 +45,7 @@ mindmap
       Voice-list clamp
     c3{{"`**Render path**`"}}
       Oscillator arithmetic
-      Unison cluster
+      Unison cluster, upstream PR
     c4{{"`**Karplus-Strong**`"}}
       Excitation shaping
     c5{{"`**Accessors and API**`"}}
@@ -58,6 +58,8 @@ mindmap
       Sequencer tag count
     c6{{"`**Behaviour fixes**`"}}
       Periodic-entry horizon
+      Periodic-entry start
+      Synth-scoped note cut
       Sequencer edit cost
       reset_osc keeps the bus
       Zero-level FM operator is off
@@ -111,6 +113,10 @@ Local Karplus-Strong code removed at the v1.2.200 sync. #1204 has no counterpart
 - KS dispersion stages and tuning-stage bypass: `ks_loop_set()` / `ks_loop_get()`, `ks_ap_state`, `ks_render_tuned()`, the index loop in `render_ks`, and the `amy.h` copy of `allpass1_chain` / `FILT_MUL_SS` (both are back in filters.c only).
 - KS note-off release knob: `ks_release_set()` / `ks_release_get()`, `ks_note_off()`.
 - Local KS ring pool: `ks_init()` / `ks_deinit()`, `ks_alloc_row()`, `ks_index`, `ks_row_owner`, `KS_NO_ROW`, `amy_config_t.ram_caps_ks`.
+
+Removed 2026-10-20 with the local unison cluster. The upstream PR's copies render through the generic `render_lut`, so nothing called these:
+
+- Size-specialised linear kernels: `render_lut_sized()` and `render_lut_11` .. `render_lut_6` (`RENDER_LUT_LIN_SIZED`, 2048..64-entry tables, `AMY_NOINLINE`; 32 -> 28 instructions per loop), byte-identical to `render_lut` in host-sim saw and pulse sweeps. The cubic family (`render_lut_cub_sized`, #1171) stays: the PR's copy 0 uses it.
 
 ## Active local edits
 
@@ -172,66 +178,34 @@ allocates its osc at play time, so a reset aimed at a never-allocated osc of
 a bus > 0 synth now allocates it. Not posted upstream; upstream
 `patches_event_has_voices()` (v1.2.200) still leaves the reset osc on bus 0.
 
-### `amy.h` + `amy.c` + `oscillators.c` + `patches.c` + `api.c` — per-osc unison cluster (experimental, dev-only)
+### `amy.h` + `amy.c` + `oscillators.c` + `parse.c` + `patches.c` + `api.c` + `midi_mappings.c` — per-osc unison cluster (upstream PR, `feat/unison-cluster`)
 
-An exploratory engine-side unison, kept to settle by measurement whether
-many-copy unison on this target is bound by per-osc bookkeeping or by LUT
-arithmetic. Not upstream-shaped: no wire letter (struct events only, and the
-readable event print carries the fields while the wire form drops them),
-no test coverage, and the parameter model may change. The app-side layouts
-it is measured against live in `components/synth_core` (`voice_unison_t`).
+Vendored ahead of merge: the upstream PR draft "unison: one osc renders a
+cluster of detuned copies of its LUT wave" (branch `feat/unison-cluster`, two
+commits on v1.2.200), merged into the vendor base unchanged. Not posted yet.
 
-One osc renders `unison_count` detuned copies of its LUT wave into its own
-buffer (`unison_prepare()` + a per-copy loop in `render_lpf_lut`,
-`render_triangle`, `render_sine`, `render_wavetable`); envelope, filter,
-distortion, pan and every mod rail stay one per osc. Copy `i` sits at
-`logfreq + unison_offset + i * unison_spacing` (octaves) off the osc's
-per-block `logfreq`, so NOTE, BEND, portamento and the pitch rails move the
-whole cluster; `unison_blend` tapers the outer copies by position within the
-cluster's own span and the weights are power-normalized. Copies 1..n-1 keep
-their phase in `synthinfo.unison_phase[]` and respread from copy 0 at every
-note-on (`unison_note_on()`): copy `i` at `i * unison_phase_step` cycles, or
-at `i / unison_count` when the step is 0 (the default). The step lets two
-clusters with different counts interleave on one phase grid (the app's odd
-unison counts). Deltas `UNISON_COUNT/SPACING/OFFSET/BLEND/PHASE_STEP` sit
-above `NOTE_SOURCE_CHANNEL` (the ids below are auto-numbered and never cross
-the wire). `play_delta` clamps the count to 1..`AMY_UNISON_MAX` (8) and the
-blend to 0..1. Count 1 with offset 0 (the default) is the previous single
-render, one step and one amp pair per renderer; count 1 with an offset renders
-its one copy at that offset (a two-copy unison is two such clusters). Waves
-without a LUT renderer (PCM, KS, ALGO, partials, noise) ignore the count.
+- A LUT-wave osc (sine, saw, pulse, triangle, wavetable) renders `unison_count` copies at its pitch + `unison_offset` + `i * unison_spacing` octaves, tapered by `unison_blend` and power-normalized; wire letter `C<count>,<spacing>,<offset>,<blend>`.
+- Copies 1..n-1 keep their phases in the `WAVE_KIND_LUT` union member (`unison_phase[]`) and spread evenly over one cycle from copy 0 at note-on; copy 0 keeps the cubic kernel, the others render through the generic `render_lut`.
+- Ids `UNISON_COUNT..UNISON_BLEND` (234-237) follow the upstream ids at the enum tail; `play_delta` clamps the count to 1..`AMY_UNISON_MAX` (8), spacing and offset to +/-4 octaves, blend to 0..1.
 
-The terms that depend only on the cluster parameters - the copy ratios
-`2^(offset + i * spacing)` and the power-normalized weights - live in a
-one-entry cache (`unison_terms`, `unison_terms_fill()`) keyed on (count,
-spacing, offset, blend) and refilled only when a parameter changes, so
-`unison_prepare()` costs one float multiply and one `F2P` per copy per
-block instead of an `exp2_lut` and a soft divide per copy plus a `sqrtf`.
-Copy `i`'s frequency is the caller's `freq` times the ratio rather than
-`freq_of_logfreq(logfreq + d)`; the two differ by the LUT-exp2
-interpolation error only. One entry is correct because the render path is
-single-threaded here (`multicore=0`); a multicore build would need one per
-core.
+The local `MOD_SYNTH_START..PHASE_WARP` block sits after the four ids, so its
+ids moved from 234-236 to 238-240.
+
+Dropped with the earlier local cluster edit:
+
+- `unison_phase_step` (delta `UNISON_PHASE_STEP`), the per-copy note-on phase step.
+- `synthinfo.unison_phase[]` outside the wave-kind union, zeroed for every osc.
+- The `unison_terms` one-entry cache of copy ratios and weights (`unison_terms_fill()`).
+- The `render_lut_sized` copy path in `render_lpf_lut`, and the size-specialised linear kernels behind it (`render_lut_11` .. `render_lut_6`; see "Retired without an upstream equivalent").
+- Delta ids 210-214 above `NOTE_SOURCE_CHANNEL`, and the readable-print-only event fields.
 
 ### `oscillators.c` — render-path arithmetic (2026-09-18 asmdiff probe)
 
 Codegen-driven edits from the per-function probe, each marked in place:
 
-- `render_lpf_lut` renders the detuned unison copies (1..n-1, both pulse
-  edges) through the linear kernel (`render_lut_sized`, below, which falls
-  back to `render_lut`); copy 0 keeps the cubic kernel
-  (`render_lut_cub_sized`), so a plain count-1 saw or pulse is bit-identical
-  to upstream. Local only, with the unison cluster. The saw LUT set
-  is chosen per period so the top harmonic stays under Nyquist, and a host
-  A/B put the cubic-vs-linear difference signal at -49 dB and below
-  (inaudible); `render_lut` is a 32-insn hardware loop, `render_lut_cub` a
-  74-insn plain loop whose spilled counter no flag rescues. On target a
-  cubic copy costs 20.6k cycles per block, a linear one 8.8k; going linear
-  on copy 0 as well would save a further 11.6k per plain saw/pulse osc and
-  was declined to keep plain voices unchanged.
 - Constant divides folded to reciprocal multiplies (`freq * (1.0f / X)`
   with X a compile-time constant): `freq / AMY_SAMPLE_RATE` in
-  `render_fm_sine`, `render_partial`, `unison_prepare`; `freq / mod_sr` in
+  `render_fm_sine`, `render_partial`; `freq / mod_sr` in
   all five `compute_mod_*`. The S3 FPU has no divide, so each was a
   `__divsf3` libcall per block per osc; the product differs from the
   quotient by at most 1 ulp. Not posted upstream; upstream (v1.2.200)
@@ -239,14 +213,6 @@ Codegen-driven edits from the per-function probe, each marked in place:
 - `render_wavetable`: `floor(interp)` -> `floorf(interp)`; the double
   promotion cost `__extendsfdf2` + `floor` + `__fixdfsi` per block per
   wavetable osc. Not posted upstream.
-
-- `render_lut_sized`: size-specialised linear kernels for the detuned unison
-  copies (2048..64-entry tables; the kernels and the dispatcher are
-  `AMY_NOINLINE`, upstream's spelling, so each keeps its own loop;
-  32 -> 28 instructions), byte-identical to the generic linear kernel in
-  host-sim saw and pulse sweeps. Local only: it serves the unison cluster.
-  Its cubic counterpart and the FM-256 kernel are upstream (#1171, see
-  the Dropped table).
 - `render_ks` is `AMY_NOINLINE`. Under LTO it was inlined into
   `render_osc_wave`, whose live state spilled the ring loop: a 45-instruction
   hardware loop with stack traffic in the built ELF. Kept out of line it is
@@ -319,27 +285,34 @@ App consumers: `custompatches/fm_voice.c` (publish/read), `custompatches/fm_grap
 `algorithms.c`, restore `algorithms[synth[osc]->algorithm]` in `render_algo`, drop the
 prototypes/define in `amy.h`; the FM custom-topology mode then has nowhere to render.
 
-### `algorithms.c` - an FM operator with a zero CONST amp coef is off (upstream PR candidate)
+### `amy.c` - a zero CONST amp coef means off in `amp_combine_controls` (upstream PR candidate)
 
-`render_algo` skips an `algo_source` osc whose `amp_coefs[COEF_CONST]` is 0, the
-test `render_osc_wave` applies to every other osc. `amp_combine_controls` skips
-zero coefs, and for CONST the coef is the value, so `a0` on an operator leaves
-only its EG term and the operator renders at unity gain: `render_mod` calls
-`hold_and_modify` without going through `render_osc_wave`. Host render of the
-app's FM voice on algorithm 1, peak block RMS of one note: all six operators at
-CONST 0 gave 699.2, the same as all six at 1.0; with the test it gives 0.0. The
-default voice (four operators at 0) went from 471.3 to 417.5, the value it has
-with those four at 1e-9. Upstream's DX7 patches never send an exact 0
-(`dx7level_to_linear(0)` is 2^(-99/8)), so they are unaffected. A skipped
-operator's envelope still runs from its note-on clock, so clearing the zero
-mid-note resumes at the right envelope position. App consumer:
-`custompatches/fm_voice.c` (operator level 0 and the audition mute). The same
-unity result applies to a mod-source osc with CONST 0 (`compute_mod_scale` also
-calls `hold_and_modify` directly); not changed here. Not posted upstream.
+`amp_combine_controls` skips zero coefs, and for CONST the coef is the value,
+so `a0` leaves only the other terms and the amp maps to unity. `render_osc_wave`
+tests the const before it renders, so an audible osc at amp 0 is silent, but FM
+operators (`render_algo` -> `render_mod`) and mod sources (`compute_mod_scale`)
+reach `hold_and_modify` directly and rendered at full level. One early return
+at the top of `amp_combine_controls` (`coefs[COEF_CONST] == 0 -> 0`) covers
+both callers and `cv_from_osc`, which is what `api.md` (`a`: 0 mutes) and
+`synth.md` promise. This is the shape of the upstream draft
+(draft "a zero CONST amp coef mutes mod and algo sources", branch
+`fix/algo-source-zero-amp` on 1.2.188); until 2026-10-20 the vendored edit was a
+`amp_coefs[COEF_CONST] != 0` term on the `algo_source` test in `render_algo`,
+which left mod sources uncovered. Host A/B (fixed-point, 48 blocks): a SINE
+carrier with a mod source at CONST 0 and an AMP coupling of 1.0 rendered RMS
+17406 under the old guard and now renders byte-identical to the carrier alone
+(RMS 1688.5); an ALGO voice whose only operator is at CONST 0 stays silent; a
+mod source at CONST 0 with zero couplings and a plain carrier are unchanged. A
+source at amp 0 still runs its render (zeros), keeping its phase and `last_amp`
+current. Upstream's DX7 patches never send an exact 0 (`dx7level_to_linear(0)`
+is 2^(-99/8)). App consumers: `custompatches/fm_voice.c` (operator level 0 and
+the audition mute); `voice_config.c`'s dormant wobble modulator and LFO-off
+carrier are parked at CONST 0 with zero couplings, so their voices do not
+change. `interp_partials.c` has its own `p_amp_combine_controls`, untouched.
 
-**Rollback:** drop the `amp_coefs[COEF_CONST] != 0` term from the `algo_source`
-test in `render_algo`; `fm_voice.c` then has to send a nonzero level below
-`MAP_60DB_MIN_LIN` for a silent operator.
+**Rollback:** drop the early return; `fm_voice.c` then has to send a nonzero
+level below `MAP_60DB_MIN_LIN` for a silent operator, and a dormant mod source
+at CONST 0 renders at unity.
 
 ### `algorithms.c` / `amy.c` — PIE block clears in `amy_render()` (local extension of upstream's kernel)
 
@@ -541,6 +514,32 @@ Generic enough for any host that freezes a loop on a beat.
 C-only setters, no wire form. Not posted upstream. Since #1156 (v1.2.166)
 the tick walk indexes `sequences[slot]` (a slot pool with a `tag` field); the
 hook is unchanged apart from that rename.
+
+### `src/sequencer.c` + `src/sequencer.h` - periodic-entry start (upstream PR candidate, with the horizon)
+
+`sequencer_set_periodic_start(tick)` / `sequencer_clear_periodic_start()`,
+the mirror of the horizon: while set, repeating entries do not fire before
+the tick; one-shots are unaffected. `slot_due()` fires a periodic entry only
+inside `[start, horizon)`. The transport's Silent start sets it at Play to
+the bar line the loops count from, so the entries can be put in place at
+once and still begin on the bar line instead of playing the tail of their
+loop first. Expires by comparison; C-only, no wire form.
+
+### `src/amy.h` + `src/amy.c` - `RESET_NOTE_CUT`, synth-scoped hard stop (upstream PR candidate)
+
+A `reset_osc` mask bit (2097152): `play_delta` stops the addressed osc at
+once if it is audible, with `render_osc_wave()`'s silence-stop recipe
+(`SYNTH_INAUDIBLE`, phase 0, filter state reset), and stamps
+`note_off_clock` so the silence-revival rule (an amp or breakpoint coef
+delta revives an inaudible osc with no note-off since its note-on) cannot
+bring it back. A synth-addressed event without a velocity reaches every osc
+of every voice, so `synth=N reset_osc=RESET_NOTE_CUT` cuts one synth's
+releasing notes and leaves the others alone. `RESET_ALL_NOTES` is global
+and leaves `note_off_clock` unset, so the next LFO amp push revives what it
+cut. Mod and algo source oscs keep their role (only audible oscs stop).
+Used by the transport's cut stop after the note-offs. Host check: a Juno
+pad releasing 6 oscs goes to 0 audible after one block; an amp coef delta
+afterwards stays silent; the next note-on plays.
 
 ### `src/sequencer.c` + `src/sequencer.h` — `sequencer_tag_count()` read accessor
 
@@ -792,6 +791,16 @@ component files). Besides the Kconfig flags in the entries above it:
 # AMY Local Edits
 
 Track local, project-specific changes made against the upstream AMY component here.
+
+## 2026-10-20 — Unison cluster: upstream PR shape
+
+- **`src/amy.h`, `amy.c`, `oscillators.c`, `parse.c`, `patches.c`, `api.c`,
+  `midi_mappings.c`**: the local experimental cluster retired and the
+  upstream PR branch `feat/unison-cluster` merged in its place. Conflicts:
+  three files, five blocks, each the PR's unison lines beside the local
+  `phase_warp` / `MOD_SYNTH` lines; both kept, the PR's first. The
+  size-specialised linear kernels (`render_lut_sized`) went with the local
+  cluster, having no caller left. See the active entry.
 
 ## 2026-10-16 — Sequencer: helper, NULL-wire guard, tick re-check
 

@@ -196,14 +196,15 @@ bool clip_bounce_start(uint8_t slot)
     if (slot == CLIP_SLOT_AUTO) slot = clip_player_first_empty_slot();
     if (slot >= CLIP_SLOT_COUNT) return false;
     if (clip_player_slot_state(slot) != CLIP_SLOT_EMPTY) return false;
-    uint32_t start = sequencer_core_next_bar_tick();
+    uint8_t  unit   = unit_bars_now();
+    uint32_t period = (uint32_t)unit * SEQ_TICKS_PER_BAR;
+    uint32_t start  = sequencer_core_next_period_tick(period);
     if (start == 0) return false;                 /* transport stopped */
     uint32_t upt = amy_global.us_per_tick;
     if (upt == 0) return false;
     clip_bounce_shape_t sh = s_shape;
     if (!clip_bounce_fits(&sh)) return false;
 
-    uint8_t  unit  = unit_bars_now();
     uint8_t  bars  = reserve_bars_for(sh.max_bars, unit);
     uint32_t loop  = frames_for_ticks((uint32_t)bars * SEQ_TICKS_PER_BAR, upt);
     uint32_t alloc = ceil_to_block(loop);
@@ -217,7 +218,7 @@ bool clip_bounce_start(uint8_t slot)
     s_after       = sh.after;
     s_stop_set    = false;
     s_start_tick  = start;
-    s_unit_ticks  = (uint32_t)unit * SEQ_TICKS_PER_BAR;
+    s_unit_ticks  = period;
     s_us_per_tick = upt;
     s_buf         = buf;
     atomic_store_explicit(&s_loop_frames,  loop,  memory_order_relaxed);

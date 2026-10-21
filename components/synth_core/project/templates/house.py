@@ -13,7 +13,7 @@ KEY, SCALE = C_, SCALE_MINOR
 PROGRESSION = [(C_, CHORD_MIN7, 2), (F, CHORD_MIN7, 2)]
 SLOT_STAB = 0
 CHORDS = {SLOT_STAB: [58, 62, 63, 67]}      # Bb3 D4 Eb4 G4
-SWING = 8
+SWING = 9
 
 KICK = hits('x...x...x...x...')
 CLAP = hits('....x.......x...')

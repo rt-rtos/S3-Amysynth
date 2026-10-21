@@ -16,11 +16,17 @@
  * Unison (semantics in sequencer_core.h, "Melodic per-track unison"): the
  * voice of the Layer page's entry (layermenu_menu_kind), read and written
  * through ui_voice_target.h - a melodic layer's track, the arp or the live
- * voice. Count is Off or 2 up to the voice's ceiling (vt_unison_max), "n/a"
- * and not editable when its patch cannot carry unison. A stored count above a
- * since-shrunk ceiling is shown as stored; the next turn clamps it. On a
- * layer, LAYER patch scope writes every track (the title names the layer),
- * TRACK scope the one track (the title names it too).
+ * voice. Unison toggles On/Off with one detent (the spec's bypass); every
+ * other row keeps its value and stays editable while it is Off. Count runs 1
+ * up to the voice's ceiling (vt_unison_max), "n/a" and not editable when its
+ * patch cannot carry unison. A stored count above a since-shrunk ceiling is
+ * shown as stored; the next turn clamps it. Detune is cents (1 per detent),
+ * Interval whole semitones (1 per detent) added to it at the outer copy,
+ * Shift the cluster centre from -100 % (all copies flat) to +100 % (all
+ * sharp), 5 % per detent. Stereo toggles On/Off with one detent; while Off,
+ * Spread reads "n/a" and does not edit (its value is kept). On a layer, LAYER
+ * patch scope writes every track (the title names the layer), TRACK scope the
+ * one track (the title names it too).
  *
  * PCM (drum layer, PCM engine): the track's playback mode
  * (sequencer_core_set_drum_pcm_mode). */
@@ -28,10 +34,14 @@
 /* ── Unison page ──────────────────────────────────────────────────────── */
 
 typedef enum {
-    LU_COUNT = 0,
+    LU_ENABLE = 0,
+    LU_COUNT,
     LU_DETUNE,
+    LU_INTERVAL,
+    LU_SHIFT,
     LU_SPREAD,
     LU_BLEND,
+    LU_STEREO,
     LU_BACK,
     LU_ROWS
 } layer_uni_item_id_t;
@@ -61,7 +71,8 @@ uint8_t layer_uni_menu_item_count(void)
 const menu_item_view_t *layer_uni_menu_build_items(void)
 {
     static const char *const labels[LU_ROWS] = {
-        "Count", "Detune", "Spread", "Blend", "< Back"
+        "Unison", "Count", "Detune", "Interval", "Shift", "Spread", "Blend", "Stereo",
+        "< Back"
     };
     voice_target_kind_t kind = layermenu_menu_kind();
     bool has = vt_has_unison(kind);
@@ -74,19 +85,32 @@ const menu_item_view_t *layer_uni_menu_build_items(void)
         if (i == LU_BACK) continue;
         if (!has) { snprintf(it->value, MENU_VALUE_LEN, "--"); continue; }
         switch (i) {
+        case LU_ENABLE:
+            snprintf(it->value, MENU_VALUE_LEN, "%s", u.bypass ? "Off" : "On");
+            break;
         case LU_COUNT:
             if (vt_unison_max(kind) == 0u)
                 snprintf(it->value, MENU_VALUE_LEN, "n/a");
-            else if (u.count <= 1u)
-                snprintf(it->value, MENU_VALUE_LEN, "Off");
             else
                 snprintf(it->value, MENU_VALUE_LEN, "%u", (unsigned)u.count);
             break;
         case LU_DETUNE:
             snprintf(it->value, MENU_VALUE_LEN, "%uc", (unsigned)u.detune_cents);
             break;
+        case LU_INTERVAL:
+            snprintf(it->value, MENU_VALUE_LEN, "%ust", (unsigned)u.interval);
+            break;
+        case LU_SHIFT:
+            snprintf(it->value, MENU_VALUE_LEN, "%+d%%", (int)u.shift - 100);
+            break;
         case LU_SPREAD:
-            snprintf(it->value, MENU_VALUE_LEN, "%u%%", (unsigned)u.spread_pct);
+            if (!u.stereo)
+                snprintf(it->value, MENU_VALUE_LEN, "n/a");
+            else
+                snprintf(it->value, MENU_VALUE_LEN, "%u%%", (unsigned)u.spread_pct);
+            break;
+        case LU_STEREO:
+            snprintf(it->value, MENU_VALUE_LEN, "%s", u.stereo ? "On" : "Off");
             break;
         case LU_BLEND:
         default:
@@ -108,6 +132,11 @@ bool layer_uni_menu_handle_click(uint8_t idx)
     if (!vt_has_unison(kind) || idx >= LU_BACK) return false;
     if (idx == LU_COUNT && vt_unison_max(kind) == 0u)
         return false;
+    if (idx == LU_SPREAD) {
+        voice_unison_t u;
+        vt_get_unison(kind, &u);
+        if (!u.stereo) return false;
+    }
     return !seq_state.menu_editing;
 }
 
@@ -118,9 +147,10 @@ void layer_uni_menu_edit_value(uint8_t idx, int delta)
     voice_unison_t u;
     vt_get_unison(kind, &u);
     switch (idx) {
+    case LU_ENABLE:
+        u.bypass = u.bypass ? 0u : 1u;
+        break;
     case LU_COUNT: {
-        /* Off is count 1, so one detent up from Off is 2 and one down from 2
-         * is Off. */
         int max = (int)vt_unison_max(kind);
         if (max == 0) return;
         int dir = (delta > 0) ? 1 : -1;
@@ -131,11 +161,23 @@ void layer_uni_menu_edit_value(uint8_t idx, int delta)
         u.detune_cents = (uint8_t)SEQ_CLAMP_INT((int)u.detune_cents + delta,
                                                 0, (int)VOICE_UNISON_MAX_DETUNE);
         break;
+    case LU_INTERVAL:
+        u.interval = (uint8_t)SEQ_CLAMP_INT((int)u.interval + delta,
+                                            0, (int)VOICE_UNISON_MAX_INTERVAL);
+        break;
+    case LU_SHIFT:
+        u.shift = (uint8_t)SEQ_CLAMP_INT((int)u.shift + 5 * delta,
+                                         0, (int)VOICE_UNISON_MAX_SHIFT);
+        break;
     case LU_SPREAD:
+        if (!u.stereo) return;
         u.spread_pct = (uint8_t)SEQ_CLAMP_INT((int)u.spread_pct + delta, 0, 100);
         break;
     case LU_BLEND:
         u.blend_pct = (uint8_t)SEQ_CLAMP_INT((int)u.blend_pct + delta, 0, 100);
+        break;
+    case LU_STEREO:
+        u.stereo = u.stereo ? 0u : 1u;
         break;
     default:
         return;

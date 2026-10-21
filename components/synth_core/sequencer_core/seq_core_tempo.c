@@ -6,6 +6,7 @@
 #include "drop_core.h"                       /* drop_core_mark_dirty */
 #include "lfo_bank.h"                       /* lfo_bank_set_bpm */
 #include "seq_clamp.h"
+#include "synth_level.h"                    /* synth_level_set_sw_lfo */
 #include "amy_fx.h"                         /* amy_fx_on_tempo_change */
 #include "sdkconfig.h"
 #if CONFIG_SYNTH_WIRELESS
@@ -51,21 +52,11 @@ float lfo_next_rand(void)
     return (float)(s_lfo_rng_state >> 17) / 32767.0f * 2.0f - 1.0f;
 }
 
-void lfo_push_amp(uint8_t synth_id, uint16_t patch, float amp)
-{
-    amy_event *e = amy_helpers_event_begin();
-    e->synth = synth_id;
-    int osc = sequencer_core_patch_amp_osc(patch);
-    if (osc >= 0) e->osc = (uint16_t)osc;
-    e->amp_coefs[COEF_CONST] = amp;
-    amy_helpers_event_send(e);
-}
-
 void lfo_push_target_neutral(uint8_t synth_id, uint16_t patch,
                              lfo_target_t target)
 {
     if (target == LFO_TARGET_AMP) {
-        lfo_push_amp(synth_id, patch, 1.0f);
+        synth_level_set_sw_lfo(synth_id, 1.0f);
         return;
     }
     amy_event *e = amy_helpers_event_begin();

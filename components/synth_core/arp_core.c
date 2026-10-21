@@ -5,6 +5,7 @@
 #include "amy_helpers.h"   /* amy_helpers_event_begin/send */
 #include "voice_config.h"  /* canonical LFO depth scalars + shared wave map */
 #include "lfo_bank.h"      /* shared LFO synths (lfo_bank_bind) */
+#include "synth_level.h"   /* synth_level_set_sw_lfo (software-stepper AMP) */
 #include "seq_core_config.h" /* SEQ_LFO_SW_MAX_HZ (software-stepper rate cap) */
 #include "quantizer.h"
 #include "seq_clamp.h"
@@ -64,6 +65,7 @@ typedef struct {
     uint16_t     portamento_ms;  /* glide time, 0=off. The memset default matches
                                     AMY's own reset value, so no explicit init. */
     voice_unison_t unison;       /* count 0 = never set (arp_get_unison defaults) */
+    uint8_t      repeat_rate;    /* 1/2/4/8 (arp_params_t) */
 } arp_state_t;
 
 static arp_state_t s_arp;
@@ -76,9 +78,10 @@ static volatile bool s_arp_dirty = false;
 
 static inline void arp_mark_dirty(void) { s_arp_dirty = true; }
 
-/* Max distinct arp steps we can schedule = slots * max octaves. Each step uses
- * two tags (on + on+1); we space step tags by 2. */
-#define ARP_MAX_STEPS (ARP_MAX_SLOTS * ARP_OCT_MAX)
+/* Max distinct arp steps we can schedule: the arp tag window, at two tags per
+ * step (on + on+1), sized for the longer of a full cycle and an unrolled bar
+ * (seq_core_config.h). */
+#define ARP_MAX_STEPS (SEQ_ARP_TAG_COUNT / 2u)
 
 /* ── Helpers ─────────────────────────────────────────────────────────── */
 
@@ -109,6 +112,12 @@ static uint8_t arp_collect_up(uint8_t out[ARP_MAX_SLOTS])
 static uint8_t arp_collect_down(uint8_t out[ARP_MAX_SLOTS])
 {
     return arp_collect_up(out);
+}
+
+/* Rate rounded down to 1/2/4/8; 0 reads as 1. */
+static uint8_t arp_repeat_clamp(uint8_t n)
+{
+    return (n >= 8u) ? 8u : (n >= 4u) ? 4u : (n >= 2u) ? 2u : 1u;
 }
 
 /* Snap a chromatic note per the quant mode. OWN: the arp's own scale/root.
@@ -157,16 +166,26 @@ static void arp_kill_voices(void)
     amy_helpers_event_send(e);
 }
 
-/* Effective unison copies the arp slot is built with: the stored count through
- * the shared clamp (a never-set count of 0 gives 1). */
-static uint8_t arp_unison_copies(void)
+/* The spec's stereo flag as arp_get_unison serves it (defaults included). */
+static bool arp_unison_stereo(void)
 {
-    return sequencer_core_unison_copies_for(s_arp.patch, s_arp.unison.count,
-                                            sequencer_core_arp_voices());
+    voice_unison_t u;
+    arp_get_unison(&u);
+    return u.stereo != 0u;
 }
 
-/* The stored spec carrying the effective count and the global backend: what
- * the build and the live push take. */
+/* Effective unison copies the arp slot is built with: the stored count (1
+ * under bypass) through the shared clamp (a never-set count of 0 gives 1). */
+static uint8_t arp_unison_copies(void)
+{
+    return sequencer_core_unison_copies_for(s_arp.patch,
+                                            s_arp.unison.bypass ? 1u : s_arp.unison.count,
+                                            sequencer_core_arp_voices(),
+                                            arp_unison_stereo());
+}
+
+/* The stored spec carrying the effective count: what the build and the live
+ * push take. */
 static voice_unison_t arp_unison_eff(void)
 {
     voice_unison_t eff;
@@ -179,11 +198,12 @@ static voice_unison_t arp_unison_eff(void)
  * for patches that are not wave-topology. */
 static bool arp_voice_layout(seq_voice_layout_t *vl)
 {
-    return sequencer_core_voice_layout(s_arp.patch, arp_unison_copies(), vl);
+    return sequencer_core_voice_layout(s_arp.patch, arp_unison_copies(),
+                                       arp_unison_stereo(), vl);
 }
 
-/* One dist block where the voice carries the stage: each head under unison,
- * else the base osc (mirrors melodic_dist_apply). */
+/* One dist block where the voice carries the stage: each cluster osc under
+ * unison, else the base osc (mirrors melodic_dist_apply). */
 static void arp_push_dist(const seq_dist_t *d)
 {
     uint8_t synth = sequencer_core_arp_synth();
@@ -445,15 +465,18 @@ void arp_params_defaults(arp_params_t *out)
     out->patch      = 138;             /* DX7 E.Piano, matches melodic default */
     out->dir        = ARP_UP;
     out->octaves    = 1;
+    out->repeat_rate = 1;
     out->rate       = NOTE_DIV_1_16;
     out->gate_pct   = 75;
     out->scale      = 0;               /* Chromatic */
     out->root       = 40;              /* E2 */
     out->quant_mode = ARP_QUANT_CHORD;
     out->amp_scale  = vp.amp_trim;
+    out->unison.stereo = 1u;           /* as seq_layer_defaults */
+    out->unison.shift  = 100u;
     for (uint8_t i = 0; i < ARP_MAX_SLOTS; i++) out->slots[i] = -1;
     /* Default ADSR mirrors the melodic compile-time defaults; unauthored until
-     * the user commits in the graph editor (the patch's own env wins). */
+     * the user commits in the ADSR editor (the patch's own env wins). */
     out->env = vp.env;
     out->env.attack_ms   = 4;    /* tiny curve, prevents a digital click */
     out->env.decay_ms    = 250;
@@ -470,7 +493,7 @@ void arp_params_defaults(arp_params_t *out)
     out->env2.eg_type     = 0;   /* ENVELOPE_NORMAL */
     /* Default filter: bypass (unauthored; patch's filter wins until commit).
      * The bipolar EG1->cutoff sweep gives an enabled arp filter its
-     * plucky-sweep character; the graph editor's EG1 page edits it
+     * plucky-sweep character; the ADSR editor's EG1 page edits it
      * (-8..+8 oct, 0 = no sweep). */
     out->filter = vp.filter;
     out->filter.eg_depth[1][SEQ_EGT_CUTOFF] = ARP_FILTER_EG1_DEPTH_OCT;
@@ -514,6 +537,7 @@ void arp_core_init(void)
     s_arp.portamento_ms = p.portamento_ms;
     s_arp.muted         = p.muted;
     s_arp.unison        = p.unison;
+    s_arp.repeat_rate   = arp_repeat_clamp(p.repeat_rate);
     memcpy(s_arp.slots, p.slots, sizeof(s_arp.slots));
     s_arp.vp.amp_trim      = p.amp_scale;
     s_arp.vp.env           = p.env;
@@ -535,6 +559,41 @@ void arp_core_init(void)
     ESP_LOGI(TAG, "arp_core initialized (synth %u)", sequencer_core_arp_synth());
 }
 
+/* One octave of the cycle in play order, before octave transposition: SLOT
+ * the used slots in stored order with rests kept, UP/DOWN the notes sorted
+ * ascending with rests skipped. */
+typedef struct {
+    int16_t note[ARP_MAX_SLOTS];
+    uint8_t count;
+} arp_cycle_t;
+
+static void arp_cycle_collect(arp_cycle_t *c)
+{
+    c->count = 0;
+    if (s_arp.dir == ARP_SLOT) {
+        for (uint8_t i = 0; i < ARP_MAX_SLOTS; i++)
+            if (s_arp.slots[i] != -1) c->note[c->count++] = s_arp.slots[i];
+        return;
+    }
+    uint8_t sorted[ARP_MAX_SLOTS];
+    c->count = (s_arp.dir == ARP_DOWN) ? arp_collect_down(sorted) : arp_collect_up(sorted);
+    for (uint8_t i = 0; i < c->count; i++) c->note[i] = sorted[i];
+}
+
+/* The note of cycle step i (i < count * octaves): the cycle's entry, advancing
+ * by octave every `count` steps; DOWN walks the sorted set in reverse. False
+ * for a SLOT rest, which occupies its time and plays nothing. */
+static bool arp_step_note(const arp_cycle_t *c, uint8_t i, uint8_t *out)
+{
+    uint8_t idx    = i % c->count;
+    uint8_t octave = i / c->count;
+    int16_t v = (s_arp.dir == ARP_DOWN) ? c->note[c->count - 1 - idx] : c->note[idx];
+    if (v == ARP_REST) return false;
+    int32_t chromatic = (int32_t)v + (int32_t)octave * 12;
+    *out = arp_snap(sequencer_core_clamp_melodic_note(chromatic));
+    return true;
+}
+
 void arp_core_refresh(void)
 {
     arp_core_clear_all();
@@ -547,81 +606,38 @@ void arp_core_refresh(void)
         return;
     }
 
-    /* ── SLOT mode: play slots in stored order, rests preserved ── */
-    if (s_arp.dir == ARP_SLOT) {
-        uint8_t active = 0;
-        for (uint8_t i = 0; i < ARP_MAX_SLOTS; i++)
-            if (s_arp.slots[i] != -1) active++;
-        if (active == 0) return;
-
-        uint32_t rate    = note_div_ticks(s_arp.rate);
-        uint8_t  steps   = (uint8_t)(active * s_arp.octaves);
-        uint32_t period  = (uint32_t)steps * rate;
-        uint32_t gate    = (rate * s_arp.gate_pct) / 100u;
-        if (gate < 1) gate = 1;
-
-        uint32_t tag_base = sequencer_core_arp_tag_base();
-        uint8_t  step_i   = 0;
-
-        /* Per-target amp trim; clamp so velocity stays <=1 (AMY cap). */
-        float arp_vel = 0.9f * s_arp.vp.amp_trim;
-        if (arp_vel > 1.0f) arp_vel = 1.0f;
-
-        for (uint8_t oct = 0; oct < s_arp.octaves; oct++) {
-            for (uint8_t si = 0; si < ARP_MAX_SLOTS; si++) {
-                int16_t v = s_arp.slots[si];
-                if (v == -1) continue;   /* unused: not part of the cycle */
-
-                uint32_t tick_on = 1u + (uint32_t)step_i * rate;
-
-                if (v != ARP_REST) {
-                    int32_t chromatic = (int32_t)v + (int32_t)oct * 12;
-                    uint8_t play_note = arp_snap(sequencer_core_clamp_melodic_note(chromatic));
-                    sequencer_core_arp_emit_note(tag_base + (uint32_t)step_i * 2u,
-                                                 play_note, arp_vel, tick_on, gate, period);
-                }
-                /* REST: tag stays cleared (arp_clear_all already ran); step_i still advances. */
-                step_i++;
-            }
-        }
-        return;
-    }
-
-    /* ── UP / DOWN: sorted pitch order ── */
-    uint8_t sorted[ARP_MAX_SLOTS];
-    uint8_t count = (s_arp.dir == ARP_DOWN)
-                    ? arp_collect_down(sorted)
-                    : arp_collect_up(sorted);
-    if (count == 0) {
+    arp_cycle_t c;
+    arp_cycle_collect(&c);
+    if (c.count == 0) {
         return;  /* nothing to play */
     }
 
     uint32_t rate    = note_div_ticks(s_arp.rate);
-    uint8_t  steps   = (uint8_t)(count * s_arp.octaves);
+    uint8_t  steps   = (uint8_t)(c.count * s_arp.octaves);
+    uint32_t emits   = steps;
     uint32_t period  = (uint32_t)steps * rate;
     uint32_t gate    = (rate * s_arp.gate_pct) / 100u;
     if (gate < 1) gate = 1;
+    if (s_arp.repeat_rate > 1u) {
+        /* The cycle is not a bar, but one loop of the arp is defined as one
+         * bar: unroll the bar's steps so the N-bar window restarts the
+         * pattern at its top. */
+        emits  = (SEQ_TICKS_PER_BAR + rate - 1u) / rate;   /* j * rate < bar */
+        period = SEQ_TICKS_PER_BAR * (uint32_t)s_arp.repeat_rate;
+    }
 
     uint32_t tag_base = sequencer_core_arp_tag_base();
 
-    /* Apply per-target amp trim for UP/DOWN modes. */
+    /* Per-target amp trim; clamp so velocity stays <=1 (AMY cap). */
     float arp_vel = 0.9f * s_arp.vp.amp_trim;
     if (arp_vel > 1.0f) arp_vel = 1.0f;
 
-    for (uint8_t i = 0; i < steps; i++) {
-        /* index within the sorted set, advancing by octave every `count`. */
-        uint8_t note_idx = i % count;
-        uint8_t octave   = i / count;
-        /* Direction: UP walks sorted ascending; DOWN walks it in reverse. */
-        uint8_t pick = (s_arp.dir == ARP_DOWN)
-                       ? sorted[count - 1 - note_idx]
-                       : sorted[note_idx];
-        int32_t chromatic = (int32_t)pick + (int32_t)octave * 12;
-        uint8_t play_note = arp_snap(sequencer_core_clamp_melodic_note(chromatic));
-
-        uint32_t tick_on = 1u + (uint32_t)i * rate;
-        sequencer_core_arp_emit_note(tag_base + (uint32_t)i * 2u,
-                                     play_note, arp_vel, tick_on, gate, period);
+    for (uint32_t j = 0; j < emits; j++) {
+        uint8_t play_note;
+        /* REST: tag stays cleared (arp_clear_all already ran); j still advances. */
+        if (!arp_step_note(&c, j % steps, &play_note)) continue;
+        sequencer_core_arp_emit_note(tag_base + j * 2u, play_note, arp_vel,
+                                     1u + j * rate, gate, period);
     }
 }
 
@@ -665,6 +681,14 @@ void arp_set_octaves(uint8_t octaves)
     octaves = SEQ_CLAMP_U8(octaves, 1, ARP_OCT_MAX);
     if (s_arp.octaves == octaves) return;
     s_arp.octaves = octaves;
+    arp_mark_dirty();
+}
+
+void arp_set_repeat_rate(uint8_t n)
+{
+    n = arp_repeat_clamp(n);
+    if (s_arp.repeat_rate == n) return;
+    s_arp.repeat_rate = n;
     arp_mark_dirty();
 }
 
@@ -723,30 +747,34 @@ void arp_get_unison(voice_unison_t *out)
 {
     if (!out) return;
     /* First-turn defaults, as on a row; count 1 keeps them inert. */
-    voice_unison_t u = { 1u, 12u, 50u, 100u, 0u };
+    voice_unison_t u = { 1u, 12u, 50u, 100u, 1u, 0u, 100u, 0u };
     if (s_arp.unison.count != 0u) u = s_arp.unison;
-    u.layout = sequencer_core_get_unison_layout();
     *out = u;
 }
 
 uint8_t arp_unison_max(void)
 {
-    return sequencer_core_unison_max_for(s_arp.patch, sequencer_core_arp_voices());
+    return sequencer_core_unison_max_for(s_arp.patch, sequencer_core_arp_voices(),
+                                         arp_unison_stereo());
 }
 
 void arp_set_unison(const voice_unison_t *u)
 {
     if (!u) return;
-    uint8_t was = arp_unison_copies();
+    uint8_t was        = arp_unison_copies();
+    bool    was_stereo = arp_unison_stereo();
     voice_unison_t v = *u;
     v.count        = SEQ_CLAMP_U8(v.count, 1u, VOICE_UNISON_MAX_COPIES);
     v.detune_cents = SEQ_CLAMP_U8(v.detune_cents, 0u, VOICE_UNISON_MAX_DETUNE);
     v.spread_pct   = SEQ_CLAMP_U8(v.spread_pct, 0u, 100u);
     v.blend_pct    = SEQ_CLAMP_U8(v.blend_pct, 0u, 100u);
-    v.layout       = 0u;   /* storage ignores it: the backend is global */
+    v.stereo       = SEQ_CLAMP_U8(v.stereo, 0u, 1u);
+    v.bypass       = SEQ_CLAMP_U8(v.bypass, 0u, 1u);
+    v.shift        = SEQ_CLAMP_U8(v.shift, 0u, VOICE_UNISON_MAX_SHIFT);
+    v.interval     = SEQ_CLAMP_U8(v.interval, 0u, VOICE_UNISON_MAX_INTERVAL);
     s_arp.unison = v;
     uint8_t now = arp_unison_copies();
-    if (now != was) {
+    if (now != was || (now > 1u && (v.stereo != 0u) != was_stereo)) {
         /* The pool shape moved: full rebuild, as a patch change. */
         arp_rebuild();
     } else if (now > 1u) {
@@ -974,10 +1002,9 @@ static bool    s_swlfo_active = false;
 static uint8_t s_swlfo_targets = 0;   /* targets driven while active - the set
                                        * to restore, even if edited since */
 
-/* seq_core_editors.c internals shared with this stepper. Mirrored prototypes:
+/* seq_core_tempo.c internals shared with this stepper. Mirrored prototypes:
  * seq_core_internal.h cannot be included here (it defines a TU-local TAG). */
 float lfo_next_rand(void);
-void  lfo_push_amp(uint8_t synth_id, uint16_t patch, float amp);
 void  lfo_push_target_neutral(uint8_t synth_id, uint16_t patch,
                               lfo_target_t target);
 
@@ -1022,7 +1049,7 @@ static void arp_swlfo_service(void)
     if (!want) {
         if (s_swlfo_active) {
             /* Restore every rail the stepper was driving (mirrors
-             * lfo_restore_target_neutrals in seq_core_editors.c). */
+             * lfo_restore_target_neutrals in seq_core_lfo.c). */
             s_swlfo_active = false;
             uint8_t syn = sequencer_core_arp_synth();
             for (int t = 0; t < LFO_TARGET_COUNT; t++) {
@@ -1076,8 +1103,8 @@ static void arp_swlfo_service(void)
     /* SCAN needs a wavetable voice - WAVE mode / native only. */
     amy_helpers_event_send(e);
     if (LFO_HAS_TGT(lfo, LFO_TARGET_AMP))
-        lfo_push_amp(sequencer_core_arp_synth(), s_arp.patch,
-                     1.0f - d * (0.5f - 0.5f * val));
+        synth_level_set_sw_lfo(sequencer_core_arp_synth(),
+                               1.0f - d * (0.5f - 0.5f * val));
     } /* !native */
 
     /* DIST on a PATCH-mode arp: step around the committed dist block
@@ -1112,6 +1139,7 @@ bool         arp_get_enabled(void)    { return s_arp.enabled; }
 bool         arp_get_muted(void)      { return s_arp.muted; }
 arp_dir_t    arp_get_direction(void)  { return s_arp.dir; }
 uint8_t      arp_get_octaves(void)    { return s_arp.octaves; }
+uint8_t      arp_get_repeat_rate(void) { return s_arp.repeat_rate; }
 note_div_t   arp_get_rate(void)       { return s_arp.rate; }
 uint8_t      arp_get_gate_pct(void)   { return s_arp.gate_pct; }
 uint8_t      arp_get_scale(void)      { return s_arp.scale_index; }
@@ -1131,7 +1159,7 @@ int16_t arp_get_slot_snapped(uint8_t idx)
     return (int16_t)arp_snap((uint8_t)s_arp.slots[idx]);
 }
 
-/* ── Per-target amplitude trim (graph editor amp mode) ──────────────────── */
+/* ── Per-target amplitude trim (ADSR editor amp mode) ──────────────────── */
 
 void arp_set_amp_scale(float v)
 {

@@ -18,6 +18,9 @@ static volatile bool s_drum_select_held = false;
 // release). Written by the button-dispatch task; volatile because the encoder
 // task reads it for the Shift+Turn gesture (same as s_patch_held).
 static volatile bool s_shift_held = false;
+// SHOULDER hold state, same writer/reader split as s_shift_held: the drop
+// view's encoder steps the cursor by rows while it is held.
+static volatile bool s_shoulder_held = false;
 static bool s_shift_chord_latched[MY_BUTTON_MAX] = { false };
 /* SHIFT+0 solo chord in flight: PRESS_DOWN seen with SHIFT held, waiting for
  * the release (press) or the long-press threshold. The target is fixed at the
@@ -28,23 +31,26 @@ static chord0_t s_chord0 = CHORD0_NONE;
 void input_dispatch_button(my_button_id_t button_id, button_event_t event)
 {
     /* MY_BUTTON_SHOULDER, per view: SEQ toggles the step under the cursor
-     * (two-handed tracker-style entry), GRAPH flips the routing depth's sign,
+     * (two-handed tracker-style entry), ADSR flips the routing depth's sign,
      * FM flips the editor page, WT cycles the focused keyframe, the mixer
      * opens the menu on its main list (a dive stays open behind it), MENU
      * leaves a sub-page for the main list (button 3 reopens the last page, so
-     * this is the way home); elsewhere (the LFO editor included) it does
-     * nothing. Step entry, the polarity flip and the menu jump take PRESS_DOWN
+     * this is the way home), DROP steps the cursor by rows while held (the
+     * hold is recorded on every view); elsewhere (the LFO editor included) it
+     * does nothing. Step entry, the polarity flip and the menu jump take PRESS_DOWN
      * for zero tap latency; the page and keyframe flips and the mixer's
      * menu jump are deliberate gestures, so they wait for the click. All
      * events consumed. */
     if (button_id == MY_BUTTON_SHOULDER) {
         ui_view_id_t sv = synth_ui_active_view();
+        if (event == BUTTON_PRESS_DOWN)      s_shoulder_held = true;
+        else if (event == BUTTON_PRESS_UP)   s_shoulder_held = false;
         if (event == BUTTON_PRESS_DOWN) {
             if (sv == UI_VIEW_SEQ) {
                 synth_ui_toggle_step_at_cursor();
-            } else if (sv == UI_VIEW_GRAPH) {
+            } else if (sv == UI_VIEW_ADSR) {
                 /* No-op unless a routing target stop is up. */
-                synth_ui_graph_flip_depth_polarity();
+                synth_ui_adsr_flip_depth_polarity();
             } else if (sv == UI_VIEW_MENU) {
                 synth_ui_menu_go_main();
             }
@@ -110,7 +116,8 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
      *   SHIFT+0 -> solo on the sequencer and arp screens, the splitter
      *              ratio (held + turn) or the seed reroll / freeze on the
      *              drop screen (above); latched but inert elsewhere
-     *   SHIFT+1 -> open the ADSR/graph editor, or close+commit an open one
+     *   SHIFT+1 -> open the ADSR editor, or close+commit an open one;
+     *              on the mixer screen: link or unlink the cursor row
      *   SHIFT+2 -> toggle the step probability/trig editor (the segment
      *              popup on the drop screen); inside an effects editor:
      *              release the open tab to the patch
@@ -146,14 +153,16 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
                                      sv == UI_VIEW_DRONE || sv == UI_VIEW_DRONE_STD);
 #if CONFIG_SYNTH_WIRELESS
             /* Wireless overlay page: same chord, bound to the BLE live-play
-             * voice (synth_ui_graph_open_envelope picks the target). */
+             * voice (synth_ui_adsr_open_envelope picks the target). */
             open_from_screen = open_from_screen ||
                                (sv == UI_VIEW_MENU && synth_ui_wireless_page_is_open());
 #endif
-            if (open_from_screen) {
-                synth_ui_graph_open_envelope();
-            } else if (sv == UI_VIEW_GRAPH) {
-                synth_ui_graph_close_commit();
+            if (sv == UI_VIEW_MIXER) {
+                synth_ui_mixer_link();
+            } else if (open_from_screen) {
+                synth_ui_adsr_open_envelope();
+            } else if (sv == UI_VIEW_ADSR) {
+                synth_ui_adsr_close_commit();
             } else if (sv == UI_VIEW_LFO) {
                 synth_ui_lfo_close_commit();
             } else if (sv == UI_VIEW_DIST) {
@@ -162,8 +171,8 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
                 synth_ui_filter_close_commit();
             }
         } else if (button_id == MY_BUTTON_2) {
-            bool editor_open = (sv == UI_VIEW_GRAPH || sv == UI_VIEW_LFO ||
-                                sv == UI_VIEW_DIST  || sv == UI_VIEW_FILTER);
+            bool editor_open = (sv == UI_VIEW_ADSR || sv == UI_VIEW_LFO ||
+                                sv == UI_VIEW_DIST || sv == UI_VIEW_FILTER);
             if (sv == UI_VIEW_MIXER) {
                 /* Mixer: fade the cursor row (MAST included). */
                 synth_ui_mixer_fade();
@@ -186,10 +195,11 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
         } else { /* MY_BUTTON_3 */
             /* Chorded so an accidental bare press can't flip which voice
              * block the row reads. */
-            if (sv == UI_VIEW_GRAPH || sv == UI_VIEW_LFO || sv == UI_VIEW_DIST ||
+            if (sv == UI_VIEW_ADSR || sv == UI_VIEW_LFO || sv == UI_VIEW_DIST ||
                 sv == UI_VIEW_FILTER) {
                 synth_ui_toggle_editor_source();
             } else if (sv == UI_VIEW_SEQ || sv == UI_VIEW_ARP || sv == UI_VIEW_DROP ||
+                       sv == UI_VIEW_DRONE || sv == UI_VIEW_DRONE_STD ||
                        sv == UI_VIEW_MENU) {
                 synth_ui_menu_toggle_layer_page();
             }
@@ -267,9 +277,9 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
             }
             return;
         }
-        if (synth_ui_graph_is_active()) {
+        if (synth_ui_adsr_is_active()) {
             if (event == BUTTON_PRESS_DOWN) {
-                synth_ui_graph_cycle_eg_type();
+                synth_ui_adsr_cycle_eg_type();
             }
             return;
         }
@@ -413,7 +423,7 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
      * the active view. */
     ui_view_id_t v = synth_ui_active_view();
 
-    // MY_BUTTON_2: pitch-edit hold normally; in the graph editor it toggles
+    // MY_BUTTON_2: pitch-edit hold normally; in the ADSR editor it toggles
     // amp-edit mode (encoder adjusts amplitude trim instead of ADSR points);
     // in the LFO editor it opens or collapses LFO2; on the FM screen it
     // mutes/unmutes the selected operator.
@@ -422,8 +432,8 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
             case UI_VIEW_FILTER:
                 /* Suppress drum-select hold so the latch can't stick. */
                 return;
-            case UI_VIEW_GRAPH:
-                if (event == BUTTON_PRESS_DOWN) synth_ui_graph_toggle_amp_mode();
+            case UI_VIEW_ADSR:
+                if (event == BUTTON_PRESS_DOWN) synth_ui_adsr_toggle_amp_mode();
                 return;
             case UI_VIEW_LFO:
                 if (event == BUTTON_PRESS_DOWN) synth_ui_lfo_button2();
@@ -465,10 +475,10 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
             return;
         }
 #endif
-        if (v == UI_VIEW_GRAPH || v == UI_VIEW_FILTER || v == UI_VIEW_LFO ||
+        if (v == UI_VIEW_ADSR || v == UI_VIEW_FILTER || v == UI_VIEW_LFO ||
             v == UI_VIEW_DIST) {
             if (event == BUTTON_SINGLE_CLICK) {
-                synth_ui_cycle_editor();
+                voice_editor_cycle();
             }
             return;
         }
@@ -511,8 +521,8 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
             case UI_VIEW_DROP_SEG:
                 if (event == BUTTON_PRESS_DOWN)  synth_ui_dropseg_handle_button();
                 return;
-            case UI_VIEW_GRAPH:
-                if (event == BUTTON_PRESS_DOWN)  synth_ui_graph_handle_button(false);
+            case UI_VIEW_ADSR:
+                if (event == BUTTON_PRESS_DOWN)  synth_ui_adsr_handle_button(false);
                 return;
             case UI_VIEW_MENU:
                 if (event == BUTTON_PRESS_DOWN) synth_ui_menu_handle_button();
@@ -561,22 +571,22 @@ void input_dispatch_button(my_button_id_t button_id, button_event_t event)
      * both just close them). All events consumed, so transport is unavailable
      * until the editor closes. */
     if (button_id == MY_BUTTON_0 &&
-        (v == UI_VIEW_GRAPH || v == UI_VIEW_FILTER || v == UI_VIEW_LFO ||
-         v == UI_VIEW_DIST  || v == UI_VIEW_STEPEDIT || v == UI_VIEW_DROP_SEG)) {
+        (v == UI_VIEW_ADSR || v == UI_VIEW_FILTER || v == UI_VIEW_LFO ||
+         v == UI_VIEW_DIST || v == UI_VIEW_STEPEDIT || v == UI_VIEW_DROP_SEG)) {
         if (event == BUTTON_SINGLE_CLICK) {              /* tap = commit & close */
             if (v == UI_VIEW_FILTER)        synth_ui_filter_close_commit();
             else if (v == UI_VIEW_LFO)      synth_ui_lfo_close_commit();
             else if (v == UI_VIEW_DIST)     synth_ui_dist_close_commit();
             else if (v == UI_VIEW_STEPEDIT) synth_ui_stepedit_close();
             else if (v == UI_VIEW_DROP_SEG) synth_ui_dropseg_close();
-            else                            synth_ui_graph_close_commit();
+            else                            synth_ui_adsr_close_commit();
         } else if (event == BUTTON_LONG_PRESS_START) {   /* hold = cancel / discard */
             if (v == UI_VIEW_FILTER)        synth_ui_filter_handle_button(true);
             else if (v == UI_VIEW_LFO)      synth_ui_lfo_handle_button(true);
             else if (v == UI_VIEW_DIST)     synth_ui_dist_handle_button(true);
             else if (v == UI_VIEW_STEPEDIT) synth_ui_stepedit_close(); /* no discard path */
             else if (v == UI_VIEW_DROP_SEG) synth_ui_dropseg_close();  /* no discard path */
-            else                            synth_ui_graph_handle_button(true);
+            else                            synth_ui_adsr_handle_button(true);
         }
         return;
     }
@@ -615,7 +625,7 @@ void input_dispatch_encoder_steps(long steps)
         case UI_VIEW_DIST:     synth_ui_dist_handle_encoder(steps);     return;
         case UI_VIEW_STEPEDIT: synth_ui_stepedit_handle_encoder(steps); return;
         case UI_VIEW_DROP_SEG: synth_ui_dropseg_handle_encoder(steps);  return;
-        case UI_VIEW_GRAPH:    synth_ui_graph_handle_encoder(steps);    return;
+        case UI_VIEW_ADSR:     synth_ui_adsr_handle_encoder(steps);     return;
         case UI_VIEW_MENU:     synth_ui_menu_handle_encoder(steps);     return;
         default:               break;  /* fall through to the mode-tail */
     }
@@ -642,8 +652,9 @@ void input_dispatch_encoder_steps(long steps)
     } else if (v == UI_VIEW_DRONE_STD) {
         synth_ui_drone_std_handle_encoder(steps);
     } else if (v == UI_VIEW_DROP) {
-        // SHIFT+Turn cycles the type of the segment under the cursor.
-        synth_ui_drop_handle_encoder(steps, s_shift_held);
+        // SHIFT+Turn cycles the type of the segment under the cursor;
+        // SHOULDER+Turn steps the cursor by rows.
+        synth_ui_drop_handle_encoder(steps, s_shift_held, s_shoulder_held);
     } else if (s_drum_select_held) {
         // Pitch-edit hold: transpose the selected track (drum or
         // melodic).

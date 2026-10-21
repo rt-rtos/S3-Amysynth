@@ -88,10 +88,10 @@ static uint8_t chord_root_max(chord_type_t t)
 /* Walk to the next fitting type, wrapping within the fitting set. */
 static chord_type_t chord_type_step(chord_type_t cur, int dir)
 {
-    int n = (int)cur;
+    chord_type_t n = cur;
     for (int guard = 0; guard < CHORD_REAL_COUNT; guard++) {
-        n = (n + dir + CHORD_REAL_COUNT) % CHORD_REAL_COUNT;
-        if (chord_type_fits((chord_type_t)n)) return (chord_type_t)n;
+        n = chord_type_next_real(n, dir);
+        if (chord_type_fits(n)) return n;
     }
     return cur;
 }
@@ -117,15 +117,16 @@ static void chord_build(uint8_t root, chord_type_t type, seq_chord_t *out)
 static bool chord_match(const seq_chord_t *c, uint8_t *root, chord_type_t *type)
 {
     if (!c || c->count < 2) return false;
-    for (uint8_t t = 0; t < CHORD_REAL_COUNT; t++) {
-        if (!chord_type_fits((chord_type_t)t)) continue;
-        const int8_t *row = quantizer_chord_intervals((chord_type_t)t);
-        if (chord_type_tones((chord_type_t)t) != c->count) continue;
+    for (uint8_t k = 0; k < CHORD_REAL_COUNT; k++) {
+        chord_type_t t = chord_type_order[k];
+        if (!chord_type_fits(t)) continue;
+        const int8_t *row = quantizer_chord_intervals(t);
+        if (chord_type_tones(t) != c->count) continue;
         bool ok = true;
         for (uint8_t i = 0; i < c->count; i++) {
             if ((int)c->notes[i] - (int)c->notes[0] != (int)row[i]) { ok = false; break; }
         }
-        if (ok) { *root = c->notes[0]; *type = (chord_type_t)t; return true; }
+        if (ok) { *root = c->notes[0]; *type = t; return true; }
     }
     return false;
 }

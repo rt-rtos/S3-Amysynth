@@ -61,6 +61,8 @@ typedef struct {
     seq_dist_t     dist;
     bool           muted;
     voice_unison_t unison;          /* count 0 = never set */
+    uint8_t        repeat_rate;     /* 1/2/4/8; one loop is one bar: at N the
+                                       arp plays the first bar of every N */
 } arp_params_t;
 
 /* Fallback values of the project format for the arp: off, UP at 1/16 over
@@ -106,6 +108,7 @@ void arp_set_muted(bool muted);
 bool arp_get_muted(void);
 void arp_set_direction(arp_dir_t dir);
 void arp_set_octaves(uint8_t octaves);        /* clamped 1..ARP_OCT_MAX */
+void arp_set_repeat_rate(uint8_t n);          /* clamped to 1/2/4/8     */
 void arp_set_rate(note_div_t rate);           /* ids >= NOTE_DIV_STD_COUNT ignored */
 void arp_set_gate_pct(uint8_t gate_pct);      /* clamped 10..100        */
 void arp_set_scale(uint8_t scale_index);
@@ -134,13 +137,13 @@ void arp_core_additive_voice_changed(void);
  * deliberate silent step (meaningful in ARP_SLOT mode only). */
 void arp_set_slot(uint8_t idx, int16_t chromatic_note);
 
-/* ── Runtime-editable ADSR envelope (shared graph editor) ──
+/* ── Runtime-editable ADSR envelope (shared ADSR editor) ──
  * One envelope applied to the arp synth's voices. set stores + pushes, and it
  * is re-applied after a patch change so it survives patch reconfig. */
 void arp_get_envelope(seq_env_t *out);
 void arp_set_envelope(const seq_env_t *env);
 
-/* ── Second envelope (EG1, shared graph editor) ──
+/* ── Second envelope (EG1, shared ADSR editor) ──
  * Independent breakpoint generator, audible only once something is wired to
  * COEF_EG1: the arp routes filter_freq_coefs through it whenever its filter is
  * authored+enabled, and many Juno/DX7 patches route their own bp1. */
@@ -208,6 +211,7 @@ void arp_core_refresh_key_track(void);
 bool      arp_get_enabled(void);
 arp_dir_t arp_get_direction(void);
 uint8_t   arp_get_octaves(void);
+uint8_t   arp_get_repeat_rate(void);
 note_div_t arp_get_rate(void);
 uint8_t   arp_get_gate_pct(void);
 uint8_t   arp_get_scale(void);
@@ -217,7 +221,7 @@ int16_t   arp_get_slot(uint8_t idx);          /* raw chromatic, -1=empty, ARP_RE
 /* Snapped pitch the slot will actually play (for display), or -1 if empty/rest. */
 int16_t   arp_get_slot_snapped(uint8_t idx);
 
-/* ── Per-target amplitude trim (graph editor amp mode) ──
+/* ── Per-target amplitude trim (ADSR editor amp mode) ──
  * 0..1 multiplier on note velocity at emit time. Default 1.0 (unity).
  * set stores + marks dirty → coalesced re-emit on next arp_core_service(). */
 void  arp_set_amp_scale(float v);
@@ -238,13 +242,15 @@ uint16_t arp_get_portamento_ms(void);
 /* ── Unison (Layer menu ARP entry, Unison sub-page) ──
  * One voice_unison_t for the arp slot, row semantics (sequencer_core.h
  * "Melodic per-track unison"): raw-wave/wavetable patches only (KS excluded),
- * effective count clamped by sequencer_core_unison_copies_for() at the arp's
- * patch and voice count. get serves {1, 12, 50, 100} until first set and fills
- * `.layout` with the global backend. set ignores `u->layout`, clamps count
+ * effective count (bypass ? 1 : count) clamped by
+ * sequencer_core_unison_copies_for() at the arp's patch and voice count. get
+ * serves {1, 12, 50, 100, 1, 0, 100, 0} until first set. set clamps count
  * 1..VOICE_UNISON_MAX_COPIES, detune 0..VOICE_UNISON_MAX_DETUNE, spread/blend
- * 0..100, and stores; a moved effective count rebuilds the arp slot (sounding
- * notes stop, like a patch change), an unchanged one above 1 pushes
- * detune/spread/blend live. unison_max: the highest effective count the
+ * 0..100, stereo/bypass 0..1, shift 0..VOICE_UNISON_MAX_SHIFT, interval
+ * 0..VOICE_UNISON_MAX_INTERVAL, and stores; a moved effective count (bypass
+ * included), or a stereo change while the slot carries copies, rebuilds the
+ * arp slot (sounding notes stop, like a patch change), an unchanged shape
+ * above 1 pushes detune/interval/shift/spread/blend live. unison_max: the highest effective count the
  * current patch allows, 0 = it cannot carry unison. UI task only. Persisted
  * in the project. */
 void    arp_get_unison(voice_unison_t *out);

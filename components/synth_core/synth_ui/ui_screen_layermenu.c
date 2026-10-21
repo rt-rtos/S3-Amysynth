@@ -11,7 +11,7 @@
  *  LAYER SUBMENU PAGE
  * ════════════════════════════════════════════════════════════════════════
  * Everything that belongs to ONE layer, on one page. First the Track selector
- * and the per-track block it drives (level/key/follow/repeat/mute/solo, frame,
+ * and the per-track block it drives (level/key/follow/mute/solo, frame,
  * the Unison/PCM dives; Follow: the row's progression follow mode,
  * sequencer_core_set_track_follow), then the layer-wide rows: step count,
  * swing, the melodic patch scope, the note controls (gate/glide/groove), the
@@ -42,11 +42,12 @@
  * (layer_item_id_t) are in synth_ui_internal.h, so the page router can land
  * on a row by id.
  *
- * The page has three entries (s_lm_kind): the sequencer layer described
- * above, the arp ("ARP") and the live-play voice ("LIVE"). The arp and live
- * entries show only their per-voice rows, the Unison dive among them; Level,
- * Key, Mute, Solo, Gate and Glide here and the Unison sub-page read and write
- * through ui_voice_target.h on every entry. */
+ * The page's entries (s_lm_kind): the sequencer layer described above, the
+ * arp ("ARP"), the drop's focused synth ("DROP"/"SUB"), the live-play voice
+ * ("LIVE") and the drones ("STUTTER", "DRONE"). The voice entries show only
+ * their per-voice rows, the Unison dive among them - on a drone that dive and
+ * Back alone; Level, Key, Mute, Solo, Gate and Glide here and the Unison
+ * sub-page read and write through ui_voice_target.h on every entry. */
 
 static menu_item_view_t s_lm_items[LM_COUNT];
 static voice_target_kind_t s_lm_kind = VT_MELODIC;
@@ -111,10 +112,17 @@ static uint8_t lm_row_list(uint8_t *rows)
                                              LM_BACK };
         static const uint8_t live_rows[] = { LM_LEVEL, LM_KEYTRACK, LM_UNISON, LM_GLIDE,
                                              LM_BACK };
+        static const uint8_t drone_rows[] = { LM_UNISON, LM_BACK };
         /* The drop's focused synth takes the arp's rows. */
-        const uint8_t *src = (s_lm_kind == VT_LIVE) ? live_rows : arp_rows;
-        uint8_t        cnt = (s_lm_kind == VT_LIVE) ? (uint8_t)sizeof(live_rows)
-                                                    : (uint8_t)sizeof(arp_rows);
+        const uint8_t *src = arp_rows;
+        uint8_t        cnt = (uint8_t)sizeof(arp_rows);
+        if (s_lm_kind == VT_LIVE) {
+            src = live_rows;
+            cnt = (uint8_t)sizeof(live_rows);
+        } else if (s_lm_kind == VT_DRONE || s_lm_kind == VT_DRONE_STD) {
+            src = drone_rows;
+            cnt = (uint8_t)sizeof(drone_rows);
+        }
         uint8_t n = 0;
         for (uint8_t i = 0; i < cnt; i++) {
             if (src[i] == LM_CLRSOLO && !sequencer_core_any_solo()) continue;
@@ -293,11 +301,6 @@ const menu_item_view_t *layermenu_menu_build_items(void)
                           follow_names[sequencer_core_get_track_follow(mel, tr)]);
             break;
         }
-        case LM_REPEAT:
-            snprintf(it->label, MENU_LABEL_LEN, "Repeat");
-            snprintf(it->value, MENU_VALUE_LEN, "%u",
-                     (unsigned)sequencer_core_get_track_repeat_rate(li, tr));
-            break;
         case LM_MUTE:
             snprintf(it->label, MENU_LABEL_LEN, "Mute");
             snprintf(it->value, MENU_VALUE_LEN, "%s",
@@ -373,7 +376,6 @@ static bool lm_row_is_editable(uint8_t row)
     case LM_GATE:
     case LM_TRACK:
     case LM_LEVEL:
-    case LM_REPEAT:
     case LM_MUTE:
     case LM_SOLO:
         return true;
@@ -396,18 +398,6 @@ bool layermenu_menu_handle_click(uint8_t idx)
     }
     if (!lm_row_is_editable(row)) return false;
     return !seq_state.menu_editing;
-}
-
-/* Next repeat rate in the 1->2->4->8->1 cycle. */
-static uint8_t lm_next_repeat_rate(uint8_t rr, int delta)
-{
-    static const uint8_t rates[] = { 1, 2, 4, 8 };
-    int n = (int)(sizeof(rates) / sizeof(rates[0]));
-    int idx = 0;
-    for (int i = 0; i < n; i++) if (rates[i] == rr) idx = i;
-    idx = (idx + delta) % n;
-    if (idx < 0) idx += n;
-    return rates[idx];
 }
 
 /* Gate detents: 5% steps up to one step (mirroring the arp GATE control), then
@@ -505,11 +495,8 @@ void layermenu_menu_edit_value(uint8_t idx, int delta)
             if (nr < 0) nr += 12;
             root = (uint8_t)nr;
         } else {
-            int nct = (int)ct + dir;
             /* Real chords only - CHORD_OFF is a drone affordance. */
-            while (nct < 0) nct += CHORD_REAL_COUNT;
-            nct %= CHORD_REAL_COUNT;
-            ct = (chord_type_t)nct;
+            ct = chord_type_next_real(ct, dir);
         }
         sequencer_core_progression_set_layer_chord(mel, root, ct);
         break;
@@ -543,12 +530,6 @@ void layermenu_menu_edit_value(uint8_t idx, int delta)
         int f = ((int)sequencer_core_get_track_follow(mel, tr) + dir) % SEQ_FOLLOW_COUNT;
         if (f < 0) f += SEQ_FOLLOW_COUNT;
         sequencer_core_set_track_follow(mel, tr, (seq_follow_t)f);
-        break;
-    }
-    case LM_REPEAT: {
-        uint8_t rr = (uint8_t)sequencer_core_get_track_repeat_rate(li, tr);
-        rr = lm_next_repeat_rate(rr, dir);
-        sequencer_core_set_track_repeat_rate(li, tr, (seq_repeat_rate_t)rr);
         break;
     }
     case LM_MUTE:

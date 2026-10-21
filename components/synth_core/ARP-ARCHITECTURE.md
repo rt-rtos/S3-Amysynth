@@ -76,7 +76,7 @@ flowchart TD
     PICK --> SNAP["chromatic = pick + octave*12\narp_snap() clamps to melodic range"]
     SNAP --> EMIT["sequencer_core_arp_emit_note\ntick_on = 1 + i*rate_ticks"]
     GATE --> EMIT
-    EMIT --> TAGWIN["arp tag window\nSEQ_ARP_TAG_BASE 1320 .. SEQ_ARP_TAG_MAX 1383"]
+    EMIT --> TAGWIN["arp tag window\nSEQ_ARP_TAG_BASE 1320 .. SEQ_ARP_TAG_MAX 1415"]
     TAGWIN --> SYNTH["AMY synth slot SEQ_ARP_SYNTH\n(sequencer_core_arp_synth)"]
 ```
 
@@ -105,6 +105,8 @@ typedef struct {
     uint16_t   portamento_ms;         // glide between pitches, 0 = off
     voice_unison_t unison;            // detuned copies per voice, count 0 =
                                       // never set
+    uint8_t    repeat_rate;           // 1/2/4/8; one loop is one bar: at N
+                                      // the arp plays the first bar of every N
 } arp_state_t;
 ```
 
@@ -133,7 +135,8 @@ never calls back into `arp_core`. Cursor index space:
 |---|---|---|---|
 | `ARP_MAX_SLOTS` | 8 | `arp_core.h` | Note input slots |
 | `ARP_OCT_MAX` | 4 | `arp_core.h` | Max octave span |
-| `ARP_MAX_STEPS` | `ARP_MAX_SLOTS × ARP_OCT_MAX` = 32 | `arp_core.c` | Max distinct scheduled arp notes |
+| `ARP_BAR_MAX_STEPS` | `SEQ_TICKS_PER_BAR / 4` = 48 | `seq_core_config.h` | Steps in one unrolled bar at the shortest division (1/32T, 4 ticks) |
+| `ARP_MAX_STEPS` | `SEQ_ARP_TAG_COUNT / 2` = 48 | `arp_core.c` | Max distinct scheduled arp notes |
 | `ARP_REST` | −2 | `arp_core.h` | Rest sentinel in `slots[]` |
 | `ARP_PORTAMENTO_MAX_MS` | 100 | `arp_core.h` | Glide ceiling |
 
@@ -155,20 +158,24 @@ sequencer step on/off : 0 .. MAX_LAYERS*SEQ_TRACKS*SEQ_MAX_STEPS*2 - 1   (0..127
 sequencer previews    : 1280 .. 1280 + MAX_LAYERS*SEQ_TRACKS*2 - 1       (..1319)
 ─────────────────────────────────────────────────────────────────────────────────
 SEQ_ARP_TAG_BASE  = 1320
-SEQ_ARP_TAG_COUNT = ARP_MAX_SLOTS * ARP_OCT_MAX * 2 = 64
-SEQ_ARP_TAG_MAX   = 1320 + 64 - 1 = 1383
+SEQ_ARP_TAG_COUNT = 2 * max(ARP_MAX_SLOTS * ARP_OCT_MAX, ARP_BAR_MAX_STEPS)
+                  = 2 * max(32, 48) = 96
+SEQ_ARP_TAG_MAX   = 1320 + 96 - 1 = 1415
 ─────────────────────────────────────────────────────────────────────────────────
-ratchet one-shots     : 1384 .. 1543  (decorated sequencer steps)
+ball drop loops       : 1416 .. 1419
+ratchet one-shots     : 1420 .. 1579  (decorated sequencer steps)
 ```
 
 Each arp step `i` uses tag `SEQ_ARP_TAG_BASE + i*2` (note-on) and `+1`
-(note-off). With `ARP_MAX_STEPS = 32`, that's tags 1320..1383.
+(note-off). With `ARP_MAX_STEPS = 48`, that's tags 1320..1415: a full cycle
+needs at most 32 steps, an unrolled bar (repeat rate above 1) at most 48.
 
 > **AMY tag bound.** AMY's `sequencer_add_wire()` (v1.2.121+) rejects
 > `tag >= max_sequences`, fixing the historical off-by-one where a write at
 > index `max_sequences` overran `sequences[]`. To stay clear, `main.c` sets
-> `amy_cfg.max_sequencer_tags = SEQ_CLIP_TAG_MAX + 2` (2349, above the
-> highest window - the clip start tags - at 2347).
+> `amy_cfg.max_sequencer_tags = SEQ_AMY_SEQUENCE_SLOTS` (2893: two above the
+> highest window - the clip start tags - at 2383, plus the drop's events
+> beyond its four tags).
 > `sequencer_core_arp_emit_note()` also defensively drops any tag
 > `> SEQ_ARP_TAG_MAX`. Keep `max_sequencer_tags`, `SEQ_ARP_TAG_BASE/COUNT`,
 > the ratchet window, and the sequencer tag formula in sync.
@@ -177,7 +184,7 @@ The arp's slice of the global AMY tag ID space:
 
 ```mermaid
 flowchart LR
-    A["Sequencer steps\n0 .. 1279"] --> B["Sequencer previews\n1280 .. 1319"] --> C["Arp tags\n1320 .. 1383"] --> D["Ratchet one-shots\n1384 .. 1543"]
+    A["Sequencer steps\n0 .. 1279"] --> B["Sequencer previews\n1280 .. 1319"] --> C["Arp tags\n1320 .. 1415"] --> E["Ball drop\n1416 .. 1419"] --> D["Ratchet one-shots\n1420 .. 1579"]
 ```
 
 ### Rate → ticks
@@ -199,6 +206,10 @@ The rate is a `note_div_t`; its ticks per note come from `note_div_ticks()`
    - pick by direction; a rest emits nothing for its step.
    - `chromatic = pick + octave*12`, then `arp_snap()` → clamp to melodic range.
    - `tick_on = 1 + i*rate_ticks`; emit on/off pair at `tag_base + i*2`.
+   At repeat rate N > 1 the bar is unrolled instead: steps `j` while
+   `j*rate_ticks < SEQ_TICKS_PER_BAR`, each the note of cycle step
+   `j % steps`, with `period = SEQ_TICKS_PER_BAR * N`, so the arp plays the
+   first bar of every N bars and each window restarts the pattern at its top.
 4. Any previously-used arp tag not rewritten this pass was already cleared by
    `arp_clear_all()` at the top of `refresh`.
 
@@ -236,7 +247,8 @@ entry, Unison sub-page; semantics in `sequencer_core.h`, "Melodic per-track
 unison"): raw-wave and wavetable patches only, KS excluded. The effective copy
 count goes through the rows' clamp, `sequencer_core_unison_copies_for()`, so
 the arp's voices x oscs per voice stay within `SEQ_TRACK_OSC_BUDGET`. A change
-of effective count rebuilds the slot through `sequencer_core_arp_configure()`;
+of effective count, or of the stereo flag while the slot carries copies,
+rebuilds the slot through `sequencer_core_arp_configure()`;
 detune, spread and blend push live. The LFO map, the SCAN push and the
 distortion pushes address the unison oscs through
 `sequencer_core_voice_layout()`, as a row's do.
@@ -246,7 +258,7 @@ distortion pushes address the unison oscs through
 ## Refresh Coalescing (performance)
 
 Every arp setter changes scheduling, and a naive setter calls `arp_core_refresh()`
-inline, which clears + re-emits up to 32 events — each through the shared AMY
+inline, which clears + re-emits up to 48 events — each through the shared AMY
 event mutex on Core 0. A fast encoder spin through octaves/rate/gate would fire
 one full re-emit per detent, flooding the mutex.
 
@@ -289,6 +301,7 @@ void arp_core_service(void);   // coalesced re-emit if dirty (call per frame)
 void arp_set_enabled(bool);
 void arp_set_direction(arp_dir_t);       // UP / DOWN / SLOT
 void arp_set_octaves(uint8_t);           // 1..ARP_OCT_MAX
+void arp_set_repeat_rate(uint8_t);       // 1/2/4/8 bars, one bar = one loop
 void arp_set_rate(note_div_t);           // any note_div.h division
 void arp_set_gate_pct(uint8_t);          // 10..100
 void arp_set_scale(uint8_t);
@@ -407,7 +420,8 @@ until enabled and at least one slot is filled.
 The arp is saved with the project (`TAG_ARP` section, `ser_arp()` /
 `parse_arp()` in `project/project_snapshot.c`): enable, patch, direction,
 octaves, rate, gate, scale, root, portamento, level, the slots, quant mode,
-its EG0, EG1, filter, LFO and distortion blocks, mute, solo and unison. Storage format and slots:
+its EG0, EG1, filter, LFO and distortion blocks, mute, solo, unison and
+repeat rate. Storage format and slots:
 [Project storage](../../README.md#project-storage).
 
 ---

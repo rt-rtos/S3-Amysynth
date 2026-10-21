@@ -93,7 +93,7 @@ void drone_apply_enabled(drone_notes_t *n, const drone_voicing_t *v,
 void drone_release_all(drone_notes_t *n, uint8_t main_synth, uint8_t sub_synth,
                        uint32_t land_ms);
 
-/* ── Envelope store (shared graph editor) ──
+/* ── Envelope store (shared ADSR editor) ──
  * eg1 false = EG0 (vp->env), true = EG1 (vp->env1). Set copies env with the
  * VOICE_ENV_ATTACK_MIN_MS / VOICE_ENV_RELEASE_MIN_MS floors and marks the
  * envelope authored; returns false (vp untouched) for a NULL env. Pushing to

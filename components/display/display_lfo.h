@@ -71,9 +71,6 @@ typedef struct {
     bool        wob_native;   /* target runs the native LFO carrier; false =
                                  software stepper, where the WOBBLE rows are
                                  inert and drawn struck-through             */
-    bool        dist_inert;   /* domain has no software stepper for the DIST
-                                 targets (drone): their checkboxes drawn
-                                 struck-through                             */
     float       flt_lo_hz;    /* the FILTER swing's low and high cutoff, Hz,
                                  drawn in the header while FILTER is a
                                  checked target; 0 = no readout (the

@@ -91,6 +91,27 @@ static inline bool periodic_horizon_blocks(void) {
         && (int32_t)(amy_global.sequencer_tick_count - periodic_horizon_tick) >= 0;
 }
 
+// LOCAL EDIT (S3-Amysynth): periodic-entry start, the mirror of the horizon.
+// While set, repeating entries do not fire before this tick, so a host can
+// put a whole pattern in place and have it begin silently on an exact tick
+// (the bar line after play). Expires by comparison; stored tick before flag.
+static uint32_t periodic_start_tick = 0;
+static volatile uint8_t periodic_start_set = 0;
+
+void sequencer_set_periodic_start(uint32_t tick) {
+    periodic_start_tick = tick;
+    periodic_start_set = 1;
+}
+
+void sequencer_clear_periodic_start(void) {
+    periodic_start_set = 0;
+}
+
+static inline bool periodic_start_blocks(void) {
+    return periodic_start_set
+        && (int32_t)(amy_global.sequencer_tick_count - periodic_start_tick) < 0;
+}
+
 void sequencer_init(int max_sequencer_tags) {
     // These are statics, so a stop/start of AMY within one process needs them
     // put back to their boot state (internal clock, running).
@@ -439,9 +460,9 @@ static bool slot_due(int32_t slot, bool *one_shot)
     uint32_t period = sequences[slot].period;
     if (period != 0) {
         *one_shot = false;
-        // See periodic_horizon_blocks().
+        // See periodic_horizon_blocks() and periodic_start_blocks().
         return amy_global.sequencer_tick_count % period == sequences[slot].tick
-            && !periodic_horizon_blocks();
+            && !periodic_horizon_blocks() && !periodic_start_blocks();
     }
     // Absolute tick.  <= rather than ==: the walk runs without the lock, and
     // a stale link can make it skip an entry for a single tick (see the

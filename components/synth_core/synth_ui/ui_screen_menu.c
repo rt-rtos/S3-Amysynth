@@ -9,6 +9,7 @@
 #include "quantizer.h"
 #include "amy_fx.h"
 #include "seq_clamp.h"
+#include "transport_stop.h"
 #if CONFIG_SYNTH_PROJECT_STORE
 #include "project_fs.h"
 #endif
@@ -34,8 +35,9 @@ static const char *TAG = "synth_ui";
  * seq_state.menu_cursor/menu_editing. */
 
 typedef enum {
+    MI_TRANSPORT,         /* first row: the Play/Stop toggle */
 #if CONFIG_SYNTH_DEV_MENU
-    MI_DEV,               /* first row: DEV menu (temporary controls) */
+    MI_DEV,               /* DEV menu (temporary controls) */
 #endif
     MI_LAYER_MENU,        /* dive row: everything scoped to the active layer.
                            * Near the top: the most-visited page (mute/solo). */
@@ -65,6 +67,7 @@ typedef enum {
     MI_BOUNCE,
     MI_PROGGEN,
     MI_FX_MENU,
+    MI_SETTINGS,
 #if CONFIG_SYNTH_PROJECT_STORE
     MI_PROJECTS,
 #endif
@@ -85,6 +88,8 @@ static uint8_t s_main_cursor = 0;
  * lands on the bus row it came from. */
 static bool    s_fxbus_page = false;
 static uint8_t s_fxhub_cursor = 0;
+/* Settings page (item model in ui_screen_settings.c). */
+static bool    s_settings_page = false;
 /* Per-layer page (item model in ui_screen_layermenu.c). */
 static bool    s_layer_page = false;
 /* The Layer page's sub-pages (item model in ui_screen_layer_sub.c). Back
@@ -113,6 +118,7 @@ const char *menu_page_title(void)
     if (s_layer_pcm_page) return layer_pcm_menu_title();
     if (s_fxbus_page) return fx_menu_title();
     if (s_fx_page) return "GLOBAL FX";
+    if (s_settings_page) return "SETTINGS";
 #if CONFIG_SYNTH_PROJECT_STORE
     if (s_projects_page) return "PROJECTS";
 #endif
@@ -188,6 +194,13 @@ void menu_build_view(menu_view_t *out)
         out->editing = seq_state.menu_editing;
         return;
     }
+    if (s_settings_page) {
+        out->items   = settings_menu_build_items();
+        out->count   = settings_menu_item_count();
+        out->cursor  = seq_state.menu_cursor;
+        out->editing = seq_state.menu_editing;
+        return;
+    }
 #if CONFIG_SYNTH_PROJECT_STORE
     if (s_projects_page) {
         out->items   = projects_menu_build_items();
@@ -232,6 +245,9 @@ void menu_build_view(menu_view_t *out)
         s_menu_items[i].value[0] = '\0';
     }
 
+    snprintf(s_menu_items[MI_TRANSPORT].label, MENU_LABEL_LEN, "%s",
+             !seq_state.playing ? "Play"
+             : transport_stop_is_armed() ? "Stop.." : "Stop");
 #if CONFIG_SYNTH_DEV_MENU
     snprintf(s_menu_items[MI_DEV].label, MENU_LABEL_LEN, "DEV");
 #endif
@@ -329,6 +345,10 @@ void menu_build_view(menu_view_t *out)
     /* FX live on their own hub page, one row per bus (ui_screen_fxmenu.c). */
     snprintf(s_menu_items[MI_FX_MENU].label, MENU_LABEL_LEN, "FX");
     snprintf(s_menu_items[MI_FX_MENU].value, MENU_VALUE_LEN, ">");
+
+    /* Instrument-wide settings live on their own page (ui_screen_settings.c). */
+    snprintf(s_menu_items[MI_SETTINGS].label, MENU_LABEL_LEN, "Settings");
+    snprintf(s_menu_items[MI_SETTINGS].value, MENU_VALUE_LEN, ">");
 
 #if CONFIG_SYNTH_PROJECT_STORE
     /* Persistent project storage lives on its own page (ui_screen_projects.c). */
@@ -457,7 +477,7 @@ static void menu_edit_value(menu_item_id_t id, int delta)
 static bool menu_on_subpage(void)
 {
     return s_layer_page || s_layer_uni_page || s_layer_pcm_page ||
-           s_fxbus_page || s_fx_page ||
+           s_fxbus_page || s_fx_page || s_settings_page ||
 #if CONFIG_SYNTH_PROJECT_STORE
            s_projects_page ||
 #endif
@@ -475,6 +495,7 @@ static int menu_page_item_count(void)
            s_layer_pcm_page ? (int)layer_pcm_menu_item_count() :
            s_fxbus_page ? (int)fx_menu_item_count() :
            s_fx_page ? (int)fxhub_item_count() :
+           s_settings_page ? (int)settings_menu_item_count() :
 #if CONFIG_SYNTH_PROJECT_STORE
            s_projects_page ? (int)projects_menu_item_count() :
 #endif
@@ -489,8 +510,8 @@ static int menu_page_item_count(void)
 
 void synth_ui_menu_toggle(void)
 {
-    /* The graph editor is the top overlay; don't let the menu fight it. */
-    if (synth_ui_graph_is_active()) return;
+    /* The ADSR editor is the top overlay; don't let the menu fight it. */
+    if (synth_ui_adsr_is_active()) return;
     seq_state.menu_open    = !seq_state.menu_open;
     seq_state.menu_editing = false;
     if (seq_state.menu_open) {
@@ -566,6 +587,7 @@ static void menu_clear_subpages(void)
 {
     s_fx_page = false;
     s_fxbus_page = false;
+    s_settings_page = false;
     s_layer_page = false;
     s_layer_uni_page = false;
     s_layer_pcm_page = false;
@@ -608,18 +630,23 @@ void synth_ui_menu_toggle_layer_page(void)
         }
         return;
     }
-    if (synth_ui_graph_is_active()) return;
-    voice_target_kind_t kind = (seq_state.ui_mode == UI_MODE_ARP)  ? VT_ARP
-                             : (seq_state.ui_mode == UI_MODE_DROP) ? VT_DROP : VT_MELODIC;
+    if (synth_ui_adsr_is_active()) return;
+    voice_target_kind_t kind = (seq_state.ui_mode == UI_MODE_ARP)       ? VT_ARP
+                             : (seq_state.ui_mode == UI_MODE_DROP)      ? VT_DROP
+                             : (seq_state.ui_mode == UI_MODE_DRONE)     ? VT_DRONE
+                             : (seq_state.ui_mode == UI_MODE_DRONE_STD) ? VT_DRONE_STD
+                             : VT_MELODIC;
     if (!s_layer_page || layermenu_menu_kind() != kind) {
         /* Not closed on the Layer page, or closed on another entry: dive as
-         * the main list's Layer row does, but land on Gate (layer) or Level
-         * (arp). */
+         * the main list's Layer row does, but land on Gate (layer), Unison
+         * (a drone) or Level (arp, drop). */
         menu_clear_subpages();
         s_main_cursor = MI_LAYER_MENU;
         layermenu_menu_set_kind(kind);
         s_layer_page = true;
-        seq_state.menu_cursor = layermenu_menu_row_index(kind != VT_MELODIC ? LM_LEVEL : LM_GATE);
+        uint8_t land = (kind == VT_MELODIC) ? LM_GATE
+                     : (kind == VT_DRONE || kind == VT_DRONE_STD) ? LM_UNISON : LM_LEVEL;
+        seq_state.menu_cursor = layermenu_menu_row_index(land);
     }
     synth_ui_menu_toggle();
 }
@@ -638,8 +665,8 @@ bool synth_ui_menu_handle_encoder(long delta)
             layer_pcm_menu_edit_value(seq_state.menu_cursor, (int)delta);
         } else if (s_fxbus_page) {
             fx_menu_edit_value(seq_state.menu_cursor, (int)delta);
-        } else if (s_fx_page) {
-            fxhub_edit_value(seq_state.menu_cursor, (int)delta);
+        } else if (s_settings_page) {
+            settings_menu_edit_value(seq_state.menu_cursor, (int)delta);
 #if CONFIG_SYNTH_PROJECT_STORE
         } else if (s_projects_page) {
             projects_menu_edit_value(seq_state.menu_cursor, (int)delta);
@@ -752,10 +779,21 @@ bool synth_ui_menu_handle_button(void)
             s_fxbus_page = true;
             seq_state.menu_cursor  = 0;
             seq_state.menu_editing = false;
-        } else if (fxhub_item_is_value(idx)) {
-            seq_state.menu_editing = !seq_state.menu_editing;
         } else if (fxhub_item_is_back(idx)) {
             s_fx_page = false;
+            seq_state.menu_cursor  = s_main_cursor;
+            seq_state.menu_editing = false;
+        }
+        s_force_redraw = true;
+        return true;
+    }
+
+    if (s_settings_page) {
+        uint8_t idx = seq_state.menu_cursor;
+        if (settings_menu_item_is_value(idx)) {
+            seq_state.menu_editing = !seq_state.menu_editing;
+        } else if (settings_menu_item_is_back(idx)) {
+            s_settings_page = false;
             seq_state.menu_cursor  = s_main_cursor;
             seq_state.menu_editing = false;
         }
@@ -840,6 +878,10 @@ bool synth_ui_menu_handle_button(void)
     } else {
         /* Action item: run it and close the menu. */
         switch (id) {
+            case MI_TRANSPORT:
+                /* The transport toggle; the menu stays open. */
+                synth_ui_toggle_playing();
+                break;
             case MI_SCREEN_SEQ:
                 seq_state.ui_mode = UI_MODE_SEQUENCER;
                 seq_state.menu_open = false;
@@ -926,6 +968,12 @@ bool synth_ui_menu_handle_button(void)
                 /* Dive into the FX hub; the menu stays open. */
                 s_main_cursor = seq_state.menu_cursor;
                 s_fx_page = true;
+                seq_state.menu_cursor = 0;
+                break;
+            case MI_SETTINGS:
+                /* Dive into the settings page; the menu stays open. */
+                s_main_cursor = seq_state.menu_cursor;
+                s_settings_page = true;
                 seq_state.menu_cursor = 0;
                 break;
 #if CONFIG_SYNTH_PROJECT_STORE

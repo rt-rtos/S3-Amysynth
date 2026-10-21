@@ -62,7 +62,7 @@ static const patch_domain_t s_drum_domain = {
  * eg0/eg1/flt are OPTIONAL per-role voice-param defaults (NULL = the
  * transparent defaults: sample-natural envelope, no EG1, no filter). Rows the
  * user has NOT authored get their editable vp model seeded from these on every
- * (re)configure and pushed through the same appliers the graph editors use, so
+ * (re)configure and pushed through the same appliers the voice editors use, so
  * the editors open on the curve that is sounding. Authored vp wins and is never
  * re-seeded (deferred authority, as melodic; drum defaults are our own data,
  * so the unauthored model is not left zeroed).
@@ -346,22 +346,21 @@ void sequencer_core_set_ks_voices(uint8_t n)
 
 /* ── Melodic per-track unison ──────────────────────────────────────────────
  * Contract in sequencer_core.h. Storage is seq_layer_t.track_unison[] (count
- * 0 = never set -> the getter's defaults); the backend is this one global. */
-static uint8_t s_unison_layout = VOICE_UNISON_LAYOUT_ENGINE;
+ * 0 = never set -> the getter's defaults). */
 
 _Static_assert(SEQ_TRACKS <= 8, "unison row masks are uint8_t");
 
 /* Effective copy count for one track's build: the authored count, gated to
  * native-LFO wave patches (KS excluded - every sounding voice needs its own
- * ks_buffer ring, see seq_track_num_voices) and clamped so the layout's
- * voices * oscs_per_voice fits the per-track osc budget - copies on the fan,
- * copies + 2 with the two SILENT heads, a flat 2 on the engine layout (the
- * copies live inside the two cluster oscs, capped by AMY_UNISON_MAX per
- * side), each plus VOICE_LFO_PAIR_OSCS (voice_unison_oscs_per_voice). THE
- * single clamp - the build, the live push and the LFO layout all derive from
- * it, so the built pool and the osc masks cannot disagree. */
+ * ks_buffer ring, see seq_track_num_voices) and clamped so voices *
+ * oscs_per_voice fits the per-track osc budget. The copies live inside the
+ * cluster oscs, so the pool cost is 1 osc per voice (stereo off) or 2
+ * (stereo on), plus VOICE_LFO_PAIR_OSCS (voice_unison_oscs_per_voice),
+ * whatever the count; the count is capped by AMY_UNISON_MAX per cluster osc.
+ * THE single clamp - the build, the live push and the LFO layout all derive
+ * from it, so the built pool and the osc masks cannot disagree. */
 static uint8_t unison_copies_for(uint16_t patch, uint8_t count, uint8_t voices,
-                                 uint8_t layout)
+                                 bool stereo)
 {
 #if CONFIG_SEQ_MELODIC_AMY_NATIVE_LFO
     if (count <= 1u) return 1u;
@@ -370,42 +369,28 @@ static uint8_t unison_copies_for(uint16_t patch, uint8_t count, uint8_t voices,
     if (count > VOICE_UNISON_MAX_COPIES) count = VOICE_UNISON_MAX_COPIES;
     if (voices == 0u) voices = 1u;
     uint16_t per_voice = SEQ_TRACK_OSC_BUDGET / voices;
-    if (layout == VOICE_UNISON_LAYOUT_ENGINE) {
-        /* Any count: an odd one gives the L cluster the extra copy; the pool
-         * cost is the 4-osc voice whatever the count. */
-        if (per_voice < 2u + VOICE_LFO_PAIR_OSCS) return 1u;
-        if (count > 2u * AMY_UNISON_MAX) count = (uint8_t)(2u * AMY_UNISON_MAX);
-        return (count < 2u) ? 1u : count;
-    }
-    if (layout == VOICE_UNISON_LAYOUT_HEADED) {
-        /* Even counts only, and the budget itself floors to even: an odd
-         * ceiling would split the groups unevenly. Anything under a pair
-         * falls back to the plain single-osc build. */
-        count = (uint8_t)(count & ~1u);
-        uint8_t max_copies = (per_voice > 2u + VOICE_LFO_PAIR_OSCS)
-                           ? (uint8_t)((per_voice - 2u - VOICE_LFO_PAIR_OSCS) & ~1u) : 0u;
-        uint8_t eff = (count > max_copies) ? max_copies : count;
-        return (eff < 2u) ? 1u : eff;
-    }
-    uint8_t max_copies = (per_voice > 1u + VOICE_LFO_PAIR_OSCS)
-                       ? (uint8_t)(per_voice - VOICE_LFO_PAIR_OSCS) : 1u;
-    return (count > max_copies) ? max_copies : count;
+    uint8_t  oscs  = stereo ? 2u : 1u;   /* an odd count gives L the extra copy */
+    if (per_voice < oscs + VOICE_LFO_PAIR_OSCS) return 1u;
+    if (count > oscs * AMY_UNISON_MAX) count = (uint8_t)(oscs * AMY_UNISON_MAX);
+    return (count < 2u) ? 1u : count;
 #else
     /* Without the native layout the software pitch stepper owns osc0's freq
-     * CONST and would stomp the detune fan - single copy only. */
-    (void)patch; (void)count; (void)voices; (void)layout;
+     * CONST and would stomp the detune - single copy only. */
+    (void)patch; (void)count; (void)voices; (void)stereo;
     return 1u;
 #endif
 }
 
-uint8_t sequencer_core_unison_copies_for(uint16_t patch, uint8_t count, uint8_t voices)
+uint8_t sequencer_core_unison_copies_for(uint16_t patch, uint8_t count, uint8_t voices,
+                                         bool stereo)
 {
-    return unison_copies_for(patch, count, voices, s_unison_layout);
+    return unison_copies_for(patch, count, voices, stereo);
 }
 
-uint8_t sequencer_core_unison_max_for(uint16_t patch, uint8_t voices)
+uint8_t sequencer_core_unison_max_for(uint16_t patch, uint8_t voices, bool stereo)
 {
-    uint8_t max = sequencer_core_unison_copies_for(patch, VOICE_UNISON_MAX_COPIES, voices);
+    uint8_t max = sequencer_core_unison_copies_for(patch, VOICE_UNISON_MAX_COPIES, voices,
+                                                   stereo);
     return (max > 1u) ? max : 0u;
 }
 
@@ -424,11 +409,12 @@ uint8_t seq_track_unison_copies(uint8_t layer_idx, uint8_t track)
     const seq_layer_t *layer = &s_layers[layer_idx];
     if (layer->type != SEQ_LAYER_MELODIC) return 1u;
     voice_unison_t u = sequencer_core_get_track_unison(layer_idx, track);
-    return unison_copies_for(layer->track_patch[track], u.count,
-                             seq_track_built_voices(layer_idx, track), u.layout);
+    return unison_copies_for(layer->track_patch[track], u.bypass ? 1u : u.count,
+                             seq_track_built_voices(layer_idx, track), u.stereo);
 }
 
-bool sequencer_core_voice_layout(uint16_t patch, uint8_t copies, seq_voice_layout_t *out)
+bool sequencer_core_voice_layout(uint16_t patch, uint8_t copies, bool stereo,
+                                 seq_voice_layout_t *out)
 {
     uint8_t m = 0;
     if (!sequencer_core_lfo_wave_layout(patch, &m)) return false;
@@ -439,17 +425,14 @@ bool sequencer_core_voice_layout(uint16_t patch, uint8_t copies, seq_voice_layou
     (void)sequencer_core_lfo_native_layout(patch, &l.carrier, NULL);
 #endif
     if (copies > 1u) {   /* wave layout only - unison_copies_for gates on it */
-        uint8_t layout = s_unison_layout;
 #if !CONFIG_SEQ_LFO_SHARED
         /* The carrier pair sits above the audible oscs, whatever their shape. */
-        l.carrier    = (uint8_t)(voice_unison_oscs_per_voice(copies, layout) - 2u);
+        l.carrier    = (uint8_t)(voice_unison_oscs_per_voice(copies, stereo) - 2u);
 #endif
-        l.pitch_mask = voice_unison_copies_mask(copies, layout);
-        l.heads_mask = voice_unison_heads_mask(copies, layout);
-        /* Headed: the per-voice stages live on the heads, so filter/amp/pan/
-         * dist modulation follows them and never the chained copies. Engine:
-         * the two cluster oscs are both the copies and the heads. */
-        l.voice_mask = l.heads_mask ? l.heads_mask : l.pitch_mask;
+        /* The cluster oscs are both the copies and the heads. */
+        l.pitch_mask = voice_unison_copies_mask(copies, stereo);
+        l.heads_mask = voice_unison_heads_mask(copies, stereo);
+        l.voice_mask = l.heads_mask;
     }
     if (out) *out = l;
     return true;
@@ -460,7 +443,9 @@ bool seq_track_voice_layout(uint8_t layer_idx, uint8_t track,
 {
     if (layer_idx >= s_num_layers || track >= SEQ_TRACKS) return false;
     return sequencer_core_voice_layout(s_layers[layer_idx].track_patch[track],
-                                       seq_track_unison_copies(layer_idx, track), out);
+                                       seq_track_unison_copies(layer_idx, track),
+                                       sequencer_core_get_track_unison(layer_idx, track).stereo,
+                                       out);
 }
 
 /* ── Melodic per-track wavetable frame (contract in sequencer_core.h) ── */
@@ -491,18 +476,18 @@ uint8_t sequencer_core_get_track_wt_frame(uint8_t layer_idx, uint8_t track)
 voice_unison_t sequencer_core_get_track_unison(uint8_t layer_idx, uint8_t track)
 {
     /* First-turn defaults; count 1 keeps them inert until authored. */
-    voice_unison_t u = { 1u, 12u, 50u, 100u, 0u };
+    voice_unison_t u = { 1u, 12u, 50u, 100u, 1u, 0u, 100u, 0u };
     if (layer_idx < s_num_layers && track < SEQ_TRACKS &&
         s_layers[layer_idx].track_unison[track].count != 0u)   /* 0 = never set */
         u = s_layers[layer_idx].track_unison[track];
-    u.layout = s_unison_layout;
     return u;
 }
 
 /* Store `u` (clamped) on rows [first, end) of melodic layer `layer_idx`.
- * Returns whether any live row's EFFECTIVE copy count moved (the pool shape:
- * rebuild); `push_mask` gets the live rows that keep their shape, carry
- * copies and changed detune/spread/blend (live push). */
+ * Returns whether any live row's pool shape moved - its EFFECTIVE copy count
+ * (count, or 1 under bypass), or the stereo flag while it carries copies
+ * (rebuild); `push_mask` gets the live rows that keep their shape, carry
+ * copies and changed detune/interval/shift/spread/blend (live push). */
 static bool seq_unison_store_rows(uint8_t layer_idx, uint8_t first, uint8_t end,
                                   const voice_unison_t *u, uint8_t *push_mask)
 {
@@ -512,7 +497,10 @@ static bool seq_unison_store_rows(uint8_t layer_idx, uint8_t first, uint8_t end,
     v.detune_cents = SEQ_CLAMP_U8(v.detune_cents, 0u, VOICE_UNISON_MAX_DETUNE);
     v.spread_pct   = SEQ_CLAMP_U8(v.spread_pct, 0u, 100u);
     v.blend_pct    = SEQ_CLAMP_U8(v.blend_pct, 0u, 100u);
-    v.layout       = 0u;   /* storage ignores it: the backend is global */
+    v.stereo       = SEQ_CLAMP_U8(v.stereo, 0u, 1u);
+    v.bypass       = SEQ_CLAMP_U8(v.bypass, 0u, 1u);
+    v.shift        = SEQ_CLAMP_U8(v.shift, 0u, VOICE_UNISON_MAX_SHIFT);
+    v.interval     = SEQ_CLAMP_U8(v.interval, 0u, VOICE_UNISON_MAX_INTERVAL);
     bool shape = false;
     *push_mask = 0u;
     for (uint8_t t = first; t < end; t++) {
@@ -520,12 +508,17 @@ static bool seq_unison_store_rows(uint8_t layer_idx, uint8_t first, uint8_t end,
         layer->track_unison[t] = v;
         if (t >= layer->num_tracks) continue;   /* stored, not built */
         uint8_t voices = seq_track_built_voices(layer_idx, t);
-        uint8_t was = unison_copies_for(layer->track_patch[t], old.count, voices,
-                                        s_unison_layout);
-        uint8_t now = unison_copies_for(layer->track_patch[t], v.count, voices,
-                                        s_unison_layout);
-        if (was != now) { shape = true; continue; }
+        uint8_t was = unison_copies_for(layer->track_patch[t],
+                                        old.bypass ? 1u : old.count, voices, old.stereo);
+        uint8_t now = unison_copies_for(layer->track_patch[t],
+                                        v.bypass ? 1u : v.count, voices, v.stereo);
+        if (was != now || (now > 1u && v.stereo != old.stereo)) {
+            shape = true;
+            continue;
+        }
         if (now > 1u && (v.detune_cents != old.detune_cents ||
+                         v.interval     != old.interval ||
+                         v.shift        != old.shift ||
                          v.spread_pct   != old.spread_pct ||
                          v.blend_pct    != old.blend_pct))
             *push_mask |= (uint8_t)(1u << t);
@@ -575,47 +568,22 @@ void sequencer_core_set_layer_unison(uint8_t layer_idx, const voice_unison_t *u)
     seq_unison_apply(layer_idx, shape, push);
 }
 
-uint8_t sequencer_core_get_unison_layout(void) { return s_unison_layout; }
-
-void sequencer_core_set_unison_layout(uint8_t layout)
-{
-    if (layout >= (uint8_t)VOICE_UNISON_LAYOUT_COUNT) return;
-    if (layout == s_unison_layout) return;
-    uint8_t old = s_unison_layout;
-    s_unison_layout = layout;
-    /* A row carrying unison under either backend changes pool shape
-     * (oscs_per_voice, osc masks) with the layout even at an equal copy
-     * count; headed's floors can also move a row 1 <-> 2. */
-    for (uint8_t li = 0; li < s_num_layers; li++) {
-        const seq_layer_t *layer = &s_layers[li];
-        if (layer->type != SEQ_LAYER_MELODIC) continue;
-        for (uint8_t t = 0; t < layer->num_tracks; t++) {
-            uint8_t count  = sequencer_core_get_track_unison(li, t).count;
-            uint8_t voices = seq_track_built_voices(li, t);
-            uint8_t was = unison_copies_for(layer->track_patch[t], count, voices, old);
-            uint8_t now = unison_copies_for(layer->track_patch[t], count, voices, layout);
-            if (was != now || was > 1u) {
-                sequencer_reconfigure_layer_paused(li);
-                break;
-            }
-        }
-    }
-}
-
 uint8_t sequencer_core_track_unison_max(uint8_t layer_idx, uint8_t track)
 {
     if (layer_idx >= s_num_layers || track >= SEQ_TRACKS) return 0u;
     const seq_layer_t *layer = &s_layers[layer_idx];
     if (layer->type != SEQ_LAYER_MELODIC) return 0u;
     return sequencer_core_unison_max_for(layer->track_patch[track],
-                                         seq_track_built_voices(layer_idx, track));
+                                         seq_track_built_voices(layer_idx, track),
+                                         sequencer_core_get_track_unison(layer_idx, track).stereo);
 }
 
 /* Configure a single melodic synth slot as a bare AMY oscillator. Mirrors
  * arp_configure_wave_synth(). Envelope, filter and LFO are the caller's job.
  *
- * In native LFO mode the pool is whatever the unison layout needs (EFFECTIVE
- * count from `uni` via unison_copies_for; NULL or 1 = single osc0), plus,
+ * In native LFO mode the pool is whatever the unison spec needs (EFFECTIVE
+ * count from `uni` via unison_copies_for and its stereo flag; NULL or 1 =
+ * single osc0), plus,
  * without CONFIG_SEQ_LFO_SHARED, the LFO carrier and wobble INDEX slots
  * reserved above it, so toggling the LFO never forces a pool resize;
  * voice_build_wave parks them until an LFO is authored. */
@@ -649,8 +617,7 @@ static void sequencer_configure_melodic_wave_track(uint8_t synth_id,
 
 #if CONFIG_SEQ_MELODIC_AMY_NATIVE_LFO
     uint8_t copies = (uni && uni->count > 1u) ? uni->count : 1u;
-    uint8_t layout = uni ? uni->layout : (uint8_t)VOICE_UNISON_LAYOUT_FAN;
-    uint8_t oscs_per_voice = voice_unison_oscs_per_voice(copies, layout);
+    uint8_t oscs_per_voice = voice_unison_oscs_per_voice(copies, uni && uni->stereo);
 #endif
 
     voice_wave_cfg_t cfg = {
@@ -681,7 +648,7 @@ static void sequencer_configure_melodic_wave_track(uint8_t synth_id,
 
 /* Push each AUTHORED row's stored envelope to its own per-row synth.
  * Deferred authority: a row's envelope only overrides the patch's own envelope
- * once the user has committed it in the graph editor (env_authored[t]==true).
+ * once the user has committed it in the ADSR editor (env_authored[t]==true).
  * Unauthored rows are left alone so the freshly-loaded patch envelope plays. */
 static void sequencer_configure_melodic_envelope(uint8_t layer_idx, uint8_t rows)
 {
@@ -798,8 +765,8 @@ uint16_t sequencer_core_clamp_patch_voices(uint16_t patch, uint16_t want)
 }
 
 /* Apply one routable patch (0..SEQ_PATCH_FULL_MAX) to a synth slot. The SINGLE
- * kind dispatch for every consumer (melodic tracks, the arp, live play and the
- * standard drone; the stutter drone has its own excitation model). Ranges: the SEQ_PATCH_* map in sequencer_core.h.
+ * kind dispatch for every consumer (melodic tracks, the arp, live play and
+ * both drones; the stutter drone gates the built oscs' amp CONST). Ranges: the SEQ_PATCH_* map in sequencer_core.h.
  *   raw wave / wavetable -> direct oscillator config (no patch string)
  *   bass preset          -> bass_preset_configure_track
  *   FM/ALGO              -> fm preset / live-editable custom voice
@@ -947,8 +914,8 @@ void sequencer_configure_synth_rows(uint8_t layer_idx, uint8_t rows)
         sequencer_kill_synth_voices(layer->synth_id[t]);
         const voice_params_t *vp = seq_track_vp(layer_idx, t);
         voice_unison_t uni = sequencer_core_get_track_unison(layer_idx, t);
-        uni.count = unison_copies_for(layer->track_patch[t], uni.count, voices,
-                                      uni.layout);
+        uni.count = unison_copies_for(layer->track_patch[t],
+                                      uni.bypass ? 1u : uni.count, voices, uni.stereo);
         string_patch |= seq_apply_patch(layer->synth_id[t],
                                         layer->track_patch[t],
                                         voices,
@@ -1553,12 +1520,6 @@ uint8_t sequencer_core_clamp_melodic_note(int32_t midi_note)
 int sequencer_core_patch_voice_osc(uint16_t patch)
 {
     return (patch >= SEQ_PATCH_FM_BASE && patch <= SEQ_PATCH_FM_MAX) ? 0 : -1;
-}
-
-int sequencer_core_patch_amp_osc(uint16_t patch)
-{
-    if (patch >= SEQ_PATCH_DX7_BASE && patch <= SEQ_PATCH_DX7_MAX) return 0;
-    return sequencer_core_patch_voice_osc(patch);
 }
 
 void sequencer_core_push_envelope(uint8_t synth, const seq_env_t *env)

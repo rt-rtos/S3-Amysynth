@@ -32,7 +32,8 @@ static mixer_snapshot_t s_mix;
 
 /* Fades, one slot per fadeable source (fade_index()): master, the layers,
  * their tracks, the misc sources. restore_pos is where the last fade-out
- * started, the target of the next fade-in. */
+ * started, the target of the next fade-in. s_link is the slot's link group,
+ * kept apart from the fade runtime that fade_clear*() resets. */
 #define FADE_LAYER0  1
 #define FADE_TRACK0  (FADE_LAYER0 + MAX_LAYERS)
 #define FADE_MISC0   (FADE_TRACK0 + MAX_LAYERS * SEQ_TRACKS)
@@ -48,6 +49,7 @@ typedef struct {
 static const uint8_t s_fade_bars[MIXER_FADE_BARS_COUNT] = { 1, 2, 4, 8, 16, 32 };
 static mix_fade_t s_fade[FADE_SLOTS];
 static uint8_t    s_restore_pos[FADE_SLOTS];
+static uint8_t    s_link[FADE_SLOTS];
 
 /* Sources whose synths go out on the next frame. */
 static uint8_t s_layer_dirty;
@@ -118,6 +120,12 @@ static void fade_clear_layer(uint8_t L)
     for (uint8_t t = 0; t < SEQ_TRACKS; t++) fade_clear(FADE_TRACK0 + L * SEQ_TRACKS + t);
 }
 
+static void link_clear_layer(uint8_t L)
+{
+    s_link[FADE_LAYER0 + L] = MIXER_LINK_NONE;
+    memset(&s_link[FADE_TRACK0 + L * SEQ_TRACKS], MIXER_LINK_NONE, SEQ_TRACKS);
+}
+
 static void mark_all_dirty(void)
 {
     s_layer_dirty = LAYER_MASK;
@@ -184,6 +192,7 @@ void mixer_init(void)
 {
     mixer_params_defaults(&s_mix);
     fade_clear_all();
+    memset(s_link, MIXER_LINK_NONE, sizeof(s_link));
     s_layer_dirty = 0;
     memset(s_track_dirty, 0, sizeof(s_track_dirty));
     s_misc_dirty = 0;
@@ -196,6 +205,7 @@ void mixer_reset_defaults(void)
 {
     mixer_params_defaults(&s_mix);
     fade_clear_all();
+    mixer_clear_links();
     mark_all_dirty();
 }
 
@@ -214,6 +224,34 @@ bool mixer_src_present(mix_src_t s)
             return s.a < CLIP_SLOT_COUNT && clip_player_slot_state(s.a) == CLIP_SLOT_LOADED;
         default:                 return false;
     }
+}
+
+bool mixer_synth_present(uint8_t synth)
+{
+    /* The synth-to-source map and presence rules of mixer_service(). */
+    if (synth == 0u || synth >= SYNTH_SLOT_COUNT) return false;
+    uint8_t n = sequencer_core_get_num_layers();
+    if (n > MAX_LAYERS) n = MAX_LAYERS;
+    for (uint8_t L = 0; L < n; L++) {
+        uint8_t tracks = sequencer_core_get_layer_tracks(L);
+        if (tracks > SEQ_TRACKS) tracks = SEQ_TRACKS;
+        for (uint8_t t = 0; t < tracks; t++) {
+            if (sequencer_core_get_track_synth(L, t) == synth) return true;
+        }
+    }
+    switch (synth) {
+        case SEQ_ARP_SYNTH:        return true;
+        case DRONE_STD_SYNTH_MAIN: return drone_std_get_enabled();
+        case DRONE_STD_SYNTH_SUB:  return drone_std_get_enabled() && drone_std_get_sub_enabled();
+        case DRONE_SYNTH_MAIN:     return drone_get_enabled();
+        case DRONE_SYNTH_SUB:      return drone_get_enabled() && drone_get_sub_enabled();
+        case LIVE_SYNTH:           return live_ready();
+        default: break;
+    }
+    if (synth >= CLIP_SYNTH_BASE && synth < CLIP_SYNTH_BASE + CLIP_SLOT_COUNT) {
+        return clip_player_slot_state((uint8_t)(synth - CLIP_SYNTH_BASE)) == CLIP_SLOT_LOADED;
+    }
+    return false;
 }
 
 uint8_t mixer_get_pos(mix_src_t s)
@@ -334,10 +372,9 @@ uint8_t mixer_fade_bars(uint8_t idx)
     return s_fade_bars[(idx < MIXER_FADE_BARS_COUNT) ? idx : MIXER_FADE_BARS_COUNT - 1];
 }
 
-void mixer_fade_toggle(mix_src_t s)
+/* One slot's toggle; returns true when it now heads out (to_pos 0). */
+static bool fade_toggle_one(int i, mix_src_t s)
 {
-    int i = fade_index(s);
-    if (i < 0) return;
     mix_fade_t *f = &s_fade[i];
     uint8_t pos = mixer_get_pos(s);
     uint8_t back = s_restore_pos[i] ? s_restore_pos[i] : (uint8_t)MIXER_POS_MAX;
@@ -350,13 +387,13 @@ void mixer_fade_toggle(mix_src_t s)
              * an out from its remembered level. */
             if (f->to_pos == 0u) { f->from_pos = 0;    f->to_pos = back; write_pos(s, 0); }
             else                 { f->from_pos = back; f->to_pos = 0;    write_pos(s, back); }
-            return;
+            return f->to_pos == 0u;
         }
         /* Under way: turn around from where it is, at once, no re-quantize. */
         f->to_pos     = (f->to_pos != 0u) ? 0u : back;
         f->from_pos   = pos;
         f->start_tick = sequencer_ticks();
-        return;
+        return f->to_pos == 0u;
     }
     if (pos > 0u) {
         s_restore_pos[i] = pos;
@@ -369,6 +406,48 @@ void mixer_fade_toggle(mix_src_t s)
     uint32_t bar = sequencer_core_next_bar_tick();
     f->start_tick = bar ? bar : sequencer_ticks();
     f->active = 1;
+    return f->to_pos == 0u;
+}
+
+/* The direction a toggle of slot i would choose: true = out. */
+static bool fade_would_go_out(int i, mix_src_t s)
+{
+    if (s_fade[i].active) return s_fade[i].to_pos != 0u;   /* a toggle reverses it */
+    return mixer_get_pos(s) > 0u;
+}
+
+void mixer_fade_toggle(mix_src_t s)
+{
+    int i = fade_index(s);
+    if (i < 0) return;
+    bool out = fade_toggle_one(i, s);
+    if (s_link[i] == MIXER_LINK_NONE) return;
+    /* Members already at the target or already heading there are left
+     * alone; the rest toggle, reading the same next bar line. */
+    for (int j = 0; j < FADE_SLOTS; j++) {
+        if (j == i || s_link[j] != s_link[i]) continue;
+        mix_src_t src = fade_src(j);
+        if (!mixer_src_present(src)) continue;
+        if (fade_would_go_out(j, src) == out) fade_toggle_one(j, src);
+    }
+}
+
+uint8_t mixer_get_link(mix_src_t s)
+{
+    int i = fade_index(s);
+    return (i < 0) ? (uint8_t)MIXER_LINK_NONE : s_link[i];
+}
+
+void mixer_set_link(mix_src_t s, uint8_t group)
+{
+    int i = fade_index(s);
+    if (i < 0) return;
+    s_link[i] = (group > MIXER_LINK_COUNT) ? (uint8_t)MIXER_LINK_COUNT : group;
+}
+
+void mixer_clear_links(void)
+{
+    memset(s_link, MIXER_LINK_NONE, sizeof(s_link));
 }
 
 bool mixer_fade_active(mix_src_t s, uint8_t *to_pos)
@@ -377,6 +456,31 @@ bool mixer_fade_active(mix_src_t s, uint8_t *to_pos)
     if (i < 0 || !s_fade[i].active) return false;
     if (to_pos) *to_pos = s_fade[i].to_pos;
     return true;
+}
+
+uint8_t mixer_fade_pos(uint8_t from_pos, uint8_t to_pos, uint32_t start_tick,
+                       uint32_t len_ticks, uint32_t now, bool *done)
+{
+    *done = false;
+    if ((int32_t)(now - start_tick) < 0) return from_pos;
+    uint32_t elapsed = now - start_tick;
+    if (elapsed >= len_ticks) {
+        *done = true;
+        return to_pos;
+    }
+    int32_t d    = (int32_t)to_pos - (int32_t)from_pos;
+    int32_t len  = (int32_t)len_ticks;
+    int32_t num  = d * (int32_t)elapsed;
+    int32_t step = (num + ((num >= 0) ? len / 2 : -len / 2)) / len;
+    int32_t p    = (int32_t)from_pos + step;
+    int32_t lo   = (d >= 0) ? from_pos : to_pos;
+    int32_t hi   = (d >= 0) ? to_pos : from_pos;
+    return (uint8_t)((p < lo) ? lo : (p > hi) ? hi : p);
+}
+
+float mixer_pos_gain(uint8_t pos)
+{
+    return gain(pos);
 }
 
 /* Step 0: every active fade's position from the tick count, written only
@@ -388,25 +492,9 @@ static void fade_step(void)
         mix_fade_t *f = &s_fade[i];
         if (!f->active) continue;
         mix_src_t s = fade_src(i);
-        uint8_t pos;
-        if ((int32_t)(now - f->start_tick) < 0) {
-            pos = f->from_pos;
-        } else {
-            uint32_t elapsed = now - f->start_tick;
-            if (elapsed >= f->len_ticks) {
-                pos = f->to_pos;
-                f->active = 0;
-            } else {
-                int32_t d    = (int32_t)f->to_pos - (int32_t)f->from_pos;
-                int32_t len  = (int32_t)f->len_ticks;
-                int32_t num  = d * (int32_t)elapsed;
-                int32_t step = (num + ((num >= 0) ? len / 2 : -len / 2)) / len;
-                int32_t p    = (int32_t)f->from_pos + step;
-                int32_t lo   = (d >= 0) ? f->from_pos : f->to_pos;
-                int32_t hi   = (d >= 0) ? f->to_pos : f->from_pos;
-                pos = (uint8_t)((p < lo) ? lo : (p > hi) ? hi : p);
-            }
-        }
+        bool done;
+        uint8_t pos = mixer_fade_pos(f->from_pos, f->to_pos, f->start_tick, f->len_ticks, now, &done);
+        if (done) f->active = 0;
         if (pos != mixer_get_pos(s)) write_pos(s, pos);
     }
 }
@@ -506,6 +594,7 @@ void mixer_on_layer_added(uint8_t idx)
     if (idx >= MAX_LAYERS) return;
     layer_defaults(idx);
     fade_clear_layer(idx);
+    link_clear_layer(idx);
     s_layer_dirty |= (uint8_t)(1u << idx);
 }
 
@@ -518,22 +607,36 @@ void mixer_on_layer_deleted(uint8_t idx)
         s_mix.track_mute[L] = s_mix.track_mute[L + 1u];
         s_fade[FADE_LAYER0 + L]        = s_fade[FADE_LAYER0 + L + 1];
         s_restore_pos[FADE_LAYER0 + L] = s_restore_pos[FADE_LAYER0 + L + 1];
+        s_link[FADE_LAYER0 + L]        = s_link[FADE_LAYER0 + L + 1];
         memcpy(&s_fade[FADE_TRACK0 + L * SEQ_TRACKS], &s_fade[FADE_TRACK0 + (L + 1) * SEQ_TRACKS],
                SEQ_TRACKS * sizeof(s_fade[0]));
         memcpy(&s_restore_pos[FADE_TRACK0 + L * SEQ_TRACKS],
                &s_restore_pos[FADE_TRACK0 + (L + 1) * SEQ_TRACKS], SEQ_TRACKS);
+        memcpy(&s_link[FADE_TRACK0 + L * SEQ_TRACKS],
+               &s_link[FADE_TRACK0 + (L + 1) * SEQ_TRACKS], SEQ_TRACKS);
     }
     uint8_t below = (uint8_t)(s_mix.layer_mute & ((1u << idx) - 1u));
     uint8_t above = (uint8_t)((s_mix.layer_mute >> (idx + 1u)) << idx);
     s_mix.layer_mute = (uint8_t)(below | above);
     layer_defaults(MAX_LAYERS - 1u);
     fade_clear_layer(MAX_LAYERS - 1u);
+    link_clear_layer(MAX_LAYERS - 1u);
     s_layer_dirty |= (uint8_t)(LAYER_MASK & ~((1u << idx) - 1u));
 }
 
 void mixer_export(mixer_snapshot_t *out)
 {
-    if (out) *out = s_mix;
+    if (!out) return;
+    *out = s_mix;
+    out->master_link = s_link[0];
+    memcpy(out->layer_link, &s_link[FADE_LAYER0], sizeof(out->layer_link));
+    memcpy(out->track_link, &s_link[FADE_TRACK0], sizeof(out->track_link));
+    memcpy(out->misc_link, &s_link[FADE_MISC0], sizeof(out->misc_link));
+}
+
+static uint8_t clamp_link(uint8_t g)
+{
+    return (g > MIXER_LINK_COUNT) ? (uint8_t)MIXER_LINK_COUNT : g;
 }
 
 void mixer_import(const mixer_snapshot_t *in)
@@ -543,11 +646,16 @@ void mixer_import(const mixer_snapshot_t *in)
     for (uint8_t L = 0; L < MAX_LAYERS; L++) {
         if (L >= n) {
             layer_defaults(L);
+            link_clear_layer(L);
             continue;
         }
         s_mix.layer_pos[L] = clamp_pos(in->layer_pos[L]);
         for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
             s_mix.track_pos[L][t] = clamp_pos(in->track_pos[L][t]);
+        }
+        s_link[FADE_LAYER0 + L] = clamp_link(in->layer_link[L]);
+        for (uint8_t t = 0; t < SEQ_TRACKS; t++) {
+            s_link[FADE_TRACK0 + L * SEQ_TRACKS + t] = clamp_link(in->track_link[L][t]);
         }
         s_mix.track_mute[L] = (uint8_t)(in->track_mute[L] & TRACK_MASK);
         uint8_t b = (uint8_t)(1u << L);
@@ -556,7 +664,9 @@ void mixer_import(const mixer_snapshot_t *in)
     }
     for (uint8_t k = 0; k < MIX_MISC_COUNT; k++) {
         s_mix.misc_pos[k] = clamp_pos(in->misc_pos[k]);
+        s_link[FADE_MISC0 + k] = clamp_link(in->misc_link[k]);
     }
+    s_link[0] = clamp_link(in->master_link);
     s_mix.misc_mute = (uint8_t)(in->misc_mute & MISC_MASK);
     mixer_set_fade_bars_idx(in->fade_bars_idx);
     fade_clear_all();

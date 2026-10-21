@@ -30,11 +30,13 @@
  * sequencer_core_trig_reset_all() on any layer add/delete rather than shifted
  * in lockstep with compaction; rationale at the call sites in
  * seq_core_state.c. */
-uint32_t s_layer_loop_count[MAX_LAYERS];
+/* Index of the layer's loop counted from the bar baseline: 0 is the first full
+ * loop after Play, -1 the pre-roll tail before it. */
+int32_t  s_layer_loop_count[MAX_LAYERS];
 uint8_t  s_layer_last_step[MAX_LAYERS];
 bool     s_track_last_played[MAX_LAYERS][SEQ_TRACKS];
 
-/* Dedicated xorshift32 PRNG, kept separate from seq_core_editors.c's
+/* Dedicated xorshift32 PRNG, kept separate from seq_core_lfo.c's
  * s_lfo_rng_state: that one is mutated from synth_ui_task, this one only from
  * sequencer_core_service_tick() on the AMY sequencer-hook task. Sharing one
  * PRNG across two independently-scheduled tasks would be a real data race. */
@@ -61,6 +63,13 @@ static inline uint8_t trig_rand_pct(void)
  * Returns true and writes the semitone offset when a transform is active, false
  * (offset 0) for NONE. Integer math only: no float, no lock, safe on the
  * service-tick task. */
+/* The layer's loop index modulo n, non-negative for the pre-roll's -1. */
+static inline uint32_t trig_loop_mod(uint8_t layer_idx, uint32_t n)
+{
+    int32_t m = s_layer_loop_count[layer_idx] % (int32_t)n;
+    return (uint32_t)(m < 0 ? m + (int32_t)n : m);
+}
+
 static bool trig_transform_offset(uint8_t layer_idx, const seq_layer_t *layer,
                                   uint8_t track, uint8_t step, int *offset)
 {
@@ -70,12 +79,10 @@ static bool trig_transform_offset(uint8_t layer_idx, const seq_layer_t *layer,
                       - SEQ_STEP_TRANSFORM_SPAN;
             return true;
         case SEQ_STEP_TRANSFORM_RAMP_UP:
-            *offset = (int)(s_layer_loop_count[layer_idx]
-                            % (SEQ_STEP_TRANSFORM_SPAN + 1u));
+            *offset = (int)trig_loop_mod(layer_idx, SEQ_STEP_TRANSFORM_SPAN + 1u);
             return true;
         case SEQ_STEP_TRANSFORM_RAMP_DOWN:
-            *offset = -(int)(s_layer_loop_count[layer_idx]
-                             % (SEQ_STEP_TRANSFORM_SPAN + 1u));
+            *offset = -(int)trig_loop_mod(layer_idx, SEQ_STEP_TRANSFORM_SPAN + 1u);
             return true;
         case SEQ_STEP_TRANSFORM_NONE:
         default:
@@ -203,7 +210,7 @@ static bool trig_eval_condition(uint8_t layer_idx, const seq_layer_t *layer,
                                 uint8_t track, uint8_t step)
 {
     uint8_t n = layer->step_every[track][step];
-    if (n > 1 && (s_layer_loop_count[layer_idx] % n) != 0) return false;
+    if (n > 1 && trig_loop_mod(layer_idx, n) != 0) return false;
     if (layer->step_prev[track][step] && !s_track_last_played[layer_idx][track])
         return false;
     return true;
@@ -369,9 +376,12 @@ void sequencer_core_service_tick(void)
         uint8_t cur_step = seq_playhead_step(layer, eval_ticks);
         if (cur_step == s_layer_last_step[li]) continue;  /* still mid-step: O(1) exit */
 
-        if (cur_step == 0 && s_layer_last_step[li] != 0xFF) {
-            s_layer_loop_count[li]++;
-        }
+        /* Floor of the signed distance from the baseline in loops: the
+         * pre-roll is loop -1, the first full loop after Play loop 0. */
+        int32_t rel = (int32_t)(eval_ticks - s_bar_baseline);
+        int32_t loop = rel / (int32_t)bar_ticks;
+        if (rel < 0 && loop * (int32_t)bar_ticks != rel) loop--;
+        s_layer_loop_count[li] = loop;
         s_layer_last_step[li] = cur_step;
         /* Absolute tick of this step's grid boundary: the fire law needs the
          * boundary, not the (slightly later) detection tick. */
@@ -390,14 +400,15 @@ void sequencer_core_service_tick(void)
                 fire = trig_eval_condition(li, layer, tr, cur_step)
                     && trig_roll_probability(layer->step_prob[tr][cur_step]);
                 /* Per-track repeat_rate: the plain emit path repeats its
-                 * note-on every bar_ticks*rr, so a plain step only sounds on
-                 * the 0th bar of each rr-bar window. Gate the decorated
-                 * one-shot the same way so SEQ_REPEAT_N behaves identically for
-                 * both. Like mute/solo below, this silences output only -
-                 * condition/probability state keeps evaluating every bar. */
+                 * note-on every rr loops (bar_ticks is one loop), so a plain
+                 * step only sounds in the 0th loop of each rr-loop window.
+                 * Gate the decorated one-shot the same way so SEQ_REPEAT_N
+                 * behaves identically for both. Like mute/solo below, this silences output only -
+                 * condition/probability state keeps evaluating every loop. */
                 uint32_t rr = (layer->repeat_rate[tr] >= SEQ_REPEAT_2)
                               ? (uint32_t)layer->repeat_rate[tr] : 1u;
-                bool rr_bar = ((eval_ticks / bar_ticks) % rr) == 0;
+                bool rr_bar = sequencer_core_loop_pos(eval_ticks, bar_ticks * rr)
+                              < bar_ticks;
                 /* Loop-bounce freeze: past the horizon nothing new fires,
                  * matching the periodic entries AMY holds back. Judged at the
                  * k==0 fire tick (swung and nudged), not the detection tick.
@@ -406,7 +417,10 @@ void sequencer_core_service_tick(void)
                 int32_t fire_tick = (int32_t)grid_tick + 1
                                   + (int32_t)sequencer_step_swing_offset(layer, cur_step)
                                   + (int32_t)layer->step_nudge[tr][cur_step];
-                bool frozen = seq_freeze_blocks((uint32_t)fire_tick);
+                bool frozen = seq_freeze_blocks((uint32_t)fire_tick)
+                    /* Silent start: nothing before the baseline, as AMY's
+                     * periodic start holds back the plain steps. */
+                    || (s_silent_run && fire_tick - (int32_t)s_bar_baseline < 0);
                 /* Mute/solo silences output only: fire and s_track_last_played
                  * keep evaluating, so a track resumes its rhythmic position
                  * seamlessly on unmute instead of freezing. */

@@ -33,7 +33,7 @@ typedef enum {
     SEQ_LAYER_MELODIC = 1,
 } seq_layer_type_t;
 
-/* ── Per-track repeat rate (fires every N bars instead of every bar) ── */
+/* ── Per-track repeat rate (plays the first of every N loops) ── */
 typedef enum {
     SEQ_REPEAT_1  = 1,
     SEQ_REPEAT_2  = 2,
@@ -59,8 +59,9 @@ typedef enum {
  * Two independent, composable conditions (both must hold for the step to
  * fire, and only then is probability rolled):
  * EVERY n: fires on one loop pass out of every n of the layer's pattern
- *          (1 = every loop = neutral; the first loop after play-start always
- *          counts, since loop_count 0 satisfies any divisor).
+ *          (1 = every loop = neutral). Loops count from the bar line after
+ *          Play: the first full loop is loop 0 and satisfies any divisor; the
+ *          pre-roll tail before it is loop -1.
  * PREV:    fires only if this track's previous step-attempt sounded on its
  *          last evaluation, so any miss breaks the chain. */
 #define SEQ_STEP_EVERY_MAX 4
@@ -341,40 +342,38 @@ typedef enum {
 } seq_vp_src_t;
 
 /* ── Unison spec (per melodic track: seq_layer_t.track_unison) ──
- * N detuned copies of the wave build's audible osc, fanned symmetrically in
- * pitch (detune_cents at the outermost copy) and stereo (spread_pct of full
- * width), blend_pct tapering the outer copies against the center. count = 1
- * disables and restores the single-osc build exactly. Raw-wave/wavetable
- * patches only (KS excluded). Storage, scope and the global backend:
- * sequencer_core.h, "Melodic per-track unison".
+ * N detuned copies of the wave build's audible osc, spread in pitch over
+ * +/-(interval semitones + detune_cents) around a centre that shift slides
+ * from all copies flat (0) through the note (100) to all copies sharp (200),
+ * and, with stereo on, in stereo (spread_pct of full width), blend_pct
+ * tapering the copies farthest from the note. bypass = 1 or count = 1 plays
+ * the single-osc build exactly; bypass keeps every other field for when
+ * unison is switched back on. Raw-wave/wavetable patches only (KS excluded).
+ * Storage and scope: sequencer_core.h, "Melodic per-track unison".
  *
- * Three layouts (`layout`): the unchained fan gives every copy its own
- * filter, envelope, dist stage and pan mixdown; the headed layout splits the
- * copies into an L and an R group, each chained under a SILENT head that
- * carries those stages once for the whole group; the engine layout renders
- * each group inside ONE AMY osc (the experimental unison cluster, a LOCAL
- * EDIT in components/amy), so a voice is two audible oscs whatever the
- * count. Headed runs even counts only - an odd count floors (3 -> 2,
- * 5 -> 4); the engine plays odd counts with one more copy in the L
- * cluster; count 1 is off in every layout. */
-typedef enum {
-    VOICE_UNISON_LAYOUT_FAN    = 0,
-    VOICE_UNISON_LAYOUT_HEADED = 1,
-    VOICE_UNISON_LAYOUT_ENGINE = 2,
-    VOICE_UNISON_LAYOUT_COUNT
-} voice_unison_layout_t;
-
+ * The copies render inside AMY oscs (the unison cluster, components/amy):
+ * stereo off puts all of them in one centred osc; stereo on splits them
+ * into an L and an R cluster osc (odd counts give L the extra copy), panned
+ * by spread_pct. Either way the filter, envelope and dist stage run once per
+ * cluster osc. */
 typedef struct {
     uint8_t count;        /* audible copies per voice, 1..VOICE_UNISON_MAX_COPIES */
     uint8_t detune_cents; /* outermost copy's offset, 0..VOICE_UNISON_MAX_DETUNE */
-    uint8_t spread_pct;   /* stereo width: 0 = all center, 100 = full L/R fan */
-    uint8_t blend_pct;    /* outer-copy level: 100 = equal, 0 = center only */
-    uint8_t layout;       /* voice_unison_layout_t; unused in storage (0), the
-                             getter fills in the global backend */
+    uint8_t spread_pct;   /* stereo width: 0 = all center, 100 = full L/R;
+                             kept but unused while stereo is off */
+    uint8_t blend_pct;    /* level of the copy farthest from the note:
+                             100 = equal, 0 = nearest copies only */
+    uint8_t stereo;       /* 1 = L/R cluster pair, 0 = one centred cluster */
+    uint8_t bypass;       /* 1 = unison off (one copy), 0 = count copies */
+    uint8_t shift;        /* cluster centre, 0..200: 100 = on the note */
+    uint8_t interval;     /* outer copy's whole semitones, 0..VOICE_UNISON_MAX_INTERVAL,
+                             added to detune_cents */
 } voice_unison_t;
 
-#define VOICE_UNISON_MAX_COPIES 7u
-#define VOICE_UNISON_MAX_DETUNE 50u
+#define VOICE_UNISON_MAX_COPIES  8u
+#define VOICE_UNISON_MAX_DETUNE  99u
+#define VOICE_UNISON_MAX_SHIFT   200u
+#define VOICE_UNISON_MAX_INTERVAL 12u
 
 /* One editable parameter group of a voice_params_t; the granularity of the
  * authored flags and of "release to patch". */
@@ -427,7 +426,7 @@ typedef struct {
                                             TRACK (today's behaviour). Resolved
                                             by seq_track_vp(); never read the
                                             blocks directly on a push path.      */
-    uint8_t   repeat_rate[SEQ_TRACKS];   /* SEQ_REPEAT_*: fires every N bars   */
+    uint8_t   repeat_rate[SEQ_TRACKS];   /* SEQ_REPEAT_*: first of N loops     */
     bool      mute[SEQ_TRACKS];          /* true = track produces no note-ons */
     bool      solo[SEQ_TRACKS];          /* true = this track stays audible while
                                              solo is in force. Solo is global:

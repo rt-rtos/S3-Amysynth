@@ -190,10 +190,11 @@ chord_type_t prog_gen_chord_for_degree(uint8_t scale_index, uint8_t degree,
 
     chord_type_t out = triad;
     if (ext >= PROG_GEN_EXT_7TH) {
-        /* No m7b5, dim7 or mMaj7 type exists, so those degrees stay triads. */
+        /* No dim7 or mMaj7 type exists, so those degrees stay triads. */
         if (triad == CHORD_MAJ && t7 == 11)      out = CHORD_MAJ7;
         else if (triad == CHORD_MAJ && t7 == 10) out = CHORD_DOM7;
         else if (triad == CHORD_MIN && t7 == 10) out = CHORD_MIN7;
+        else if (triad == CHORD_DIM && t7 == 10) out = CHORD_M7B5;
     }
     if (ext == PROG_GEN_EXT_9TH && t9 == 2) {
         if (out == CHORD_MAJ7)      out = CHORD_MAJ9;

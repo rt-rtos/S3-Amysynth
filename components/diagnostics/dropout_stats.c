@@ -9,12 +9,10 @@
  * store, and aligned 32-bit loads are atomic on Xtensa, so readers may lag by
  * one update but never tear. Always compiled - the three rare-branch
  * increments cost nothing, and the DEV-menu dropout bar must work in every
- * build. s_ring_underrun and s_chunk_drop have no writer; they read 0. */
+ * build. */
 static volatile uint32_t s_wire_zlp;
-static volatile uint32_t s_ring_underrun;
 static volatile uint32_t s_ring_overrun;
 static volatile uint32_t s_render_overrun;
-static volatile uint32_t s_chunk_drop;
 
 #if CONFIG_AMYSYNTH_DROPOUT_TS
 /* Written only from dropout_count_wire_zlp() (TinyUSB task). volatile orders
@@ -49,10 +47,8 @@ void dropout_stats_get(dropout_stats_t *out)
         return;
     }
     out->wire_zlp       = s_wire_zlp;
-    out->ring_underrun  = s_ring_underrun;
     out->ring_overrun   = s_ring_overrun;
     out->render_overrun = s_render_overrun;
-    out->chunk_drop     = s_chunk_drop;
 }
 
 #if CONFIG_AMYSYNTH_DROPOUT_TS

@@ -60,6 +60,8 @@ enum {
 #define MIXER_POS_MAX 100u
 #define MIXER_FADE_BARS_COUNT 6   /* fade lengths: 1, 2, 4, 8, 16, 32 bars */
 #define MIXER_FADE_BARS_DEFAULT 2 /* index: 4 bars */
+#define MIXER_LINK_NONE 0u        /* no link group */
+#define MIXER_LINK_COUNT 3u       /* link groups 1..3, shown as A..C */
 
 /* Persistent state, field for field the project section's layout. */
 typedef struct {
@@ -70,21 +72,29 @@ typedef struct {
     uint8_t misc_pos[MIX_MISC_COUNT];
     uint8_t misc_mute;                          /* bit MIX_MISC_* */
     uint8_t fade_bars_idx;                      /* 0..MIXER_FADE_BARS_COUNT-1 */
+    uint8_t master_link;                        /* MIXER_LINK_NONE or 1..MIXER_LINK_COUNT */
+    uint8_t layer_link[MAX_LAYERS];
+    uint8_t track_link[MAX_LAYERS][SEQ_TRACKS];
+    uint8_t misc_link[MIX_MISC_COUNT];
 } mixer_snapshot_t;
 
 /* Fallback values of the project format for the mixer (the project's MIXR
  * section): every position 100, no mute, FADE length index
- * MIXER_FADE_BARS_DEFAULT. Pure; any task; fills every field. Never reads
+ * MIXER_FADE_BARS_DEFAULT, no link. Pure; any task; fills every field. Never reads
  * Kconfig; mixer_init() seeds the boot mixer from it (no Kconfig overlay). */
 void    mixer_params_defaults(mixer_snapshot_t *out);
 
 /* Defaults (mixer_params_defaults(), no fade); nothing sent.
  * Once from synth_ui_init(), after synth_level_init(). */
 void    mixer_init(void);
-/* All 100, no mute, no fade, FADE length 4 bars; every present source is
- * re-sent on the next frame. */
+/* All 100, no mute, no fade, no link, FADE length 4 bars; every present
+ * source is re-sent on the next frame. */
 void    mixer_reset_defaults(void);
 bool    mixer_src_present(mix_src_t s);
+/* True when a mixer source owns `synth` and that source is present, judged
+ * as the mixer judges it before it sends a level (a drone's sub also needs
+ * its sub enabled). False for a synth no source owns. */
+bool    mixer_synth_present(uint8_t synth);
 /* MASTER: round(100 * sqrt(min(master volume, 1))). */
 uint8_t mixer_get_pos(mix_src_t s);
 /* Clamped to 0..100; cancels the source's fade. MASTER writes
@@ -95,11 +105,30 @@ bool    mixer_get_mute(mix_src_t s);
 void    mixer_set_mute(mix_src_t s, bool on);
 /* Fade toggle (contract above). Not fading: a position above 0 fades to 0
  * and is remembered; at 0 it fades to the remembered position (100 when
- * there is none). Fading: reverses toward the other end. */
+ * there is none). Fading: reverses toward the other end. A source in a link
+ * group carries the group along: every other present member is toggled too
+ * when that sends it the same way (out or in), each from its own level, all
+ * from the same bar line; a member already at that end or already moving
+ * that way is left alone. */
 void    mixer_fade_toggle(mix_src_t s);
+/* Link group of a source: MIXER_LINK_NONE or 1..MIXER_LINK_COUNT; 0 for an
+ * unknown source. */
+uint8_t mixer_get_link(mix_src_t s);
+/* group is clamped to MIXER_LINK_COUNT; an unknown source is ignored.
+ * Changes no position and no fade. */
+void    mixer_set_link(mix_src_t s, uint8_t group);
+/* Every source to MIXER_LINK_NONE. */
+void    mixer_clear_links(void);
 /* True while s has a fade armed or running; *to_pos (may be NULL) gets its
  * target. */
 bool    mixer_fade_active(mix_src_t s, uint8_t *to_pos);
+/* Fade ramp position at tick `now`: from_pos before start_tick, to_pos once
+ * len_ticks have elapsed (*done set true), linear and rounded between.
+ * Pure; any task. */
+uint8_t mixer_fade_pos(uint8_t from_pos, uint8_t to_pos, uint32_t start_tick,
+                       uint32_t len_ticks, uint32_t now, bool *done);
+/* The fader curve: gain of a position, (pos / 100)^2. Pure; any task. */
+float   mixer_pos_gain(uint8_t pos);
 /* FADE length as an index into 1, 2, 4, 8, 16, 32 bars; set clamps. */
 uint8_t mixer_get_fade_bars_idx(void);
 void    mixer_set_fade_bars_idx(uint8_t idx);
@@ -109,11 +138,12 @@ uint8_t mixer_fade_bars(uint8_t idx);   /* bar count of an index (clamped) */
  * sub-unity synths. Call from ui_services() only. */
 void    mixer_service(void);
 /* Layer table hooks, called by the UI task right after the structural edit:
- * added resets idx to defaults; deleted shifts idx+1.. down one and resets
- * the vacated last entry. */
+ * added resets idx to defaults (links included); deleted shifts idx+1.. down
+ * one and resets the vacated last entry. */
 void    mixer_on_layer_added(uint8_t idx);
 void    mixer_on_layer_deleted(uint8_t idx);
-/* Codec. import clamps every field, cancels every fade, resets layers at or
- * past the live layer count to defaults and re-sends every present source. */
+/* Codec. import clamps every field (links to MIXER_LINK_COUNT), cancels
+ * every fade, resets layers at or past the live layer count to defaults and
+ * re-sends every present source. */
 void    mixer_export(mixer_snapshot_t *out);
 void    mixer_import(const mixer_snapshot_t *in);

@@ -19,13 +19,14 @@
 /* Quick cells per row kind: contract in ui_mixer_quick.h. */
 
 typedef enum {
-    Q_NONE = 0, Q_CUT, Q_GAT, Q_SWG, Q_OCT, Q_GLD, Q_PAT, Q_RT,
+    Q_NONE = 0, Q_CUT, Q_GAT, Q_SWG, Q_OCT, Q_GLD, Q_PAT, Q_RT, Q_RPT,
     Q_COUNT
 } q_param_t;
 
 static const char *const s_labels[Q_COUNT] = {
     [Q_NONE] = "", [Q_CUT] = "CUT", [Q_GAT] = "GAT", [Q_SWG] = "SWG",
     [Q_OCT] = "OCT", [Q_GLD] = "GLD", [Q_PAT] = "PAT", [Q_RT] = "RT",
+    [Q_RPT] = "RPT",
 };
 
 /* Stutter gate patterns in drone_pattern_t order, four characters. */
@@ -34,14 +35,15 @@ static const char *const s_pattern_short[DRONE_PAT_COUNT] = {
     [DRONE_PAT_GALLOP] = "GALP", [DRONE_PAT_DUB] = "DUB",
 };
 
-/* One table per row kind: { Q1, Q2 }. */
-static const uint8_t s_melodic[2] = { Q_CUT, Q_GAT };
-static const uint8_t s_drum[2]    = { Q_SWG, Q_NONE };
-static const uint8_t s_arp[2]     = { Q_OCT, Q_GLD };
-static const uint8_t s_stut[2]    = { Q_PAT, Q_RT };
-static const uint8_t s_std[2]     = { Q_RT,  Q_CUT };
+/* One table per row kind, in cell order. */
+static const uint8_t s_melodic[MIXER_QUICK_MAX] = { Q_CUT, Q_GAT,  Q_NONE };
+static const uint8_t s_drum[MIXER_QUICK_MAX]    = { Q_SWG, Q_NONE, Q_NONE };
+static const uint8_t s_track[MIXER_QUICK_MAX]   = { Q_RPT, Q_NONE, Q_NONE };
+static const uint8_t s_arp[MIXER_QUICK_MAX]     = { Q_OCT, Q_GLD,  Q_RPT };
+static const uint8_t s_stut[MIXER_QUICK_MAX]    = { Q_PAT, Q_RT,   Q_NONE };
+static const uint8_t s_std[MIXER_QUICK_MAX]     = { Q_RT,  Q_CUT,  Q_NONE };
 #if CONFIG_SYNTH_WIRELESS
-static const uint8_t s_live[2]    = { Q_GLD, Q_CUT };
+static const uint8_t s_live[MIXER_QUICK_MAX]    = { Q_GLD, Q_CUT,  Q_NONE };
 #endif
 
 #define CUT_MIN_HZ  65.0f
@@ -52,13 +54,14 @@ static const uint8_t s_live[2]    = { Q_GLD, Q_CUT };
 
 static q_param_t param_of(mix_src_t s, uint8_t slot)
 {
-    if (slot > 1u) return Q_NONE;
+    if (slot >= MIXER_QUICK_MAX) return Q_NONE;
     const uint8_t *t = NULL;
     switch (s.kind) {
         case MIX_SRC_LAYER:
             if (s.a >= sequencer_core_get_num_layers()) return Q_NONE;
             t = (sequencer_core_get_layer_type(s.a) == SEQ_LAYER_DRUM) ? s_drum : s_melodic;
             break;
+        case MIX_SRC_TRACK:      t = s_track; break;
         case MIX_SRC_ARP:        t = s_arp;  break;
         case MIX_SRC_DRONE_STUT: t = s_stut; break;
         case MIX_SRC_DRONE_STD:  t = s_std;  break;
@@ -153,6 +156,21 @@ static uint8_t rt_get(mix_src_t s)
     return (s.kind == MIX_SRC_DRONE_STUT) ? drone_get_root_note() : drone_std_get_root_note();
 }
 
+static uint8_t rpt_get(mix_src_t s)
+{
+    return (s.kind == MIX_SRC_TRACK) ? (uint8_t)sequencer_core_get_track_repeat_rate(s.a, s.b)
+                                     : arp_get_repeat_rate();
+}
+
+/* 1, 2, 4, 8: one doubling or halving per step, clamped at both ends. */
+static uint8_t rate_step(uint8_t rate, int steps)
+{
+    int r = (int)rate;
+    for (; steps > 0 && r < SEQ_REPEAT_8; steps--) r <<= 1;
+    for (; steps < 0 && r > SEQ_REPEAT_1; steps++) r >>= 1;
+    return (uint8_t)r;
+}
+
 void mixer_quick_text(mix_src_t s, uint8_t slot, char out[5])
 {
     out[0] = '\0';
@@ -183,6 +201,7 @@ void mixer_quick_text(mix_src_t s, uint8_t slot, char out[5])
             snprintf(out, 5, "%s", note);
             break;
         }
+        case Q_RPT: snprintf(out, 5, "%u", (unsigned)rpt_get(s)); break;
         default: break;
     }
 }
@@ -231,6 +250,12 @@ void mixer_quick_step(mix_src_t s, uint8_t slot, int detents)
             int v = SEQ_CLAMP_INT((int)rt_get(s) + detents, DRONE_ROOT_MIN, DRONE_ROOT_MAX);
             if (s.kind == MIX_SRC_DRONE_STUT) drone_set_root_note((uint8_t)v);
             else                              drone_std_set_root_note((uint8_t)v);
+            break;
+        }
+        case Q_RPT: {
+            uint8_t r = rate_step(rpt_get(s), detents);
+            if (s.kind == MIX_SRC_TRACK) sequencer_core_set_track_repeat_rate(s.a, s.b, (seq_repeat_rate_t)r);
+            else                         arp_set_repeat_rate(r);
             break;
         }
         default: break;

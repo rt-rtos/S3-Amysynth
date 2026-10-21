@@ -17,6 +17,7 @@ C_, Db, D, Eb, E, F, Gb, G, Ab, A, Bb, B = range(12)
 CHORD_MAJ, CHORD_MIN, CHORD_MAJ7, CHORD_MIN7, CHORD_DOM7, CHORD_SUS2, CHORD_SUS4 = range(7)
 CHORD_DIM, CHORD_AUG, CHORD_MIN9, CHORD_MAJ9, CHORD_MAJ6, CHORD_MIN6, CHORD_DOM9 = range(7, 14)
 CHORD_OFF = 14   # the root alone
+CHORD_M7B5 = 15  # half-diminished; real types append after OFF
 
 # quantizer.c s_scales[] index
 SCALE_CHROMATIC, SCALE_MAJOR, SCALE_MINOR, SCALE_DORIAN, SCALE_PHRYGIAN = range(5)
@@ -24,9 +25,10 @@ SCALE_LYDIAN, SCALE_MIXOLYDIAN, SCALE_MIN_PENT, SCALE_MAJ_PENT, SCALE_HARM_MINOR
 
 FILTER_LPF, FILTER_BPF, FILTER_HPF, FILTER_LPF24 = 1, 2, 3, 4
 ENV_NORMAL, ENV_LINEAR, ENV_DX7, ENV_TRUE_EXP = 0, 1, 2, 3
-EGT_PITCH, EGT_CUTOFF, EGT_DRIVE, EGT_MIX = 0, 1, 2, 3
+EGT_PITCH, EGT_CUTOFF, EGT_DRIVE, EGT_MIX, EGT_SCAN = 0, 1, 2, 3, 4
 LFO_SINE, LFO_TRI, LFO_SAW_UP, LFO_SAW_DOWN, LFO_SQUARE, LFO_RANDOM = range(6)
 LFO_TGT_FILTER, LFO_TGT_AMP, LFO_TGT_PITCH, LFO_TGT_PAN, LFO_TGT_SCAN = 1, 2, 4, 8, 16
+LFO_TGT_DIST_DRIVE, LFO_TGT_DIST_MIX = 32, 64
 # note_div_t (note_div.h): every tempo-synced rate - arp, LFO, wobble, stutter drone, echo
 NOTE_DIV_4BAR, NOTE_DIV_2BAR, NOTE_DIV_1_1, NOTE_DIV_1_2, NOTE_DIV_1_4, NOTE_DIV_1_8 = range(6)
 NOTE_DIV_1_16, NOTE_DIV_1_32 = range(6, 8)
@@ -51,6 +53,7 @@ SPLIT_DRUMS, SPLIT_DRONES, SPLIT_CLIPS = 0x02, 0x04, 0x08
 P_SINE, P_SAW_DOWN, P_SAW_UP, P_PULSE, P_TRIANGLE, P_NOISE, P_KS = range(257, 264)
 P_BASS_SUB_DETUNE, P_BASS_ACID, P_BASS_DX7 = 264, 265, 266
 P_WT_PPG = 269
+P_WT_CUSTOM = 288              # the global custom wavetable (WTCU section)
 
 # PCM drum presets. 808 = the ROM bank (0..18); the rest are the gamma9001
 # banks in the 'drums' partition (256..391, pcm_gamma9001.h order).
@@ -237,7 +240,7 @@ def glob(bpm, key_root, scale, bus0=None, bus1=None, split=SPLIT_DRUMS | SPLIT_C
     fx[1].update(bus1 or {})
     return dict(bpm=bpm, master_volume=master, quant_enabled=True, quant_root=48 + key_root,
                 quant_scale=scale, drum_engine=1, presets_alter_global=False,
-                split_flags=split, fx=fx)
+                split_flags=split, fx=fx, **C.default_glob_tail())
 
 
 def arp_off():
@@ -252,7 +255,8 @@ def arp(enabled, patch, direction, rate, slots, octaves=1, gate=50, quant=ARP_QU
                 slots=slots, env=amp_env or env(2, 160, 0, 120), env2=env(5, 300, 20, 300),
                 filter=flt or C.default_filter(), lfo=mod or C.default_lfo(),
                 lfo2=C.default_lfo2(), lfo2_authored=False, quant_mode=quant, dist=C.default_dist(), muted=False, solo=False,
-                uni_count=1, uni_detune=12, uni_spread=50, uni_blend=100)
+                uni_count=1, uni_detune=12, uni_spread=50, uni_blend=100, uni_stereo=1,
+                uni_bypass=0, uni_shift=100, uni_interval=0, repeat_rate=1)
 
 
 def drone_off():
@@ -272,7 +276,7 @@ def drone(enabled, chord, root, patch=P_SAW_DOWN, peak=0.6, duck=0.0, rate=NOTE_
     return dict(enabled=enabled, chord=chord, root=root,
                 patch=patch, amp_peak=peak, amp_duck=duck,
                 rate=rate, sub_enabled=sub, sub_interval=-12, gate_len=0.5, swing=0,
-                blip=0.0, pattern=pattern, follow=follow,
+                blip=0.0, pattern=pattern, follow=follow, **C.DRONE_UNISON_SEED,
                 vp=vp(amp_env=amp_env or env(200, 300, 100, 600), eg1=env(15, 400, 25, 400),
                       flt=filt(FILTER_LPF24, math.sqrt(lo * hi), res),
                       mod=lfo(LFO_SINE, lfo_rate, LFO_TGT_FILTER, flt_oct_q=oct_q),
@@ -286,7 +290,7 @@ def drone_std_off():
     v['filter'].update(filter_type=FILTER_LPF, cutoff_hz=1200.0, resonance=1.0)
     v['lfo'].update(wave=LFO_SINE, rate=NOTE_DIV_1_1, depth=50, targets=LFO_TGT_FILTER)
     return dict(enabled=False, chord=CHORD_OFF, root=45, follow=DRONE_FOLLOW_OFF, level=0.5,
-                patch=P_SAW_DOWN, sub_enabled=True, sub_interval=-12, vp=v)
+                patch=P_SAW_DOWN, sub_enabled=True, sub_interval=-12, vp=v, **C.DRONE_UNISON_SEED)
 
 
 def project(glob_, layers, arp_=None, drone_=None, progression=None, chords=None):

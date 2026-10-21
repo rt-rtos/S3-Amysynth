@@ -6,21 +6,24 @@
 /* ─── Voice-target provider: the per-voice controls one Layer page entry edits
  *     (level, filter key tracking, mute, solo, gate, glide), behind one call
  *     per control so the page builds the same rows for a sequencer track, the
- *     arpeggiator, the BLE live-play voice and the ball drop (VT_DROP: the
- *     synth its screen focuses, drop_get_focus()).
+ *     arpeggiator, the BLE live-play voice, the ball drop (VT_DROP: the
+ *     synth its screen focuses, drop_get_focus()) and the drones' main synths
+ *     (VT_DRONE the stutter drone, VT_DRONE_STD the normal one).
  *
  * VT_MELODIC is the Layer page's track: seq_state.active_layer_idx and
  * seq_state.selected_track, read by the backend itself on every call. VT_ARP
  * is arp_core, VT_LIVE the live_play voice (CONFIG_SYNTH_WIRELESS; without it
  * VT_LIVE has no controls, its getters return neutral values and its setters
- * do nothing).
+ * do nothing). The drones have level (the amp trim), filter and unison; no
+ * mute, solo, gate or glide.
  *
  * Execution context: UI task only. Every setter pushes through the owning
- * backend's own setter (sequencer_core, arp_core, live_play) and inherits its
- * contract; nothing here touches AMY directly. A vt_has_*() of false means
- * the matching getter returns a neutral value and the setter is a no-op. ── */
+ * backend's own setter (sequencer_core, arp_core, live_play, drop_core,
+ * drone_core, drone_std_core) and inherits its contract; nothing here
+ * touches AMY directly. A vt_has_*() of false means the matching getter
+ * returns a neutral value and the setter is a no-op. ── */
 
-typedef enum { VT_MELODIC = 0, VT_ARP, VT_LIVE, VT_DROP } voice_target_kind_t;
+typedef enum { VT_MELODIC = 0, VT_ARP, VT_LIVE, VT_DROP, VT_DRONE, VT_DRONE_STD } voice_target_kind_t;
 
 /* Amp trim, 0..1. */
 float    vt_get_level(voice_target_kind_t kind);
@@ -62,7 +65,8 @@ void     vt_set_glide_ms(voice_target_kind_t kind, uint16_t ms);
  * Layer page's track on a melodic layer and follows its patch scope on set:
  * TRACK scope writes the track (sequencer_core_set_track_unison), LAYER scope
  * every track (sequencer_core_set_layer_unison); get and max read the track.
- * VT_ARP is arp_core's spec (persisted), VT_LIVE live_play's (session-only).
+ * VT_ARP is arp_core's spec (persisted), VT_LIVE live_play's (session-only),
+ * VT_DRONE / VT_DRONE_STD the drone main synth's (persisted).
  * max: the highest effective copy count the voice's patch allows, 0 = it
  * cannot carry unison. set clamps and stores; the backend rebuilds or pushes
  * live per its own contract. */
@@ -71,6 +75,6 @@ void     vt_get_unison(voice_target_kind_t kind, voice_unison_t *out);
 uint8_t  vt_unison_max(voice_target_kind_t kind);
 void     vt_set_unison(voice_target_kind_t kind, const voice_unison_t *u);
 
-/* Page title for the entry: "ARP", "LIVE", or NULL for VT_MELODIC (the Layer
- * page keeps its own layer/track title). */
+/* Page title for the entry: "ARP", "LIVE", "DROP"/"SUB", "STUTTER", "DRONE",
+ * or NULL for VT_MELODIC (the Layer page keeps its own layer/track title). */
 const char *vt_title(voice_target_kind_t kind);

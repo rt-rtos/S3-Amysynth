@@ -91,10 +91,8 @@ Two of them are written today:
 load time - genuine starvation under the async-source pull), but its only
 writer, the `tud_audio_tx_done_post_load_cb` override in `usb_audio.c`, is a
 TinyUSB 0.17 hook that 0.19 no longer calls; the linker discards it, so the
-counter reads 0 regardless. `ring_underrun` and `chunk_drop` have no writer
-at all. Treat a zero in any of the three as "not measured", not "did not
-happen". The
-counters are also blind to anything that blocks in ISR context, which no
+counter reads 0 regardless. Treat its zero as "not measured", not "did not
+happen". The counters are also blind to anything that blocks in ISR context, which no
 counter on a task can see.
 
 ## Public API (`usb_audio.h`)

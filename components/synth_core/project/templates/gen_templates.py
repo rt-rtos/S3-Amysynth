@@ -2,6 +2,7 @@
 """Build the genre templates into the firmware's template table.
 
 Usage: gen_templates.py --check-src <components dir> --out <project_templates_data.c>
+                        [--depfile <path>]
 
 Drift check first, before anything is written: the section versions
 project_snapshot.c writes, the store header's magic, format version and name
@@ -15,6 +16,11 @@ written: one array per template holding the full .amp image (32-byte header
 + payload) and the project_templates[] table (project_templates.h), named by
 the project name in the image header. Stdlib only; the synth_core build runs
 it with the IDF Python.
+
+--depfile: after the C file is written, also write a Makefile-style rule
+naming --out as the target and, as prerequisites, every firmware source the
+drift check read plus every template module imported (this script, the codec,
+spec_lib, each genre), so the build reruns exactly when one of them changes.
 """
 import argparse
 import importlib
@@ -30,7 +36,7 @@ import amp_codec as C  # noqa: E402
 import spec_lib as S  # noqa: E402
 
 GENRES = ('house', 'techno', 'dub_techno', 'electro', 'boom_bap', 'trap', 'drum_n_bass',
-          'synthwave', 'ambient', 'crystal', 'witch_house', 'dreamwave')
+          'synthwave', 'ambient', 'crystal', 'witch_house', 'dreamwave', 'neon_rain')
 
 # Firmware sources, relative to the components directory.
 SNAPSHOT_C = 'synth_core/project/project_snapshot.c'
@@ -179,7 +185,7 @@ def constant_checks(fw):
         checks.append((sym, getattr(S, sym), NOTE_DIV_H, e, sym))
     checks.append(('len(ECHO_DIV)', len(C.ECHO_DIV), NOTE_DIV_H, n, 'NOTE_DIV_COUNT'))
     for sym in ('MAJ', 'MIN', 'MAJ7', 'MIN7', 'DOM7', 'SUS2', 'SUS4', 'DIM', 'AUG', 'MIN9',
-                'MAJ9', 'MAJ6', 'MIN6', 'DOM9', 'OFF'):
+                'MAJ9', 'MAJ6', 'MIN6', 'DOM9', 'OFF', 'M7B5'):
         checks.append(('CHORD_' + sym, getattr(S, 'CHORD_' + sym), CHORD_TYPES_H, e, 'CHORD_' + sym))
     for sym in ('LPF', 'BPF', 'HPF', 'LPF24'):
         checks.append(('FILTER_' + sym, getattr(S, 'FILTER_' + sym), SEQ_MODEL_H, d,
@@ -187,12 +193,12 @@ def constant_checks(fw):
     for sym, fsym in (('NORMAL', 'NORMAL'), ('LINEAR', 'LINEAR'), ('DX7', 'DX7'),
                       ('TRUE_EXP', 'TRUE_EXPONENTIAL')):
         checks.append(('ENV_' + sym, getattr(S, 'ENV_' + sym), AMY_H, d, 'ENVELOPE_' + fsym))
-    for sym in ('PITCH', 'CUTOFF', 'DRIVE', 'MIX'):
+    for sym in ('PITCH', 'CUTOFF', 'DRIVE', 'MIX', 'SCAN'):
         checks.append(('EGT_' + sym, getattr(S, 'EGT_' + sym), SEQ_MODEL_H, e, 'SEQ_EGT_' + sym))
     for sym, fsym in (('SINE', 'SINE'), ('TRI', 'TRIANGLE'), ('SAW_UP', 'SAW_UP'),
                       ('SAW_DOWN', 'SAW_DOWN'), ('SQUARE', 'SQUARE'), ('RANDOM', 'RANDOM')):
         checks.append(('LFO_' + sym, getattr(S, 'LFO_' + sym), SEQ_MODEL_H, e, 'LFO_WAVE_' + fsym))
-    for sym in ('FILTER', 'AMP', 'PITCH', 'PAN', 'SCAN'):
+    for sym in ('FILTER', 'AMP', 'PITCH', 'PAN', 'SCAN', 'DIST_DRIVE', 'DIST_MIX'):
         checks.append(('LFO_TGT_' + sym, getattr(S, 'LFO_TGT_' + sym), SEQ_MODEL_H, b,
                        'LFO_TARGET_' + sym))
     for sym in ('CLIP', 'FOLD', 'CRUSH'):
@@ -222,7 +228,8 @@ def constant_checks(fw):
     for sym, fsym in (('SINE', 'SINE'), ('SAW_DOWN', 'SAW_DOWN'), ('SAW_UP', 'SAW_UP'),
                       ('PULSE', 'PULSE'), ('TRIANGLE', 'TRIANGLE'), ('NOISE', 'NOISE'),
                       ('KS', 'KS'), ('BASS_SUB_DETUNE', 'BASS_1'), ('BASS_ACID', 'BASS_2'),
-                      ('BASS_DX7', 'BASS_3'), ('WT_PPG', 'WAVETABLE_2')):
+                      ('BASS_DX7', 'BASS_3'), ('WT_PPG', 'WAVETABLE_2'),
+                      ('WT_CUSTOM', 'WAVETABLE_CUSTOM')):
         checks.append(('P_' + sym, getattr(S, 'P_' + sym), SEQUENCER_H, d, 'SEQ_PATCH_' + fsym))
     return checks
 
@@ -262,14 +269,32 @@ def c_source(images):
     return '\n'.join(lines)
 
 
+def make_escape(path):
+    return path.replace(' ', '\\ ')
+
+
+def write_depfile(path, target, fw, modules):
+    """Makefile rule `target: <prerequisites>`, written atomically."""
+    deps = sorted({os.path.normpath(os.path.abspath(os.path.join(fw.root, rel)))
+                   for rel in fw._text})
+    deps += sorted({os.path.normpath(os.path.abspath(m.__file__)) for m in modules})
+    lines = [make_escape(target) + ':'] + [' ' + make_escape(d) for d in deps]
+    tmp = path + '.tmp'
+    with open(tmp, 'w') as f:
+        f.write(' \\\n'.join(lines) + '\n')
+    os.replace(tmp, path)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('--check-src', required=True, help='the repository components directory')
     ap.add_argument('--out', required=True, help='C file to write')
+    ap.add_argument('--depfile', help='Makefile dependency rule to write for --out')
     a = ap.parse_args()
 
+    fw = Firmware(a.check_src)
     try:
-        bad = drift(Firmware(a.check_src))
+        bad = drift(fw)
     except ParseError as e:
         print('gen_templates: drift check cannot read the firmware: %s' % e, file=sys.stderr)
         return 1
@@ -280,8 +305,10 @@ def main():
         return 1
 
     images = []
+    modules = [sys.modules[__name__], C, S]
     for g in GENRES:
         spec = importlib.import_module(g)
+        modules.append(spec)
         data = C.encode_file(spec.build(), spec.NAME)
         images.append((g, data[8:8 + C.NAME_LEN].split(b'\0')[0].decode('ascii'), data))
 
@@ -290,6 +317,8 @@ def main():
     with open(tmp, 'w') as f:
         f.write(c_source(images))
     os.replace(tmp, a.out)
+    if a.depfile:
+        write_depfile(a.depfile, a.out, fw, modules)
     return 0
 
 

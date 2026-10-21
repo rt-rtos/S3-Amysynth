@@ -248,7 +248,8 @@ static void ball_spawn(drop_ball_t *b, uint32_t idx)
     h ^= h >> 16;
     memset(b, 0, sizeof(*b));
     b->rng = h ? h : 0x9E3779B9u;
-    int32_t jitter = (int32_t)(ball_rand(b) % (uint32_t)PX(DROP_CELL_W)) - PX(DROP_CELL_W) / 2;
+    int32_t half = PX(DROP_CELL_W) / 2;
+    int32_t jitter = (int32_t)(ball_rand(b) % (uint32_t)(2 * half + 1)) - half;
     b->x = PX(DROP_SPAWN_COL * DROP_CELL_W) + PX(DROP_CELL_W) / 2 + jitter;
     b->alive = true;
 }
@@ -760,11 +761,19 @@ void drop_core_mark_dirty(void)
 
 /* ── Voice setup (one slot at a time; mirrors the arp's) ─────────────── */
 
+static bool drop_unison_stereo(drop_which_t w)
+{
+    voice_unison_t u;
+    drop_get_unison(w, &u);
+    return u.stereo != 0u;
+}
+
 static uint8_t drop_unison_copies(drop_which_t w)
 {
     const drop_voice_t *v = &s_drop.voice[w];
-    return sequencer_core_unison_copies_for(v->patch, v->unison.count,
-                                            voices_of(w));
+    return sequencer_core_unison_copies_for(v->patch,
+                                            v->unison.bypass ? 1u : v->unison.count,
+                                            voices_of(w), drop_unison_stereo(w));
 }
 
 static voice_unison_t drop_unison_eff(drop_which_t w)
@@ -777,7 +786,8 @@ static voice_unison_t drop_unison_eff(drop_which_t w)
 
 static bool drop_voice_layout(drop_which_t w, seq_voice_layout_t *vl)
 {
-    return sequencer_core_voice_layout(s_drop.voice[w].patch, drop_unison_copies(w), vl);
+    return sequencer_core_voice_layout(s_drop.voice[w].patch, drop_unison_copies(w),
+                                       drop_unison_stereo(w), vl);
 }
 
 static void drop_push_dist(drop_which_t w, const seq_dist_t *d)
@@ -940,6 +950,8 @@ static void drop_voice_defaults(drop_voice_params_t *v, uint16_t patch)
     voice_params_init_defaults(&v->vp);
     v->patch = patch;
     v->gate_pct = 75;
+    v->unison.stereo = 1u;   /* as seq_layer_defaults */
+    v->unison.shift  = 100u;
     /* As the arp's defaults: an envelope with a short decay and a slower
      * EG1 tail, both unauthored until an editor commits them. */
     v->vp.env.attack_ms   = 4;
@@ -1317,9 +1329,8 @@ void drop_get_vp(drop_which_t w, voice_params_t *out)
 void drop_get_unison(drop_which_t w, voice_unison_t *out)
 {
     if (!out) return;
-    voice_unison_t u = { 1u, 12u, 50u, 100u, 0u };
+    voice_unison_t u = { 1u, 12u, 50u, 100u, 1u, 0u, 100u, 0u };
     if (which_ok(w) && s_drop.voice[w].unison.count != 0u) u = s_drop.voice[w].unison;
-    u.layout = sequencer_core_get_unison_layout();
     *out = u;
 }
 
@@ -1327,7 +1338,7 @@ uint8_t drop_unison_max(drop_which_t w)
 {
     if (!which_ok(w)) return 0u;
     return sequencer_core_unison_max_for(s_drop.voice[w].patch,
-                                         voices_of(w));
+                                         voices_of(w), drop_unison_stereo(w));
 }
 
 static voice_unison_t drop_unison_clamp(const voice_unison_t *u)
@@ -1337,17 +1348,21 @@ static voice_unison_t drop_unison_clamp(const voice_unison_t *u)
     v.detune_cents = SEQ_CLAMP_U8(v.detune_cents, 0u, VOICE_UNISON_MAX_DETUNE);
     v.spread_pct   = SEQ_CLAMP_U8(v.spread_pct, 0u, 100u);
     v.blend_pct    = SEQ_CLAMP_U8(v.blend_pct, 0u, 100u);
-    v.layout       = 0u;
+    v.stereo       = SEQ_CLAMP_U8(v.stereo, 0u, 1u);
+    v.bypass       = SEQ_CLAMP_U8(v.bypass, 0u, 1u);
+    v.shift        = SEQ_CLAMP_U8(v.shift, 0u, VOICE_UNISON_MAX_SHIFT);
+    v.interval     = SEQ_CLAMP_U8(v.interval, 0u, VOICE_UNISON_MAX_INTERVAL);
     return v;
 }
 
 void drop_set_unison(drop_which_t w, const voice_unison_t *u)
 {
     if (!which_ok(w) || !u) return;
-    uint8_t was = drop_unison_copies(w);
+    uint8_t was        = drop_unison_copies(w);
+    bool    was_stereo = drop_unison_stereo(w);
     s_drop.voice[w].unison = drop_unison_clamp(u);
     uint8_t now = drop_unison_copies(w);
-    if (now != was) {
+    if (now != was || (now > 1u && drop_unison_stereo(w) != was_stereo)) {
         drop_rebuild(w);
     } else if (now > 1u) {
         voice_unison_t eff = drop_unison_eff(w);

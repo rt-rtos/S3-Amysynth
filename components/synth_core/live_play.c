@@ -7,6 +7,7 @@
 #include "seq_core_config.h"  /* SEQ_LFO_SW_MAX_HZ, SEQ_MEL_PATCH */
 #include "voice_config.h"   /* voice_params_init_defaults, env bounds, LFO apply */
 #include "lfo_bank.h"       /* shared LFO synths (lfo_bank_bind) */
+#include "synth_level.h"    /* synth_level_set_sw_lfo (software-stepper AMP) */
 #include "seq_clamp.h"
 #include "esp_log.h"
 #include <math.h>           /* sinf/powf - software LFO stepper (UI task) */
@@ -105,20 +106,30 @@ static void live_note(uint8_t note, float velocity)
     amy_event *e = amy_helpers_event_begin();
     e->synth     = LIVE_SYNTH;
     e->midi_note = (float)note;
-    /* Amp trim rides the note velocity (the graph editor's amp mode). Note-offs
+    /* Amp trim rides the note velocity (the ADSR editor's amp mode). Note-offs
      * pass velocity 0 and must stay 0. */
     e->velocity  = (velocity > 0.0f) ? velocity * s_vp.amp_trim : 0.0f;
     amy_helpers_event_send(e);
 }
 
-/* Effective unison copies the slot is built with: the stored count through
- * the shared clamp (a never-set count of 0 gives 1). */
-static uint8_t live_unison_copies(void)
+/* The spec's stereo flag as live_play_get_unison serves it (defaults
+ * included). */
+static bool live_unison_stereo(void)
 {
-    return sequencer_core_unison_copies_for(s_patch, s_unison.count, LIVE_VOICES);
+    voice_unison_t u;
+    live_play_get_unison(&u);
+    return u.stereo != 0u;
 }
 
-/* The stored spec carrying the effective count and the global backend. */
+/* Effective unison copies the slot is built with: the stored count (1 under
+ * bypass) through the shared clamp (a never-set count of 0 gives 1). */
+static uint8_t live_unison_copies(void)
+{
+    return sequencer_core_unison_copies_for(s_patch, s_unison.bypass ? 1u : s_unison.count,
+                                            LIVE_VOICES, live_unison_stereo());
+}
+
+/* The stored spec carrying the effective count. */
 static voice_unison_t live_unison_eff(void)
 {
     voice_unison_t eff;
@@ -131,11 +142,12 @@ static voice_unison_t live_unison_eff(void)
  * for patches that are not wave-topology. */
 static bool live_voice_layout(seq_voice_layout_t *vl)
 {
-    return sequencer_core_voice_layout(s_patch, live_unison_copies(), vl);
+    return sequencer_core_voice_layout(s_patch, live_unison_copies(),
+                                       live_unison_stereo(), vl);
 }
 
-/* One dist block where the voice carries the stage: each head under unison,
- * else the base osc (mirrors melodic_dist_apply). */
+/* One dist block where the voice carries the stage: each cluster osc under
+ * unison, else the base osc (mirrors melodic_dist_apply). */
 static void live_push_dist(const seq_dist_t *d)
 {
     seq_voice_layout_t vl;
@@ -377,31 +389,34 @@ void live_play_get_unison(voice_unison_t *out)
 {
     if (!out) return;
     /* First-turn defaults, as on a row; count 1 keeps them inert. */
-    voice_unison_t u = { 1u, 12u, 50u, 100u, 0u };
+    voice_unison_t u = { 1u, 12u, 50u, 100u, 1u, 0u, 100u, 0u };
     if (s_unison.count != 0u) u = s_unison;
-    u.layout = sequencer_core_get_unison_layout();
     *out = u;
 }
 
 uint8_t live_play_unison_max(void)
 {
-    return sequencer_core_unison_max_for(s_patch, LIVE_VOICES);
+    return sequencer_core_unison_max_for(s_patch, LIVE_VOICES, live_unison_stereo());
 }
 
 void live_play_set_unison(const voice_unison_t *u)
 {
     if (!u) return;
-    uint8_t was = live_unison_copies();
+    uint8_t was        = live_unison_copies();
+    bool    was_stereo = live_unison_stereo();
     voice_unison_t v = *u;
     v.count        = SEQ_CLAMP_U8(v.count, 1u, VOICE_UNISON_MAX_COPIES);
     v.detune_cents = SEQ_CLAMP_U8(v.detune_cents, 0u, VOICE_UNISON_MAX_DETUNE);
     v.spread_pct   = SEQ_CLAMP_U8(v.spread_pct, 0u, 100u);
     v.blend_pct    = SEQ_CLAMP_U8(v.blend_pct, 0u, 100u);
-    v.layout       = 0u;   /* storage ignores it: the backend is global */
+    v.stereo       = SEQ_CLAMP_U8(v.stereo, 0u, 1u);
+    v.bypass       = SEQ_CLAMP_U8(v.bypass, 0u, 1u);
+    v.shift        = SEQ_CLAMP_U8(v.shift, 0u, VOICE_UNISON_MAX_SHIFT);
+    v.interval     = SEQ_CLAMP_U8(v.interval, 0u, VOICE_UNISON_MAX_INTERVAL);
     s_unison = v;
     if (!s_ready) return;   /* live_play_ensure_ready() builds it */
     uint8_t now = live_unison_copies();
-    if (now != was) {
+    if (now != was || (now > 1u && (v.stereo != 0u) != was_stereo)) {
         live_rebuild();
     } else if (now > 1u) {
         voice_unison_t eff = live_unison_eff();
@@ -479,10 +494,9 @@ static bool    s_swlfo_active  = false;
 static uint8_t s_swlfo_targets = 0;   /* rails driven while active - the set
                                        * to restore, even if edited since */
 
-/* seq_core_editors.c internals shared with this stepper. Mirrored prototypes:
+/* seq_core_tempo.c internals shared with this stepper. Mirrored prototypes:
  * seq_core_internal.h cannot be included here (it defines a TU-local TAG). */
 float lfo_next_rand(void);
-void  lfo_push_amp(uint8_t synth_id, uint16_t patch, float amp);
 void  lfo_push_target_neutral(uint8_t synth_id, uint16_t patch,
                               lfo_target_t target);
 
@@ -579,7 +593,7 @@ void live_play_lfo_service(void)
     /* SCAN needs a wavetable voice - wave patches / native only. */
     amy_helpers_event_send(e);
     if (LFO_HAS_TGT(lfo, LFO_TARGET_AMP))
-        lfo_push_amp(LIVE_SYNTH, s_patch, 1.0f - d * (0.5f - 0.5f * val));
+        synth_level_set_sw_lfo(LIVE_SYNTH, 1.0f - d * (0.5f - 0.5f * val));
     } /* !native */
 
     /* DIST on a PATCH-mode voice: step around the committed dist block

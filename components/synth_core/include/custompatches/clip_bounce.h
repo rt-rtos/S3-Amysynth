@@ -16,7 +16,7 @@ extern "C" {
  * (FX_BUS_CLIPS_MAKEUP), so a clip sits where its sources sat.
  *
  * Flow:
- *   IDLE --start--> ARMED --next bar line--> RECORDING --end tick--> TAIL
+ *   IDLE --start--> ARMED --next pattern-period boundary--> RECORDING --end tick--> TAIL
  *   TAIL --tail folded--> READY --service--> IDLE; cancel from any non-IDLE.
  * The UI task owns start, stop, cancel and the READY commit; the render task
  * owns the other transitions and is the clip buffer's only writer from ARMED
@@ -32,11 +32,12 @@ extern "C" {
  * ticks of a boundary rolls to the next one, so the stop can never race the
  * bar line.
  *
- * Timing: start_tick is the next bar line at start time. The loop is
- * loop_frames = round(ticks * us_per_tick * Fs / 1e6) frames from the first
- * block in which the tick clock reaches start_tick; the clip's note-on fires
- * at end_tick. Both land on block edges, so a clip sits within one block
- * (5.3 ms) of the pattern it was recorded against.
+ * Timing: start_tick is the next pattern-period boundary at start time
+ * (sequencer_core_next_period_tick), so the clip starts on the pattern's
+ * first step. The loop is loop_frames = round(ticks * us_per_tick * Fs / 1e6)
+ * frames from the first block in which the tick clock reaches start_tick; the
+ * clip's note-on fires at end_tick. Both land on block edges, so a clip sits
+ * within one block (5.3 ms) of the pattern it was recorded against.
  *
  * Freeze: the sequencer freeze horizon sits at end_tick (moved earlier by a
  * stop), so no periodic note-on (tracks, arp) and no decorated one-shot
@@ -113,9 +114,9 @@ bool     clip_bounce_fits(const clip_bounce_shape_t *shape);
 
 /* IDLE -> ARMED. slot is a slot index or CLIP_SLOT_AUTO. Obligations: the
  * slot EMPTY (auto: one exists), transport playing, the pool has room.
- * Reserves the slot's preset, fixes start_tick at the next bar line and the
- * auto-stop end, schedules the clip's note-on there and sets the freeze
- * horizon. false on OOM or a violated obligation, with no state change. */
+ * Reserves the slot's preset, fixes start_tick at the next pattern-period
+ * boundary and the auto-stop end, schedules the clip's note-on there and sets
+ * the freeze horizon. false on OOM or a violated obligation, with no state change. */
 bool     clip_bounce_start(uint8_t slot);
 
 /* RECORDING only: end the take at the next pattern-period boundary (see the

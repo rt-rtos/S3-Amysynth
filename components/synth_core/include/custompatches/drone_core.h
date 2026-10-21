@@ -25,15 +25,16 @@ extern "C" {
  *     grid at the stutter rate, timed ahead through amy_event.time - the on
  *     level peak_lin at each open step (odd steps swung), the off level
  *     peak_lin * 10^(-duck_db/20) gate-length later. They go to the oscs of
- *     the patch's LFO target map voice mask (osc 0 of a wave voice, the Juno
- *     SILENT head, the DX7/FM ALGO osc), replacing the head's own level.
+ *     the patch's LFO target map voice mask (osc 0 of a wave voice, every
+ *     cluster osc under unison, the Juno SILENT head, the DX7/FM ALGO osc),
+ *     replacing the head's own level.
  *     Knob mapping: drone_set_amp_peak / drone_set_amp_duck.
  *   - The standard per-voice toolset on the main synth, re-imposed after
  *     every rebuild where authored: a filter (seq_filter_t) with its
  *     envelope routing matrix on the same oscs, a free LFO (seq_lfo_t: a
  *     shared LFO synth, lfo_bank.h, over the same target map; none when the
  *     bank is full; without CONFIG_SEQ_LFO_SHARED the native carriers on
- *     wave patches only), the ADSR/EG1 graph storage and distortion. A fresh
+ *     wave patches only), the ADSR/EG1 editor storage and distortion. A fresh
  *     drone's filter is an authored LPF24 swept by an authored 4-bar sine
  *     LFO. The per-step blip writes the filter's cutoff CONST around the
  *     filter's own cutoff.
@@ -93,11 +94,13 @@ typedef struct {
     drone_pattern_t pattern;
     drone_follow_t  follow;
     voice_params_t  vp;
+    voice_unison_t  unison;
 } drone_params_t;
 
 /* Fallback values of the project format for the stutter drone: off, root A2
  * alone, SAW_DOWN at 1/16 with the sub an octave down, a full gate pattern,
- * and the authored LPF24 sweep. Pure; any task; fills every field. Never
+ * the authored LPF24 sweep, and unison at count 1 (inert) with the row
+ * defaults. Pure; any task; fills every field. Never
  * reads Kconfig; drone_core_init() seeds the boot drone from it (no Kconfig
  * overlay). */
 void drone_params_defaults(drone_params_t *out);
@@ -183,11 +186,11 @@ void drone_set_swing(uint8_t pct);        /* 0..66 swing on the stutter grid    
 void drone_set_blip(float depth);         /* 0..1 per-step cutoff-zap depth       */
 void drone_set_pattern(drone_pattern_t p);/* 8-step on/off mask                   */
 
-/* ── Runtime-editable ADSR envelope (shared graph editor) ── */
+/* ── Runtime-editable ADSR envelope (shared ADSR editor) ── */
 void drone_get_envelope(seq_env_t *out);
 void drone_set_envelope(const seq_env_t *env);
 
-/* ── Second envelope (EG1, shared graph editor) ──
+/* ── Second envelope (EG1, shared ADSR editor) ──
  * Breakpoint generator for the filter editor's envelope routing, main synth
  * only. */
 void drone_get_envelope2(seq_env_t *out);
@@ -233,6 +236,24 @@ bool drone_lfo2_bound(void);
  * rebuilds the synths at the next drone_core_service() frame. */
 void drone_get_voice_params(voice_params_t *out);
 void drone_set_voice_params(const voice_params_t *vp);
+
+/* ── Unison (shared Unison page) ──
+ * One voice_unison_t for the main synth, the row semantics of
+ * sequencer_core.h "Melodic per-track unison": raw-wave/wavetable patches
+ * only, the effective copy count sequencer_core_unison_copies_for() at the
+ * drone's patch and built voice count (1 under bypass). The sub stays a
+ * single sine. set clamps as drop_set_unison(); a change of the effective
+ * count or (while it carries copies) of the stereo flag rebuilds at the next
+ * drone_core_service() frame, any other change pushes
+ * detune/interval/shift/spread/blend live at the gate's last level. Under
+ * unison the gate, filter, blip, dist and LFO address every cluster osc
+ * (sequencer_core_voice_layout()), and each gate write is the level x
+ * voice_unison_osc_level() of its osc, so a stereo pair keeps its balance.
+ * unison_max: the highest effective count the patch allows, 0 = it cannot
+ * carry unison. UI task. Persisted in the DRON section. */
+void    drone_get_unison(voice_unison_t *out);
+void    drone_set_unison(const voice_unison_t *u);
+uint8_t drone_unison_max(void);
 
 /* ── Getters (for the list UI) ── */
 bool           drone_get_enabled(void);

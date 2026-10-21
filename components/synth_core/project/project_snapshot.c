@@ -51,11 +51,12 @@
 #include "custompatches/clip_player.h"
 #include "mixer.h"
 #include "amy_fx.h"
+#include "transport_stop.h"
 #include "amy.h"               /* amy_num_algorithms - fm_algo_override clamp */
 #include "quantizer.h"
 #include "voice_config.h"
 #include "seq_defaults.h"       /* melodic env defaults for the v14 layer block */
-#include "synth_ui/synth_ui_internal.h"   /* synth_ui_reload_mirror_from_core() */
+#include "synth_ui/synth_ui_internal.h"   /* synth_ui_reload_mirror_from_core(), ui_clock_* */
 #include "sdkconfig.h"
 #if CONFIG_SYNTH_CUSTOM_WT
 #include "custompatches/wt_builder.h"
@@ -318,7 +319,8 @@ static bool de_vp(tlv_reader_t *r, voice_params_t *vp)
     return true;
 }
 
-/* ── Shared voice_unison_t codec (LAYR per track, ARP, DROP voices) ─────── */
+/* ── Shared voice_unison_t codec (LAYR per track, ARP, DROP voices, DRON,
+ * DSTD) ─────────────────────────────────────────────────────────────────── */
 
 static void ser_unison(tlv_writer_t *w, const voice_unison_t *u)
 {
@@ -327,6 +329,10 @@ static void ser_unison(tlv_writer_t *w, const voice_unison_t *u)
     tlv_put_u8(w, u->detune_cents);
     tlv_put_u8(w, u->spread_pct);
     tlv_put_u8(w, u->blend_pct);
+    tlv_put_u8(w, u->stereo);
+    tlv_put_u8(w, u->bypass);
+    tlv_put_u8(w, u->shift);
+    tlv_put_u8(w, u->interval);
     tlv_end_block(w, h);
 }
 
@@ -341,15 +347,24 @@ static bool de_unison(tlv_reader_t *r, voice_unison_t *u)
     tlv_get_u8(&b, &u->detune_cents);
     tlv_get_u8(&b, &u->spread_pct);
     tlv_get_u8(&b, &u->blend_pct);
+    tlv_get_u8(&b, &u->stereo);
+    tlv_get_u8(&b, &u->bypass);
+    tlv_get_u8(&b, &u->shift);
+    tlv_get_u8(&b, &u->interval);
     u->count        = SEQ_CLAMP_U8(u->count, 0u, VOICE_UNISON_MAX_COPIES);
     u->detune_cents = SEQ_CLAMP_U8(u->detune_cents, 0u, VOICE_UNISON_MAX_DETUNE);
     u->spread_pct   = SEQ_CLAMP_U8(u->spread_pct, 0u, 100u);
     u->blend_pct    = SEQ_CLAMP_U8(u->blend_pct, 0u, 100u);
+    u->stereo       = SEQ_CLAMP_U8(u->stereo, 0u, 1u);
+    u->bypass       = SEQ_CLAMP_U8(u->bypass, 0u, 1u);
+    u->shift        = SEQ_CLAMP_U8(u->shift, 0u, VOICE_UNISON_MAX_SHIFT);
+    u->interval     = SEQ_CLAMP_U8(u->interval, 0u, VOICE_UNISON_MAX_INTERVAL);
     return true;
 }
 
 /* ── GLOB section ─────────────────────────────────────────────────────────
- * The section scalars, then one record per FX bus. */
+ * The section scalars, one record per FX bus, then the trailing scalars
+ * (transport stop, start mode, clock phrase). */
 
 #define GLOB_VERSION 7
 
@@ -363,6 +378,10 @@ typedef struct {
     fx_state_t fx[FX_BUS_COUNT];
     bool     presets_alter_global;
     uint8_t  split_flags;   /* bit fx_group_t: that group renders on its own bus */
+    uint8_t  stop_mode;     /* tstop_mode_t */
+    uint8_t  stop_fade_idx;
+    bool     silent_start;
+    uint8_t  phrase_idx;    /* ui_clock phrase index */
 } staged_glob_t;
 
 /* GLOB's fallback default, composed from the owners' fallback values. */
@@ -378,6 +397,12 @@ static void glob_defaults(staged_glob_t *g)
     for (uint8_t bus = 0; bus < FX_BUS_COUNT; bus++) amy_fx_bus_defaults(bus, &g->fx[bus]);
     g->presets_alter_global = AMY_FX_PRESETS_ALTER_GLOBAL_DEFAULT;
     g->split_flags   = FX_BUS_SPLIT_FLAGS_DEFAULT;
+    transport_stop_params_t ts;
+    transport_stop_defaults(&ts);
+    g->stop_mode     = ts.mode;
+    g->stop_fade_idx = ts.fade_idx;
+    g->silent_start  = false;
+    g->phrase_idx    = ui_clock_defaults();
 }
 
 static void ser_glob(tlv_writer_t *w)
@@ -425,6 +450,10 @@ static void ser_glob(tlv_writer_t *w)
         tlv_put_i16(w, f->chorus_delay);
         tlv_end_block(w, hb);
     }
+    tlv_put_u8(w, (uint8_t)transport_stop_get_mode());
+    tlv_put_u8(w, transport_stop_get_fade_idx());
+    tlv_put_u8(w, sequencer_core_get_silent_start() ? 1 : 0);
+    tlv_put_u8(w, ui_clock_get_phrase_idx());
     tlv_end_section(w, h);
 }
 
@@ -485,6 +514,13 @@ static bool parse_glob(tlv_reader_t *b, staged_glob_t *g)
     for (uint8_t bus = 0; bus < FX_BUS_COUNT; bus++) {
         if (!parse_glob_bus(b, &g->fx[bus])) return false;
     }
+    tlv_get_u8(b, &g->stop_mode);
+    if (g->stop_mode >= TSTOP_MODE_COUNT) g->stop_mode = TSTOP_MODE_COUNT - 1;
+    tlv_get_u8(b, &g->stop_fade_idx);
+    if (g->stop_fade_idx >= TSTOP_FADE_COUNT) g->stop_fade_idx = TSTOP_FADE_COUNT - 1;
+    tlv_get_bool(b, &g->silent_start);
+    tlv_get_u8(b, &g->phrase_idx);
+    if (g->phrase_idx >= UI_CLOCK_PHRASE_COUNT) g->phrase_idx = UI_CLOCK_PHRASE_COUNT - 1;
     return true;
 }
 
@@ -496,6 +532,10 @@ static void apply_glob(const staged_glob_t *g)
     sequencer_core_set_quantizer_scale(g->quant_scale);
     sequencer_core_set_drum_engine(g->drum_engine);
     s_fx_presets_alter_global = g->presets_alter_global;
+    transport_stop_set_mode(g->stop_mode);
+    transport_stop_set_fade_idx(g->stop_fade_idx);
+    sequencer_core_set_silent_start(g->silent_start);
+    ui_clock_set_phrase_idx(g->phrase_idx);
     for (fx_group_t grp = FX_GROUP_DRUMS; grp < FX_GROUP_COUNT; grp++) {
         fx_bus_set_split(grp, (g->split_flags & (1u << grp)) != 0);
     }
@@ -825,6 +865,7 @@ static void ser_arp(tlv_writer_t *w)
     tlv_put_u8(w, arp_get_muted() ? 1 : 0);
     tlv_put_u8(w, sequencer_core_get_arp_solo() ? 1 : 0);
     voice_unison_t u; arp_get_unison(&u); ser_unison(w, &u);
+    tlv_put_u8(w, arp_get_repeat_rate());
     tlv_end_block(w, hb);
     tlv_end_section(w, h);
 }
@@ -876,6 +917,9 @@ static bool parse_arp(tlv_reader_t *r, staged_arp_t *st)
     tlv_get_bool(&b, &a->muted);
     tlv_get_bool(&b, &st->solo);
     if (!de_unison(&b, &a->unison)) return false;
+    tlv_get_u8(&b, &a->repeat_rate);
+    a->repeat_rate = (a->repeat_rate >= 8) ? 8 : (a->repeat_rate >= 4) ? 4
+                   : (a->repeat_rate >= 2) ? 2 : 1;
     return true;
 }
 
@@ -888,6 +932,7 @@ static void apply_arp(const staged_arp_t *st)
     arp_set_unison(&a->unison);
     arp_set_direction(a->dir);
     arp_set_octaves(a->octaves);
+    arp_set_repeat_rate(a->repeat_rate);
     arp_set_rate(a->rate);
     arp_set_gate_pct(a->gate_pct);
     arp_set_scale(a->scale);
@@ -916,7 +961,7 @@ static void apply_arp(const staged_arp_t *st)
  * patch, glide, the voice_params_t block (ser_vp, authored flags included),
  * the unison block, muted, solo and gate_pct. */
 
-#define DROP_VERSION 4
+#define DROP_VERSION 5
 
 /* The drop's record (drop_params_t, drop_core.h) plus each voice's solo,
  * which the sequencer owns. */
@@ -1017,7 +1062,6 @@ static bool parse_drop_voice(tlv_reader_t *r, drop_voice_params_t *dv, bool *sol
     if (dv->portamento_ms > DROP_PORTAMENTO_MAX_MS) dv->portamento_ms = DROP_PORTAMENTO_MAX_MS;
     if (!de_vp(&b, &dv->vp)) return false;
     if (!de_unison(&b, &dv->unison)) return false;
-    dv->unison.layout = 0u;
     tlv_get_bool(&b, &dv->muted);
     tlv_get_bool(&b, solo);
     tlv_get_u8(&b, &dv->gate_pct);
@@ -1127,6 +1171,7 @@ static void ser_drone(tlv_writer_t *w)
     tlv_put_f32(w, drone_get_blip());
     tlv_put_u8(w, (uint8_t)drone_get_pattern());
     tlv_put_u8(w, (uint8_t)drone_get_follow());
+    voice_unison_t u; drone_get_unison(&u); ser_unison(w, &u);
     tlv_end_block(w, hb);
     voice_params_t vp; drone_get_voice_params(&vp); ser_vp(w, &vp);
     tlv_end_section(w, h);
@@ -1170,6 +1215,7 @@ static bool parse_drone(tlv_reader_t *r, staged_drone_t *d)
     v = (uint8_t)d->follow;
     tlv_get_u8(&b, &v);
     d->follow = (v >= DRONE_FOLLOW_COUNT) ? DRONE_FOLLOW_OFF : (drone_follow_t)v;
+    if (!de_unison(&b, &d->unison)) return false;
     return de_vp(r, &d->vp);
 }
 
@@ -1190,6 +1236,7 @@ static void apply_drone(const staged_drone_t *d)
     drone_set_blip(d->blip);
     drone_set_pattern(d->pattern);
     drone_set_follow(d->follow);
+    drone_set_unison(&d->unison);
     drone_set_voice_params(&d->vp);
     drone_set_enabled(d->enabled);
 }
@@ -1213,6 +1260,7 @@ static void ser_drone_std(tlv_writer_t *w)
     tlv_put_u16(w, drone_std_get_patch());
     tlv_put_u8(w, drone_std_get_sub_enabled() ? 1 : 0);
     tlv_put_i8(w, drone_std_get_sub_interval());
+    voice_unison_t u; drone_std_get_unison(&u); ser_unison(w, &u);
     tlv_end_block(w, hb);
     voice_params_t vp; drone_std_get_voice_params(&vp); ser_vp(w, &vp);
     tlv_end_section(w, h);
@@ -1242,6 +1290,7 @@ static bool parse_drone_std(tlv_reader_t *r, staged_drone_std_t *d)
     tlv_get_i8(&b, &d->sub_interval);
     d->sub_interval = (int8_t)SEQ_CLAMP_INT(d->sub_interval, DRONE_SUB_INTERVAL_MIN,
                                             DRONE_SUB_INTERVAL_MAX);
+    if (!de_unison(&b, &d->unison)) return false;
     return de_vp(r, &d->vp);
 }
 
@@ -1255,6 +1304,7 @@ static void apply_drone_std(const staged_drone_std_t *d)
     if (!drone_patch_excluded(d->patch)) drone_std_set_patch(d->patch);
     drone_std_set_sub_interval(d->sub_interval);
     drone_std_set_sub_enabled(d->sub_enabled);
+    drone_std_set_unison(&d->unison);
     drone_std_set_voice_params(&d->vp);
     drone_std_set_enabled(d->enabled);
 }
@@ -1343,10 +1393,11 @@ static void apply_clip(const staged_clip_t *c)
 
 /* ── MIXR section ─────────────────────────────────────────────────────────── */
 
-/* Mixer positions, soft mutes and the FADE length (mixer.h). Layer arrays
- * are index-aligned with the LAYR sections; master is GLOB's master volume,
- * not stored here. A fade in progress is not stored. One record, the
- * track_pos row of each layer a record nested in it. */
+/* Mixer positions, soft mutes, the FADE length and link groups (mixer.h).
+ * Layer arrays are index-aligned with the LAYR sections; master is GLOB's
+ * master volume, not stored here (its link group is). A fade in progress is
+ * not stored. One record, the track_pos row of each layer a record nested
+ * in it; the link groups are flat u8s at its tail. */
 #define MIXR_VERSION 3
 
 typedef mixer_snapshot_t staged_mixr_t;
@@ -1368,6 +1419,12 @@ static void ser_mixr(tlv_writer_t *w)
     for (uint8_t k = 0; k < MIX_MISC_COUNT; k++) tlv_put_u8(w, m.misc_pos[k]);
     tlv_put_u8(w, m.misc_mute);
     tlv_put_u8(w, m.fade_bars_idx);
+    tlv_put_u8(w, m.master_link);
+    for (uint8_t L = 0; L < MAX_LAYERS; L++) tlv_put_u8(w, m.layer_link[L]);
+    for (uint8_t L = 0; L < MAX_LAYERS; L++) {
+        for (uint8_t t = 0; t < SEQ_TRACKS; t++) tlv_put_u8(w, m.track_link[L][t]);
+    }
+    for (uint8_t k = 0; k < MIX_MISC_COUNT; k++) tlv_put_u8(w, m.misc_link[k]);
     tlv_end_block(w, hb);
     tlv_end_section(w, h);
 }
@@ -1376,6 +1433,12 @@ static void parse_mixr_pos(tlv_reader_t *b, uint8_t *out)
 {
     tlv_get_u8(b, out);
     if (*out > MIXER_POS_MAX) *out = MIXER_POS_MAX;
+}
+
+static void parse_mixr_link(tlv_reader_t *b, uint8_t *out)
+{
+    tlv_get_u8(b, out);
+    if (*out > MIXER_LINK_COUNT) *out = MIXER_LINK_COUNT;
 }
 
 /* Seed: fallback default (mixer_params_defaults); a field appended to either
@@ -1402,6 +1465,12 @@ static bool parse_mixr(tlv_reader_t *r, staged_mixr_t *m)
     m->misc_mute &= (uint8_t)((1u << MIX_MISC_COUNT) - 1u);
     tlv_get_u8(&b, &m->fade_bars_idx);
     if (m->fade_bars_idx > MIXER_FADE_BARS_COUNT - 1) m->fade_bars_idx = MIXER_FADE_BARS_COUNT - 1;
+    parse_mixr_link(&b, &m->master_link);
+    for (uint8_t L = 0; L < MAX_LAYERS; L++) parse_mixr_link(&b, &m->layer_link[L]);
+    for (uint8_t L = 0; L < MAX_LAYERS; L++) {
+        for (uint8_t t = 0; t < SEQ_TRACKS; t++) parse_mixr_link(&b, &m->track_link[L][t]);
+    }
+    for (uint8_t k = 0; k < MIX_MISC_COUNT; k++) parse_mixr_link(&b, &m->misc_link[k]);
     return true;
 }
 
@@ -1967,6 +2036,7 @@ bool project_snapshot_load_buffer(const uint8_t *payload, size_t len, const char
     }
 
     /* ── Phase 2: apply. Nothing above this point touched live state. ── */
+    transport_stop_reset();
     sequencer_core_set_playing(false);
     arp_core_clear_all();
     drop_core_clear_all();

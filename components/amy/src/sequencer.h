@@ -32,6 +32,10 @@ void sequencer_clear_tag(uint32_t tag);
 // entries do not fire at or after tick; one-shots still do. Clear to resume.
 void sequencer_set_periodic_horizon(uint32_t tick);
 void sequencer_clear_periodic_horizon(void);
+// LOCAL EDIT (S3-Amysynth): periodic-entry start. While set, repeating entries
+// do not fire before tick; one-shots still do.
+void sequencer_set_periodic_start(uint32_t tick);
+void sequencer_clear_periodic_start(void);
 // LOCAL EDIT (S3-Amysynth): events stored under `tag` (0 if out of range).
 // Takes amy_queue_lock; not from the render path.
 uint16_t sequencer_tag_count(uint32_t tag);

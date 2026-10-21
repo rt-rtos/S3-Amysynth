@@ -12,7 +12,9 @@
  *  BALL DROP SCREEN
  * ════════════════════════════════════════════════════════════════════════
  * Gestures (CONTROLS.md): the encoder moves the cursor over the header
- * fields and then the cells; the encoder click toggles editing (a field's
+ * fields and then the cells, by whole rows while SHOULDER is held (down from
+ * the header onto the top row under the spawner, up from the top row back to
+ * ON/OFF); the encoder click toggles editing (a field's
  * value, or the angle of the segment under the cursor). Button 0 tap
  * places or removes a plain segment, held + turn rotates it; SHIFT + turn
  * cycles its type, SHIFT + Button 0 held + turn sets a splitter's ratio.
@@ -131,7 +133,7 @@ void drop_build_view(drop_view_t *out)
     if (sequencer_core_get_playing() && out->enabled) {
         drop_ball_pos_t balls[DROP_BALL_MAX];
         uint32_t loop = drop_loop_ticks();
-        uint8_t n = drop_view_balls(sequencer_ticks() % loop, balls);
+        uint8_t n = drop_view_balls(sequencer_core_loop_pos(sequencer_ticks(), loop), balls);
         out->ball_count = n;
         for (uint8_t i = 0; i < n; i++) {
             out->balls[i].x = balls[i].x;
@@ -272,7 +274,7 @@ static void drop_edit_field(uint8_t cursor, int dir)
 
 /* ── Input ─────────────────────────────────────────────────────────── */
 
-void synth_ui_drop_handle_encoder(long delta, bool shift)
+void synth_ui_drop_handle_encoder(long delta, bool shift, bool rows)
 {
     if (delta == 0) return;
     int dir = (delta > 0) ? 1 : -1;
@@ -286,6 +288,18 @@ void synth_ui_drop_handle_encoder(long delta, bool shift)
         drop_cycle_seg_type(dir);
     } else if (s_editing) {
         drop_edit_field(s_cursor, dir);
+    } else if (rows) {
+        if (on_cell()) {
+            int row = (int)cur_row() + (int)delta;
+            if (row < 0) {
+                s_cursor = DROP_CUR_ENABLE;
+            } else {
+                row = SEQ_CLAMP_INT(row, 0, DROP_ROWS - 1);
+                s_cursor = (uint8_t)(DROP_CUR_CELL0 + row * DROP_COLS + cur_col());
+            }
+        } else if (delta > 0) {
+            s_cursor = DROP_CUR_CELL0 + DROP_SPAWN_COL;
+        }
     } else {
         int c = (int)s_cursor + (int)delta;
         s_cursor = (uint8_t)SEQ_CLAMP_INT(c, 0, DROP_CUR_COUNT - 1);

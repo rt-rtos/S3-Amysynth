@@ -172,8 +172,12 @@
 #define SEQ_STEP_TAG_COUNT    (MAX_LAYERS * SEQ_TRACKS * SEQ_MAX_STEPS * 2u) /* 1280 */
 #define SEQ_PREVIEW_TAG_COUNT (MAX_LAYERS * SEQ_TRACKS * 2u)                 /* 40 */
 #define SEQ_ARP_TAG_BASE      (SEQ_STEP_TAG_COUNT + SEQ_PREVIEW_TAG_COUNT)    /* 1320 */
-#define SEQ_ARP_TAG_COUNT     (ARP_MAX_SLOTS * ARP_OCT_MAX * 2)  /* = 64 */
-#define SEQ_ARP_TAG_MAX       (SEQ_ARP_TAG_BASE + SEQ_ARP_TAG_COUNT - 1)  /* 1383 */
+/* A repeat-rate arp unrolls one bar: 4 ticks (1/32T) is the shortest
+ * division in note_div.c, so at most SEQ_TICKS_PER_BAR / 4 steps. */
+#define ARP_BAR_MAX_STEPS     (SEQ_TICKS_PER_BAR / 4u)                       /* 48 */
+#define SEQ_ARP_TAG_COUNT     (2u * ((ARP_MAX_SLOTS * ARP_OCT_MAX > ARP_BAR_MAX_STEPS) \
+                                     ? ARP_MAX_SLOTS * ARP_OCT_MAX : ARP_BAR_MAX_STEPS)) /* 96 */
+#define SEQ_ARP_TAG_MAX       (SEQ_ARP_TAG_BASE + SEQ_ARP_TAG_COUNT - 1)  /* 1415 */
 
 /* ── Ball drop tag space ──────────────────────────────────────────────────
  * Four tags, each holding a whole loop's worth of events: the DROP synth's
@@ -182,9 +186,9 @@
  * drop_core_refresh() clears the four and re-emits the loop. The events still
  * take a pool slot each: SEQ_DROP_EVENT_MAX of them, which
  * SEQ_AMY_SEQUENCE_SLOTS adds to the pool beyond the four tags. */
-#define SEQ_DROP_TAG_BASE     (SEQ_ARP_TAG_MAX + 1u)                          /* 1384 */
+#define SEQ_DROP_TAG_BASE     (SEQ_ARP_TAG_MAX + 1u)                          /* 1416 */
 #define SEQ_DROP_TAG_COUNT    4u
-#define SEQ_DROP_TAG_MAX      (SEQ_DROP_TAG_BASE + SEQ_DROP_TAG_COUNT - 1)    /* 1387 */
+#define SEQ_DROP_TAG_MAX      (SEQ_DROP_TAG_BASE + SEQ_DROP_TAG_COUNT - 1)    /* 1419 */
 #define SEQ_DROP_EVENT_MAX    ((SEQ_DROP_IMPACT_MAX + SEQ_DROP_JACKPOT_MAX) * 2u) /* 512 */
 
 /* ── Ratchet tag space ────────────────────────────────────────────────────
@@ -192,9 +196,9 @@
  * sequencer_core_service_tick() one-shot schedules up to SEQ_MAX_RATCHET
  * note-on/off pairs per firing, each on its own statically assigned tag so
  * sub-hits never overwrite each other. */
-#define SEQ_RATCHET_TAG_BASE  (SEQ_DROP_TAG_MAX + 1u)                         /* 1388 */
+#define SEQ_RATCHET_TAG_BASE  (SEQ_DROP_TAG_MAX + 1u)                         /* 1420 */
 #define SEQ_RATCHET_TAG_COUNT (MAX_LAYERS * SEQ_TRACKS * SEQ_MAX_RATCHET * 2) /* 160 */
-#define SEQ_RATCHET_TAG_MAX   (SEQ_RATCHET_TAG_BASE + SEQ_RATCHET_TAG_COUNT - 1) /* 1547 */
+#define SEQ_RATCHET_TAG_MAX   (SEQ_RATCHET_TAG_BASE + SEQ_RATCHET_TAG_COUNT - 1) /* 1579 */
 
 /* ── Chord tag space ──────────────────────────────────────────────────────
  * Chord steps always take the decorated one-shot path (a chord sentinel in
@@ -205,28 +209,28 @@
  * Each tag slot (sequence_info_t) is 16 B of internal DRAM in AMY, plus its
  * wire string while occupied, which is why the one-shot scheme (800 tags)
  * beat a periodic per-step chord block (~3.5 K tags). */
-#define SEQ_CHORD_TAG_BASE    (SEQ_RATCHET_TAG_MAX + 1u)                      /* 1548 */
+#define SEQ_CHORD_TAG_BASE    (SEQ_RATCHET_TAG_MAX + 1u)                      /* 1580 */
 #define SEQ_CHORD_TAG_COUNT   (MAX_LAYERS * SEQ_TRACKS * SEQ_MAX_RATCHET \
                                * (SEQ_CHORD_MAX_NOTES - 1) * 2)               /* 640 */
-#define SEQ_CHORD_TAG_MAX     (SEQ_CHORD_TAG_BASE + SEQ_CHORD_TAG_COUNT - 1)  /* 2187 */
-#define SEQ_CHORD_PREVIEW_TAG_BASE  (SEQ_CHORD_TAG_MAX + 1u)                  /* 2188 */
+#define SEQ_CHORD_TAG_MAX     (SEQ_CHORD_TAG_BASE + SEQ_CHORD_TAG_COUNT - 1)  /* 2219 */
+#define SEQ_CHORD_PREVIEW_TAG_BASE  (SEQ_CHORD_TAG_MAX + 1u)                  /* 2220 */
 #define SEQ_CHORD_PREVIEW_TAG_COUNT (MAX_LAYERS * SEQ_TRACKS \
                                      * (SEQ_CHORD_MAX_NOTES - 1) * 2)         /* 160 */
 #define SEQ_CHORD_PREVIEW_TAG_MAX   (SEQ_CHORD_PREVIEW_TAG_BASE + \
-                                     SEQ_CHORD_PREVIEW_TAG_COUNT - 1)         /* 2347 */
+                                     SEQ_CHORD_PREVIEW_TAG_COUNT - 1)         /* 2379 */
 
 /* ── Bounce clip start tags ──────────────────────────────────────────────
  * Two per clip slot (clip_player.c): an aux config entry that sets the
  * right-channel osc's start parameters, then the note-on that starts the clip
  * at its end tick or re-anchors it on a bar line. The aux tag is the lower
  * one so it fires first within the tick. */
-#define SEQ_CLIP_TAG_BASE     (SEQ_CHORD_PREVIEW_TAG_MAX + 1u)                /* 2348 */
+#define SEQ_CLIP_TAG_BASE     (SEQ_CHORD_PREVIEW_TAG_MAX + 1u)                /* 2380 */
 #define SEQ_CLIP_TAG_COUNT    (2u * CLIP_SLOT_COUNT)
-#define SEQ_CLIP_TAG_MAX      (SEQ_CLIP_TAG_BASE + SEQ_CLIP_TAG_COUNT - 1)    /* 2351 */
+#define SEQ_CLIP_TAG_MAX      (SEQ_CLIP_TAG_BASE + SEQ_CLIP_TAG_COUNT - 1)    /* 2383 */
 
 /* AMY's sequence pool (amy_cfg.max_sequencer_tags): the tag space plus the
  * two above the top tag, plus the drop's events beyond its four tags. */
-#define SEQ_AMY_SEQUENCE_SLOTS (SEQ_CLIP_TAG_MAX + 2u + SEQ_DROP_EVENT_MAX - SEQ_DROP_TAG_COUNT) /* 2861 */
+#define SEQ_AMY_SEQUENCE_SLOTS (SEQ_CLIP_TAG_MAX + 2u + SEQ_DROP_EVENT_MAX - SEQ_DROP_TAG_COUNT) /* 2893 */
 
 /* ── Global chord progression ────────────────────────────────────────────── */
 #define CHORD_PROG_MAX_ENTRIES 8

@@ -12,7 +12,8 @@
  * routing live in ui_screen_menu.c.
  *
  * The HUB is one row per AMY bus (dive rows, showing whether the bus carries
- * anything) plus the one setting that is not per-bus: the Preset FX guard.
+ * anything). The Preset FX guard, which is not per-bus, is on the Settings
+ * page (ui_screen_settings.c).
  *
  * The BUS page is the global-FX model bound to one bus: three-band
  * EQ, echo/chorus/reverb with their extended params, distortion (fx_state_t),
@@ -31,7 +32,6 @@ typedef enum {
     FXH_BUS1,
     FXH_BUS2,
     FXH_BUS3,
-    FXH_PRESET_GLOBAL_FX,
     FXH_BACK,
     FXH_COUNT
 } fxhub_item_id_t;
@@ -65,11 +65,6 @@ const menu_item_view_t *fxhub_build_items(void)
         }
     }
 
-    /* "Presets alter bus FX? y/n" - OFF makes Juno presets timbre-only. */
-    snprintf(s_hub_items[FXH_PRESET_GLOBAL_FX].label, MENU_LABEL_LEN, "Preset FX");
-    snprintf(s_hub_items[FXH_PRESET_GLOBAL_FX].value, MENU_VALUE_LEN, "%s",
-             s_fx_presets_alter_global ? "ON" : "OFF");
-
     snprintf(s_hub_items[FXH_BACK].label, MENU_LABEL_LEN, "< Back");
 
     return s_hub_items;
@@ -82,24 +77,9 @@ bool fxhub_item_is_bus(uint8_t idx, uint8_t *bus_out)
     return true;
 }
 
-bool fxhub_item_is_value(uint8_t idx)
-{
-    return idx == FXH_PRESET_GLOBAL_FX;
-}
-
 bool fxhub_item_is_back(uint8_t idx)
 {
     return idx == FXH_BACK;
-}
-
-void fxhub_edit_value(uint8_t idx, int delta)
-{
-    if (delta == 0) return;
-    if (idx != FXH_PRESET_GLOBAL_FX) return;
-    s_fx_presets_alter_global = !s_fx_presets_alter_global;
-    /* Re-arming the guard re-imposes the cached FX at once, on every bus,
-     * undoing whatever the last preset left behind. */
-    if (!s_fx_presets_alter_global) synth_ui_fx_reassert_all();
 }
 
 /* ── Per-bus page ────────────────────────────────────────────────────────── */

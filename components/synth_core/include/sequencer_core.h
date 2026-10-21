@@ -232,6 +232,19 @@ void sequencer_core_set_playing(bool playing);
 /* The transport state as set above. Any task (one word). */
 bool sequencer_core_get_playing(void);
 
+/* Start mode (the Settings page's Start row). Silent: after Play nothing
+ * periodic sounds before the bar baseline (layer rows, decorated steps, the
+ * arp, the drop loop); otherwise the pre-roll plays the tail of every loop.
+ * Latched at the next Play, never applied to the run in progress. Drones and
+ * clips gate themselves on the baseline (drone services, clip player).
+ * UI task. Project-format fallback: false. */
+void sequencer_core_set_silent_start(bool silent);
+bool sequencer_core_get_silent_start(void);
+/* True while playing, this run started silent, and the bar baseline is not
+ * reached yet: sources that are not periodic AMY entries (the drones) hold
+ * their first sounding until it turns false. Any task. */
+bool sequencer_core_in_silent_preroll(void);
+
 /* Fired on every transport change, after the core has re-armed (play) or
  * silenced (stop) its own voices; `playing` is the new state. The handler
  * owns pausing the voices sequencer_core does not drive, as for the solo hook
@@ -245,6 +258,11 @@ void sequencer_core_set_transport_change_cb(seq_transport_change_cb_t cb);
  * stopped. UI task. */
 uint32_t sequencer_core_next_bar_tick(void);
 
+/* Absolute tick of the next boundary of a `period`-tick loop counted from the
+ * bar baseline (strictly after now; equal to the baseline during the
+ * pre-roll), or 0 while the transport is stopped or for period 0. UI task. */
+uint32_t sequencer_core_next_period_tick(uint32_t period);
+
 /* AMY time (amy_sysclock() ms) at which absolute sequencer tick `tick`
  * sounds: now for tick 0 or a tick already reached, else now plus the ticks
  * ahead at AMY's current tick length. Task context; takes no lock. */
@@ -253,6 +271,19 @@ uint32_t sequencer_core_tick_to_amy_ms(uint32_t tick);
 /* Tick of the bar the transport counts bars from (anchored at play start);
  * a multiple of SEQ_TICKS_PER_BAR. Any task (single aligned 32-bit read). */
 uint32_t sequencer_core_bar_baseline_tick(void);
+
+/* Ticks since the bar baseline: negative during the count-in after Play
+ * (-SEQ_TICKS_PER_BAR .. -1), 0 on the first bar line. Meaningless while
+ * stopped (the baseline is not cleared on stop); callers gate on
+ * sequencer_core_get_playing(). Any task (two one-word reads). */
+int32_t sequencer_core_play_ticks(void);
+
+/* Position (0..period-1) of absolute sequencer tick `tick` in a loop of
+ * `period` ticks that starts on the bar baseline: every periodic source (layer
+ * rows, repeat-rate windows, arp cycle, drop loop) counts its loop from there.
+ * Ticks before the baseline (the pre-roll after Play) map into the tail of the
+ * loop. 0 for period 0. Any task; pure apart from one read of the baseline. */
+uint32_t sequencer_core_loop_pos(uint32_t tick, uint32_t period);
 
 /* ── Freeze (loop bounce) ────────────────────────────────────────────────
  * From end_tick on, nothing periodic fires: AMY's repeating entries (every
@@ -328,7 +359,8 @@ uint8_t  sequencer_core_get_patch_scope(uint8_t layer_idx);
 /* Re-push the live custom FM voice (s_fm_voice) to every melodic row on
  * SEQ_PATCH_FM_CUSTOM (and the arp and both drones). `what` is an FM_PUSH_* scope or an
  * operator index (fm_voice.h). Called by the FM UI screen / operator ADSR
- * editor after any edit. UI task only. */
+ * editor after any edit, from the Core-0 input tasks (encoder_task,
+ * button_task), and by the synth_ui task on project load. */
 void sequencer_core_fm_voice_changed(uint8_t what);
 
 /* Step the FM algorithm of layer_idx by dir (+1/-1), wrapping over AMY's full
@@ -408,21 +440,22 @@ void    sequencer_core_set_drum_pcm_mode(uint8_t layer_idx, uint8_t track,
 uint8_t sequencer_core_get_drum_pcm_mode(uint8_t layer_idx, uint8_t track);
 
 /* ── Melodic per-track unison ──
- * Spec and layouts: voice_unison_t in seq_model.h. One spec per melodic track
- * (seq_layer_t.track_unison[], serialized with the layer); count 1 = off.
+ * Spec: voice_unison_t in seq_model.h. One spec per melodic track
+ * (seq_layer_t.track_unison[], serialized with the layer); bypass 1 = off,
+ * keeping every other field for when it is switched back on; count 1 with
+ * bypass 0 plays one copy, the same single-osc build.
  * Raw-wave/wavetable patches only (KS excluded), native-LFO builds only; a
  * spec stored on a row playing another patch applies on its next wave build.
  * The Layer menu's Unison page follows the layer's patch scope: LAYER scope
  * edits every track (set_layer_unison), TRACK scope one (set_track_unison).
- * A change that moves any row's EFFECTIVE copy count rebuilds the whole layer
- * (sounding notes stop, like a wave change); detune/spread/blend changes push
- * live to the rows that carry copies. The getter serves {1, 12, 50, 100}
- * until the row is first set, and fills `.layout` with the global backend;
- * setters ignore `u->layout` and clamp count 1..VOICE_UNISON_MAX_COPIES,
- * detune 0..VOICE_UNISON_MAX_DETUNE, spread/blend 0..100.
- * The backend (voice_unison_layout_t, default ENGINE) is one global DEV knob,
- * not serialized; changing it rebuilds every melodic layer with a row carrying
- * unison under the old or the new backend.
+ * A change that moves any row's pool shape - its EFFECTIVE copy count
+ * (bypass ? 1 : count), or the stereo flag while the row carries copies -
+ * rebuilds the whole layer (sounding notes stop, like a wave change);
+ * detune/interval/shift/spread/blend changes push live to the rows that carry
+ * copies. The getter serves {1, 12, 50, 100, 1, 0, 100, 0} until the row is
+ * first set; setters clamp count 1..VOICE_UNISON_MAX_COPIES, detune
+ * 0..VOICE_UNISON_MAX_DETUNE, spread/blend 0..100, stereo/bypass 0..1, shift
+ * 0..VOICE_UNISON_MAX_SHIFT, interval 0..VOICE_UNISON_MAX_INTERVAL.
  * track_unison_max: the highest effective count the row's patch and as-built
  * voice count allow (the UI caps Count with it), 0 = the row cannot carry
  * unison.
@@ -444,19 +477,21 @@ void           sequencer_core_set_track_unison(uint8_t layer_idx, uint8_t track,
                                                const voice_unison_t *u);
 void           sequencer_core_set_layer_unison(uint8_t layer_idx,
                                                const voice_unison_t *u);
-uint8_t        sequencer_core_get_unison_layout(void);
-void           sequencer_core_set_unison_layout(uint8_t layout);
 uint8_t        sequencer_core_track_unison_max(uint8_t layer_idx, uint8_t track);
 
 /* The unison clamp every slot owner shares (rows, arp, live voice): the
  * effective copy count a build of `patch` at `voices` voices gets for an
- * authored `count` under the global backend - 1 for non-wave patches, KS, or
- * a budget that leaves no room; otherwise count capped by the backend's
- * per-voice osc budget (SEQ_TRACK_OSC_BUDGET / voices). Always 1 without the
- * native-LFO build. unison_max_for: the highest effective count, 0 when the
- * patch cannot carry unison at that voice count. Pure; any task. */
-uint8_t sequencer_core_unison_copies_for(uint16_t patch, uint8_t count, uint8_t voices);
-uint8_t sequencer_core_unison_max_for(uint16_t patch, uint8_t voices);
+ * authored `count` (callers pass 1 under the spec's bypass) with the spec's
+ * `stereo` flag - 1 for non-wave patches,
+ * KS, or a per-voice osc budget (SEQ_TRACK_OSC_BUDGET / voices) without room
+ * for the cluster oscs (1 stereo off, 2 on, plus VOICE_LFO_PAIR_OSCS);
+ * otherwise count capped by AMY_UNISON_MAX per cluster osc and
+ * VOICE_UNISON_MAX_COPIES. Always 1 without the native-LFO build.
+ * unison_max_for: the highest effective count, 0 when the patch cannot carry
+ * unison at that voice count. Pure; any task. */
+uint8_t sequencer_core_unison_copies_for(uint16_t patch, uint8_t count, uint8_t voices,
+                                         bool stereo);
+uint8_t sequencer_core_unison_max_for(uint16_t patch, uint8_t voices, bool stereo);
 
 /* Osc-addressing layout of one voice of a wave-topology slot. */
 typedef struct {
@@ -465,17 +500,19 @@ typedef struct {
 #endif
     uint8_t pitch_mask;  /* oscs whose freq/duty MOD rails the LFO drives */
     uint8_t voice_mask;  /* oscs whose filter/amp/pan/dist MOD rails the LFO drives */
-    uint8_t heads_mask;  /* SILENT-head oscs; 0 = no heads: filter pushes
-                            broadcast and dist pushes address osc 0 as before */
+    uint8_t heads_mask;  /* unison cluster oscs, which carry the per-voice
+                            filter and dist stages; 0 = no unison: filter
+                            pushes broadcast and dist pushes address osc 0 */
 } seq_voice_layout_t;
 
 /* LFO / push layout for a slot playing `patch` built with `copies` effective
- * unison copies (sequencer_core_unison_copies_for; 1 = none) under the global
- * backend: the patch-only predicate (sequencer_core_lfo_wave_layout) lifted
- * over the unison oscs. Returns false (out untouched) when the patch is not
- * wave-topology. `carrier` exists only without CONFIG_SEQ_LFO_SHARED. out may
- * be NULL. Pure; any task. */
-bool sequencer_core_voice_layout(uint16_t patch, uint8_t copies, seq_voice_layout_t *out);
+ * unison copies (sequencer_core_unison_copies_for; 1 = none) and the spec's
+ * `stereo` flag: the patch-only predicate (sequencer_core_lfo_wave_layout)
+ * lifted over the unison oscs. Returns false (out untouched) when the patch
+ * is not wave-topology. `carrier` exists only without CONFIG_SEQ_LFO_SHARED.
+ * out may be NULL. Pure; any task. */
+bool sequencer_core_voice_layout(uint16_t patch, uint8_t copies, bool stereo,
+                                 seq_voice_layout_t *out);
 
 /* KS voices per melodic row, 1..CONFIG_SEQ_KS_VOICES_MAX (clamped): every row
  * whose patch is KS plays exactly this many voices, chord rows included,
@@ -629,13 +666,6 @@ bool sequencer_core_melodic_env_authored(uint8_t layer_idx, uint8_t track,
                                          uint8_t eg_index);
 bool sequencer_core_melodic_filter_authored(uint8_t layer_idx, uint8_t track);
 void sequencer_core_reload_layer_synth(uint8_t layer_idx);
-
-/* Map a Q value (the [0.51, 8.0] range set_melodic_filter enforces) linearly
- * onto AMY's KS feedback range [0.0, 1.0]. Q=8.0 -> feedback=1.0 is the safe
- * ceiling (lossless two-tap average, classic infinite-sustain Karplus-Strong);
- * above 1.0 the KS buffer diverges. Predates seq_filter_t.feedback; no caller
- * uses it. */
-float sequencer_core_ks_feedback_from_q(float q);
 
 /* ── Per-track melodic LFO (tempo-synced software modulator) ─────────────
  * Modulates filter cutoff, amp, pitch, or pan at a rate derived from BPM.
@@ -902,14 +932,6 @@ void sequencer_core_push_envelope_osc(uint8_t synth, int osc, const seq_env_t *e
  * envelopes and follow its pitch; -1 (every osc of the voice) otherwise. */
 int sequencer_core_patch_voice_osc(uint16_t patch);
 
-/* The osc a voice-level amp CONST write (the software LFO's AMP target and its
- * neutral restore) addresses for `patch`: 0 on every ALGO voice - the FM range
- * and the DX7 bank - where an operator's amp CONST is its output level and
- * osc 0's scales the carriers; -1 (every osc) otherwise. Wider than
- * sequencer_core_patch_voice_osc(): a DX7 bank osc 0 has no amp EG0, so its
- * row envelope keeps the fan-out, but its amp CONST is still the VCA. */
-int sequencer_core_patch_amp_osc(uint16_t patch);
-
 /* Push env into the given synth/osc's EG1 breakpoint set (bp_is_set[1]).
  * `osc` lets a caller target a non-zero oscillator (a bass preset whose filter
  * lives on osc 1); melodic rows, arp and drone all target osc 0. This supplies
@@ -950,7 +972,7 @@ uint8_t sequencer_core_clamp_melodic_note(int32_t midi_note);
 
 /* (Re)configure the arp synth with a patch + voice count (flags = 0). `uni`
  * is the unison spec to build with, its count already the EFFECTIVE one
- * (sequencer_core_unison_copies_for) and its layout the global backend; NULL
+ * (sequencer_core_unison_copies_for, clamped with the same stereo flag); NULL
  * (or count 1) builds the single-osc voice. */
 void sequencer_core_arp_configure(uint16_t patch_number, uint8_t num_voices,
                                   bool filter_authored, float ks_feedback,
@@ -960,7 +982,7 @@ void sequencer_core_arp_configure(uint16_t patch_number, uint8_t num_voices,
  * (flags = 0, neutral filter/KS authoring). Kills sounding voices first and
  * reasserts global FX for string patches. For slot owners outside the track
  * allocator (live play, drones); track and arp slots have their own entry
- * points. `uni` as for sequencer_core_arp_configure; the drones pass NULL. */
+ * points. `uni` as for sequencer_core_arp_configure; the drone subs pass NULL. */
 void sequencer_core_configure_synth_slot(uint8_t synth_id, uint16_t patch_number,
                                          uint8_t num_voices, const voice_unison_t *uni);
 
@@ -974,9 +996,10 @@ void sequencer_core_configure_synth_slot(uint8_t synth_id, uint16_t patch_number
  * AMY event; logs a warning when it clamps. Any task. */
 uint16_t sequencer_core_clamp_patch_voices(uint16_t patch, uint16_t want);
 
-/* AMY synth slot backing a melodic row, or 0 when layer_idx/track are out of
- * range (0 is never a melodic slot). The mapping is assigned at layer build
- * time, so it cannot be derived from the indices by the caller. */
+/* AMY synth slot backing a layer's row, melodic or drum, or 0 when
+ * layer_idx/track are out of range (0 is never a track slot, so it means "no
+ * such row"). The mapping is assigned at layer build time, so it cannot be
+ * derived from the indices by the caller. */
 uint8_t sequencer_core_get_track_synth(uint8_t layer_idx, uint8_t track);
 
 /* Schedule a repeating note-on + note-off pair on the arp synth.
@@ -1028,7 +1051,8 @@ void sequencer_core_drop_clear_note(uint32_t tag_base);
 uint32_t sequencer_core_drop_tag_base(void);
 
 /* ── Per-track repeat rate ────────────────────────────────────────────────
- * A track with repeat_rate=N fires every N bars instead of every bar.
+ * A track with repeat_rate=N plays its first loop and is silent for N-1
+ * loops (a 32-step layer's loop is two bars).
  * Re-emits all steps immediately so AMY picks up the new period. */
 void              sequencer_core_set_track_repeat_rate(uint8_t layer_idx,
                                                        uint8_t track,

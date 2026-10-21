@@ -50,14 +50,14 @@ to another LFO synth, acquiring the new one before releasing the old.
 patch has no target map - falls back to the 20 Hz stepper
 (`sequencer_core_lfo_service()` for sequencer rows, with the same law in
 `arp_core.c` and `live_play.c`; mechanics in `sequencer_core/software_lfo.md`),
-which recomputes each checked target's COEF_CONST and re-sends it. The rate
-is capped at `SEQ_LFO_SW_MAX_HZ`. WOBBLE and SCAN have no software analog.
-Pitch is written to osc 0 only, because a synth-wide event would also rewrite
-the patch's internal modulator oscs' freq CONST, which is their rate. On ALGO
-voices (the FM range and the DX7 bank) AMP is written to osc 0 as well,
-because an operator's amp CONST is its output level
-(`sequencer_core_patch_amp_osc()`). The standard drone has no stepper: past a
-full bank it runs without an LFO.
+which recomputes each checked target and re-sends it. The rate is capped at
+`SEQ_LFO_SW_MAX_HZ`. WOBBLE and SCAN have no software analog. Pitch is written
+to osc 0's COEF_CONST only, because a synth-wide event would also rewrite the
+patch's internal modulator oscs' freq CONST, which is their rate. AMP is not an
+amp CONST write: it is the stepper-dip factor of the synth's level
+(`synth_level_set_sw_lfo()`, `synth_level.h`), so each osc's authored level
+and the oscs a patch parks at CONST 0 stay as they are. The standard drone has
+no stepper: past a full bank it runs without an LFO.
 
 **One state.** Whether a voice is on a shared LFO synth is its bank reference
 (per row `s_lfo_synth`, and one each in the arp, live voice and drone); the

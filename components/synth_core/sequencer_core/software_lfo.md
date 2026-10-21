@@ -30,21 +30,24 @@ every 50 ms, for each synth with an LFO enabled:
         of each modulated parameter's ControlCoefficients.
         (Only the named coefficient changes; note/vel/env/mod
         coefficients the patch set up are left alone.)
+        AMP is the exception: it is a factor of the synth's level, not an
+        amp CONST write, so each osc's authored level and the oscs a patch
+        parks at CONST 0 are untouched.
 ```
     amy.send(synth=s,
         filter_freq = base_cutoff * 2**(voice_lfo_filter_octaves(lfo) * value),
                                                          # Flt octave range, 0.25..4 oct
         pan         = 0.5 + 0.5 * d * value)             # around center
 
-    amy.send(synth=s, osc=amp_osc,                       # amp: osc 0 on ALGO voices
-        amp         = 1.0 - d * (0.5 - 0.5 * value))     # dips 1.0 -> 1.0-d, never boosts
-                                                         # amp_osc: sequencer_core_patch_amp_osc()
+    synth_level_set_sw_lfo(s,                            # amp: the synth_level stepper dip
+        1.0 - d * (0.5 - 0.5 * value))                   # dips 1.0 -> 1.0-d, never boosts
+                                                         # (synth_level.h; 1.0 on target removal)
 
     amy.send(synth=s, osc=0,                             # pitch: osc 0 only
         freq        = SEQ_LFO_PITCH_BASE_HZ * 2**(d * VOICE_LFO_DEPTH_PITCH * value))
                                                          # 440 Hz anchor; depth 1.0 = +/-1 semitone
 ```
-*(only the parameters the user actually targeted are included; the depth constants are `VOICE_LFO_DEPTH_*` in `voice_config.h`, the loop is `sequencer_core_lfo_service()` in `seq_core_editors.c`. The rate is `lfo_rate_to_hz()` capped at `SEQ_LFO_SW_MAX_HZ`, so the fast end still gets at least four steps per cycle.)*
+*(only the parameters the user actually targeted are included; the depth constants are `VOICE_LFO_DEPTH_*` in `voice_config.h`, the loop is `sequencer_core_lfo_service()` in `seq_core_lfo.c`. The rate is `lfo_rate_to_hz()` capped at `SEQ_LFO_SW_MAX_HZ`, so the fast end still gets at least four steps per cycle.)*
 
 > When this stepper runs: with `CONFIG_SEQ_LFO_SHARED` (the default) an LFO normally lives in a shared LFO synth - a two-osc AMY synth of its own that the voice names in mod slot 1, so a patch's own oscs are never borrowed as a modulator (`lfo_bank.h`; ENGINE-SEMANTICS.md, "LFO: native carrier vs software stepper"). This stepper is the fallback for a voice that has none: the bank is full, or the patch family has no target map (the piano, additive voices). Without `CONFIG_SEQ_LFO_SHARED` it serves every patch string, since a mod_source needs a free oscillator and a loaded patch voice (Juno, DX7) has none - naming one of its oscs mutes it. The modulation is done from outside: a control-rate task recomputes each target parameter's constant term and re-sends it as a normal parameter update, exactly as if a very fast hand were turning the knob 20 times a second. The patch's internal structure is untouched; the trade-offs are 50 ms zipper-stepping (audible on square/random-to-amp without slew) and that the patch's original constants on the modulated parameters are overwritten rather than restored when the LFO turns off. The stepper stands down, restoring the targets it drove, as soon as the voice gets a shared LFO synth.
 

@@ -7,6 +7,7 @@
 #include "custompatches/clip_player.h"
 #include "synth_slots.h"
 #include "seq_clamp.h"
+#include "transport_stop.h"
 #include "sdkconfig.h"
 #if CONFIG_SYNTH_WIRELESS
 #include "live_play.h"
@@ -17,22 +18,26 @@
 /* ════════════════════════════════════════════════════════════════════════
  *  Mixer page
  * ════════════════════════════════════════════════════════════════════════
- * Rows over the mixer model (mixer.h): the overview lists master, the drum
- * layer, each melodic layer, the arp, both drones, and the live voice and
- * clip slots while they exist, then the FADE settings row (the fade
- * length); a layer row dives into its track rows. Overview source rows
- * carry up to two quick cells (ui_mixer_quick.h). The row list is rebuilt from live state on every view build and input call,
- * so rows appear and vanish with their sources. Rendered by display_mixer.c.
- * Controls: CONTROLS.md. */
+ * Rows over the mixer model (mixer.h): the overview lists the transport row
+ * (named PLAY or STOP by its state), master, the drum layer, each melodic layer, the arp,
+ * both drones, and the live voice and clip slots while they exist, then the
+ * FADE settings row (the fade length) and the LINK settings row (the active
+ * link group); a layer row dives into its track rows. Source rows carry up
+ * to MIXER_QUICK_MAX quick cells (ui_mixer_quick.h), two of them visible: in
+ * PARAM mode the window follows the selected cell. The row list is rebuilt
+ * from live state on every view build and input call, so rows appear and
+ * vanish with their sources. Rendered by display_mixer.c. Controls:
+ * CONTROLS.md. */
 
-/* Overview ceiling: MAST, every layer, ARP/DRON/STUT, LIVE, the clips, FADE. */
-#define MIX_PAGE_ROWS  (1u + MAX_LAYERS + 3u + 1u + CLIP_SLOT_COUNT + 1u)
+/* Overview ceiling: PLAY, MAST, every layer, ARP/DRON/STUT, LIVE, the clips,
+ * FADE, LINK. */
+#define MIX_PAGE_ROWS  (1u + 1u + MAX_LAYERS + 3u + 1u + CLIP_SLOT_COUNT + 2u)
 #define MIX_LEVEL_STEP 5
 #define MIX_NO_DIVE    0xFFu
 #define MIX_SRC_NONE   0xFFu   /* src.kind of a settings row: no mixer source */
 
 /* mix_row_t.setting */
-enum { MIX_SETTING_NONE = 0, MIX_SETTING_FADE };
+enum { MIX_SETTING_NONE = 0, MIX_SETTING_PLAY, MIX_SETTING_FADE, MIX_SETTING_LINK };
 
 _Static_assert(MIX_PAGE_ROWS >= SEQ_TRACKS, "dive rows fit the row list");
 
@@ -43,7 +48,8 @@ typedef struct {
     uint8_t   setting;      /* MIX_SETTING_*: a settings row, src unused */
 } mix_row_t;
 
-static uint8_t s_cursor          = 0;            /* into the shown row list */
+static uint8_t s_cursor          = 1;            /* into the shown row list; opens on MAST */
+static uint8_t s_link_group      = 1;            /* active link group, 1..MIXER_LINK_COUNT (A) */
 static uint8_t s_top             = 0;            /* first visible row */
 static uint8_t s_dive            = MIX_NO_DIVE;  /* layer whose tracks are shown */
 static uint8_t s_overview_cursor = 0;            /* restored on leaving the dive */
@@ -91,6 +97,8 @@ static uint8_t build_rows(mix_row_t *rows, uint8_t dive)
         }
         return n;
     }
+    add_row(rows, &n, MIX_SRC_NONE, 0, 0, seq_state.playing ? "STOP" : "PLAY", MIXER_NO_DRUM);
+    if (n > 0) rows[n - 1u].setting = MIX_SETTING_PLAY;
     add_row(rows, &n, MIX_SRC_MASTER, 0, 0, "MAST", MIXER_NO_DRUM);
     add_row(rows, &n, MIX_SRC_LAYER, 0, 0, "DRUM", MIXER_NO_DRUM);
     uint8_t layers = sequencer_core_get_num_layers();
@@ -112,6 +120,8 @@ static uint8_t build_rows(mix_row_t *rows, uint8_t dive)
     }
     add_row(rows, &n, MIX_SRC_NONE, 0, 0, "FADE", MIXER_NO_DRUM);
     if (n > 0) rows[n - 1u].setting = MIX_SETTING_FADE;
+    add_row(rows, &n, MIX_SRC_NONE, 0, 0, "LINK", MIXER_NO_DRUM);
+    if (n > 0) rows[n - 1u].setting = MIX_SETTING_LINK;
     return n;
 }
 
@@ -130,15 +140,24 @@ static mix_nav_t clamp_nav(uint8_t n)
     return v;
 }
 
-/* Quick-cell slots row r carries, in order; returns how many (0..2). */
-static uint8_t row_cells(const mix_row_t *r, uint8_t slots[2])
+/* Quick-cell slots row r carries, in order; returns how many
+ * (0..MIXER_QUICK_MAX). */
+static uint8_t row_cells(const mix_row_t *r, uint8_t slots[MIXER_QUICK_MAX])
 {
     uint8_t c = 0;
     if (r->setting != MIX_SETTING_NONE) return 0;
-    for (uint8_t q = 0; q < 2u; q++) {
+    for (uint8_t q = 0; q < MIXER_QUICK_MAX; q++) {
         if (mixer_quick_has(r->src, q)) slots[c++] = q;
     }
     return c;
+}
+
+/* First of the two visible cells: the window follows the selection, which
+ * sits on Q1 only at the first cell. */
+static uint8_t win_start(uint8_t cells, uint8_t cell)
+{
+    int hi = ((int)cells > 2) ? (int)cells - 2 : 0;
+    return (uint8_t)SEQ_CLAMP_INT((int)cell - 1, 0, hi);
 }
 
 static void enter_list(void)
@@ -163,7 +182,7 @@ static uint8_t sync_rows(mix_row_t *rows)
         s_cursor = v.cursor;
         s_top    = v.top;
     }
-    uint8_t slots[2];
+    uint8_t slots[MIXER_QUICK_MAX];
     if (s_mode == MIX_MODE_PARAM && (n == 0 || s_cell >= row_cells(&rows[s_cursor], slots)))
         enter_list();
     return n;
@@ -188,13 +207,14 @@ void mixer_build_view(mixer_view_t *out)
     uint8_t n = build_rows(rows, dive);
     mix_nav_t v = clamp_nav(n);
     /* PARAM mode's selected cell, if the cursor row still has it. */
-    uint8_t slots[2];
-    bool    param = s_mode == MIX_MODE_PARAM && n > 0 &&
-                    s_cell < row_cells(&rows[v.cursor], slots);
+    uint8_t slots[MIXER_QUICK_MAX];
+    uint8_t cur_cells = (s_mode == MIX_MODE_PARAM && n > 0) ? row_cells(&rows[v.cursor], slots) : 0u;
+    bool    param = s_cell < cur_cells;
     uint8_t slot  = param ? slots[s_cell] : 0u;
+    uint8_t start = param ? win_start(cur_cells, s_cell) : 0u;   /* cursor row's window */
     uint8_t focus = MIXER_FOCUS_NONE;
     if (n > 0 && s_shift_held) focus = MIXER_FOCUS_LEVEL;
-    else if (param)            focus = (uint8_t)(MIXER_FOCUS_Q1 + slot);
+    else if (param)            focus = (uint8_t)(MIXER_FOCUS_Q1 + (s_cell - start));
 
     if (param) {
         /* The selected quick cell shows only its value; its label goes here. */
@@ -207,6 +227,9 @@ void mixer_build_view(mixer_view_t *out)
     } else {
         snprintf(out->title, sizeof(out->title), "MIXER L%u", (unsigned)(dive + 1u));
     }
+    if (seq_state.playing)
+        ui_clock_text(out->clock, sizeof out->clock, sequencer_core_play_ticks(),
+                      ui_clock_get_phrase_idx());
 
     uint8_t shown = (uint8_t)(n - v.top);
     if (shown > MIXER_VIS_ROWS) shown = MIXER_VIS_ROWS;
@@ -224,10 +247,21 @@ void mixer_build_view(mixer_view_t *out)
         memcpy(o->name, r->name, sizeof(o->name));
         o->drum_track = r->drum_track;
         o->fade_to    = MIXER_NO_FADE;
+        if (r->setting == MIX_SETTING_PLAY) {
+            /* The name carries the state; the value cell marks a stop that
+             * waits for its tick or fades, as the menu row's "Stop.." does. */
+            if (seq_state.playing && transport_stop_is_armed())
+                snprintf(o->text, sizeof(o->text), "..");
+            continue;
+        }
         if (r->setting == MIX_SETTING_FADE) {
             snprintf(o->text, sizeof(o->text), "%u bar",
                      (unsigned)mixer_fade_bars(mixer_get_fade_bars_idx()));
             continue;   /* no level, no mute */
+        }
+        if (r->setting == MIX_SETTING_LINK) {
+            snprintf(o->text, sizeof(o->text), "%c", 'A' + s_link_group - 1);
+            continue;
         }
         o->pos        = mixer_get_pos(r->src);
         uint8_t to;
@@ -237,8 +271,12 @@ void mixer_build_view(mixer_view_t *out)
         o->mute       = o->has_mute && mixer_get_mute(r->src);
         if (r->src.kind == MIX_SRC_TRACK) o->hard_mute = sequencer_core_get_track_mute(r->src.a, r->src.b);
         else if (r->src.kind == MIX_SRC_ARP) o->hard_mute = arp_get_muted();
-        mixer_quick_text(r->src, 0, o->q1);
-        mixer_quick_text(r->src, 1, o->q2);
+        uint8_t rs[MIXER_QUICK_MAX];
+        uint8_t cells = row_cells(r, rs);
+        uint8_t w     = (param && (uint8_t)(v.top + i) == v.cursor) ? start : 0u;
+        if (w < cells)      mixer_quick_text(r->src, rs[w], o->q1);
+        if (w + 1u < cells) mixer_quick_text(r->src, rs[w + 1u], o->q2);
+        o->link       = mixer_get_link(r->src);
     }
 }
 
@@ -257,11 +295,15 @@ bool synth_ui_mixer_handle_encoder(int steps, bool shift)
     uint8_t n = sync_rows(rows);
     if (n == 0) return true;
     const mix_row_t *r = &rows[s_cursor];
-    uint8_t slots[2];
+    uint8_t slots[MIXER_QUICK_MAX];
     uint8_t cells = row_cells(r, slots);
     if (shift && r->setting == MIX_SETTING_FADE) {
         int idx = (int)mixer_get_fade_bars_idx() + steps;
         mixer_set_fade_bars_idx((uint8_t)SEQ_CLAMP_INT(idx, 0, MIXER_FADE_BARS_COUNT - 1));
+    } else if (shift && r->setting == MIX_SETTING_LINK) {
+        s_link_group = (uint8_t)SEQ_CLAMP_INT((int)s_link_group + steps, 1, (int)MIXER_LINK_COUNT);
+    } else if (shift && r->setting != MIX_SETTING_NONE) {
+        /* A settings row without a shift action (PLAY): no level. */
     } else if (shift) {
         int pos = (int)mixer_get_pos(r->src) + MIX_LEVEL_STEP * steps;
         mixer_set_pos(r->src, (uint8_t)SEQ_CLAMP_INT(pos, 0, (int)MIXER_POS_MAX));
@@ -295,6 +337,12 @@ bool synth_ui_mixer_handle_button(void)
         s_cursor = 0;
         s_top    = 0;
         s_force_redraw = true;
+    } else if (rows[s_cursor].setting == MIX_SETTING_LINK) {
+        mixer_clear_links();
+        s_force_redraw = true;
+    } else if (rows[s_cursor].setting == MIX_SETTING_PLAY) {
+        synth_ui_toggle_playing();
+        s_force_redraw = true;
     }
     return true;
 }
@@ -319,7 +367,7 @@ bool synth_ui_mixer_button2(void)
     mix_row_t rows[MIX_PAGE_ROWS];
     uint8_t n = sync_rows(rows);
     if (n == 0) return true;
-    uint8_t slots[2];
+    uint8_t slots[MIXER_QUICK_MAX];
     if (s_mode == MIX_MODE_PARAM) {
         enter_list();
         s_force_redraw = true;
@@ -340,6 +388,20 @@ bool synth_ui_mixer_fade(void)
     if (n == 0) return true;
     if (rows[s_cursor].setting == MIX_SETTING_NONE) {
         mixer_fade_toggle(rows[s_cursor].src);
+        s_force_redraw = true;
+    }
+    return true;
+}
+
+bool synth_ui_mixer_link(void)
+{
+    if (!synth_ui_mixer_is_active()) return false;
+    mix_row_t rows[MIX_PAGE_ROWS];
+    uint8_t n = sync_rows(rows);
+    if (n == 0) return true;
+    if (rows[s_cursor].setting == MIX_SETTING_NONE) {
+        mix_src_t src = rows[s_cursor].src;
+        mixer_set_link(src, mixer_get_link(src) == s_link_group ? (uint8_t)MIXER_LINK_NONE : s_link_group);
         s_force_redraw = true;
     }
     return true;

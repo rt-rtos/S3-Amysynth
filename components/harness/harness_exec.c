@@ -84,11 +84,9 @@ static void cmd_st_drop(harness_reply_fn reply)
 {
     dropout_stats_t d;
     dropout_stats_get(&d);
-    REPLY("ok wire_zlp=%" PRIu32 " ring_underrun=%" PRIu32
-          " ring_overrun=%" PRIu32 " render_overrun=%" PRIu32
-          " chunk_drop=%" PRIu32,
-          d.wire_zlp, d.ring_underrun, d.ring_overrun, d.render_overrun,
-          d.chunk_drop);
+    REPLY("ok wire_zlp=%" PRIu32
+          " ring_overrun=%" PRIu32 " render_overrun=%" PRIu32,
+          d.wire_zlp, d.ring_overrun, d.render_overrun);
 }
 
 /* One "LFOBANK" line per live shared LFO synth (lfo_bank.h), with its

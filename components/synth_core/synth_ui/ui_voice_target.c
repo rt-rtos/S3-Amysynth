@@ -5,6 +5,8 @@
 #include "seq_core_config.h"   /* SEQ_MELODIC_PORTAMENTO_MAX_MS */
 #include "arp_core.h"
 #include "drop_core.h"
+#include "custompatches/drone_core.h"
+#include "custompatches/drone_std_core.h"
 #if CONFIG_SYNTH_WIRELESS
 #include "live_play.h"
 #endif
@@ -29,6 +31,10 @@ float vt_get_level(voice_target_kind_t kind)
         return arp_get_amp_scale();
     case VT_DROP:
         return drop_get_amp_scale(drop_get_focus());
+    case VT_DRONE:
+        return drone_get_amp_trim();
+    case VT_DRONE_STD:
+        return drone_std_get_amp_trim();
 #if CONFIG_SYNTH_WIRELESS
     case VT_LIVE:
         return live_play_get_amp_scale();
@@ -50,6 +56,12 @@ void vt_set_level(voice_target_kind_t kind, float v)
         break;
     case VT_DROP:
         drop_set_amp_scale(drop_get_focus(), v);
+        break;
+    case VT_DRONE:
+        drone_set_amp_trim(v);
+        break;
+    case VT_DRONE_STD:
+        drone_std_set_amp_trim(v);
         break;
 #if CONFIG_SYNTH_WIRELESS
     case VT_LIVE:
@@ -75,6 +87,12 @@ bool vt_get_filter(voice_target_kind_t kind, seq_filter_t *out)
     case VT_DROP:
         drop_get_filter(drop_get_focus(), out);
         return true;
+    case VT_DRONE:
+        drone_get_filter(out);
+        return true;
+    case VT_DRONE_STD:
+        drone_std_get_filter(out);
+        return true;
 #if CONFIG_SYNTH_WIRELESS
     case VT_LIVE:
         live_play_get_filter(out);
@@ -99,6 +117,12 @@ void vt_set_filter(voice_target_kind_t kind, const seq_filter_t *f)
         break;
     case VT_DROP:
         drop_set_filter(drop_get_focus(), f);
+        break;
+    case VT_DRONE:
+        drone_set_filter(f);
+        break;
+    case VT_DRONE_STD:
+        drone_std_set_filter(f);
         break;
 #if CONFIG_SYNTH_WIRELESS
     case VT_LIVE:
@@ -224,8 +248,8 @@ void vt_set_gate_pct(voice_target_kind_t kind, uint16_t pct)
 
 bool vt_has_glide(voice_target_kind_t kind)
 {
+    if (kind == VT_DRONE || kind == VT_DRONE_STD) return false;
 #if CONFIG_SYNTH_WIRELESS
-    (void)kind;
     return true;
 #else
     return kind != VT_LIVE;
@@ -284,13 +308,15 @@ void vt_set_glide_ms(voice_target_kind_t kind, uint16_t ms)
 bool vt_has_unison(voice_target_kind_t kind)
 {
     switch (kind) {
-    case VT_MELODIC: return vt_melodic_layer() != 0xFF;
-    case VT_ARP:     return true;
-    case VT_DROP:    return true;
+    case VT_MELODIC:   return vt_melodic_layer() != 0xFF;
+    case VT_ARP:       return true;
+    case VT_DROP:      return true;
+    case VT_DRONE:     return true;
+    case VT_DRONE_STD: return true;
 #if CONFIG_SYNTH_WIRELESS
-    case VT_LIVE:    return true;
+    case VT_LIVE:      return true;
 #endif
-    default:         return false;
+    default:           return false;
     }
 }
 
@@ -306,6 +332,12 @@ void vt_get_unison(voice_target_kind_t kind, voice_unison_t *out)
         break;
     case VT_DROP:
         drop_get_unison(drop_get_focus(), out);
+        break;
+    case VT_DRONE:
+        drone_get_unison(out);
+        break;
+    case VT_DRONE_STD:
+        drone_std_get_unison(out);
         break;
 #if CONFIG_SYNTH_WIRELESS
     case VT_LIVE:
@@ -328,6 +360,10 @@ uint8_t vt_unison_max(voice_target_kind_t kind)
         return arp_unison_max();
     case VT_DROP:
         return drop_unison_max(drop_get_focus());
+    case VT_DRONE:
+        return drone_unison_max();
+    case VT_DRONE_STD:
+        return drone_std_unison_max();
 #if CONFIG_SYNTH_WIRELESS
     case VT_LIVE:
         return live_play_unison_max();
@@ -355,6 +391,12 @@ void vt_set_unison(voice_target_kind_t kind, const voice_unison_t *u)
     case VT_DROP:
         drop_set_unison(drop_get_focus(), u);
         break;
+    case VT_DRONE:
+        drone_set_unison(u);
+        break;
+    case VT_DRONE_STD:
+        drone_std_set_unison(u);
+        break;
 #if CONFIG_SYNTH_WIRELESS
     case VT_LIVE:
         live_play_set_unison(u);
@@ -368,9 +410,11 @@ void vt_set_unison(voice_target_kind_t kind, const voice_unison_t *u)
 const char *vt_title(voice_target_kind_t kind)
 {
     switch (kind) {
-    case VT_ARP:  return "ARP";
-    case VT_DROP: return drop_get_focus() == DROP_VOICE_SUB ? "SUB" : "DROP";
-    case VT_LIVE: return "LIVE";
-    default:      return NULL;
+    case VT_ARP:       return "ARP";
+    case VT_DROP:      return drop_get_focus() == DROP_VOICE_SUB ? "SUB" : "DROP";
+    case VT_LIVE:      return "LIVE";
+    case VT_DRONE:     return "STUTTER";
+    case VT_DRONE_STD: return "DRONE";
+    default:           return NULL;
     }
 }

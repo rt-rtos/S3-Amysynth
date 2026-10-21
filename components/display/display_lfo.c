@@ -203,12 +203,6 @@ void lfo_view_draw(u8g2_t *u8g2, const lfo_view_t *v)
             u8g2_DrawFrame(u8g2, 2, base - 6, 6, 6);
         }
         u8g2_DrawStr(u8g2, 11, base, target_name(t));
-        /* Distortion targets without a serving stepper (drone): inert, struck
-         * through like the WOBBLE rows on software tracks. Current colour
-         * already matches the row context (0 on the inverted selection bar). */
-        if (t >= LFO_TARGET_DIST_DRIVE && v->dist_inert)
-            u8g2_DrawHLine(u8g2, 11, (uint8_t)(base - 3),
-                           u8g2_GetStrWidth(u8g2, target_name(t)));
         /* Scroll cues on the window's edge rows, in the row's colour: an
          * up triangle when rows lie above, a down one when rows lie below. */
         if (t == tgt_lo && tgt_lo > 0)

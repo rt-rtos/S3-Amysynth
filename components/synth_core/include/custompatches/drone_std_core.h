@@ -20,7 +20,8 @@ extern "C" {
  * (sequencer_core_configure_synth_slot) at the voice count the patch's osc
  * budget allows (drone_voices_for), up to DRONE_CHORD_MAX_NOTES. When fewer
  * voices than chord tones fit, the chord is truncated (drone_chord_tones).
- * Level (x amp trim) is the amp CONST of a wave patch's osc 0, or of any
+ * Level (x amp trim) is the amp CONST of a wave patch's osc 0 (each cluster
+ * osc under unison, via voice_push_unison_live()), or of any
  * other patch's lfo_targets voice-mask oscs (the Juno SILENT head, the
  * DX7/FM ALGO osc, the additive parent, both bass oscs scaled by the preset's
  * balance), replacing the head's own level; an unmapped patch (the piano)
@@ -31,12 +32,12 @@ extern "C" {
  * On the main synth it exposes the standard per-voice toolset, re-imposed
  * after every rebuild where authored:
  *   - a free filter (seq_filter_t) with its envelope routing matrix, edited
- *     in the filter and graph editors;
+ *     in the filter and ADSR editors;
  *   - a free LFO (seq_lfo_t): with CONFIG_SEQ_LFO_SHARED a shared LFO synth
  *     (lfo_bank.h) over a wave patch's layout or a mapped patch string, none
  *     when the bank is full; without it the AMY-native carriers on wave
  *     patches only - patch strings own their osc topology;
- *   - the shared ADSR/EG1 graph editor storage and distortion.
+ *   - the shared ADSR/EG1 editor storage and distortion.
  *
  * Owns AMY synth slots 4/5 (DRONE_STD_SYNTH_MAIN/_SUB, just above the stutter
  * drone's 2/3) so both drones can sound together; the slot map is in
@@ -54,11 +55,13 @@ typedef struct {
     bool            sub_enabled;
     int8_t          sub_interval;
     voice_params_t  vp;
+    voice_unison_t  unison;
 } drone_std_params_t;
 
 /* Fallback values of the project format for the normal drone: off, root A2
- * alone, SAW_DOWN at level 0.5 with the sub an octave down, a slow swell and
- * unauthored LPF/LFO seeds. Pure; any task; fills every field. Never reads
+ * alone, SAW_DOWN at level 0.5 with the sub an octave down, a slow swell,
+ * unauthored LPF/LFO seeds, and unison at count 1 (inert) with the row
+ * defaults. Pure; any task; fills every field. Never reads
  * Kconfig; drone_std_core_init() seeds the boot drone from it (no Kconfig
  * overlay). */
 void drone_std_params_defaults(drone_std_params_t *out);
@@ -112,9 +115,9 @@ void drone_std_set_level(float v);            /* 0..1 linear output level     */
 void drone_std_set_patch(uint16_t patch);      /* excluded ids -> TRIANGLE      */
 void drone_std_set_sub_enabled(bool on);
 void drone_std_set_sub_interval(int8_t st);    /* semitones, DRONE_SUB_INTERVAL_MIN..MAX */
-void drone_std_set_amp_trim(float v);          /* graph-editor amp mode 0..1   */
+void drone_std_set_amp_trim(float v);          /* ADSR-editor amp mode 0..1   */
 
-/* ── Envelopes (shared graph editor; deferred authority) ── */
+/* ── Envelopes (shared ADSR editor; deferred authority) ── */
 void drone_std_get_envelope(seq_env_t *out);
 void drone_std_set_envelope(const seq_env_t *env);
 void drone_std_get_envelope2(seq_env_t *out);
@@ -154,6 +157,17 @@ bool drone_std_lfo2_bound(void);
  * clamped, applied by a rebuild at the next drone_std_core_service() frame. */
 void drone_std_get_voice_params(voice_params_t *out);
 void drone_std_set_voice_params(const voice_params_t *vp);
+
+/* ── Unison (shared Unison page) ──
+ * The stutter drone's contract (drone_core.h, drone_set_unison) on the main
+ * synth: a change of the effective count or (while it carries copies) of the
+ * stereo flag rebuilds at the next drone_std_core_service() frame, any other
+ * change pushes live at the current level. Under unison the level, dist, LFO
+ * and SCAN rails address every cluster osc (sequencer_core_voice_layout()).
+ * UI task. Persisted in the DSTD section. */
+void    drone_std_get_unison(voice_unison_t *out);
+void    drone_std_set_unison(const voice_unison_t *u);
+uint8_t drone_std_unison_max(void);
 
 /* ── Getters (for the list UI) ── */
 bool           drone_std_get_enabled(void);

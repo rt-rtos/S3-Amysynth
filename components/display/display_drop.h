@@ -17,7 +17,7 @@ extern "C" {
  *                                     patch (display only), root, scale
  *   2b  1A2F*  1/4  R+1  B.70      <- header row 2 (yellow): bars, seed, rate,
  *                                     step per row, bounce
- *   [16 x 8 cells, 8 x 6 px each]  <- the field (blue), y 16..63: segments as
+ *   [15 x 8 cells, 8 x 6 px each]  <- the field (blue), y 16..63: segments as
  *                                     lines at their angle, jackpot cells as
  *                                     hatched boxes, balls as 2 x 2 dots, the
  *                                     spawner as a chevron on the top edge
@@ -26,10 +26,11 @@ extern "C" {
  * on ENABLE), then the cells from DROP_CUR_CELL0, row-major. The patch
  * number is display-only; it changes with the hold+turn gesture. */
 
-#define DROP_VIEW_COLS   16
+#define DROP_VIEW_COLS   15
 #define DROP_VIEW_ROWS   8
 #define DROP_VIEW_CELL_W 8
 #define DROP_VIEW_CELL_H 6
+#define DROP_VIEW_X0     ((128 - DROP_VIEW_COLS * DROP_VIEW_CELL_W) / 2)   /* the field's left edge: centered on the panel */
 #define DROP_VIEW_Y0     16      /* first field row's top edge: the blue band */
 #define DROP_VIEW_CELLS  (DROP_VIEW_COLS * DROP_VIEW_ROWS)
 #define DROP_VIEW_SEGS   16

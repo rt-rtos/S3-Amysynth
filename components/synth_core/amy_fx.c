@@ -143,22 +143,49 @@ void amy_fx_on_tempo_change(void)
     }
 }
 
-void fx_push_echo(uint8_t bus)
+/* ── FX drain ───────────────────────────────────────────────────────────── */
+/* Contract in amy_fx.h. Level 0 would freeze the delay lines with their
+ * contents (AMY skips the effect), so a draining bus keeps the effect running
+ * at an inaudible wet level with its feedback path cut until the lines are
+ * empty. The caches are never touched. */
+#define FX_DRAIN_LEVEL      1e-4f
+#define FX_DRAIN_REVERB_MS  300u   /* reverb empties within this once liveness is 0 */
+#define FX_DRAIN_BLOCK_MS   6u     /* one render block, rounded up */
+
+static bool     s_drain[FX_BUS_COUNT];
+static uint32_t s_drain_deadline[FX_BUS_COUNT];
+/* A drained value reached the engine: on restore, a param the cache holds
+ * unset goes back to AMY's default explicitly instead of staying at 0. */
+static bool     s_drain_echo_sent[FX_BUS_COUNT];
+static bool     s_drain_reverb_sent[FX_BUS_COUNT];
+
+static void push_echo(uint8_t bus, bool restore)
 {
     const fx_state_t *f = fx_engine_state(bus);
+    bool drained = bus < FX_BUS_COUNT && s_drain[bus] && f->echo_level > 0u;
     amy_event *e = amy_helpers_event_begin();
     e->bus        = bus;
-    e->echo_level = (float)f->echo_level / 100.0f;
+    e->echo_level = drained ? FX_DRAIN_LEVEL : (float)f->echo_level / 100.0f;
     /* The time is always sent: after a synced push, AMY no longer holds
      * the factory 500 ms an unset Free time displays. */
     e->echo_delay_ms = amy_fx_echo_time_ms(bus);
     /* Only send the other sub-params once set; unset ones stay AMY_UNSET so
      * config_echo keeps the bus's current value. */
-    if (f->echo_feedback != FX_PARAM_UNSET)
+    if (drained)
+        e->echo_feedback   = 0.0f;
+    else if (f->echo_feedback != FX_PARAM_UNSET)
         e->echo_feedback   = (float)f->echo_feedback / 100.0f;
+    else if (restore)
+        e->echo_feedback   = (float)ECHO_DEFAULT_FEEDBACK;
     if (f->echo_tone != FX_PARAM_UNSET)
         e->echo_filter_coef = (float)f->echo_tone / 100.0f;
+    if (drained) s_drain_echo_sent[bus] = true;
     amy_helpers_event_send(e);
+}
+
+void fx_push_echo(uint8_t bus)
+{
+    push_echo(bus, false);
 }
 
 void fx_push_chorus(uint8_t bus)
@@ -176,19 +203,54 @@ void fx_push_chorus(uint8_t bus)
     amy_helpers_event_send(e);
 }
 
-void fx_push_reverb(uint8_t bus)
+static void push_reverb(uint8_t bus, bool restore)
 {
     const fx_state_t *f = fx_engine_state(bus);
+    bool drained = bus < FX_BUS_COUNT && s_drain[bus] && f->reverb_level > 0u;
     amy_event *e = amy_helpers_event_begin();
     e->bus          = bus;
-    e->reverb_level = (float)f->reverb_level / 100.0f;
-    if (f->reverb_liveness != FX_PARAM_UNSET)
+    e->reverb_level = drained ? FX_DRAIN_LEVEL : (float)f->reverb_level / 100.0f;
+    if (drained)
+        e->reverb_liveness = 0.0f;
+    else if (f->reverb_liveness != FX_PARAM_UNSET)
         e->reverb_liveness = (float)f->reverb_liveness / 100.0f;
+    else if (restore)
+        e->reverb_liveness = REVERB_DEFAULT_LIVENESS;
     if (f->reverb_damping != FX_PARAM_UNSET)
         e->reverb_damping  = (float)f->reverb_damping / 100.0f;
     if (f->reverb_xover_hz != FX_PARAM_UNSET)
         e->reverb_xover_hz = (float)f->reverb_xover_hz;
+    if (drained) s_drain_reverb_sent[bus] = true;
     amy_helpers_event_send(e);
+}
+
+void fx_push_reverb(uint8_t bus)
+{
+    push_reverb(bus, false);
+}
+
+void amy_fx_drain_begin(uint8_t bus)
+{
+    if (bus >= FX_BUS_COUNT) return;
+    uint32_t ms = (uint32_t)amy_fx_echo_time_ms(bus);
+    if (ms < FX_DRAIN_REVERB_MS) ms = FX_DRAIN_REVERB_MS;
+    s_drain[bus]          = true;
+    s_drain_deadline[bus] = amy_sysclock() + ms + FX_DRAIN_BLOCK_MS;
+    fx_push_echo(bus);
+    fx_push_reverb(bus);
+}
+
+void amy_fx_service(void)
+{
+    uint32_t now = amy_sysclock();
+    for (uint8_t bus = 0; bus < FX_BUS_COUNT; bus++) {
+        if (!s_drain[bus] || !AMY_TIME_GEQ(now, s_drain_deadline[bus])) continue;
+        s_drain[bus] = false;
+        push_echo(bus, s_drain_echo_sent[bus]);
+        push_reverb(bus, s_drain_reverb_sent[bus]);
+        s_drain_echo_sent[bus]   = false;
+        s_drain_reverb_sent[bus] = false;
+    }
 }
 
 void fx_push_dist(uint8_t bus)

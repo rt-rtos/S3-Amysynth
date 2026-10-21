@@ -33,8 +33,8 @@
  *
  * DEV state is VOLATILE by design - no snapshot fields, no persistence.
  * (A control whose backing state persists owns that in its real module and
- * belongs on a real screen, e.g. the Layer menu's Unison page beside the
- * global backend knob kept here.) Everything here runs on the UI task. */
+ * belongs on a real screen, e.g. the Layer menu's Unison page.) Everything
+ * here runs on the UI task. */
 
 typedef struct dev_page dev_page_t;
 
@@ -54,25 +54,6 @@ struct dev_page {
 };
 
 /* ── Controls ──────────────────────────────────────────────────────────── */
-
-/* Unison backend (sequencer_core_set_unison_layout; layouts in seq_model.h):
- * one global knob, eng -> fan -> head, wrapping. A change rebuilds the
- * melodic layers whose rows it reshapes (notes stop). */
-static void uni_layout_fmt(char *buf, size_t n, int arg)
-{
-    (void)arg;
-    static const char *const names[VOICE_UNISON_LAYOUT_COUNT] = { "fan", "head", "eng" };
-    uint8_t l = sequencer_core_get_unison_layout();
-    snprintf(buf, n, "%s", names[(l < VOICE_UNISON_LAYOUT_COUNT) ? l : 0u]);
-}
-
-static void uni_layout_adjust(int delta, int arg)
-{
-    (void)arg;
-    int l = ((int)sequencer_core_get_unison_layout() + delta) % (int)VOICE_UNISON_LAYOUT_COUNT;
-    if (l < 0) l += (int)VOICE_UNISON_LAYOUT_COUNT;
-    sequencer_core_set_unison_layout((uint8_t)l);
-}
 
 /* Karplus-Strong voices per row (sequencer_core_set_ks_voices, up to
  * CONFIG_SEQ_KS_VOICES_MAX; a change rebuilds the layers holding KS rows).
@@ -269,7 +250,7 @@ uint32_t synth_ui_dev_heapbar_sig(void)
 }
 
 /* Dropout bar: the heap bar's mechanism over dropout_stats counters
- * (Z wire_zlp, U ring_underrun, O render_overrun, D ring_overrun). */
+ * (Z wire_zlp, O render_overrun, D ring_overrun). */
 
 static void dropbar_fmt(char *buf, size_t n, int arg)
 {
@@ -292,9 +273,8 @@ void synth_ui_dev_dropbar_poll(void)
         dropout_stats_t d;
         dropout_stats_get(&d);
         snprintf(s_dropbar_text, sizeof s_dropbar_text,
-                 "Z:%lu U:%lu O:%lu D:%lu",
+                 "Z:%lu O:%lu D:%lu",
                  (unsigned long)d.wire_zlp,
-                 (unsigned long)d.ring_underrun,
                  (unsigned long)d.render_overrun,
                  (unsigned long)d.ring_overrun);
         s_dropbar_sig = fnv1a_bytes(FNV1A_OFFSET, s_dropbar_text,
@@ -320,12 +300,6 @@ uint32_t synth_ui_dev_dropbar_sig(void)
 
 /* ── Pages (leaf pages first - root last, so rows can reference them) ──── */
 
-static const dev_item_t s_uni_items[] = {
-    { .label = "Backend", .fmt = uni_layout_fmt, .adjust = uni_layout_adjust },
-};
-static const dev_page_t s_page_uni = { "UNISON", s_uni_items,
-                                       sizeof s_uni_items / sizeof *s_uni_items };
-
 static const dev_item_t s_ksloop_items[] = {
     { .label = "Voices", .fmt = ksv_fmt, .adjust = ksv_adjust },
     { .label = "Rows",   .fmt = rows_fmt, .adjust = rows_adjust },
@@ -344,7 +318,6 @@ static const dev_page_t s_page_drop = { "DROP", s_drop_items,
                                         sizeof s_drop_items / sizeof *s_drop_items };
 
 static const dev_item_t s_root_items[] = {
-    { .label = "Unison",      .sub = &s_page_uni },
     { .label = "KS",          .sub = &s_page_ksloop },
     { .label = "Ball drop",   .sub = &s_page_drop },
     { .label = "AMY OOM",     .fmt = oom_fmt },

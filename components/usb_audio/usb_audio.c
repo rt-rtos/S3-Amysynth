@@ -332,11 +332,10 @@ void usb_audio_diag_get_snapshot(usb_audio_diag_snapshot_t *snapshot)
     // can lose/gain one update but never corrupt state.
     snapshot->fill_samples = usb_audio_fill_samples_relaxed();
 
-    // Underruns and wire ZLPs live in dropout_stats (always counted there);
-    // mirrored into the snapshot so the serial diag line stays one-stop.
+    // Wire ZLPs live in dropout_stats (always counted there); mirrored into
+    // the snapshot so the serial diag line stays one-stop.
     dropout_stats_t drops;
     dropout_stats_get(&drops);
-    snapshot->underrun_events = drops.ring_underrun;
     snapshot->zlp_events = drops.wire_zlp;
 #if CONFIG_USB_AUDIO_DIAGNOSTICS
     snapshot->peak_fill_samples = s_peak_fill_samples;

@@ -31,6 +31,7 @@
 #include "synth_level.h"
 #include "mixer.h"
 #include "amy_fx.h"
+#include "transport_stop.h"
 #include "project_snapshot.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -91,8 +92,8 @@ static void ui_services(void)
     arp_core_service();
     /* Ball drop: same coalescing; a refresh re-simulates the loop. */
     drop_core_service();
-    /* Drone: advance the tempo-locked filter sweep and keep the LFO in
-     * sync. Cheap no-op while the drone is disabled. */
+    /* Drone: drain its coalesced rebuild, schedule gates, push the BLIP
+     * cutoff. Cheap no-op while the drone is disabled. */
     drone_core_service();
     /* Normal drone: drain its coalesced rebuild (no tick machinery). */
     drone_std_core_service();
@@ -113,6 +114,8 @@ static void ui_services(void)
     /* Mixer: send marked levels, catch sources that turned present, re-send
      * a few sub-unity levels a patch load may have reset. */
     mixer_service();
+    /* FX drain: end the drains whose deadline passed. */
+    amy_fx_service();
 #if CONFIG_SEQ_OOM_RESYNC
     /* Re-emit schedules once an AMY OOM burst settles (dropped wire
      * events otherwise leave tracks mute); cheap counter poll otherwise. */
@@ -143,8 +146,8 @@ static void ui_services(void)
             /* Clamp indices that may now point past the end. */
             if (seq_state.active_layer_idx >= seq_state.num_layers)
                 seq_state.active_layer_idx = (uint8_t)(seq_state.num_layers - 1);
-            if (s_graph_layer >= seq_state.num_layers)
-                s_graph_layer = (uint8_t)(seq_state.num_layers - 1);
+            if (s_ve_layer >= seq_state.num_layers)
+                s_ve_layer = (uint8_t)(seq_state.num_layers - 1);
             /* Drop the Step Trig overlay: after compaction its cached
              * (layer,track,step) may name a different layer's steps. */
             synth_ui_stepedit_close();
@@ -307,6 +310,8 @@ void synth_ui_slice(uint8_t phase)
      * phase, so a full table spreads over five wakes. */
     wt_builder_service();
 #endif
+    /* Stop fade and cut ramp step on every wake, not the 50 ms frame. */
+    transport_stop_service();
     if (phase == 0) {
         ui_services();
         ui_render();
@@ -647,15 +652,15 @@ void synth_ui_arp_solo_chord(bool long_press) { solo_chord(VT_ARP, long_press); 
 void synth_ui_handle_button(void)
 {
     if (!synth_ui_toggle_step_at_cursor()) {
-        seq_state.playing = !seq_state.playing;
-        sequencer_core_set_playing(seq_state.playing);
+        if (seq_state.playing) transport_stop_press();
+        else                   transport_stop_play_press();
     }
 }
 
 void synth_ui_toggle_playing(void)
 {
-    seq_state.playing = !seq_state.playing;
-    sequencer_core_set_playing(seq_state.playing);
+    if (seq_state.playing) transport_stop_press();
+    else                   transport_stop_play_press();
     ESP_LOGI(TAG_TASK, "Playback %s", seq_state.playing ? "started" : "stopped");
 }
 

@@ -76,6 +76,7 @@ typedef struct {
                                    on/off survives a solo round-trip. Unrelated
                                    to amp_duck, which is the stutter depth. */
     bool           paused;      /* silenced by a stopped transport, likewise */
+    bool           preroll;     /* held through a silent start's pre-roll */
     chord_type_t   chord;       /* chord preset (shared chord_type_t) */
     uint8_t        root_note;   /* drone-local root (DRONE_ROOT_MIN..MAX) */
     drone_follow_t follow;      /* chord progression follow mode */
@@ -86,7 +87,11 @@ typedef struct {
     uint16_t       patch;       /* SEQ_PATCH_* id, drone_stutter_patch_excluded() domain */
     uint8_t        voices;      /* main voices as built: the chord is truncated
                                    to this many tones */
-    uint16_t       mask;        /* main's gate/filter oscs (drone_voice_mask) */
+    uint16_t       mask;        /* main's gate/filter oscs as built: the
+                                   cluster oscs under unison, else
+                                   drone_voice_mask */
+    voice_unison_t unison;      /* stored spec (drone_set_unison) */
+    float          gate_level;  /* level of the last gate edge sent */
     bool           sub_enabled;
     int8_t         sub_interval;/* semitones below the main          */
     /* stutter-house controls */
@@ -104,7 +109,7 @@ typedef struct {
     uint32_t       sched_until_tick;
     uint32_t       sched_until_ms;
     bool           gate_running;
-    voice_params_t vp;          /* env/env1 (graph editor), filter (filter
+    voice_params_t vp;          /* env/env1 (ADSR editor), filter (filter
                                    editor), lfo (LFO editor), dist, each with
                                    its authored flag, plus amp_trim (folded
                                    into amp_peak by s_amp_peak_lin()). */
@@ -139,7 +144,7 @@ static inline void drone_mark_rebuild(void) { s_d_rebuild = true; }
  * amp CONST; AMY hard-mutes a level below AMP_THRESH_PLUS. */
 static inline float s_amp_peak_lin(void)
 {
-    /* Fold the graph editor's per-target trim (0..1) into amp_peak here so
+    /* Fold the ADSR editor's per-target trim (0..1) into amp_peak here so
      * every caller picks up the trimmed level. */
     float v = s_d.amp_peak * s_d.vp.amp_trim;
     v = SEQ_CLAMP_F32(v, 0.0f, 1.0f);
@@ -160,9 +165,9 @@ static inline float s_amp_off_lin(void)
  * n): the coupled oscs of a wave layout (osc 0 on a wave voice), else a
  * patch string's lfo_targets voice mask (the SILENT head on a Juno, its VCA;
  * the ALGO control osc on DX7/FM). False for a patch with neither, which the
- * stutter drone cannot gate. Not sequencer_core_patch_amp_osc(): on a Juno
- * that is every osc, and its patch sets each osc's level through amp CONST,
- * so a gate write there would switch silent oscs on. mask may be NULL. */
+ * stutter drone cannot gate. Not every osc: a Juno patch sets each osc's
+ * level through amp CONST, so a synth-wide gate write would switch silent
+ * oscs on. mask may be NULL. */
 static bool drone_voice_mask(uint16_t patch, uint16_t *mask)
 {
     uint8_t coupled;
@@ -176,15 +181,44 @@ static bool drone_voice_mask(uint16_t patch, uint16_t *mask)
     return true;
 }
 
+/* Effective unison copies of the main synth: the stored count (1 under
+ * bypass) through the shared clamp at the built voice count. */
+static uint8_t drone_unison_copies(void)
+{
+    return sequencer_core_unison_copies_for(s_d.patch,
+                                            s_d.unison.bypass ? 1u : s_d.unison.count,
+                                            s_d.voices, s_d.unison.stereo != 0u);
+}
+
+/* The stored spec carrying the effective count: what the build, the live
+ * push and the gate take. */
+static voice_unison_t drone_unison_eff(void)
+{
+    voice_unison_t eff = s_d.unison;
+    eff.count = drone_unison_copies();
+    return eff;
+}
+
+/* Osc layout of one main voice (sequencer_core_voice_layout); false for a
+ * patch that is not wave-topology. */
+static bool drone_voice_layout(seq_voice_layout_t *vl)
+{
+    return sequencer_core_voice_layout(s_d.patch, drone_unison_copies(),
+                                       s_d.unison.stereo != 0u, vl);
+}
+
 /* One amp CONST write to every osc in `mask` of `synth`'s voices, built from
- * `patch`, at AMY time `time` (0 = now). A bass preset's two oscs each take
- * the level scaled by the preset's own balance (bass_preset_osc_level). */
-static void drone_push_amp(uint8_t synth, uint16_t patch, uint16_t mask, float level,
-                           uint32_t time)
+ * `patch` with unison `u` (NULL = none), at AMY time `time` (0 = now). A bass
+ * preset's two oscs each take the level scaled by the preset's own balance
+ * (bass_preset_osc_level); a unison cluster osc, which is its group's head
+ * (osc g = group g), by its share of the pair (voice_unison_osc_level). */
+static void drone_push_amp(uint8_t synth, uint16_t patch, uint16_t mask,
+                           const voice_unison_t *u, float level, uint32_t time)
 {
     for (uint8_t o = 0; o < 16u; o++) {
         if (!(mask & (1u << o))) continue;
         float l = level * bass_preset_osc_level(patch, o);
+        if (u) l *= voice_unison_osc_level(u, o, u->count);
         amy_event *e = amy_helpers_event_begin();
         e->synth                 = synth;
         e->osc                   = o;
@@ -197,9 +231,11 @@ static void drone_push_amp(uint8_t synth, uint16_t patch, uint16_t mask, float l
 /* One gate edge on main and, when enabled, the sub's osc 0. */
 static void drone_gate_edge(float level, uint32_t time)
 {
-    drone_push_amp(DRONE_SYNTH_MAIN, s_d.patch, s_d.mask, level, time);
+    voice_unison_t eff = drone_unison_eff();
+    drone_push_amp(DRONE_SYNTH_MAIN, s_d.patch, s_d.mask, &eff, level, time);
     if (s_d.sub_enabled)
-        drone_push_amp(DRONE_SYNTH_SUB, SEQ_PATCH_SINE, 0x01u, level, time);
+        drone_push_amp(DRONE_SYNTH_SUB, SEQ_PATCH_SINE, 0x01u, NULL, level, time);
+    s_d.gate_level = level;
 }
 
 /* Push a filter to main's gate oscs (on a Juno the head alone: a filter on
@@ -261,14 +297,16 @@ static inline bool drone_lfo_on(void)
  * layout (NULL clears a stale COEF_MOD - voice_config.h); a patch string has
  * no LFO. The LFO rides COEF_MOD1, apart from the gate's amp CONST. */
 #if CONFIG_SEQ_LFO_SHARED
-/* The oscs the main synth's shared LFO synths reach: a wave layout's coupled
- * oscs or a patch string's lfo_targets map. False for an unmapped patch. */
+/* The oscs the main synth's shared LFO synths reach: a wave layout's masks
+ * (the cluster oscs under unison) or a patch string's lfo_targets map. False
+ * for an unmapped patch. */
 static bool drone_lfo_target_map(lfo_target_map_t *map)
 {
-    uint8_t coupled;
-    if (sequencer_core_lfo_wave_layout(s_d.patch, &coupled)) {
-        *map = (lfo_target_map_t){ .voice_mask = coupled, .pitch_mask = coupled,
-                                   .scan_mask  = coupled };
+    seq_voice_layout_t vl;
+    if (drone_voice_layout(&vl)) {
+        *map = (lfo_target_map_t){ .voice_mask = vl.voice_mask,
+                                   .pitch_mask = vl.pitch_mask,
+                                   .scan_mask  = vl.pitch_mask };
         return true;
     }
     return lfo_targets_of_patch(s_d.patch, map);
@@ -286,10 +324,10 @@ static void drone_apply_lfo(void)
     else
         lfo_bank_unbind(&s_d_lfo_ref);   /* the patch re-apply unwired it */
 #else
-    uint8_t carrier, coupled;
-    if (!sequencer_core_lfo_native_layout(s_d.patch, &carrier, &coupled)) return;
-    voice_apply_native_lfo_topo(DRONE_SYNTH_MAIN, lfo, bpm, carrier,
-                                coupled, coupled);
+    seq_voice_layout_t vl;
+    if (sequencer_core_lfo_native_layout(s_d.patch, NULL, NULL) && drone_voice_layout(&vl))
+        voice_apply_native_lfo_topo(DRONE_SYNTH_MAIN, lfo, bpm, vl.carrier,
+                                    vl.pitch_mask, vl.voice_mask);
 #endif
 }
 
@@ -323,9 +361,19 @@ static void drone_apply_lfo2(void)
 #endif
 }
 
+/* One dist block where the voice carries the stage: each cluster osc under
+ * unison, else the base osc (as arp_push_dist). */
 static void drone_push_dist(const seq_dist_t *d)
 {
-    voice_apply_dist(DRONE_SYNTH_MAIN, d);
+    seq_voice_layout_t vl;
+    uint8_t heads = drone_voice_layout(&vl) ? vl.heads_mask : 0u;
+    if (!heads) {
+        voice_apply_dist(DRONE_SYNTH_MAIN, d);
+        return;
+    }
+    for (uint8_t o = 0; (uint8_t)(heads >> o) != 0u; o++)
+        if (heads & (uint8_t)(1u << o))
+            voice_apply_dist_osc(DRONE_SYNTH_MAIN, o, d);
 }
 
 /* (Re)build both synths. Main takes the patch through the shared apply path
@@ -338,9 +386,13 @@ static void drone_push_dist(const seq_dist_t *d)
 static void drone_rebuild(void)
 {
     uint16_t patch = s_d.patch;
-    if (!drone_voice_mask(patch, &s_d.mask)) s_d.mask = 0x01u;
     s_d.voices = drone_voices_for(patch);
-    sequencer_core_configure_synth_slot(DRONE_SYNTH_MAIN, patch, s_d.voices, NULL);
+    seq_voice_layout_t vl;
+    if (drone_voice_layout(&vl) && vl.heads_mask)  s_d.mask = vl.heads_mask;
+    else if (!drone_voice_mask(patch, &s_d.mask)) s_d.mask = 0x01u;
+    voice_unison_t eff = drone_unison_eff();
+    sequencer_core_configure_synth_slot(DRONE_SYNTH_MAIN, patch, s_d.voices,
+                                        (eff.count > 1u) ? &eff : NULL);
     if (s_d.vp.env_authored)
         sequencer_core_push_envelope_osc(DRONE_SYNTH_MAIN,
                                          sequencer_core_patch_voice_osc(patch),
@@ -362,13 +414,17 @@ static void drone_rebuild(void)
 
     /* The current gate level, now. A wave voice also drops the shared wave
      * build's velocity term (VEL 1), as the drone's own voice never had one;
-     * a patch string keeps its VEL and EG0 coefs. */
+     * a patch string keeps its VEL and EG0 coefs. Every cluster osc under
+     * unison. */
     if (sequencer_core_is_wave_patch(patch)) {
-        amy_event *e = amy_helpers_event_begin();
-        e->synth                 = DRONE_SYNTH_MAIN;
-        e->osc                   = 0;
-        e->amp_coefs[COEF_VEL]   = 0.0f;
-        amy_helpers_event_send(e);
+        for (uint8_t o = 0; o < 16u; o++) {
+            if (!(s_d.mask & (1u << o))) continue;
+            amy_event *e = amy_helpers_event_begin();
+            e->synth                 = DRONE_SYNTH_MAIN;
+            e->osc                   = o;
+            e->amp_coefs[COEF_VEL]   = 0.0f;
+            amy_helpers_event_send(e);
+        }
     }
     if (s_d.sub_enabled) {
         amy_event *e = amy_helpers_event_begin();
@@ -381,10 +437,10 @@ static void drone_rebuild(void)
 }
 
 /* Whether the drone should be making sound right now: the user's switch AND not
- * silenced by a solo elsewhere or a stopped transport. */
+ * silenced by a solo elsewhere, a stopped transport or a silent pre-roll. */
 static inline bool drone_sounding(void)
 {
-    return s_d.enabled && !s_d.solo_muted && !s_d.paused;
+    return s_d.enabled && !s_d.solo_muted && !s_d.paused && !s_d.preroll;
 }
 
 /* Root and chord the drone voices now: its own, or under follow the applied
@@ -536,7 +592,7 @@ void drone_params_defaults(drone_params_t *out)
     out->blip         = 0.0f;     /* filter-zap off by default            */
     out->pattern      = DRONE_PAT_FULL;
     /* Default ADSR: slow drone swell. Stays unauthored until the user commits
-     * in the graph editor - an unauthored env is never pushed, so EG0 holds at
+     * in the ADSR editor - an unauthored env is never pushed, so EG0 holds at
      * 1.0 and the raw wave plays at full sustain. */
     out->vp.env.attack_ms   = 200;
     out->vp.env.decay_ms    = 300;
@@ -565,6 +621,8 @@ void drone_params_defaults(drone_params_t *out)
     out->vp.lfo.targets   = LFO_TGT_BIT(LFO_TARGET_FILTER);
     out->vp.lfo.flt_oct_q = 4;      /* +/-1 octave */
     out->vp.lfo_authored  = true;
+    /* The row defaults (drone_get_unison); count 1 keeps them inert. */
+    out->unison = (voice_unison_t){ 1u, 12u, 50u, 100u, 1u, 0u, 100u, 0u };
 }
 
 void drone_core_init(void)
@@ -590,6 +648,7 @@ void drone_core_init(void)
     s_d.swing_pct    = p.swing;
     s_d.blip_depth   = p.blip;
     s_d.pattern      = p.pattern;
+    s_d.unison       = p.unison;
     s_d.last_blip_cutoff = -1.0f;
 
     drone_rebuild();
@@ -599,13 +658,22 @@ void drone_core_init(void)
 
 void drone_core_service(void)
 {
+    /* Silent start: the pre-roll holds the drone like a stopped transport,
+     * and its end starts it the way Play does. */
+    bool preroll = sequencer_core_in_silent_preroll();
+    if (preroll != s_d.preroll) {
+        s_d.preroll = preroll;
+        if (s_d.enabled) {
+            if (!preroll) drone_mark_rebuild();
+            else          drone_mark_dirty();
+        }
+    }
     /* Rebuild drain: a synth-addressed event binds to absolute oscs when AMY
      * parses it and a configure frees the old oscs at its own time, so queued
      * gate edges would fire into the oscs' next owner. While a rebuild is
      * pending no new edges go out, and the rebuild waits until every queued
      * edge is due - in AMY time, which the edges are stamped in: the tick
-     * counter stops with the transport and runs ahead of the stamps after a
-     * BPM rise. The drain runs BEFORE the enabled gate: a param changed while
+     * counter runs ahead of the stamps after a BPM rise. The drain runs BEFORE the enabled gate: a param changed while
      * off must still rebuild, and a disable must release its notes. */
     if (s_d_rebuild) {
         if (!AMY_TIME_GEQ(amy_sysclock(), s_d.sched_until_ms)) return;
@@ -1040,6 +1108,48 @@ void drone_set_voice_params(const voice_params_t *vp)
     drone_mark_rebuild();
 }
 
+/* ── Unison ── (main only) */
+
+void drone_get_unison(voice_unison_t *out)
+{
+    if (!out) return;
+    voice_unison_t u = { 1u, 12u, 50u, 100u, 1u, 0u, 100u, 0u };
+    if (s_d.unison.count != 0u) u = s_d.unison;
+    *out = u;
+}
+
+uint8_t drone_unison_max(void)
+{
+    return sequencer_core_unison_max_for(s_d.patch, s_d.voices, s_d.unison.stereo != 0u);
+}
+
+void drone_set_unison(const voice_unison_t *u)
+{
+    if (!u) return;
+    uint8_t was        = drone_unison_copies();
+    bool    was_stereo = s_d.unison.stereo != 0u;
+    voice_unison_t v = *u;
+    v.count        = SEQ_CLAMP_U8(v.count, 0u, VOICE_UNISON_MAX_COPIES);
+    v.detune_cents = SEQ_CLAMP_U8(v.detune_cents, 0u, VOICE_UNISON_MAX_DETUNE);
+    v.spread_pct   = SEQ_CLAMP_U8(v.spread_pct, 0u, 100u);
+    v.blend_pct    = SEQ_CLAMP_U8(v.blend_pct, 0u, 100u);
+    v.stereo       = SEQ_CLAMP_U8(v.stereo, 0u, 1u);
+    v.bypass       = SEQ_CLAMP_U8(v.bypass, 0u, 1u);
+    v.shift        = SEQ_CLAMP_U8(v.shift, 0u, VOICE_UNISON_MAX_SHIFT);
+    v.interval     = SEQ_CLAMP_U8(v.interval, 0u, VOICE_UNISON_MAX_INTERVAL);
+    s_d.unison = v;
+    uint8_t now = drone_unison_copies();
+    if (now != was || (now > 1u && (v.stereo != 0u) != was_stereo)) {
+        /* The pool shape moved: the rebuild drain, which waits out queued
+         * gate edges. */
+        drone_mark_rebuild();
+    } else if (now > 1u) {
+        voice_unison_t eff = drone_unison_eff();
+        float level = (s_d.gate_level < DRONE_AMP_MUTE) ? DRONE_AMP_MUTE : s_d.gate_level;
+        voice_push_unison_live(DRONE_SYNTH_MAIN, &eff, level);
+    }
+}
+
 /* ── Getters ── */
 bool           drone_get_enabled(void)      { return s_d.enabled; }
 chord_type_t   drone_get_chord(void)        { return s_d.chord; }
@@ -1083,7 +1193,7 @@ const char *drone_follow_name(drone_follow_t f)
     return s_follow_names[f];
 }
 
-/* ── Per-target amplitude trim (graph editor amp mode) ──────────────────── */
+/* ── Per-target amplitude trim (ADSR editor amp mode) ──────────────────── */
 
 void drone_set_amp_trim(float v)
 {

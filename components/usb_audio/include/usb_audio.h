@@ -11,11 +11,9 @@ typedef struct {
 	size_t  peak_fill_samples;
 	uint32_t write_calls;
 	uint32_t write_drop_events;
-	/* underrun_events and zlp_events mirror dropout_stats (diagnostics
-	 * component) and are valid in every build (underrun_events always reads
-	 * 0); the other counters above are live only with
+	/* zlp_events mirrors dropout_stats (diagnostics component) and is valid
+	 * in every build; the other counters above are live only with
 	 * CONFIG_USB_AUDIO_DIAGNOSTICS. */
-	uint32_t underrun_events;
 	uint32_t zlp_events;
 	int16_t  peak_abs_sample;
 } usb_audio_diag_snapshot_t;

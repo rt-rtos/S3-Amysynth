@@ -29,6 +29,9 @@ typedef struct {
     uint8_t count;
     uint8_t cursor;     /* highlighted row                       */
     bool    editing;    /* true => value of cursor row is editing */
+    bool        patch_select;  /* Button 1 held: show the patch name banner */
+    const char *patch_name;    /* full name of the drone's patch, NULL when the
+                                  name table is compiled out */
 } drone_view_t;
 
 /* Draw the full drone screen (clears + sends the buffer) under a

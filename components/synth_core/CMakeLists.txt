@@ -42,7 +42,7 @@ if(CONFIG_SYNTH_DEV_MENU)
 endif()
 
 idf_component_register(SRCS "live_play.c" "amy_helpers.c" "amy_fx.c" "fx_bus.c" "arp_core.c" "drop_core.c" "note_div.c" "quantizer.c" "prog_gen.c" "voice_config.c"
-                            "synth_level.c" "mixer.c"
+                            "synth_level.c" "mixer.c" "transport_stop.c"
                             "lfo_bank.c" "lfo_targets.c"
                             "filter_scope.c"
                             "synth_ui/synth_ui_state.c"
@@ -54,6 +54,8 @@ idf_component_register(SRCS "live_play.c" "amy_helpers.c" "amy_fx.c" "fx_bus.c" 
                             "synth_ui/ui_patch_cycle.c"
                             "synth_ui/ui_screen_menu.c"
                             "synth_ui/ui_screen_fxmenu.c"
+                            "synth_ui/ui_screen_settings.c"
+                            "synth_ui/ui_clock.c"
                             "synth_ui/ui_screen_layermenu.c"
                             "synth_ui/ui_screen_layer_sub.c"
                             "synth_ui/ui_voice_target.c"
@@ -75,6 +77,10 @@ idf_component_register(SRCS "live_play.c" "amy_helpers.c" "amy_fx.c" "fx_bus.c" 
                             "sequencer_core/seq_core_engine.c"
                             "sequencer_core/seq_core_synth.c"
                             "sequencer_core/seq_core_editors.c"
+                            "sequencer_core/seq_core_env.c"
+                            "sequencer_core/seq_core_filter.c"
+                            "sequencer_core/seq_core_dist.c"
+                            "sequencer_core/seq_core_lfo.c"
                             "sequencer_core/seq_core_progression.c"
                             "sequencer_core/seq_core_tempo.c"
                             "sequencer_core/seq_core_trig.c"
@@ -102,7 +108,8 @@ idf_component_register(SRCS "live_play.c" "amy_helpers.c" "amy_fx.c" "fx_bus.c" 
 
 # Built-in project templates: gen_templates.py checks its codec against the
 # firmware sources it reads (fails the build on drift), then writes every
-# template spec as an embedded .amp image (project_templates.h).
+# template spec as an embedded .amp image (project_templates.h). It writes the
+# firmware headers it parsed to a depfile; DEPENDS carries only the Python side.
 if(CONFIG_SYNTH_PROJECT_STORE)
     idf_build_get_property(python PYTHON)
     set(tpl_dir "${CMAKE_CURRENT_LIST_DIR}/project/templates")
@@ -112,22 +119,9 @@ if(CONFIG_SYNTH_PROJECT_STORE)
     add_custom_command(
         OUTPUT "${tpl_out}"
         COMMAND ${python} gen_templates.py --check-src "${comp_dir}" --out "${tpl_out}"
+                --depfile "${tpl_out}.d"
         DEPENDS ${tpl_py}
-                "${CMAKE_CURRENT_LIST_DIR}/project/project_snapshot.c"
-                "${comp_dir}/project_store/include/project_store.h"
-                "${CMAKE_CURRENT_LIST_DIR}/sequencer_core/seq_model.h"
-                "${CMAKE_CURRENT_LIST_DIR}/sequencer_core/seq_core_config.h"
-                "${CMAKE_CURRENT_LIST_DIR}/include/sequencer_core.h"
-                "${CMAKE_CURRENT_LIST_DIR}/include/fx_bus.h"
-                "${CMAKE_CURRENT_LIST_DIR}/include/amy_fx.h"
-                "${CMAKE_CURRENT_LIST_DIR}/include/arp_core.h"
-                "${CMAKE_CURRENT_LIST_DIR}/include/drop_core.h"
-                "${CMAKE_CURRENT_LIST_DIR}/include/note_div.h"
-                "${CMAKE_CURRENT_LIST_DIR}/include/seq_chords.h"
-                "${CMAKE_CURRENT_LIST_DIR}/include/synth_slots.h"
-                "${CMAKE_CURRENT_LIST_DIR}/include/custompatches/drone_core.h"
-                "${CMAKE_CURRENT_LIST_DIR}/include/chord_types.h"
-                "${comp_dir}/amy/src/amy.h"
+        DEPFILE "${tpl_out}.d"
         WORKING_DIRECTORY "${tpl_dir}"
         VERBATIM)
     target_sources(${COMPONENT_LIB} PRIVATE "${tpl_out}" "${CMAKE_CURRENT_LIST_DIR}/project/project_templates.c")
@@ -144,6 +138,7 @@ set_source_files_properties(
     "${CMAKE_CURRENT_LIST_DIR}/synth_ui/ui_patch_cycle.c"
     "${CMAKE_CURRENT_LIST_DIR}/synth_ui/ui_screen_menu.c"
     "${CMAKE_CURRENT_LIST_DIR}/synth_ui/ui_screen_fxmenu.c"
+    "${CMAKE_CURRENT_LIST_DIR}/synth_ui/ui_screen_settings.c"
     "${CMAKE_CURRENT_LIST_DIR}/synth_ui/ui_screen_projects.c"
     "${CMAKE_CURRENT_LIST_DIR}/synth_ui/ui_screen_wireless.c"
     "${CMAKE_CURRENT_LIST_DIR}/synth_ui/ui_screen_arp.c"
@@ -163,6 +158,10 @@ set_source_files_properties(
     "${CMAKE_CURRENT_LIST_DIR}/sequencer_core/seq_core_engine.c"
     "${CMAKE_CURRENT_LIST_DIR}/sequencer_core/seq_core_synth.c"
     "${CMAKE_CURRENT_LIST_DIR}/sequencer_core/seq_core_editors.c"
+    "${CMAKE_CURRENT_LIST_DIR}/sequencer_core/seq_core_env.c"
+    "${CMAKE_CURRENT_LIST_DIR}/sequencer_core/seq_core_filter.c"
+    "${CMAKE_CURRENT_LIST_DIR}/sequencer_core/seq_core_dist.c"
+    "${CMAKE_CURRENT_LIST_DIR}/sequencer_core/seq_core_lfo.c"
     "${CMAKE_CURRENT_LIST_DIR}/sequencer_core/seq_core_progression.c"
     "${CMAKE_CURRENT_LIST_DIR}/sequencer_core/seq_core_tempo.c"
     "${CMAKE_CURRENT_LIST_DIR}/sequencer_core/seq_core_trig.c"

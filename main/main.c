@@ -99,13 +99,12 @@ static void main_log_audio_diagnostics(void)
     usb_audio_diag_snapshot_t diag;
     usb_audio_diag_get_snapshot(&diag);
     ESP_LOGI(TAG,
-             "audio diag: init=%d fill=%u peak_fill=%u writes=%" PRIu32 " drops=%" PRIu32 " underruns=%" PRIu32 " peak_abs=%d",
+             "audio diag: init=%d fill=%u peak_fill=%u writes=%" PRIu32 " drops=%" PRIu32 " peak_abs=%d",
              diag.initialized ? 1 : 0,
              (unsigned)diag.fill_samples,
              (unsigned)diag.peak_fill_samples,
              diag.write_calls,
              diag.write_drop_events,
-             diag.underrun_events,
              (int)diag.peak_abs_sample);
 }
 #endif

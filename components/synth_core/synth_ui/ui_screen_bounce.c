@@ -13,8 +13,8 @@
  * ════════════════════════════════════════════════════════════════════════
  * Item model for the loop-bounce recorder and the clip players; page state
  * and input routing live in ui_screen_menu.c. Rows: the next bounce's shape,
- * Rec (start into the page's slot, cancel one still waiting for its bar
- * line, or stop a running one at the next pattern-period boundary), Cancel,
+ * Rec (start into the page's slot, cancel one still waiting for its first
+ * pattern-period boundary, or stop a running one at the next one), Cancel,
  * Undo, four rows per clip slot, then the runtime sampler
  * (sample_rec: the same mix capture into one drum pad). The shape survives
  * leaving the page; only the failure text is per-visit, shown inline in the
@@ -154,7 +154,7 @@ const menu_item_view_t *bounce_menu_build_items(void)
     snprintf(s_items[BOUNCE_ROW_REC].label, MENU_LABEL_LEN, "Rec");
     switch (clip_bounce_get_state()) {
         case CLIP_BOUNCE_ARMED:
-            snprintf(s_items[BOUNCE_ROW_REC].value, MENU_VALUE_LEN, "Wait bar");
+            snprintf(s_items[BOUNCE_ROW_REC].value, MENU_VALUE_LEN, "Waiting");
             break;
         case CLIP_BOUNCE_RECORDING:
             /* "Rec" runs to the reservation; "End" once a stop fixed the

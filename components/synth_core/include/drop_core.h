@@ -35,11 +35,11 @@ extern "C" {
  * Setters mark the loop dirty; drop_core_service() re-simulates and re-emits
  * once per UI frame. */
 
-#define DROP_COLS       16
+#define DROP_COLS       15
 #define DROP_ROWS       8
 #define DROP_CELL_W     8
 #define DROP_CELL_H     6
-#define DROP_FIELD_W    (DROP_COLS * DROP_CELL_W)   /* 128 px */
+#define DROP_FIELD_W    (DROP_COLS * DROP_CELL_W)   /* 120 px */
 #define DROP_FIELD_H    (DROP_ROWS * DROP_CELL_H)   /* 48 px: the blue band */
 
 #define DROP_SEG_MAX    16
@@ -47,7 +47,7 @@ extern "C" {
 #define DROP_SEG_ANGLES 8      /* 22.5 degree steps, 0 = horizontal */
 #define DROP_OCT_MAX    4
 #define DROP_LOOP_BARS_MAX 8
-#define DROP_SPAWN_COL  8      /* the spawner's column */
+#define DROP_SPAWN_COL  7      /* the spawner's column */
 /* Ceiling of the impact voice count: AMY keeps one voice per sounding pitch.
  * With segment pitch offsets up to DROP_SEG_MAX distinct pitches can sound,
  * and past the voice count a held note is cut. */
@@ -218,7 +218,8 @@ void     drop_get_vp(drop_which_t w, voice_params_t *out);
 void     drop_get_unison(drop_which_t w, voice_unison_t *out);
 uint8_t  drop_unison_max(drop_which_t w);
 /* As arp_set_unison(): clamps, stores, rebuilds the slot when the effective
- * count moved, else pushes live. */
+ * count (bypass ? 1 : count) or (while it carries copies) the stereo flag
+ * moved, else pushes detune/interval/shift/spread/blend live. */
 void     drop_set_unison(drop_which_t w, const voice_unison_t *u);
 
 /* ── The shared editors (ADSR, EG1, filter, LFO, LFO2, DIST), per synth,

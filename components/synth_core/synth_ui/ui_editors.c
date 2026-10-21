@@ -6,7 +6,7 @@
 #include "custompatches/drone_core.h"
 #include "custompatches/drone_std_core.h"
 #if CONFIG_SYNTH_WIRELESS
-#include "live_play.h"     /* BLE MIDI live-play voice: GRAPH_TGT_LIVE target */
+#include "live_play.h"     /* BLE MIDI live-play voice: VE_TGT_LIVE target */
 #endif
 #include "synth_ui/eg_shape.h"
 #include "graph_popup.h"
@@ -31,48 +31,48 @@
 
 static const char *TAG = "synth_ui";
 
-/* ── Graph pop-up integration ────────────────────────────────────────────────
- * Everything up to the "graph pop-up: end" marker wires the reusable
+/* ── ADSR editor ─────────────────────────────────────────────────────────────
+ * Everything up to the "ADSR editor: end" marker wires the reusable
  * graph_popup widget. Melodic envelope defaults come from seq_defaults.h. */
 
-static gpopup_t s_graph_popup;
-static bool     s_graph_popup_inited = false;
+static gpopup_t s_adsr_popup;
+static bool     s_adsr_popup_inited = false;
 
 /* (layer,track) captured at open time so write-back targets the same row even
  * if the selection moves underneath. */
-uint8_t  s_graph_layer = 0;
-uint8_t  s_graph_track = 0;
+uint8_t  s_ve_layer = 0;
+uint8_t  s_ve_track = 0;
 
 /* Which backend the open editor edits, captured at open time so seed/commit
  * route to the right envelope store. One widget + mapping serves all. */
 typedef enum {
-    GRAPH_TGT_MELODIC   = 0,
-    GRAPH_TGT_DRONE     = 1,
-    GRAPH_TGT_ARP       = 2,
+    VE_TGT_MELODIC   = 0,
+    VE_TGT_DRONE     = 1,
+    VE_TGT_ARP       = 2,
     /* The ball drop's focused synth (drop_get_focus()): the arp's shape with
      * the synth picked at every call; the screen's input is blocked under
      * the editors, so the focus holds while one is open. */
-    GRAPH_TGT_DROP      = 5,
-    GRAPH_TGT_DRONE_STD = 3,
+    VE_TGT_DROP      = 5,
+    VE_TGT_DRONE_STD = 3,
     /* BLE MIDI live-play voice (slot 11). Structurally the arp's twin - one
      * voice, no layer/track scope - so it follows the arp branch everywhere. */
-    GRAPH_TGT_LIVE      = 4,
-} graph_target_t;
-static graph_target_t s_graph_target = GRAPH_TGT_MELODIC;
+    VE_TGT_LIVE      = 4,
+} ve_target_t;
+static ve_target_t s_ve_target = VE_TGT_MELODIC;
 
 /* Which of the target's two AMY breakpoint generators is shown. 0 = EG0 (amp),
  * 1 = EG1 (typically the filter sweep, see sequencer_core_push_envelope_eg1()).
  * Reset to 0 on every open; MY_BUTTON_3 visits EG0 then EG1 before the filter
  * editor. */
-static uint8_t s_graph_eg_index = 0;
+static uint8_t s_adsr_eg_index = 0;
 
 /* Scratch curve type of the shown EG (AMY ENVELOPE_*: 0=Normal, 1=Linear,
  * 2=DX7, 3=TrueExp). Mirrors the target's stored eg_type; folded into the view
  * signature so the top-bar readout redraws. */
-static uint8_t s_graph_eg_type_disp = 0;
+static uint8_t s_adsr_eg_type_disp = 0;
 
 /* Short top-bar code for an AMY envelope curve type (eg_type 0..3). */
-static const char *graph_eg_type_code(uint8_t eg_type)
+static const char *adsr_eg_type_code(uint8_t eg_type)
 {
     switch (eg_type & 3u) {
         case 1:  return "LIN";   /* ENVELOPE_LINEAR          */
@@ -83,7 +83,7 @@ static const char *graph_eg_type_code(uint8_t eg_type)
 }
 
 /* Full name for the transient top-bar readout shown right after a type cycle. */
-static const char *graph_eg_type_name(uint8_t eg_type)
+static const char *adsr_eg_type_name(uint8_t eg_type)
 {
     switch (eg_type & 3u) {
         case 1:  return "LINEAR";
@@ -97,21 +97,21 @@ static const char *graph_eg_type_name(uint8_t eg_type)
  * after a type change (the right slot is otherwise owned by the point readout).
  * The derived active flag is folded into the view signature so the bar redraws
  * when the window closes. */
-#define GRAPH_TYPE_FLASH_MS 1200u
-static TickType_t s_graph_type_flash_until = 0;
+#define ADSR_TYPE_FLASH_MS 1200u
+static TickType_t s_adsr_type_flash_until = 0;
 
-static bool graph_type_flash_active(void)
+static bool adsr_type_flash_active(void)
 {
-    return (int32_t)(s_graph_type_flash_until - xTaskGetTickCount()) > 0;
+    return (int32_t)(s_adsr_type_flash_until - xTaskGetTickCount()) > 0;
 }
 
 /* ── Curve-type preview shaping ──────────────────────────────────────────────
  * Per-segment shape callback for the ADSR plot, in the widget's normalised
  * 0..1 level space: the shown eg_type through eg_shape_eval() (eg_shape.h).
  * UI tick only, never the render path. */
-static float graph_env_shape(float v0, float v1, float t)
+static float adsr_env_shape(float v0, float v1, float t)
 {
-    return eg_shape_eval(s_graph_eg_type_disp, v0, v1, t);
+    return eg_shape_eval(s_adsr_eg_type_disp, v0, v1, t);
 }
 
 /* ── Time-range mapping ──────────────────────────────────────────────────────
@@ -120,34 +120,34 @@ static float graph_env_shape(float v0, float v1, float t)
  *   SHORT: 0..2000 ms, LINEAR (fine control where short notes live)
  *   LONG : 0..15000 ms, LOG-SQUASHED (tail compressed so the early portion
  *          keeps most of the pixels). */
-#define GRAPH_RANGE_SHORT_MS 2000u
-#define GRAPH_RANGE_LONG_MS  15000u
+#define ADSR_RANGE_SHORT_MS 2000u
+#define ADSR_RANGE_LONG_MS  15000u
 /* Curvature of the long-view squash: larger = more compression of the tail. */
-#define GRAPH_LONG_SQUASH    9.0f
+#define ADSR_LONG_SQUASH    9.0f
 
-static bool s_graph_long_range = false;   /* false = SHORT, true = LONG (auto-switched) */
+static bool s_adsr_long_range = false;   /* false = SHORT, true = LONG (auto-switched) */
 
 /* Amp-mode state (MY_BUTTON_2 while the ADSR editor is open), offered on the
- * live voice and drones only (graph_amp_available(); a sequencer row's and the
+ * live voice and drones only (adsr_amp_available(); a sequencer row's and the
  * arp's trim is the Layer menu Level row). The scratch trim is committed to the
  * target on close and shown in the topbar right slot. */
-static bool  s_graph_amp_mode = false;
-static float s_graph_amp_edit = 1.0f;   /* scratch 0..1, seeds from target on open */
+static bool  s_adsr_amp_mode = false;
+static float s_adsr_amp_edit = 1.0f;   /* scratch 0..1, seeds from target on open */
 /* Swing sub-mode on MY_BUTTON_2's cycle, the first stop on a sequencer row's
- * EG0 page (offered per graph_swing_available()). Unlike the amp trim it has
+ * EG0 page (offered per adsr_swing_available()). Unlike the amp trim it has
  * no separate store: the setter is the model, so the scratch exists purely to
  * throttle and to cancel back to the open-time value. */
-static bool    s_graph_swing_mode = false;
-static uint8_t s_graph_swing_edit = 0;
-static bool  s_graph_env_dirty = false; /* set only when user moves an ADSR point */
+static bool    s_adsr_swing_mode = false;
+static uint8_t s_adsr_swing_edit = 0;
+static bool  s_adsr_env_dirty = false; /* set only when user moves an ADSR point */
 
 /* Envelope routing depths: scratch matrix seeded on open from the row's
  * seq_filter_t.eg_depth, committed ONLY when dirty so an untouched editor
  * session never authors the row's filter. Each slot is reached through its own
  * MY_BUTTON_2 target stop on its envelope's page. */
-static float  s_graph_eg_edit[2][SEQ_EGT_COUNT]; /* scratch, seeded on open */
-static bool   s_graph_eg_dirty = false;          /* any slot edited        */
-static int8_t s_graph_eg_tgt = -1;               /* -1: no target stop up  */
+static float  s_adsr_eg_edit[2][SEQ_EGT_COUNT]; /* scratch, seeded on open */
+static bool   s_adsr_eg_dirty = false;          /* any slot edited        */
+static int8_t s_adsr_eg_tgt = -1;               /* -1: no target stop up  */
 
 /* Target labels: topbar readout and log take the upper-case form, the hint
  * strip the capitalised one its other labels use. */
@@ -184,60 +184,60 @@ static bool s_dist_dirty   = false;
 /* Live-preview bookkeeping (see "Live preview while editing" below): which
  * parts of the session pushed scratch state to AMY, plus the amp value and
  * throttle needed to restore or pace those pushes. */
-static bool       s_graph_live_env  = false; /* env points/type live-pushed   */
-static bool       s_graph_live_fenv = false; /* EG1 sweep depth live-pushed   */
+static bool       s_adsr_live_env  = false; /* env points/type live-pushed   */
+static bool       s_adsr_live_fenv = false; /* EG1 sweep depth live-pushed   */
 static bool       s_amp_live_applied = false;/* a live amp apply landed       */
 static bool       s_amp_live_pending = false;
-static float      s_graph_amp_open  = 1.0f;  /* amp trim at open (cancel)     */
+static float      s_adsr_amp_open  = 1.0f;  /* amp trim at open (cancel)     */
 static TickType_t s_amp_live_last_apply = 0;
 static bool       s_swing_live_pending = false;
-static uint8_t    s_graph_swing_open = 0;    /* layer swing at open (cancel)  */
+static uint8_t    s_adsr_swing_open = 0;    /* layer swing at open (cancel)  */
 static TickType_t s_swing_live_last_apply = 0;
 
-/* log(1 + GRAPH_LONG_SQUASH): normaliser of the long-range squash curve,
+/* log(1 + ADSR_LONG_SQUASH): normaliser of the long-range squash curve,
  * cached so the mapping helpers don't recompute it per call. */
-static float graph_log1p_squash(void)
+static float adsr_log1p_squash(void)
 {
     static float s_val = 0.0f;
-    if (s_val == 0.0f) s_val = logf(1.0f + GRAPH_LONG_SQUASH);
+    if (s_val == 0.0f) s_val = logf(1.0f + ADSR_LONG_SQUASH);
     return s_val;
 }
 
 /* Normalised X (0..1) -> milliseconds, range/curve aware. */
-static uint32_t graph_x_to_ms(float x)
+static uint32_t adsr_x_to_ms(float x)
 {
     x = SEQ_CLAMP_F32(x, 0.0f, 1.0f);
-    if (!s_graph_long_range) {
-        return (uint32_t)(x * (float)GRAPH_RANGE_SHORT_MS + 0.5f);
+    if (!s_adsr_long_range) {
+        return (uint32_t)(x * (float)ADSR_RANGE_SHORT_MS + 0.5f);
     }
     /* Long view: expand the squashed display X back to a linear time fraction.
      * Display compresses with log1p(k*t)/log1p(k); invert it here. */
-    float k = GRAPH_LONG_SQUASH;
-    float t = (expf(x * graph_log1p_squash()) - 1.0f) / k;   /* 0..1 linear time */
-    return (uint32_t)(t * (float)GRAPH_RANGE_LONG_MS + 0.5f);
+    float k = ADSR_LONG_SQUASH;
+    float t = (expf(x * adsr_log1p_squash()) - 1.0f) / k;   /* 0..1 linear time */
+    return (uint32_t)(t * (float)ADSR_RANGE_LONG_MS + 0.5f);
 }
 
 /* Milliseconds -> normalised X (0..1), range/curve aware (inverse of above). */
-static float graph_ms_to_x(uint32_t ms)
+static float adsr_ms_to_x(uint32_t ms)
 {
-    if (!s_graph_long_range) {
-        float x = (float)ms / (float)GRAPH_RANGE_SHORT_MS;
+    if (!s_adsr_long_range) {
+        float x = (float)ms / (float)ADSR_RANGE_SHORT_MS;
         return x > 1.0f ? 1.0f : x;
     }
-    float k = GRAPH_LONG_SQUASH;
-    float t = (float)ms / (float)GRAPH_RANGE_LONG_MS;   /* 0..1 linear time */
+    float k = ADSR_LONG_SQUASH;
+    float t = (float)ms / (float)ADSR_RANGE_LONG_MS;   /* 0..1 linear time */
     t = SEQ_CLAMP_F32(t, 0.0f, 1.0f);
     /* Compress: more pixels to small t, fewer to the long tail. */
-    return logf(1.0f + k * t) / graph_log1p_squash();
+    return logf(1.0f + k * t) / adsr_log1p_squash();
 }
 
 /* Push the engine's attack floor into the widget as its minimum point spacing.
  * The widget works in normalised X and cannot know what a millisecond is worth,
  * so otherwise it enforces a legibility gap stricter than
  * VOICE_ENV_ATTACK_MIN_MS, differently per range. Re-sync on every range change. */
-static void graph_sync_min_gap(void)
+static void adsr_sync_min_gap(void)
 {
-    graph_popup_set_min_x_gap(&s_graph_popup, graph_ms_to_x(VOICE_ENV_ATTACK_MIN_MS));
+    graph_popup_set_min_x_gap(&s_adsr_popup, adsr_ms_to_x(VOICE_ENV_ATTACK_MIN_MS));
 }
 
 /* Audio-taper encoder stride for the envelope X axis (the popup's xstep hook).
@@ -249,13 +249,13 @@ static void graph_sync_min_gap(void)
 static const float grx_ratio[4]  = { 1.08f, 1.04f, 1.08f, 1.10f }; /* -,A,D,R */
 static const float grx_stride[4] = { 1.0f,  1.0f,  1.0f,  2.0f  }; /* min ms  */
 
-static float graph_xstep(uint8_t idx, float x, long delta)
+static float adsr_xstep(uint8_t idx, float x, long delta)
 {
     uint32_t prev_ms = 0;
-    if (idx > 0 && idx <= s_graph_popup.num_points) {
-        prev_ms = graph_x_to_ms(s_graph_popup.points[idx - 1].x);
+    if (idx > 0 && idx <= s_adsr_popup.num_points) {
+        prev_ms = adsr_x_to_ms(s_adsr_popup.points[idx - 1].x);
     }
-    uint32_t cum_ms = graph_x_to_ms(x);
+    uint32_t cum_ms = adsr_x_to_ms(x);
     float seg = (cum_ms > prev_ms) ? (float)(cum_ms - prev_ms) : 0.0f;
 
     float ratio  = grx_ratio[idx & 3u];
@@ -270,11 +270,11 @@ static float graph_xstep(uint8_t idx, float x, long delta)
     }
     if (seg < 0.0f) seg = 0.0f;
 
-    float range = s_graph_long_range ? (float)GRAPH_RANGE_LONG_MS
-                                     : (float)GRAPH_RANGE_SHORT_MS;
+    float range = s_adsr_long_range ? (float)ADSR_RANGE_LONG_MS
+                                     : (float)ADSR_RANGE_SHORT_MS;
     float cum = (float)prev_ms + seg;
     if (cum > range) cum = range;
-    return graph_ms_to_x((uint32_t)(cum + 0.5f));
+    return adsr_ms_to_x((uint32_t)(cum + 0.5f));
 }
 
 /* ── Auto-decay rule (derived-decay mode only) ───────────────────────────────
@@ -289,7 +289,7 @@ static float graph_xstep(uint8_t idx, float x, long delta)
 #define DECAY_MIN_MS           20u
 #define DECAY_MAX_MS           2000u
 
-static uint32_t graph_decay_ms(uint32_t attack_ms, float sustain_frac)
+static uint32_t adsr_decay_ms(uint32_t attack_ms, float sustain_frac)
 {
     sustain_frac = SEQ_CLAMP_F32(sustain_frac, 0.0f, 1.0f);
     float d = (float)DECAY_BASE_MS
@@ -302,84 +302,84 @@ static uint32_t graph_decay_ms(uint32_t attack_ms, float sustain_frac)
 
 static void graph_popup_ensure_init(void)
 {
-    if (s_graph_popup_inited) return;
+    if (s_adsr_popup_inited) return;
     /* Full-screen plot under the yellow context bar (rows 16..63). */
-    graph_popup_init(&s_graph_popup, 0, ENV_TOPBAR_H, 128,
+    graph_popup_init(&s_adsr_popup, 0, ENV_TOPBAR_H, 128,
                      (uint8_t)(64 - ENV_TOPBAR_H));
-    graph_popup_set_style(&s_graph_popup, GPOPUP_STYLE_ADSR);
-    graph_sync_min_gap();
-    /* Shape reads s_graph_eg_type_disp at draw time, so type cycles retint
+    graph_popup_set_style(&s_adsr_popup, GPOPUP_STYLE_ADSR);
+    adsr_sync_min_gap();
+    /* Shape reads s_adsr_eg_type_disp at draw time, so type cycles retint
      * instantly. */
-    graph_popup_set_shape(&s_graph_popup, graph_env_shape);
-    graph_popup_set_xstep(&s_graph_popup, graph_xstep);
+    graph_popup_set_shape(&s_adsr_popup, adsr_env_shape);
+    graph_popup_set_xstep(&s_adsr_popup, adsr_xstep);
 #if CONFIG_SEQ_ADSR_EXPLICIT_DECAY
     /* Explicit decay: sustain point draggable on both axes - X = decay ms,
      * Y = sustain level. */
-    graph_popup_set_adsr_lock_sx(&s_graph_popup, false);
+    graph_popup_set_adsr_lock_sx(&s_adsr_popup, false);
 #else
     /* Derived decay: sustain point is Y-only, X comes from
-     * graph_recompute_decay(). */
-    graph_popup_set_adsr_lock_sx(&s_graph_popup, true);
+     * adsr_recompute_decay(). */
+    graph_popup_set_adsr_lock_sx(&s_adsr_popup, true);
 #endif
-    s_graph_popup_inited = true;
+    s_adsr_popup_inited = true;
 }
 
 /* Recompute the sustain point's X (decay time) from attack + sustain level.
  * Keeps all ms math host-side so the widget stays AMY-agnostic. Expects the
  * standard 4-point ADSR layout. */
-static void graph_recompute_decay(void)
+static void adsr_recompute_decay(void)
 {
 #if CONFIG_SEQ_ADSR_EXPLICIT_DECAY
     /* User owns the sustain X here; one guard covers every call site. */
     return;
 #else
     gpopup_point_t pts[GPOPUP_MAX_POINTS];
-    uint8_t n = graph_popup_get_points(&s_graph_popup, pts, GPOPUP_MAX_POINTS);
+    uint8_t n = graph_popup_get_points(&s_adsr_popup, pts, GPOPUP_MAX_POINTS);
     if (n < 4) return;
 
-    uint32_t attack_ms   = graph_x_to_ms(pts[1].x);
+    uint32_t attack_ms   = adsr_x_to_ms(pts[1].x);
     float    sustain_frac = pts[2].y;
-    uint32_t decay_ms    = graph_decay_ms(attack_ms, sustain_frac);
+    uint32_t decay_ms    = adsr_decay_ms(attack_ms, sustain_frac);
 
-    pts[2].x = graph_ms_to_x(attack_ms + decay_ms);
+    pts[2].x = adsr_ms_to_x(attack_ms + decay_ms);
     /* Preserve edit state across the points rewrite. */
-    uint8_t saved_cursor  = s_graph_popup.cursor;
-    bool    saved_editing = s_graph_popup.editing_value;
-    bool    saved_axis_y  = s_graph_popup.adjust_axis_y;
-    graph_popup_set_points(&s_graph_popup, pts, n);
-    s_graph_popup.cursor        = saved_cursor;
-    s_graph_popup.editing_value = saved_editing;
-    s_graph_popup.adjust_axis_y = saved_axis_y;
+    uint8_t saved_cursor  = s_adsr_popup.cursor;
+    bool    saved_editing = s_adsr_popup.editing_value;
+    bool    saved_axis_y  = s_adsr_popup.adjust_axis_y;
+    graph_popup_set_points(&s_adsr_popup, pts, n);
+    s_adsr_popup.cursor        = saved_cursor;
+    s_adsr_popup.editing_value = saved_editing;
+    s_adsr_popup.adjust_axis_y = saved_axis_y;
 #endif /* !CONFIG_SEQ_ADSR_EXPLICIT_DECAY */
 }
 
-/* Bottom-margin time ticks for the active range, mapped through graph_ms_to_x()
+/* Bottom-margin time ticks for the active range, mapped through adsr_ms_to_x()
  * so spacing reflects the (non-linear in LONG) axis. */
-static void graph_update_ticks(void)
+static void adsr_update_ticks(void)
 {
     float xs[6];
     uint8_t n = 0;
-    if (!s_graph_long_range) {
+    if (!s_adsr_long_range) {
         /* SHORT (2s linear): 0, 0.5, 1, 1.5, 2 s. */
         static const uint32_t tms[] = { 0, 500, 1000, 1500, 2000 };
-        for (uint8_t i = 0; i < 5; ++i) xs[n++] = graph_ms_to_x(tms[i]);
+        for (uint8_t i = 0; i < 5; ++i) xs[n++] = adsr_ms_to_x(tms[i]);
     } else {
         /* LONG (15s log-squashed): 0, 0.1, 0.5, 1, 5, 15 s. */
         static const uint32_t tms[] = { 0, 100, 500, 1000, 5000, 15000 };
-        for (uint8_t i = 0; i < 6; ++i) xs[n++] = graph_ms_to_x(tms[i]);
+        for (uint8_t i = 0; i < 6; ++i) xs[n++] = adsr_ms_to_x(tms[i]);
     }
-    graph_popup_set_ticks(&s_graph_popup, xs, n);
+    graph_popup_set_ticks(&s_adsr_popup, xs, n);
 }
 
-bool synth_ui_graph_is_active(void)
+bool synth_ui_adsr_is_active(void)
 {
-    return graph_popup_is_active(&s_graph_popup);
+    return graph_popup_is_active(&s_adsr_popup);
 }
 
 /* Seed the editor's points from the stored envelope under the current time
  * range. Cumulative time is squashed segment by segment so the shape matches
  * what write-back reconstructs. */
-static void graph_seed_from_env(const seq_env_t *env)
+static void adsr_seed_from_env(const seq_env_t *env)
 {
     uint32_t cum_a = env->attack_ms;
     uint32_t cum_d = env->attack_ms + env->decay_ms;
@@ -387,269 +387,269 @@ static void graph_seed_from_env(const seq_env_t *env)
 
     gpopup_point_t pts[4];
     pts[0].x = 0.0f;                 pts[0].y = 0.0f;                       /* origin     */
-    pts[1].x = graph_ms_to_x(cum_a); pts[1].y = 1.0f;                       /* attack peak*/
-    pts[2].x = graph_ms_to_x(cum_d); pts[2].y = (float)env->sustain_pct / 100.0f; /* sustain */
-    pts[3].x = graph_ms_to_x(cum_r); pts[3].y = 0.0f;                       /* release end*/
-    graph_popup_set_points(&s_graph_popup, pts, 4);
+    pts[1].x = adsr_ms_to_x(cum_a); pts[1].y = 1.0f;                       /* attack peak*/
+    pts[2].x = adsr_ms_to_x(cum_d); pts[2].y = (float)env->sustain_pct / 100.0f; /* sustain */
+    pts[3].x = adsr_ms_to_x(cum_r); pts[3].y = 0.0f;                       /* release end*/
+    graph_popup_set_points(&s_adsr_popup, pts, 4);
     /* Derived-decay mode: snap sustain X to the auto-decay rule. No-op in
      * explicit-decay mode, where the stored decay_ms is shown as-is. */
-    graph_recompute_decay();
+    adsr_recompute_decay();
 }
 
 /* Read the bound target's envelope for eg_index (0=EG0, 1=EG1). Returns false
  * only if the melodic target has no valid row (caller seeds defaults). */
-static bool graph_read_target_env_idx(seq_env_t *env, uint8_t eg_index)
+static bool adsr_read_target_env_idx(seq_env_t *env, uint8_t eg_index)
 {
     if (eg_index == 1) {
-        switch (s_graph_target) {
-            case GRAPH_TGT_DRONE:
+        switch (s_ve_target) {
+            case VE_TGT_DRONE:
                 drone_get_envelope2(env);
                 return true;
-            case GRAPH_TGT_DRONE_STD:
+            case VE_TGT_DRONE_STD:
                 drone_std_get_envelope2(env);
                 return true;
-            case GRAPH_TGT_ARP:
+            case VE_TGT_ARP:
                 arp_get_envelope2(env);
                 return true;
-            case GRAPH_TGT_DROP:
+            case VE_TGT_DROP:
                 drop_get_envelope2(drop_get_focus(), env);
                 return true;
 #if CONFIG_SYNTH_WIRELESS
-            case GRAPH_TGT_LIVE:
+            case VE_TGT_LIVE:
                 live_play_get_envelope2(env);
                 return true;
 #endif
-            case GRAPH_TGT_MELODIC:
+            case VE_TGT_MELODIC:
             default:
-                return sequencer_core_get_melodic_envelope2(s_graph_layer,
-                                                            s_graph_track, env);
+                return sequencer_core_get_melodic_envelope2(s_ve_layer,
+                                                            s_ve_track, env);
         }
     }
-    switch (s_graph_target) {
-        case GRAPH_TGT_DRONE:
+    switch (s_ve_target) {
+        case VE_TGT_DRONE:
             drone_get_envelope(env);
             return true;
-        case GRAPH_TGT_DRONE_STD:
+        case VE_TGT_DRONE_STD:
             drone_std_get_envelope(env);
             return true;
-        case GRAPH_TGT_ARP:
+        case VE_TGT_ARP:
             arp_get_envelope(env);
             return true;
-        case GRAPH_TGT_DROP:
+        case VE_TGT_DROP:
             drop_get_envelope(drop_get_focus(), env);
             return true;
 #if CONFIG_SYNTH_WIRELESS
-        case GRAPH_TGT_LIVE:
+        case VE_TGT_LIVE:
             live_play_get_envelope(env);
             return true;
 #endif
-        case GRAPH_TGT_MELODIC:
+        case VE_TGT_MELODIC:
         default:
-            return sequencer_core_get_melodic_envelope(s_graph_layer,
-                                                       s_graph_track, env);
+            return sequencer_core_get_melodic_envelope(s_ve_layer,
+                                                       s_ve_track, env);
     }
 }
 
 /* Write `env` back to the bound target's store for eg_index (0=EG0, 1=EG1). */
-static void graph_write_target_env_idx(const seq_env_t *env, uint8_t eg_index)
+static void adsr_write_target_env_idx(const seq_env_t *env, uint8_t eg_index)
 {
     if (eg_index == 1) {
-        switch (s_graph_target) {
-            case GRAPH_TGT_DRONE:
+        switch (s_ve_target) {
+            case VE_TGT_DRONE:
                 drone_set_envelope2(env);
                 break;
-            case GRAPH_TGT_DRONE_STD:
+            case VE_TGT_DRONE_STD:
                 drone_std_set_envelope2(env);
                 break;
-            case GRAPH_TGT_ARP:
+            case VE_TGT_ARP:
                 arp_set_envelope2(env);
                 break;
-            case GRAPH_TGT_DROP:
+            case VE_TGT_DROP:
                 drop_set_envelope2(drop_get_focus(), env);
                 break;
 #if CONFIG_SYNTH_WIRELESS
-            case GRAPH_TGT_LIVE:
+            case VE_TGT_LIVE:
                 live_play_set_envelope2(env);
                 break;
 #endif
-            case GRAPH_TGT_MELODIC:
+            case VE_TGT_MELODIC:
             default:
-                sequencer_core_set_melodic_envelope2(s_graph_layer, s_graph_track, env);
+                sequencer_core_set_melodic_envelope2(s_ve_layer, s_ve_track, env);
                 break;
         }
         return;
     }
-    switch (s_graph_target) {
-        case GRAPH_TGT_DRONE:
+    switch (s_ve_target) {
+        case VE_TGT_DRONE:
             drone_set_envelope(env);
             break;
-        case GRAPH_TGT_DRONE_STD:
+        case VE_TGT_DRONE_STD:
             drone_std_set_envelope(env);
             break;
-        case GRAPH_TGT_ARP:
+        case VE_TGT_ARP:
             arp_set_envelope(env);
             break;
-        case GRAPH_TGT_DROP:
+        case VE_TGT_DROP:
             drop_set_envelope(drop_get_focus(), env);
             break;
 #if CONFIG_SYNTH_WIRELESS
-        case GRAPH_TGT_LIVE:
+        case VE_TGT_LIVE:
             live_play_set_envelope(env);
             break;
 #endif
-        case GRAPH_TGT_MELODIC:
+        case VE_TGT_MELODIC:
         default:
-            sequencer_core_set_melodic_envelope(s_graph_layer, s_graph_track, env);
+            sequencer_core_set_melodic_envelope(s_ve_layer, s_ve_track, env);
             break;
     }
 }
 
 /* Backward-compatible wrapper: reads whichever eg_index is currently shown. */
-static bool graph_read_target_env(seq_env_t *env)
+static bool adsr_read_target_env(seq_env_t *env)
 {
-    return graph_read_target_env_idx(env, s_graph_eg_index);
+    return adsr_read_target_env_idx(env, s_adsr_eg_index);
 }
 
 /* Open the editor seeded from the active screen's envelope: drone/arp screens
  * edit their own env, otherwise the selected melodic row. The Wireless page is
  * tested before the mode ladder (synth_ui_wireless_page_is_open()). */
-void synth_ui_graph_open_envelope(void)
+void synth_ui_adsr_open_envelope(void)
 {
     graph_popup_ensure_init();
 
 #if CONFIG_SYNTH_WIRELESS
     if (synth_ui_wireless_page_is_open()) {
-        s_graph_target = GRAPH_TGT_LIVE;
+        s_ve_target = VE_TGT_LIVE;
     } else
 #endif
     if (seq_state.ui_mode == UI_MODE_DRONE) {
-        s_graph_target = GRAPH_TGT_DRONE;
+        s_ve_target = VE_TGT_DRONE;
     } else if (seq_state.ui_mode == UI_MODE_DRONE_STD) {
-        s_graph_target = GRAPH_TGT_DRONE_STD;
+        s_ve_target = VE_TGT_DRONE_STD;
     } else if (seq_state.ui_mode == UI_MODE_ARP) {
-        s_graph_target = GRAPH_TGT_ARP;
+        s_ve_target = VE_TGT_ARP;
     } else if (seq_state.ui_mode == UI_MODE_DROP) {
-        s_graph_target = GRAPH_TGT_DROP;
+        s_ve_target = VE_TGT_DROP;
     } else {
-        s_graph_target = GRAPH_TGT_MELODIC;
+        s_ve_target = VE_TGT_MELODIC;
     }
 
     /* Melodic write-back targets a specific row; capture it at open time. */
-    s_graph_layer = seq_state.active_layer_idx;
-    s_graph_track = seq_state.selected_track;
+    s_ve_layer = seq_state.active_layer_idx;
+    s_ve_track = seq_state.selected_track;
     /* Always open on EG0 (amp); MY_BUTTON_3 advances to the EG1 page. */
-    s_graph_eg_index = 0;
+    s_adsr_eg_index = 0;
 
     seq_env_t env;
-    if (!graph_read_target_env(&env)) {
+    if (!adsr_read_target_env(&env)) {
         env = seq_default_melodic_env();
     }
-    s_graph_eg_type_disp = env.eg_type;
-    s_graph_type_flash_until = 0;   /* no stale type flash from a prior session */
+    s_adsr_eg_type_disp = env.eg_type;
+    s_adsr_type_flash_until = 0;   /* no stale type flash from a prior session */
     /* Fresh live-preview session: nothing pushed yet. */
-    s_graph_live_env   = false;
-    s_graph_live_fenv  = false;
+    s_adsr_live_env   = false;
+    s_adsr_live_fenv  = false;
     s_amp_live_applied = false;
     s_amp_live_pending = false;
 
-    /* Set the range BEFORE seeding so graph_ms_to_x() uses the right mapping.
+    /* Set the range BEFORE seeding so adsr_ms_to_x() uses the right mapping.
      * No remap needed: there are no popup points yet. */
     uint32_t total_env_ms = env.attack_ms + env.decay_ms + env.release_ms;
-    s_graph_long_range = (total_env_ms >= GRAPH_RANGE_SHORT_MS);
+    s_adsr_long_range = (total_env_ms >= ADSR_RANGE_SHORT_MS);
 
     /* Seed amp scratch from the target's current trim; reset amp mode and dirty flag. */
-    s_graph_amp_mode  = false;
-    s_graph_eg_tgt    = -1;
-    s_graph_env_dirty = false;
-    switch (s_graph_target) {
-        case GRAPH_TGT_DRONE:
-            s_graph_amp_edit = drone_get_amp_trim();
+    s_adsr_amp_mode  = false;
+    s_adsr_eg_tgt    = -1;
+    s_adsr_env_dirty = false;
+    switch (s_ve_target) {
+        case VE_TGT_DRONE:
+            s_adsr_amp_edit = drone_get_amp_trim();
             break;
-        case GRAPH_TGT_DRONE_STD:
-            s_graph_amp_edit = drone_std_get_amp_trim();
+        case VE_TGT_DRONE_STD:
+            s_adsr_amp_edit = drone_std_get_amp_trim();
             break;
-        case GRAPH_TGT_ARP:
-            s_graph_amp_edit = arp_get_amp_scale();
+        case VE_TGT_ARP:
+            s_adsr_amp_edit = arp_get_amp_scale();
             break;
-        case GRAPH_TGT_DROP:
-            s_graph_amp_edit = drop_get_amp_scale(drop_get_focus());
+        case VE_TGT_DROP:
+            s_adsr_amp_edit = drop_get_amp_scale(drop_get_focus());
             break;
 #if CONFIG_SYNTH_WIRELESS
-        case GRAPH_TGT_LIVE:
-            s_graph_amp_edit = live_play_get_amp_scale();
+        case VE_TGT_LIVE:
+            s_adsr_amp_edit = live_play_get_amp_scale();
             break;
 #endif
         default:
-            /* GRAPH_TGT_MELODIC: no AMP stop (graph_amp_available()). */
-            s_graph_amp_edit = 1.0f;
+            /* VE_TGT_MELODIC: no AMP stop (adsr_amp_available()). */
+            s_adsr_amp_edit = 1.0f;
             break;
     }
-    s_graph_amp_open = s_graph_amp_edit;   /* cancel restores this value */
+    s_adsr_amp_open = s_adsr_amp_edit;   /* cancel restores this value */
 
     /* Swing scratch: layer-scoped, so it seeds from the row's layer regardless
-     * of target - graph_swing_available() decides whether it is reachable. */
-    s_graph_swing_mode   = false;
+     * of target - adsr_swing_available() decides whether it is reachable. */
+    s_adsr_swing_mode   = false;
     s_swing_live_pending = false;
-    s_graph_swing_edit   = sequencer_core_get_layer_swing(s_graph_layer);
-    s_graph_swing_open   = s_graph_swing_edit;
+    s_adsr_swing_edit   = sequencer_core_get_layer_swing(s_ve_layer);
+    s_adsr_swing_open   = s_adsr_swing_edit;
 
-    graph_seed_from_env(&env);
+    adsr_seed_from_env(&env);
 
     /* Seed the routing-depth scratch: the whole matrix on every row that
      * carries one (melodic and drum rows, the arp, the live voice, the
      * drones). */
-    s_graph_eg_dirty = false;
-    memset(s_graph_eg_edit, 0, sizeof(s_graph_eg_edit));
-    if (s_graph_target == GRAPH_TGT_MELODIC) {
+    s_adsr_eg_dirty = false;
+    memset(s_adsr_eg_edit, 0, sizeof(s_adsr_eg_edit));
+    if (s_ve_target == VE_TGT_MELODIC) {
         seq_filter_t f;
-        if (sequencer_core_get_melodic_filter(s_graph_layer, s_graph_track, &f)) {
-            memcpy(s_graph_eg_edit, f.eg_depth, sizeof(s_graph_eg_edit));
+        if (sequencer_core_get_melodic_filter(s_ve_layer, s_ve_track, &f)) {
+            memcpy(s_adsr_eg_edit, f.eg_depth, sizeof(s_adsr_eg_edit));
         }
-    } else if (s_graph_target == GRAPH_TGT_ARP) {
+    } else if (s_ve_target == VE_TGT_ARP) {
         seq_filter_t f;
         arp_get_filter(&f);
-        memcpy(s_graph_eg_edit, f.eg_depth, sizeof(s_graph_eg_edit));
-    } else if (s_graph_target == GRAPH_TGT_DROP) {
+        memcpy(s_adsr_eg_edit, f.eg_depth, sizeof(s_adsr_eg_edit));
+    } else if (s_ve_target == VE_TGT_DROP) {
         seq_filter_t f;
         drop_get_filter(drop_get_focus(), &f);
-        memcpy(s_graph_eg_edit, f.eg_depth, sizeof(s_graph_eg_edit));
-    } else if (s_graph_target == GRAPH_TGT_DRONE) {
+        memcpy(s_adsr_eg_edit, f.eg_depth, sizeof(s_adsr_eg_edit));
+    } else if (s_ve_target == VE_TGT_DRONE) {
         seq_filter_t f;
         drone_get_filter(&f);
-        memcpy(s_graph_eg_edit, f.eg_depth, sizeof(s_graph_eg_edit));
-    } else if (s_graph_target == GRAPH_TGT_DRONE_STD) {
+        memcpy(s_adsr_eg_edit, f.eg_depth, sizeof(s_adsr_eg_edit));
+    } else if (s_ve_target == VE_TGT_DRONE_STD) {
         seq_filter_t f;
         drone_std_get_filter(&f);
-        memcpy(s_graph_eg_edit, f.eg_depth, sizeof(s_graph_eg_edit));
+        memcpy(s_adsr_eg_edit, f.eg_depth, sizeof(s_adsr_eg_edit));
 #if CONFIG_SYNTH_WIRELESS
-    } else if (s_graph_target == GRAPH_TGT_LIVE) {
+    } else if (s_ve_target == VE_TGT_LIVE) {
         seq_filter_t f;
         live_play_get_filter(&f);
-        memcpy(s_graph_eg_edit, f.eg_depth, sizeof(s_graph_eg_edit));
+        memcpy(s_adsr_eg_edit, f.eg_depth, sizeof(s_adsr_eg_edit));
 #endif
     }
 
-    graph_update_ticks();
-    graph_popup_open(&s_graph_popup, GPOPUP_MODE_EDIT, NULL);
-    graph_popup_set_style(&s_graph_popup, GPOPUP_STYLE_ADSR);
+    adsr_update_ticks();
+    graph_popup_open(&s_adsr_popup, GPOPUP_MODE_EDIT, NULL);
+    graph_popup_set_style(&s_adsr_popup, GPOPUP_STYLE_ADSR);
     s_force_redraw = true;
     ESP_LOGI(TAG, "graph editor open: target=%d L%u T%u range=%s amp=%.2f",
-             (int)s_graph_target, s_graph_layer + 1u, s_graph_track + 1u,
-             s_graph_long_range ? "LONG" : "SHORT", (double)s_graph_amp_edit);
+             (int)s_ve_target, s_ve_layer + 1u, s_ve_track + 1u,
+             s_adsr_long_range ? "LONG" : "SHORT", (double)s_adsr_amp_edit);
 }
 
 /* Convert the current popup points into `env`'s ADSR fields plus the shown
  * curve type. `env` must be pre-seeded from the target so non-ADSR fields carry
  * through. Returns false when the popup has no full ADSR point set. */
-static bool graph_points_to_env(seq_env_t *env)
+static bool adsr_points_to_env(seq_env_t *env)
 {
     gpopup_point_t pts[GPOPUP_MAX_POINTS];
-    uint8_t n = graph_popup_get_points(&s_graph_popup, pts, GPOPUP_MAX_POINTS);
+    uint8_t n = graph_popup_get_points(&s_adsr_popup, pts, GPOPUP_MAX_POINTS);
     if (n < 4) return false;   /* expect origin + A + D + R */
 
-    uint32_t cum_a = graph_x_to_ms(pts[1].x);
-    uint32_t cum_d = graph_x_to_ms(pts[2].x);
-    uint32_t cum_r = graph_x_to_ms(pts[3].x);
+    uint32_t cum_a = adsr_x_to_ms(pts[1].x);
+    uint32_t cum_d = adsr_x_to_ms(pts[2].x);
+    uint32_t cum_r = adsr_x_to_ms(pts[3].x);
 
     /* Convert cumulative times back to per-segment durations (clamp monotonic). */
     uint32_t a = SEQ_CLAMP_U32(cum_a, VOICE_ENV_ATTACK_MIN_MS, VOICE_ENV_TIME_MAX_MS);
@@ -657,18 +657,18 @@ static bool graph_points_to_env(seq_env_t *env)
     env->decay_ms    = (cum_d > cum_a) ? (cum_d - cum_a) : 0;
     env->release_ms  = (cum_r > cum_d) ? (cum_r - cum_d) : 0;
     env->sustain_pct = (uint8_t)(pts[2].y * 100.0f + 0.5f);
-    env->eg_type     = s_graph_eg_type_disp;
+    env->eg_type     = s_adsr_eg_type_disp;
     return true;
 }
 
-/* Write the popup points to eg_index's store. graph_toggle_eg_index() uses this
+/* Write the popup points to eg_index's store. adsr_toggle_eg_index() uses this
  * on the DEPARTING index before switching the view. */
-static void graph_write_points_to_env(uint8_t eg_index)
+static void adsr_write_points_to_env(uint8_t eg_index)
 {
     seq_env_t env;
-    if (!graph_read_target_env_idx(&env, eg_index)) return;
-    if (!graph_points_to_env(&env)) return;
-    graph_write_target_env_idx(&env, eg_index);
+    if (!adsr_read_target_env_idx(&env, eg_index)) return;
+    if (!adsr_points_to_env(&env)) return;
+    adsr_write_target_env_idx(&env, eg_index);
 }
 
 /* ── Live preview while editing ──────────────────────────────────────────────
@@ -677,143 +677,143 @@ static void graph_write_points_to_env(uint8_t eg_index)
  * Amp trim is the exception: it lives in the note-emit path, so its live apply
  * goes through the real setter (throttled, since an arp apply re-emits its
  * sequence) and cancel restores the open-time value. */
-#define GRAPH_AMP_LIVE_MS 200u               /* min spacing of amp re-emits   */
+#define ADSR_AMP_LIVE_MS 200u               /* min spacing of amp re-emits   */
 
-static void graph_live_push_env(void)
+static void adsr_live_push_env(void)
 {
     seq_env_t env;
-    if (!graph_read_target_env_idx(&env, s_graph_eg_index)) return;
-    if (!graph_points_to_env(&env)) return;
-    switch (s_graph_target) {
-        case GRAPH_TGT_DRONE:
-            if (s_graph_eg_index == 1) drone_preview_envelope2(&env);
+    if (!adsr_read_target_env_idx(&env, s_adsr_eg_index)) return;
+    if (!adsr_points_to_env(&env)) return;
+    switch (s_ve_target) {
+        case VE_TGT_DRONE:
+            if (s_adsr_eg_index == 1) drone_preview_envelope2(&env);
             else                       drone_preview_envelope(&env);
             break;
-        case GRAPH_TGT_DRONE_STD:
-            if (s_graph_eg_index == 1) drone_std_preview_envelope2(&env);
+        case VE_TGT_DRONE_STD:
+            if (s_adsr_eg_index == 1) drone_std_preview_envelope2(&env);
             else                       drone_std_preview_envelope(&env);
             break;
-        case GRAPH_TGT_ARP:
-            if (s_graph_eg_index == 1) arp_preview_envelope2(&env);
+        case VE_TGT_ARP:
+            if (s_adsr_eg_index == 1) arp_preview_envelope2(&env);
             else                       arp_preview_envelope(&env);
             break;
-        case GRAPH_TGT_DROP:
-            if (s_graph_eg_index == 1) drop_preview_envelope2(drop_get_focus(), &env);
+        case VE_TGT_DROP:
+            if (s_adsr_eg_index == 1) drop_preview_envelope2(drop_get_focus(), &env);
             else                       drop_preview_envelope(drop_get_focus(), &env);
             break;
 #if CONFIG_SYNTH_WIRELESS
-        case GRAPH_TGT_LIVE:
-            if (s_graph_eg_index == 1) live_play_preview_envelope2(&env);
+        case VE_TGT_LIVE:
+            if (s_adsr_eg_index == 1) live_play_preview_envelope2(&env);
             else                       live_play_preview_envelope(&env);
             break;
 #endif
-        case GRAPH_TGT_MELODIC:
+        case VE_TGT_MELODIC:
         default: {
             uint8_t peers[SEQ_TRACKS];
-            uint8_t n = sequencer_core_melodic_vp_peers(s_graph_layer, s_graph_track, peers);
+            uint8_t n = sequencer_core_melodic_vp_peers(s_ve_layer, s_ve_track, peers);
             for (uint8_t i = 0; i < n; ++i) {
-                if (s_graph_eg_index == 1)
-                    sequencer_core_preview_melodic_envelope2(s_graph_layer, peers[i], &env);
+                if (s_adsr_eg_index == 1)
+                    sequencer_core_preview_melodic_envelope2(s_ve_layer, peers[i], &env);
                 else
-                    sequencer_core_preview_melodic_envelope(s_graph_layer, peers[i], &env);
+                    sequencer_core_preview_melodic_envelope(s_ve_layer, peers[i], &env);
             }
             break;
         }
     }
-    s_graph_live_env = true;
+    s_adsr_live_env = true;
 }
 
 /* Envelope routing depths: stored filter + the scratch matrix, previewed per
  * row. A melodic row pushes the whole matrix - every slot is seeded from the
  * row, so an untouched one re-sends the stored value. */
-static void graph_live_push_eg_depths(void)
+static void adsr_live_push_eg_depths(void)
 {
-    if (s_graph_target == GRAPH_TGT_ARP) {
+    if (s_ve_target == VE_TGT_ARP) {
         seq_filter_t f;
         arp_get_filter(&f);
-        memcpy(f.eg_depth, s_graph_eg_edit, sizeof(f.eg_depth));
+        memcpy(f.eg_depth, s_adsr_eg_edit, sizeof(f.eg_depth));
         arp_preview_filter(&f);
-        s_graph_live_fenv = true;
+        s_adsr_live_fenv = true;
         return;
     }
-    if (s_graph_target == GRAPH_TGT_DROP) {
+    if (s_ve_target == VE_TGT_DROP) {
         seq_filter_t f;
         drop_get_filter(drop_get_focus(), &f);
-        memcpy(f.eg_depth, s_graph_eg_edit, sizeof(f.eg_depth));
+        memcpy(f.eg_depth, s_adsr_eg_edit, sizeof(f.eg_depth));
         drop_preview_filter(drop_get_focus(), &f);
-        s_graph_live_fenv = true;
+        s_adsr_live_fenv = true;
         return;
     }
-    if (s_graph_target == GRAPH_TGT_DRONE) {
+    if (s_ve_target == VE_TGT_DRONE) {
         seq_filter_t f;
         drone_get_filter(&f);
-        memcpy(f.eg_depth, s_graph_eg_edit, sizeof(f.eg_depth));
+        memcpy(f.eg_depth, s_adsr_eg_edit, sizeof(f.eg_depth));
         drone_preview_filter(&f);
-        s_graph_live_fenv = true;
+        s_adsr_live_fenv = true;
         return;
     }
-    if (s_graph_target == GRAPH_TGT_DRONE_STD) {
+    if (s_ve_target == VE_TGT_DRONE_STD) {
         seq_filter_t f;
         drone_std_get_filter(&f);
-        memcpy(f.eg_depth, s_graph_eg_edit, sizeof(f.eg_depth));
+        memcpy(f.eg_depth, s_adsr_eg_edit, sizeof(f.eg_depth));
         drone_std_preview_filter(&f);
-        s_graph_live_fenv = true;
+        s_adsr_live_fenv = true;
         return;
     }
 #if CONFIG_SYNTH_WIRELESS
-    if (s_graph_target == GRAPH_TGT_LIVE) {
+    if (s_ve_target == VE_TGT_LIVE) {
         seq_filter_t f;
         live_play_get_filter(&f);
-        memcpy(f.eg_depth, s_graph_eg_edit, sizeof(f.eg_depth));
+        memcpy(f.eg_depth, s_adsr_eg_edit, sizeof(f.eg_depth));
         live_play_preview_filter(&f);
-        s_graph_live_fenv = true;
+        s_adsr_live_fenv = true;
         return;
     }
 #endif
-    if (s_graph_target != GRAPH_TGT_MELODIC) return;
+    if (s_ve_target != VE_TGT_MELODIC) return;
     uint8_t peers[SEQ_TRACKS];
-    uint8_t n = sequencer_core_melodic_vp_peers(s_graph_layer, s_graph_track, peers);
+    uint8_t n = sequencer_core_melodic_vp_peers(s_ve_layer, s_ve_track, peers);
     for (uint8_t i = 0; i < n; ++i) {
         seq_filter_t f;
-        if (!sequencer_core_get_melodic_filter(s_graph_layer, peers[i], &f)) continue;
-        memcpy(f.eg_depth, s_graph_eg_edit, sizeof(f.eg_depth));
-        sequencer_core_preview_melodic_filter(s_graph_layer, peers[i], &f);
+        if (!sequencer_core_get_melodic_filter(s_ve_layer, peers[i], &f)) continue;
+        memcpy(f.eg_depth, s_adsr_eg_edit, sizeof(f.eg_depth));
+        sequencer_core_preview_melodic_filter(s_ve_layer, peers[i], &f);
     }
-    s_graph_live_fenv = true;
+    s_adsr_live_fenv = true;
 }
 
-static void graph_amp_live_set(float v)
+static void adsr_amp_live_set(float v)
 {
-    switch (s_graph_target) {
-        case GRAPH_TGT_DRONE:     drone_set_amp_trim(v);     break;
-        case GRAPH_TGT_DRONE_STD: drone_std_set_amp_trim(v); break;
-        case GRAPH_TGT_ARP:       arp_set_amp_scale(v);      break;
-        case GRAPH_TGT_DROP:      drop_set_amp_scale(drop_get_focus(), v); break;
+    switch (s_ve_target) {
+        case VE_TGT_DRONE:     drone_set_amp_trim(v);     break;
+        case VE_TGT_DRONE_STD: drone_std_set_amp_trim(v); break;
+        case VE_TGT_ARP:       arp_set_amp_scale(v);      break;
+        case VE_TGT_DROP:      drop_set_amp_scale(drop_get_focus(), v); break;
 #if CONFIG_SYNTH_WIRELESS
-        case GRAPH_TGT_LIVE:      live_play_set_amp_scale(v); break;
+        case VE_TGT_LIVE:      live_play_set_amp_scale(v); break;
 #endif
-        default:                  break;   /* GRAPH_TGT_MELODIC: no AMP stop */
+        default:                  break;   /* VE_TGT_MELODIC: no AMP stop */
     }
 }
 
 /* Apply a pending amp edit once the throttle window passes. Called per detent
  * (leading edge) and from the UI tick (trailing flush), so the final value
- * always lands within ~GRAPH_AMP_LIVE_MS of the last detent. */
-static void graph_amp_live_flush(bool force)
+ * always lands within ~ADSR_AMP_LIVE_MS of the last detent. */
+static void adsr_amp_live_flush(bool force)
 {
     if (!s_amp_live_pending) return;
-    if (!graph_popup_is_active(&s_graph_popup)) {
+    if (!graph_popup_is_active(&s_adsr_popup)) {
         s_amp_live_pending = false;
         return;
     }
     if (!force && (int32_t)(xTaskGetTickCount() - s_amp_live_last_apply)
-                      < (int32_t)pdMS_TO_TICKS(GRAPH_AMP_LIVE_MS)) {
+                      < (int32_t)pdMS_TO_TICKS(ADSR_AMP_LIVE_MS)) {
         return;
     }
     s_amp_live_last_apply = xTaskGetTickCount();
     s_amp_live_pending = false;
     s_amp_live_applied = true;
-    graph_amp_live_set(s_graph_amp_edit);
+    adsr_amp_live_set(s_adsr_amp_edit);
 }
 
 /* Does MY_BUTTON_2's cycle offer the swing stop here? Swing is a property of the
@@ -821,68 +821,68 @@ static void graph_amp_live_flush(bool force)
  * from a row on its own block the control would reach past what the badge says
  * the editor is touching. EG1 is the filter page and keeps the sweep depth in
  * the right slot. */
-static bool graph_swing_available(void)
+static bool adsr_swing_available(void)
 {
-    return s_graph_target == GRAPH_TGT_MELODIC && s_graph_eg_index == 0 &&
-           editor_src_is_layer(s_graph_layer, s_graph_track);
+    return s_ve_target == VE_TGT_MELODIC && s_adsr_eg_index == 0 &&
+           editor_src_is_layer(s_ve_layer, s_ve_track);
 }
 
 /* Does MY_BUTTON_2's cycle offer the AMP stop here? Not on sequencer rows
- * (melodic and drum open as GRAPH_TGT_MELODIC) or the arp: their trim is the
+ * (melodic and drum open as VE_TGT_MELODIC) or the arp: their trim is the
  * Level row of the Layer menu's layer or ARP entry. The live voice and drones
  * keep it. */
-static bool graph_amp_available(void)
+static bool adsr_amp_available(void)
 {
-    return s_graph_target != GRAPH_TGT_MELODIC && s_graph_target != GRAPH_TGT_ARP &&
-           s_graph_target != GRAPH_TGT_DROP;
+    return s_ve_target != VE_TGT_MELODIC && s_ve_target != VE_TGT_ARP &&
+           s_ve_target != VE_TGT_DROP;
 }
 
 /* Rows carrying the envelope routing matrix: melodic and drum layer rows, the
  * arp, the live voice and both drones - every target.
  * Page-independent - both envelope pages carry the per-target stops. */
-static bool graph_eg_targets_available(void)
+static bool adsr_eg_targets_available(void)
 {
 #if CONFIG_SYNTH_WIRELESS
-    if (s_graph_target == GRAPH_TGT_LIVE) return true;
+    if (s_ve_target == VE_TGT_LIVE) return true;
 #endif
-    return s_graph_target == GRAPH_TGT_MELODIC || s_graph_target == GRAPH_TGT_ARP ||
-           s_graph_target == GRAPH_TGT_DROP ||
-           s_graph_target == GRAPH_TGT_DRONE || s_graph_target == GRAPH_TGT_DRONE_STD;
+    return s_ve_target == VE_TGT_MELODIC || s_ve_target == VE_TGT_ARP ||
+           s_ve_target == VE_TGT_DROP ||
+           s_ve_target == VE_TGT_DRONE || s_ve_target == VE_TGT_DRONE_STD;
 }
 
 /* The SCAN stop exists only where the bound target plays a wavetable patch;
  * elsewhere the push paths never send it. */
-static bool graph_eg_scan_available(void)
+static bool adsr_eg_scan_available(void)
 {
     uint16_t patch;
 #if CONFIG_SYNTH_WIRELESS
-    if (s_graph_target == GRAPH_TGT_LIVE) patch = live_play_get_patch();
+    if (s_ve_target == VE_TGT_LIVE) patch = live_play_get_patch();
     else
 #endif
-    if (s_graph_target == GRAPH_TGT_ARP) patch = arp_get_patch();
-    else if (s_graph_target == GRAPH_TGT_DROP) patch = drop_get_patch(drop_get_focus());
-    else if (s_graph_target == GRAPH_TGT_DRONE) patch = drone_get_patch();
-    else if (s_graph_target == GRAPH_TGT_DRONE_STD) patch = drone_std_get_patch();
-    else if (s_graph_target == GRAPH_TGT_MELODIC)
-        patch = sequencer_core_get_melodic_track_patch(s_graph_layer, s_graph_track);
+    if (s_ve_target == VE_TGT_ARP) patch = arp_get_patch();
+    else if (s_ve_target == VE_TGT_DROP) patch = drop_get_patch(drop_get_focus());
+    else if (s_ve_target == VE_TGT_DRONE) patch = drone_get_patch();
+    else if (s_ve_target == VE_TGT_DRONE_STD) patch = drone_std_get_patch();
+    else if (s_ve_target == VE_TGT_MELODIC)
+        patch = sequencer_core_get_melodic_track_patch(s_ve_layer, s_ve_track);
     else return false;
     return sequencer_core_is_wavetable_patch(patch);
 }
 
 /* The target stop after `t`, or -1 past the last offered one. */
-static int8_t graph_eg_next_tgt(int8_t t)
+static int8_t adsr_eg_next_tgt(int8_t t)
 {
     int next = t + 1;
-    if (next == SEQ_EGT_SCAN && !graph_eg_scan_available()) next = SEQ_EGT_COUNT;
+    if (next == SEQ_EGT_SCAN && !adsr_eg_scan_available()) next = SEQ_EGT_COUNT;
     return (next < (int)SEQ_EGT_COUNT) ? (int8_t)next : (int8_t)-1;
 }
 
 /* A SCAN stop left up on a patch that no longer offers it falls back to PITCH.
  * Returns true when it did. */
-static bool graph_eg_tgt_fallback(void)
+static bool adsr_eg_tgt_fallback(void)
 {
-    if (s_graph_eg_tgt != SEQ_EGT_SCAN || graph_eg_scan_available()) return false;
-    s_graph_eg_tgt = SEQ_EGT_PITCH;
+    if (s_adsr_eg_tgt != SEQ_EGT_SCAN || adsr_eg_scan_available()) return false;
+    s_adsr_eg_tgt = SEQ_EGT_PITCH;
     s_force_redraw = true;
     return true;
 }
@@ -890,271 +890,271 @@ static bool graph_eg_tgt_fallback(void)
 /* Same leading-edge/trailing-flush shape as the amp trim, and for the same
  * reason: sequencer_core_set_layer_swing() re-emits every step of the layer, so
  * an un-throttled encoder spin would flood the ingest pump with re-emits. */
-static void graph_swing_live_flush(bool force)
+static void adsr_swing_live_flush(bool force)
 {
     if (!s_swing_live_pending) return;
-    if (!graph_popup_is_active(&s_graph_popup)) {
+    if (!graph_popup_is_active(&s_adsr_popup)) {
         s_swing_live_pending = false;
         return;
     }
     if (!force && (int32_t)(xTaskGetTickCount() - s_swing_live_last_apply)
-                      < (int32_t)pdMS_TO_TICKS(GRAPH_AMP_LIVE_MS)) {
+                      < (int32_t)pdMS_TO_TICKS(ADSR_AMP_LIVE_MS)) {
         return;
     }
     s_swing_live_last_apply = xTaskGetTickCount();
     s_swing_live_pending = false;
-    sequencer_core_set_layer_swing(s_graph_layer, s_graph_swing_edit);
+    sequencer_core_set_layer_swing(s_ve_layer, s_adsr_swing_edit);
 }
 
 /* Undo every live push on cancel: amp back to its open value, previewed
  * envelope/depth back to the store - or a full layer reload when a touched
  * melodic row was never authored (only the patch knows its state). */
-static void graph_live_cancel_restore(void)
+static void adsr_live_cancel_restore(void)
 {
     s_amp_live_pending = false;
     if (s_amp_live_applied) {
-        graph_amp_live_set(s_graph_amp_open);
+        adsr_amp_live_set(s_adsr_amp_open);
         s_amp_live_applied = false;
     }
     /* Swing has no scratch store to re-push: the setter IS the model, so the
      * open-time value going back through it is the whole restore. */
     s_swing_live_pending = false;
-    if (s_graph_swing_edit != s_graph_swing_open) {
-        s_graph_swing_edit = s_graph_swing_open;
-        sequencer_core_set_layer_swing(s_graph_layer, s_graph_swing_open);
+    if (s_adsr_swing_edit != s_adsr_swing_open) {
+        s_adsr_swing_edit = s_adsr_swing_open;
+        sequencer_core_set_layer_swing(s_ve_layer, s_adsr_swing_open);
     }
-    if (!s_graph_live_env && !s_graph_live_fenv) return;
+    if (!s_adsr_live_env && !s_adsr_live_fenv) return;
 
-    if (s_graph_target == GRAPH_TGT_MELODIC) {
+    if (s_ve_target == VE_TGT_MELODIC) {
         /* Every peer shares the block, so its authority is one answer. */
         bool need_reload =
-            (s_graph_live_env &&
-             !sequencer_core_melodic_env_authored(s_graph_layer, s_graph_track,
-                                                  s_graph_eg_index)) ||
-            (s_graph_live_fenv &&
-             !sequencer_core_melodic_filter_authored(s_graph_layer, s_graph_track));
+            (s_adsr_live_env &&
+             !sequencer_core_melodic_env_authored(s_ve_layer, s_ve_track,
+                                                  s_adsr_eg_index)) ||
+            (s_adsr_live_fenv &&
+             !sequencer_core_melodic_filter_authored(s_ve_layer, s_ve_track));
         if (need_reload) {
-            sequencer_core_reload_layer_synth(s_graph_layer);
+            sequencer_core_reload_layer_synth(s_ve_layer);
         } else {
             uint8_t peers[SEQ_TRACKS];
-            uint8_t n = sequencer_core_melodic_vp_peers(s_graph_layer, s_graph_track, peers);
+            uint8_t n = sequencer_core_melodic_vp_peers(s_ve_layer, s_ve_track, peers);
             seq_env_t env;
-            if (s_graph_live_env && graph_read_target_env_idx(&env, s_graph_eg_index)) {
+            if (s_adsr_live_env && adsr_read_target_env_idx(&env, s_adsr_eg_index)) {
                 for (uint8_t i = 0; i < n; ++i) {
-                    if (s_graph_eg_index == 1)
-                        sequencer_core_preview_melodic_envelope2(s_graph_layer, peers[i], &env);
+                    if (s_adsr_eg_index == 1)
+                        sequencer_core_preview_melodic_envelope2(s_ve_layer, peers[i], &env);
                     else
-                        sequencer_core_preview_melodic_envelope(s_graph_layer, peers[i], &env);
+                        sequencer_core_preview_melodic_envelope(s_ve_layer, peers[i], &env);
                 }
             }
-            if (s_graph_live_fenv) {
+            if (s_adsr_live_fenv) {
                 for (uint8_t i = 0; i < n; ++i) {
                     seq_filter_t f;
-                    if (sequencer_core_get_melodic_filter(s_graph_layer, peers[i], &f))
-                        sequencer_core_preview_melodic_filter(s_graph_layer, peers[i], &f);
+                    if (sequencer_core_get_melodic_filter(s_ve_layer, peers[i], &f))
+                        sequencer_core_preview_melodic_filter(s_ve_layer, peers[i], &f);
                 }
             }
         }
     } else {
-        if (s_graph_live_fenv && s_graph_target == GRAPH_TGT_ARP) {
+        if (s_adsr_live_fenv && s_ve_target == VE_TGT_ARP) {
             /* Re-push the stored filter so the previewed sweep depth reverts. */
             seq_filter_t f;
             arp_get_filter(&f);
             arp_preview_filter(&f);
         }
-        if (s_graph_live_fenv && s_graph_target == GRAPH_TGT_DROP) {
+        if (s_adsr_live_fenv && s_ve_target == VE_TGT_DROP) {
             seq_filter_t f;
             drop_get_filter(drop_get_focus(), &f);
             drop_preview_filter(drop_get_focus(), &f);
         }
-        if (s_graph_live_fenv && s_graph_target == GRAPH_TGT_DRONE) {
+        if (s_adsr_live_fenv && s_ve_target == VE_TGT_DRONE) {
             seq_filter_t f;
             drone_get_filter(&f);
             drone_preview_filter(&f);
         }
-        if (s_graph_live_fenv && s_graph_target == GRAPH_TGT_DRONE_STD) {
+        if (s_adsr_live_fenv && s_ve_target == VE_TGT_DRONE_STD) {
             seq_filter_t f;
             drone_std_get_filter(&f);
             drone_std_preview_filter(&f);
         }
 #if CONFIG_SYNTH_WIRELESS
-        if (s_graph_live_fenv && s_graph_target == GRAPH_TGT_LIVE) {
+        if (s_adsr_live_fenv && s_ve_target == VE_TGT_LIVE) {
             seq_filter_t f;
             live_play_get_filter(&f);
             live_play_preview_filter(&f);
         }
 #endif
         seq_env_t env;
-        if (s_graph_live_env && graph_read_target_env_idx(&env, s_graph_eg_index)) {
-            if (s_graph_target == GRAPH_TGT_ARP) {
-                if (s_graph_eg_index == 1) arp_preview_envelope2(&env);
+        if (s_adsr_live_env && adsr_read_target_env_idx(&env, s_adsr_eg_index)) {
+            if (s_ve_target == VE_TGT_ARP) {
+                if (s_adsr_eg_index == 1) arp_preview_envelope2(&env);
                 else                       arp_preview_envelope(&env);
-            } else if (s_graph_target == GRAPH_TGT_DROP) {
-                if (s_graph_eg_index == 1) drop_preview_envelope2(drop_get_focus(), &env);
+            } else if (s_ve_target == VE_TGT_DROP) {
+                if (s_adsr_eg_index == 1) drop_preview_envelope2(drop_get_focus(), &env);
                 else                       drop_preview_envelope(drop_get_focus(), &env);
 #if CONFIG_SYNTH_WIRELESS
-            } else if (s_graph_target == GRAPH_TGT_LIVE) {
-                if (s_graph_eg_index == 1) live_play_preview_envelope2(&env);
+            } else if (s_ve_target == VE_TGT_LIVE) {
+                if (s_adsr_eg_index == 1) live_play_preview_envelope2(&env);
                 else                       live_play_preview_envelope(&env);
 #endif
-            } else if (s_graph_target == GRAPH_TGT_DRONE_STD) {
-                if (s_graph_eg_index == 1) drone_std_preview_envelope2(&env);
+            } else if (s_ve_target == VE_TGT_DRONE_STD) {
+                if (s_adsr_eg_index == 1) drone_std_preview_envelope2(&env);
                 else                       drone_std_preview_envelope(&env);
             } else {
-                if (s_graph_eg_index == 1) drone_preview_envelope2(&env);
+                if (s_adsr_eg_index == 1) drone_preview_envelope2(&env);
                 else                       drone_preview_envelope(&env);
             }
         }
     }
-    s_graph_live_env  = false;
-    s_graph_live_fenv = false;
+    s_adsr_live_env  = false;
+    s_adsr_live_fenv = false;
     /* Drop the preview slot the fenv restore may have re-armed. */
     sequencer_core_preview_melodic_clear();
 }
 
 /* Convert the edited points back to ms and push them to the bound target. */
-static void graph_commit_to_env(void)
+static void adsr_commit_to_env(void)
 {
     /* A volume-only edit must not overwrite the stored envelope. */
-    if (s_graph_env_dirty) {
-        graph_write_points_to_env(s_graph_eg_index);
+    if (s_adsr_env_dirty) {
+        adsr_write_points_to_env(s_adsr_eg_index);
     }
 
     /* Commit the amp trim: setters no-op when unchanged, so this is safe
      * unconditionally. */
-    switch (s_graph_target) {
-        case GRAPH_TGT_DRONE:
-            drone_set_amp_trim(s_graph_amp_edit);
+    switch (s_ve_target) {
+        case VE_TGT_DRONE:
+            drone_set_amp_trim(s_adsr_amp_edit);
             break;
-        case GRAPH_TGT_DRONE_STD:
-            drone_std_set_amp_trim(s_graph_amp_edit);
+        case VE_TGT_DRONE_STD:
+            drone_std_set_amp_trim(s_adsr_amp_edit);
             break;
-        case GRAPH_TGT_ARP:
-            arp_set_amp_scale(s_graph_amp_edit);
+        case VE_TGT_ARP:
+            arp_set_amp_scale(s_adsr_amp_edit);
             break;
-        case GRAPH_TGT_DROP:
-            drop_set_amp_scale(drop_get_focus(), s_graph_amp_edit);
+        case VE_TGT_DROP:
+            drop_set_amp_scale(drop_get_focus(), s_adsr_amp_edit);
             break;
 #if CONFIG_SYNTH_WIRELESS
-        case GRAPH_TGT_LIVE:
-            live_play_set_amp_scale(s_graph_amp_edit);
+        case VE_TGT_LIVE:
+            live_play_set_amp_scale(s_adsr_amp_edit);
             break;
 #endif
         default:
-            break;   /* GRAPH_TGT_MELODIC: no AMP stop, nothing to commit */
+            break;   /* VE_TGT_MELODIC: no AMP stop, nothing to commit */
     }
-    s_graph_amp_mode = false;   /* clear mode so topbar reverts on next open */
-    s_graph_eg_tgt   = -1;
+    s_adsr_amp_mode = false;   /* clear mode so topbar reverts on next open */
+    s_adsr_eg_tgt   = -1;
 
     /* Swing rides on the layer, not the target's voice block: flush the last
      * throttled detent (the setter no-ops when unchanged) and drop the mode. */
-    if (s_graph_target == GRAPH_TGT_MELODIC) {
-        graph_swing_live_flush(true);
+    if (s_ve_target == VE_TGT_MELODIC) {
+        adsr_swing_live_flush(true);
     }
-    s_graph_swing_mode = false;
+    s_adsr_swing_mode = false;
 
     /* Commit the routing depths only if edited. Read-modify-write through the
      * public filter API so the coef pushes, the EG1 breakpoints, the per-target
      * clamps and filter_authored all stay in the engine. Honors the
      * layer/track scope. */
-    if (s_graph_eg_dirty && s_graph_target == GRAPH_TGT_ARP) {
+    if (s_adsr_eg_dirty && s_ve_target == VE_TGT_ARP) {
         seq_filter_t f;
         arp_get_filter(&f);
-        memcpy(f.eg_depth, s_graph_eg_edit, sizeof(f.eg_depth));
+        memcpy(f.eg_depth, s_adsr_eg_edit, sizeof(f.eg_depth));
         arp_set_filter(&f);
-        s_graph_eg_dirty = false;
+        s_adsr_eg_dirty = false;
     }
-    if (s_graph_eg_dirty && s_graph_target == GRAPH_TGT_DROP) {
+    if (s_adsr_eg_dirty && s_ve_target == VE_TGT_DROP) {
         seq_filter_t f;
         drop_get_filter(drop_get_focus(), &f);
-        memcpy(f.eg_depth, s_graph_eg_edit, sizeof(f.eg_depth));
+        memcpy(f.eg_depth, s_adsr_eg_edit, sizeof(f.eg_depth));
         drop_set_filter(drop_get_focus(), &f);
-        s_graph_eg_dirty = false;
+        s_adsr_eg_dirty = false;
     }
-    if (s_graph_eg_dirty && s_graph_target == GRAPH_TGT_DRONE) {
+    if (s_adsr_eg_dirty && s_ve_target == VE_TGT_DRONE) {
         seq_filter_t f;
         drone_get_filter(&f);
-        memcpy(f.eg_depth, s_graph_eg_edit, sizeof(f.eg_depth));
+        memcpy(f.eg_depth, s_adsr_eg_edit, sizeof(f.eg_depth));
         drone_set_filter(&f);
-        s_graph_eg_dirty = false;
+        s_adsr_eg_dirty = false;
     }
-    if (s_graph_eg_dirty && s_graph_target == GRAPH_TGT_DRONE_STD) {
+    if (s_adsr_eg_dirty && s_ve_target == VE_TGT_DRONE_STD) {
         seq_filter_t f;
         drone_std_get_filter(&f);
-        memcpy(f.eg_depth, s_graph_eg_edit, sizeof(f.eg_depth));
+        memcpy(f.eg_depth, s_adsr_eg_edit, sizeof(f.eg_depth));
         drone_std_set_filter(&f);
-        s_graph_eg_dirty = false;
+        s_adsr_eg_dirty = false;
     }
 #if CONFIG_SYNTH_WIRELESS
-    if (s_graph_eg_dirty && s_graph_target == GRAPH_TGT_LIVE) {
+    if (s_adsr_eg_dirty && s_ve_target == VE_TGT_LIVE) {
         seq_filter_t f;
         live_play_get_filter(&f);
-        memcpy(f.eg_depth, s_graph_eg_edit, sizeof(f.eg_depth));
+        memcpy(f.eg_depth, s_adsr_eg_edit, sizeof(f.eg_depth));
         live_play_set_filter(&f);
-        s_graph_eg_dirty = false;
+        s_adsr_eg_dirty = false;
     }
 #endif
-    if (s_graph_eg_dirty && s_graph_target == GRAPH_TGT_MELODIC) {
+    if (s_adsr_eg_dirty && s_ve_target == VE_TGT_MELODIC) {
         seq_filter_t f;
-        if (sequencer_core_get_melodic_filter(s_graph_layer, s_graph_track, &f)) {
-            memcpy(f.eg_depth, s_graph_eg_edit, sizeof(f.eg_depth));
-            sequencer_core_set_melodic_filter(s_graph_layer, s_graph_track, &f);
+        if (sequencer_core_get_melodic_filter(s_ve_layer, s_ve_track, &f)) {
+            memcpy(f.eg_depth, s_adsr_eg_edit, sizeof(f.eg_depth));
+            sequencer_core_set_melodic_filter(s_ve_layer, s_ve_track, &f);
         }
-        s_graph_eg_dirty = false;
+        s_adsr_eg_dirty = false;
     }
     sequencer_core_preview_melodic_clear();
 }
 
 /* Set the time-range mode and remap on-screen points so in-progress edits
- * survive the switch. The single place that flips s_graph_long_range - all
+ * survive the switch. The single place that flips s_adsr_long_range - all
  * callers must go through here. */
-static void graph_set_range(bool long_range)
+static void adsr_set_range(bool long_range)
 {
-    if (s_graph_long_range == long_range) return;
+    if (s_adsr_long_range == long_range) return;
 
     /* Snapshot ms under the OLD range, flip, remap under the NEW one.
      * Y is range-independent. */
     gpopup_point_t pts[GPOPUP_MAX_POINTS];
-    uint8_t n = graph_popup_get_points(&s_graph_popup, pts, GPOPUP_MAX_POINTS);
+    uint8_t n = graph_popup_get_points(&s_adsr_popup, pts, GPOPUP_MAX_POINTS);
     uint32_t ms[GPOPUP_MAX_POINTS];
-    for (uint8_t i = 0; i < n; ++i) ms[i] = graph_x_to_ms(pts[i].x);
+    for (uint8_t i = 0; i < n; ++i) ms[i] = adsr_x_to_ms(pts[i].x);
 
-    s_graph_long_range = long_range;
-    graph_sync_min_gap();   /* the floor's normalised width moves with the axis */
+    s_adsr_long_range = long_range;
+    adsr_sync_min_gap();   /* the floor's normalised width moves with the axis */
 
-    for (uint8_t i = 0; i < n; ++i) pts[i].x = graph_ms_to_x(ms[i]);
-    uint8_t saved_cursor  = s_graph_popup.cursor;
-    bool    saved_editing = s_graph_popup.editing_value;
-    bool    saved_axis_y  = s_graph_popup.adjust_axis_y;
-    graph_popup_set_points(&s_graph_popup, pts, n);
-    s_graph_popup.cursor        = saved_cursor;
-    s_graph_popup.editing_value = saved_editing;
-    s_graph_popup.adjust_axis_y = saved_axis_y;
+    for (uint8_t i = 0; i < n; ++i) pts[i].x = adsr_ms_to_x(ms[i]);
+    uint8_t saved_cursor  = s_adsr_popup.cursor;
+    bool    saved_editing = s_adsr_popup.editing_value;
+    bool    saved_axis_y  = s_adsr_popup.adjust_axis_y;
+    graph_popup_set_points(&s_adsr_popup, pts, n);
+    s_adsr_popup.cursor        = saved_cursor;
+    s_adsr_popup.editing_value = saved_editing;
+    s_adsr_popup.adjust_axis_y = saved_axis_y;
 
-    graph_update_ticks();
+    adsr_update_ticks();
     ESP_LOGI(TAG, "graph range -> %s", long_range ? "LONG(15s)" : "SHORT(2s)");
 }
 
 /* Auto-switch the range on total envelope time. Metric is the rightmost point
  * (cum_r = A+D+R), the literal x-extent of the curve. Hysteresis: grow at
  * >=2000 ms, shrink only at <=1700 ms, so the range cannot flicker. */
-static void graph_auto_range_check(void)
+static void adsr_auto_range_check(void)
 {
-    if (!graph_popup_is_active(&s_graph_popup)) return;
+    if (!graph_popup_is_active(&s_adsr_popup)) return;
     gpopup_point_t pts[GPOPUP_MAX_POINTS];
-    uint8_t n = graph_popup_get_points(&s_graph_popup, pts, GPOPUP_MAX_POINTS);
+    uint8_t n = graph_popup_get_points(&s_adsr_popup, pts, GPOPUP_MAX_POINTS);
     if (n < 4) return;
-    uint32_t total_ms = graph_x_to_ms(pts[3].x);
-    if (!s_graph_long_range && total_ms >= GRAPH_RANGE_SHORT_MS) {
-        graph_set_range(true);   /* grow to LONG at the SHORT axis ceiling */
-    } else if (s_graph_long_range && total_ms <= 1700u) {
-        graph_set_range(false);  /* shrink back to SHORT below hysteresis floor */
+    uint32_t total_ms = adsr_x_to_ms(pts[3].x);
+    if (!s_adsr_long_range && total_ms >= ADSR_RANGE_SHORT_MS) {
+        adsr_set_range(true);   /* grow to LONG at the SHORT axis ceiling */
+    } else if (s_adsr_long_range && total_ms <= 1700u) {
+        adsr_set_range(false);  /* shrink back to SHORT below hysteresis floor */
     }
 }
 
 /* Cycle MY_BUTTON_2's topbar sub-modes: OFF -> AMP -> SWG -> OFF. AMP is
- * offered per graph_amp_available() (not on sequencer rows or the arp, whose
- * trim is the Layer menu Level row), SWG per graph_swing_available(). A row
+ * offered per adsr_amp_available() (not on sequencer rows or the arp, whose
+ * trim is the Layer menu Level row), SWG per adsr_swing_available(). A row
  * carrying the depth matrix appends one stop per routing target
  * (PIT/CUT/DRV/MIX, plus SCN on a wavetable patch), editing the shown
  * envelope's row of the matrix; its
@@ -1162,40 +1162,40 @@ static void graph_auto_range_check(void)
  * there. So a sequencer row's EG0 page runs OFF -> SWG -> targets -> OFF.
  * In a sub-mode the encoder edits that value instead of moving ADSR points.
  * Reset on editor open/close. */
-void synth_ui_graph_toggle_amp_mode(void)
+void synth_ui_adsr_toggle_amp_mode(void)
 {
-    if (!graph_popup_is_active(&s_graph_popup)) return;
-    bool targets = graph_eg_targets_available();
-    if (s_graph_amp_mode) {
-        s_graph_amp_mode   = false;
-        s_graph_swing_mode = graph_swing_available();
-        if (!s_graph_swing_mode && targets) s_graph_eg_tgt = SEQ_EGT_PITCH;
-    } else if (s_graph_eg_tgt >= 0) {
-        s_graph_eg_tgt = graph_eg_next_tgt(s_graph_eg_tgt);
-    } else if (s_graph_swing_mode) {
-        graph_swing_live_flush(true);
-        s_graph_swing_mode = false;
-        if (targets) s_graph_eg_tgt = SEQ_EGT_PITCH;
-    } else if (targets && s_graph_eg_index == 1) {
-        s_graph_eg_tgt = SEQ_EGT_PITCH;
-    } else if (!graph_amp_available()) {
-        s_graph_swing_mode = graph_swing_available();
-        if (!s_graph_swing_mode && targets) s_graph_eg_tgt = SEQ_EGT_PITCH;
+    if (!graph_popup_is_active(&s_adsr_popup)) return;
+    bool targets = adsr_eg_targets_available();
+    if (s_adsr_amp_mode) {
+        s_adsr_amp_mode   = false;
+        s_adsr_swing_mode = adsr_swing_available();
+        if (!s_adsr_swing_mode && targets) s_adsr_eg_tgt = SEQ_EGT_PITCH;
+    } else if (s_adsr_eg_tgt >= 0) {
+        s_adsr_eg_tgt = adsr_eg_next_tgt(s_adsr_eg_tgt);
+    } else if (s_adsr_swing_mode) {
+        adsr_swing_live_flush(true);
+        s_adsr_swing_mode = false;
+        if (targets) s_adsr_eg_tgt = SEQ_EGT_PITCH;
+    } else if (targets && s_adsr_eg_index == 1) {
+        s_adsr_eg_tgt = SEQ_EGT_PITCH;
+    } else if (!adsr_amp_available()) {
+        s_adsr_swing_mode = adsr_swing_available();
+        if (!s_adsr_swing_mode && targets) s_adsr_eg_tgt = SEQ_EGT_PITCH;
     } else {
-        s_graph_amp_mode = true;
+        s_adsr_amp_mode = true;
     }
     s_force_redraw = true;
     ESP_LOGI(TAG, "graph topbar mode -> %s",
-             s_graph_amp_mode ? "AMP" :
-             (s_graph_eg_tgt >= 0 ? s_eg_tgt_name[s_graph_eg_tgt] :
-              (s_graph_swing_mode ? "SWG" : "OFF")));
+             s_adsr_amp_mode ? "AMP" :
+             (s_adsr_eg_tgt >= 0 ? s_eg_tgt_name[s_adsr_eg_tgt] :
+              (s_adsr_swing_mode ? "SWG" : "OFF")));
 }
 
 /* Does the bound target expose an EG1 page? Every target does: the standard
  * drone holds its notes, but each chord change note-ons its new tones, which
  * fires their EG1. The editor cycle consults this so a hidden page would be
  * skipped, not dead-ended on EG0. */
-static bool graph_target_has_eg1(void)
+static bool adsr_target_has_eg1(void)
 {
     return true;
 }
@@ -1204,39 +1204,39 @@ static bool graph_target_has_eg1(void)
  * on the departing index is written through first so flipping tabs never
  * discards work, then the curve and range are reseeded from the other index -
  * the two envelopes can have very different shapes. */
-static void graph_toggle_eg_index(void)
+static void adsr_toggle_eg_index(void)
 {
-    if (!graph_popup_is_active(&s_graph_popup)) return;
-    if (!graph_target_has_eg1()) return;
+    if (!graph_popup_is_active(&s_adsr_popup)) return;
+    if (!adsr_target_has_eg1()) return;
 
-    if (s_graph_env_dirty) {
-        graph_write_points_to_env(s_graph_eg_index);
+    if (s_adsr_env_dirty) {
+        adsr_write_points_to_env(s_adsr_eg_index);
     }
     /* Swing belongs to the EG0 page: leave the sub-mode behind with it, or the
      * right slot would fight the EG1 sweep-depth readout. */
-    if (s_graph_swing_mode) {
-        graph_swing_live_flush(true);
-        s_graph_swing_mode = false;
+    if (s_adsr_swing_mode) {
+        adsr_swing_live_flush(true);
+        s_adsr_swing_mode = false;
     }
-    s_graph_eg_tgt = -1;          /* page-scoped stop, same reasoning */
-    s_graph_amp_mode = false;     /* no sub-mode follows a page flip */
+    s_adsr_eg_tgt = -1;          /* page-scoped stop, same reasoning */
+    s_adsr_amp_mode = false;     /* no sub-mode follows a page flip */
 
-    s_graph_eg_index = (s_graph_eg_index == 0) ? 1 : 0;
+    s_adsr_eg_index = (s_adsr_eg_index == 0) ? 1 : 0;
 
     seq_env_t env;
-    if (!graph_read_target_env(&env)) {
-        env = (s_graph_eg_index == 1) ? seq_default_melodic_env1()
+    if (!adsr_read_target_env(&env)) {
+        env = (s_adsr_eg_index == 1) ? seq_default_melodic_env1()
                                        : seq_default_melodic_env();
     }
-    s_graph_eg_type_disp = env.eg_type;
+    s_adsr_eg_type_disp = env.eg_type;
     uint32_t total_env_ms = env.attack_ms + env.decay_ms + env.release_ms;
-    s_graph_long_range = (total_env_ms >= GRAPH_RANGE_SHORT_MS);
+    s_adsr_long_range = (total_env_ms >= ADSR_RANGE_SHORT_MS);
 
-    graph_seed_from_env(&env);
-    graph_update_ticks();
-    s_graph_env_dirty = false;
+    adsr_seed_from_env(&env);
+    adsr_update_ticks();
+    s_adsr_env_dirty = false;
     s_force_redraw = true;
-    ESP_LOGI(TAG, "graph eg index -> EG%u", s_graph_eg_index);
+    ESP_LOGI(TAG, "graph eg index -> EG%u", s_adsr_eg_index);
 }
 
 /* ── Perceived-duration equivalence across curve types ───────────────────────
@@ -1245,91 +1245,91 @@ static void graph_toggle_eg_index(void)
  * rising one becomes audible. Derived from envelope.c's segment laws. Cycling
  * types rescales each segment by g_old/g_new so the AUDIBLE length survives;
  * without it LIN->EXP at fixed ms turns a long release into a pluck. */
-static const float graph_g_fall[4] = { 0.94f, 0.99f, 0.54f, 0.54f }; /* NRM LIN DX7 EXP */
-static const float graph_g_rise[4] = { 0.94f, 0.99f, 0.94f, 0.54f };
+static const float adsr_g_fall[4] = { 0.94f, 0.99f, 0.54f, 0.54f }; /* NRM LIN DX7 EXP */
+static const float adsr_g_rise[4] = { 0.94f, 0.99f, 0.94f, 0.54f };
 
-static void graph_rescale_points_for_type(uint8_t old_type, uint8_t new_type)
+static void adsr_rescale_points_for_type(uint8_t old_type, uint8_t new_type)
 {
     gpopup_point_t pts[GPOPUP_MAX_POINTS];
-    uint8_t n = graph_popup_get_points(&s_graph_popup, pts, GPOPUP_MAX_POINTS);
+    uint8_t n = graph_popup_get_points(&s_adsr_popup, pts, GPOPUP_MAX_POINTS);
     if (n < 4) return;
 
-    float cum_a = (float)graph_x_to_ms(pts[1].x);
-    float cum_d = (float)graph_x_to_ms(pts[2].x);
-    float cum_r = (float)graph_x_to_ms(pts[3].x);
+    float cum_a = (float)adsr_x_to_ms(pts[1].x);
+    float cum_d = (float)adsr_x_to_ms(pts[2].x);
+    float cum_r = (float)adsr_x_to_ms(pts[3].x);
     float a = cum_a;
     float d = (cum_d > cum_a) ? (cum_d - cum_a) : 0.0f;
     float r = (cum_r > cum_d) ? (cum_r - cum_d) : 0.0f;
 
-    a *= graph_g_rise[old_type & 3u] / graph_g_rise[new_type & 3u];
-    float kf = graph_g_fall[old_type & 3u] / graph_g_fall[new_type & 3u];
+    a *= adsr_g_rise[old_type & 3u] / adsr_g_rise[new_type & 3u];
+    float kf = adsr_g_fall[old_type & 3u] / adsr_g_fall[new_type & 3u];
     d *= kf;
     r *= kf;
     if (a < (float)VOICE_ENV_ATTACK_MIN_MS) a = (float)VOICE_ENV_ATTACK_MIN_MS;
 
     /* Grow into LONG up front so a lengthening rescale isn't clipped by the
      * SHORT axis; the auto-range check below shrinks back if allowed. */
-    if (!s_graph_long_range && (a + d + r) >= (float)GRAPH_RANGE_SHORT_MS) {
-        graph_set_range(true);
+    if (!s_adsr_long_range && (a + d + r) >= (float)ADSR_RANGE_SHORT_MS) {
+        adsr_set_range(true);
     }
-    float range = s_graph_long_range ? (float)GRAPH_RANGE_LONG_MS
-                                     : (float)GRAPH_RANGE_SHORT_MS;
+    float range = s_adsr_long_range ? (float)ADSR_RANGE_LONG_MS
+                                     : (float)ADSR_RANGE_SHORT_MS;
     float ca = (a > range) ? range : a;
     float cd = (ca + d > range) ? range : (ca + d);
     float cr = (cd + r > range) ? range : (cd + r);
-    pts[1].x = graph_ms_to_x((uint32_t)(ca + 0.5f));
-    pts[2].x = graph_ms_to_x((uint32_t)(cd + 0.5f));
-    pts[3].x = graph_ms_to_x((uint32_t)(cr + 0.5f));
+    pts[1].x = adsr_ms_to_x((uint32_t)(ca + 0.5f));
+    pts[2].x = adsr_ms_to_x((uint32_t)(cd + 0.5f));
+    pts[3].x = adsr_ms_to_x((uint32_t)(cr + 0.5f));
 
-    uint8_t saved_cursor  = s_graph_popup.cursor;
-    bool    saved_editing = s_graph_popup.editing_value;
-    bool    saved_axis_y  = s_graph_popup.adjust_axis_y;
-    graph_popup_set_points(&s_graph_popup, pts, n);
-    s_graph_popup.cursor        = saved_cursor;
-    s_graph_popup.editing_value = saved_editing;
-    s_graph_popup.adjust_axis_y = saved_axis_y;
+    uint8_t saved_cursor  = s_adsr_popup.cursor;
+    bool    saved_editing = s_adsr_popup.editing_value;
+    bool    saved_axis_y  = s_adsr_popup.adjust_axis_y;
+    graph_popup_set_points(&s_adsr_popup, pts, n);
+    s_adsr_popup.cursor        = saved_cursor;
+    s_adsr_popup.editing_value = saved_editing;
+    s_adsr_popup.adjust_axis_y = saved_axis_y;
 
-    graph_recompute_decay();
-    graph_update_ticks();
-    graph_auto_range_check();
+    adsr_recompute_decay();
+    adsr_update_ticks();
+    adsr_auto_range_check();
 }
 
 /* Cycle the shown EG's curve type Normal->Linear->DX7->TrueExp (MY_BUTTON_1 in
  * the envelope editor). Live-previewed like every other edit: the store keeps
  * the old type until commit and cancel restores it. Segment times are rescaled
- * to keep the perceived length (graph_rescale_points_for_type). */
-void synth_ui_graph_cycle_eg_type(void)
+ * to keep the perceived length (adsr_rescale_points_for_type). */
+void synth_ui_adsr_cycle_eg_type(void)
 {
-    if (!graph_popup_is_active(&s_graph_popup)) return;
+    if (!graph_popup_is_active(&s_adsr_popup)) return;
 
-    uint8_t old_type = s_graph_eg_type_disp;
-    s_graph_eg_type_disp = (uint8_t)((s_graph_eg_type_disp + 1u) & 3u);
-    graph_rescale_points_for_type(old_type, s_graph_eg_type_disp);
-    s_graph_env_dirty = true;   /* commit persists the type with the points */
-    graph_live_push_env();
-    s_graph_type_flash_until =
-        xTaskGetTickCount() + pdMS_TO_TICKS(GRAPH_TYPE_FLASH_MS);
+    uint8_t old_type = s_adsr_eg_type_disp;
+    s_adsr_eg_type_disp = (uint8_t)((s_adsr_eg_type_disp + 1u) & 3u);
+    adsr_rescale_points_for_type(old_type, s_adsr_eg_type_disp);
+    s_adsr_env_dirty = true;   /* commit persists the type with the points */
+    adsr_live_push_env();
+    s_adsr_type_flash_until =
+        xTaskGetTickCount() + pdMS_TO_TICKS(ADSR_TYPE_FLASH_MS);
     s_force_redraw = true;
-    ESP_LOGI(TAG, "graph EG%u type -> %s(%u) (preview)", s_graph_eg_index,
-             graph_eg_type_code(s_graph_eg_type_disp),
-             (unsigned)s_graph_eg_type_disp);
+    ESP_LOGI(TAG, "graph EG%u type -> %s(%u) (preview)", s_adsr_eg_index,
+             adsr_eg_type_code(s_adsr_eg_type_disp),
+             (unsigned)s_adsr_eg_type_disp);
 }
 
 /* Hint-strip b2 label: the stop the next MY_BUTTON_2 press enters, following
- * the cycle in synth_ui_graph_toggle_amp_mode(). */
-const char *synth_ui_graph_hint_b2(void)
+ * the cycle in synth_ui_adsr_toggle_amp_mode(). */
+const char *synth_ui_adsr_hint_b2(void)
 {
-    if (graph_eg_targets_available()) {
-        if (s_graph_amp_mode)
-            return graph_swing_available() ? "Swg" : s_eg_tgt_hint[SEQ_EGT_PITCH];
-        if (s_graph_eg_tgt >= 0) {
-            int8_t next = graph_eg_next_tgt(s_graph_eg_tgt);
+    if (adsr_eg_targets_available()) {
+        if (s_adsr_amp_mode)
+            return adsr_swing_available() ? "Swg" : s_eg_tgt_hint[SEQ_EGT_PITCH];
+        if (s_adsr_eg_tgt >= 0) {
+            int8_t next = adsr_eg_next_tgt(s_adsr_eg_tgt);
             return (next >= 0) ? s_eg_tgt_hint[next] : "Off";
         }
-        if (s_graph_swing_mode) return s_eg_tgt_hint[SEQ_EGT_PITCH];
-        if (s_graph_eg_index == 1) return s_eg_tgt_hint[SEQ_EGT_PITCH];
-        if (!graph_amp_available())
-            return graph_swing_available() ? "Swg" : s_eg_tgt_hint[SEQ_EGT_PITCH];
+        if (s_adsr_swing_mode) return s_eg_tgt_hint[SEQ_EGT_PITCH];
+        if (s_adsr_eg_index == 1) return s_eg_tgt_hint[SEQ_EGT_PITCH];
+        if (!adsr_amp_available())
+            return adsr_swing_available() ? "Swg" : s_eg_tgt_hint[SEQ_EGT_PITCH];
         return "Amp";
     }
     /* What is left carries no depth matrix at all: the drones. */
@@ -1339,19 +1339,19 @@ const char *synth_ui_graph_hint_b2(void)
 /* Flip the sign of the depth the target stop is editing, on either envelope
  * page. No-op with no stop up, and at 0.0 depth: nothing to invert, and it
  * keeps -0.0 out of the readout. */
-void synth_ui_graph_flip_depth_polarity(void)
+void synth_ui_adsr_flip_depth_polarity(void)
 {
-    if (!graph_popup_is_active(&s_graph_popup)) return;
-    if (s_graph_eg_tgt < 0) return;
-    if (graph_eg_tgt_fallback()) return;
-    float *d = &s_graph_eg_edit[s_graph_eg_index][s_graph_eg_tgt];
+    if (!graph_popup_is_active(&s_adsr_popup)) return;
+    if (s_adsr_eg_tgt < 0) return;
+    if (adsr_eg_tgt_fallback()) return;
+    float *d = &s_adsr_eg_edit[s_adsr_eg_index][s_adsr_eg_tgt];
     if (*d == 0.0f) return;
     *d = -*d;
-    s_graph_eg_dirty = true;
-    graph_live_push_eg_depths();
+    s_adsr_eg_dirty = true;
+    adsr_live_push_eg_depths();
     s_force_redraw = true;
-    ESP_LOGI(TAG, "EG%u %s depth -> %+.2f", s_graph_eg_index,
-             s_eg_tgt_name[s_graph_eg_tgt], (double)*d);
+    ESP_LOGI(TAG, "EG%u %s depth -> %+.2f", s_adsr_eg_index,
+             s_eg_tgt_name[s_adsr_eg_tgt], (double)*d);
 }
 
 /* Route an encoder delta to the pop-up. Returns true if the pop-up consumed it
@@ -1363,7 +1363,7 @@ void synth_ui_graph_flip_depth_polarity(void)
  * 0.20 -> 0.19). At 0 either direction moves away. The result snaps to that
  * step's grid; each boundary lies on both neighbouring grids. Worked in
  * integer hundredths so the thresholds compare exactly. */
-static float graph_pitch_depth_step(float v, int dir)
+static float adsr_pitch_depth_step(float v, int dir)
 {
     int32_t n = (int32_t)lroundf(v * 100.0f);
     int32_t m = (n < 0) ? -n : n;
@@ -1375,118 +1375,118 @@ static float graph_pitch_depth_step(float v, int dir)
     return (float)n / 100.0f;
 }
 
-bool synth_ui_graph_handle_encoder(long delta)
+bool synth_ui_adsr_handle_encoder(long delta)
 {
-    if (!graph_popup_is_active(&s_graph_popup)) return false;
+    if (!graph_popup_is_active(&s_adsr_popup)) return false;
 
-    if (s_graph_swing_mode) {
-        s_graph_swing_edit = ui_swing_step(s_graph_swing_edit, (int)delta);
+    if (s_adsr_swing_mode) {
+        s_adsr_swing_edit = ui_swing_step(s_adsr_swing_edit, (int)delta);
         s_swing_live_pending = true;
-        graph_swing_live_flush(false);
+        adsr_swing_live_flush(false);
         s_force_redraw = true;
         return true;
     }
 
-    if (s_graph_eg_tgt >= 0) {
-        if (graph_eg_tgt_fallback()) return true;
+    if (s_adsr_eg_tgt >= 0) {
+        if (adsr_eg_tgt_fallback()) return true;
         /* Routing depth of the shown envelope, bipolar to the target's own
          * maximum and kept on the step grid: pitch in graded steps
-         * (graph_pitch_depth_step, one detent at a time so a fast turn
+         * (adsr_pitch_depth_step, one detent at a time so a fast turn
          * changes step at a boundary), 0.05 on the linear mix and scan rails,
          * 0.25 oct on cutoff and drive. Positive pitch = the hit starts high
          * and drops to the note. */
-        seq_eg_target_t tgt = (seq_eg_target_t)s_graph_eg_tgt;
+        seq_eg_target_t tgt = (seq_eg_target_t)s_adsr_eg_tgt;
         float lim = seq_eg_depth_max(tgt);
-        float v   = s_graph_eg_edit[s_graph_eg_index][tgt];
+        float v   = s_adsr_eg_edit[s_adsr_eg_index][tgt];
         if (tgt == SEQ_EGT_PITCH) {
             int  dir = (delta > 0) ? 1 : -1;
             long n   = (delta > 0) ? delta : -delta;
             for (long i = 0; i < n; i++)
-                v = SEQ_CLAMP_F32(graph_pitch_depth_step(v, dir), -lim, lim);
+                v = SEQ_CLAMP_F32(adsr_pitch_depth_step(v, dir), -lim, lim);
         } else {
             float step = (tgt == SEQ_EGT_MIX || tgt == SEQ_EGT_SCAN) ? 0.05f : 0.25f;
             v = roundf((v + (float)delta * step) / step) * step;
         }
-        s_graph_eg_edit[s_graph_eg_index][tgt] = SEQ_CLAMP_F32(v, -lim, lim);
-        s_graph_eg_dirty = true;
-        graph_live_push_eg_depths();
+        s_adsr_eg_edit[s_adsr_eg_index][tgt] = SEQ_CLAMP_F32(v, -lim, lim);
+        s_adsr_eg_dirty = true;
+        adsr_live_push_eg_depths();
         s_force_redraw = true;
         return true;
     }
 
-    if (s_graph_amp_mode) {
+    if (s_adsr_amp_mode) {
         /* Amp trim in 5% steps, applied live but throttled (arp applies
          * re-emit its sequence). */
-        float v = s_graph_amp_edit + (float)delta * 0.05f;
+        float v = s_adsr_amp_edit + (float)delta * 0.05f;
         v = SEQ_CLAMP_F32(v, 0.0f, 1.0f);
-        s_graph_amp_edit = v;
+        s_adsr_amp_edit = v;
         s_amp_live_pending = true;
-        graph_amp_live_flush(false);
+        adsr_amp_live_flush(false);
         s_force_redraw = true;
         return true;
     }
 
-    s_graph_env_dirty = true;   /* user moved an ADSR control point */
-    bool adjusting = s_graph_popup.editing_value;
-    graph_popup_handle_encoder(&s_graph_popup, delta);
+    s_adsr_env_dirty = true;   /* user moved an ADSR control point */
+    bool adjusting = s_adsr_popup.editing_value;
+    graph_popup_handle_encoder(&s_adsr_popup, delta);
     /* Derived-decay mode: A or S moved, so re-snap S.x. */
-    graph_recompute_decay();
-    graph_auto_range_check();
+    adsr_recompute_decay();
+    adsr_auto_range_check();
     /* Point actually moved (not just cursor selection): audition it. */
-    if (adjusting) graph_live_push_env();
+    if (adjusting) adsr_live_push_env();
     return true;
 }
 
 /* Route a button event to the pop-up. is_long selects short vs long press.
  * Returns true if the pop-up consumed the event. On confirm/cancel the pop-up
  * is closed here. */
-bool synth_ui_graph_handle_button(bool is_long)
+bool synth_ui_adsr_handle_button(bool is_long)
 {
-    if (!graph_popup_is_active(&s_graph_popup)) return false;
+    if (!graph_popup_is_active(&s_adsr_popup)) return false;
 
     /* Encoder press while a sub-mode (amp, swing, depth stop) is active
      * commits it (values are already live-pushed per turn) and returns the
      * encoder to the ADSR points. */
-    if (s_graph_amp_mode || s_graph_swing_mode || s_graph_eg_tgt >= 0) {
+    if (s_adsr_amp_mode || s_adsr_swing_mode || s_adsr_eg_tgt >= 0) {
         /* Exit, never advance: the press is the sub-mode's own confirm, so it
          * must not land on the next stop of MY_BUTTON_2's cycle. */
-        if (s_graph_swing_mode) graph_swing_live_flush(true);
-        s_graph_amp_mode   = false;
-        s_graph_swing_mode = false;
-        s_graph_eg_tgt     = -1;
+        if (s_adsr_swing_mode) adsr_swing_live_flush(true);
+        s_adsr_amp_mode   = false;
+        s_adsr_swing_mode = false;
+        s_adsr_eg_tgt     = -1;
         s_force_redraw = true;
         return true;
     }
 
     gpopup_result_t r = is_long
-        ? graph_popup_handle_button_long(&s_graph_popup)
-        : graph_popup_handle_button(&s_graph_popup);
+        ? graph_popup_handle_button_long(&s_adsr_popup)
+        : graph_popup_handle_button(&s_adsr_popup);
 
     if (r == GPOPUP_RESULT_CONFIRMED) {
         ESP_LOGI(TAG, "graph popup confirmed -> writing envelope");
-        graph_commit_to_env();
-        graph_popup_close(&s_graph_popup);
+        adsr_commit_to_env();
+        graph_popup_close(&s_adsr_popup);
     } else if (r == GPOPUP_RESULT_CANCELLED) {
         ESP_LOGI(TAG, "graph popup cancelled (restoring stored state)");
-        graph_live_cancel_restore();
-        graph_popup_close(&s_graph_popup);
+        adsr_live_cancel_restore();
+        graph_popup_close(&s_adsr_popup);
     }
     return true;
 }
 
 /* Commit and close (MY_BUTTON_0 short tap). The discard path is
- * synth_ui_graph_handle_button(true), on a long press. */
-bool synth_ui_graph_close_commit(void)
+ * synth_ui_adsr_handle_button(true), on a long press. */
+bool synth_ui_adsr_close_commit(void)
 {
-    if (!graph_popup_is_active(&s_graph_popup)) return false;
+    if (!graph_popup_is_active(&s_adsr_popup)) return false;
     ESP_LOGI(TAG, "graph editor close (commit envelope)");
-    graph_commit_to_env();
-    graph_popup_close(&s_graph_popup);
+    adsr_commit_to_env();
+    graph_popup_close(&s_adsr_popup);
     s_force_redraw = true;
     return true;
 }
 
-/* ── graph pop-up: end ──────────────────────────────────────────────────── */
+/* ── ADSR editor: end ──────────────────────────────────────────────────── */
 
 /* ── Filter editor ──────────────────────────────────────────────────────── */
 
@@ -1505,7 +1505,7 @@ static bool s_lfo_live_target = false;
 /* The surface's committed filter cutoff at open, for the FILTER swing
  * readout; 0 when its filter is off. */
 static float s_lfo_filter_hz = 0.0f;
-/* LFO2 page (a second page of this view, as EG1 is of the graph editor).
+/* LFO2 page (a second page of this view, as EG1 is of the ADSR editor).
  * s_lfo_index: the page shown, 0 = LFO1, 1 = LFO2; s_lfo_view.lfo is that
  * page's working copy. s_lfo_other: the working copy of the LFO not shown,
  * always equal to its store. s_lfo2_open: LFO2 open (its lfo2_authored),
@@ -1566,7 +1566,7 @@ static float filter_detent_to_fb(int k)
 }
 
 /* Which backend the FILTER editor is bound to, derived per call from
- * seq_state.ui_mode (the graph editor binds once at open instead). LIVE is
+ * seq_state.ui_mode (the ADSR editor binds once at open instead). LIVE is
  * tested first: the Wireless page is an overlay over whatever screen opened it. */
 static bool filter_tgt_is_live(void)
 {
@@ -2136,8 +2136,8 @@ bool synth_ui_filter_close_commit(void)
 
 void synth_ui_editors_live_service(void)
 {
-    graph_amp_live_flush(false);
-    graph_swing_live_flush(false);
+    adsr_amp_live_flush(false);
+    adsr_swing_live_flush(false);
 
 #if CONFIG_FILTER_SCOPE
     /* Drain the live band once per UI frame, before the view signature is
@@ -2262,9 +2262,7 @@ uint32_t lfo_view_signature(void)
     s_lfo_view.wob_native = native;
 
     /* Distortion drive/mix have rails on every modulator path and a stepper
-     * law, so every domain can drive them. dist_inert is part of the display
-     * struct and is never set. */
-    s_lfo_view.dist_inert = false;
+     * law, so every domain can drive them. */
 
     /* LFO2 state for the header chips and the target marks, re-derived like
      * the wobble marker. */
@@ -2894,14 +2892,14 @@ bool synth_ui_dist_close_commit(void)
 
 /* ── Voice-block source flip / release to patch ─────────────────────────────
  * Both act on the open editor's melodic row. The pattern is the one
- * graph_toggle_eg_index() uses for the EG page switch: commit the departing
+ * adsr_toggle_eg_index() uses for the EG page switch: commit the departing
  * state through the editor's own close path (dirty-gated, so an untouched
  * tab takes no authority), change the engine state, then reopen the same
  * editor so its working copy re-seeds from the block now in effect. The
  * reopen resets cursors; the LFO cursor with its checklist scroll and the
  * DIST cursor are carried across. */
 
-typedef enum { EDITOR_NONE, EDITOR_GRAPH, EDITOR_FILTER, EDITOR_LFO, EDITOR_DIST } editor_id_t;
+typedef enum { EDITOR_NONE, EDITOR_ADSR, EDITOR_FILTER, EDITOR_LFO, EDITOR_DIST } editor_id_t;
 
 static editor_id_t editor_open_melodic(void)
 {
@@ -2910,8 +2908,8 @@ static editor_id_t editor_open_melodic(void)
     if (seq_state.ui_mode == UI_MODE_ARP || seq_state.ui_mode == UI_MODE_DROP ||
         seq_state.ui_mode == UI_MODE_DRONE || seq_state.ui_mode == UI_MODE_DRONE_STD)
         return EDITOR_NONE;
-    if (graph_popup_is_active(&s_graph_popup))
-        return (s_graph_target == GRAPH_TGT_MELODIC) ? EDITOR_GRAPH : EDITOR_NONE;
+    if (graph_popup_is_active(&s_adsr_popup))
+        return (s_ve_target == VE_TGT_MELODIC) ? EDITOR_ADSR : EDITOR_NONE;
     if (s_filter_active) return EDITOR_FILTER;
     if (s_lfo_active)    return EDITOR_LFO;
     if (s_dist_active)   return EDITOR_DIST;
@@ -2922,12 +2920,12 @@ static editor_id_t editor_open_melodic(void)
 static void editor_reseed_around(editor_id_t ed, void (*change)(void))
 {
     switch (ed) {
-        case EDITOR_GRAPH: {
-            uint8_t eg = s_graph_eg_index;
-            synth_ui_graph_close_commit();
+        case EDITOR_ADSR: {
+            uint8_t eg = s_adsr_eg_index;
+            synth_ui_adsr_close_commit();
             change();
-            synth_ui_graph_open_envelope();
-            if (eg == 1) graph_toggle_eg_index();   /* clean reseed: nothing dirty */
+            synth_ui_adsr_open_envelope();
+            if (eg == 1) adsr_toggle_eg_index();   /* clean reseed: nothing dirty */
             break;
         }
         case EDITOR_FILTER: {
@@ -3000,7 +2998,7 @@ bool synth_ui_editor_release_to_patch(void)
     if (sequencer_core_get_layer_type(seq_state.active_layer_idx) != SEQ_LAYER_MELODIC)
         return false;
     switch (ed) {
-        case EDITOR_GRAPH:  s_release_group = (s_graph_eg_index == 1) ? SEQ_VP_GROUP_ENV1
+        case EDITOR_ADSR:  s_release_group = (s_adsr_eg_index == 1) ? SEQ_VP_GROUP_ENV1
                                                                       : SEQ_VP_GROUP_ENV; break;
         case EDITOR_FILTER: s_release_group = SEQ_VP_GROUP_FILTER; break;
         case EDITOR_LFO:    s_release_group = (s_lfo_index == 1u) ? SEQ_VP_GROUP_LFO2
@@ -3015,16 +3013,16 @@ bool synth_ui_editor_release_to_patch(void)
 
 /* Cycle ADSR → Filter → LFO (LFO1, then LFO2 while open) → DIST → ADSR
  * (MY_BUTTON_3 while any editor is open). */
-void synth_ui_cycle_editor(void)
+void voice_editor_cycle(void)
 {
-    if (graph_popup_is_active(&s_graph_popup)) {
-        if (s_graph_eg_index == 0 && graph_target_has_eg1()) {
+    if (graph_popup_is_active(&s_adsr_popup)) {
+        if (s_adsr_eg_index == 0 && adsr_target_has_eg1()) {
             /* EG0 -> EG1: same widget, next page. Targets without an EG1 page
              * fall straight through to the filter tab. */
-            graph_toggle_eg_index();
+            adsr_toggle_eg_index();
             return;
         }
-        synth_ui_graph_close_commit();
+        synth_ui_adsr_close_commit();
         synth_ui_filter_open();
     } else if (s_filter_active) {
         synth_ui_filter_close_commit();
@@ -3040,7 +3038,7 @@ void synth_ui_cycle_editor(void)
         synth_ui_dist_open();
     } else if (s_dist_active) {
         synth_ui_dist_close_commit();
-        synth_ui_graph_open_envelope();
+        synth_ui_adsr_open_envelope();
     }
 }
 
@@ -3055,29 +3053,29 @@ uint32_t filter_view_signature(void)
     return h;
 }
 
-uint32_t graph_view_signature(void)
+uint32_t adsr_view_signature(void)
 {
     uint32_t h = FNV1A_OFFSET;
-    h = fnv1a_bytes(h, &s_graph_popup.cursor, sizeof(s_graph_popup.cursor));
-    h = fnv1a_bytes(h, &s_graph_popup.editing_value, sizeof(s_graph_popup.editing_value));
-    h = fnv1a_bytes(h, &s_graph_popup.adjust_axis_y, sizeof(s_graph_popup.adjust_axis_y));
-    h = fnv1a_bytes(h, &s_graph_long_range, sizeof(s_graph_long_range));
-    h = fnv1a_bytes(h, &s_graph_layer, sizeof(s_graph_layer));
-    h = fnv1a_bytes(h, &s_graph_track, sizeof(s_graph_track));
-    h = fnv1a_bytes(h, &s_graph_amp_mode, sizeof(s_graph_amp_mode));
-    h = fnv1a_bytes(h, &s_graph_amp_edit, sizeof(s_graph_amp_edit));
-    h = fnv1a_bytes(h, &s_graph_swing_mode, sizeof(s_graph_swing_mode));
-    h = fnv1a_bytes(h, &s_graph_swing_edit, sizeof(s_graph_swing_edit));
-    h = fnv1a_bytes(h, s_graph_eg_edit, sizeof(s_graph_eg_edit));
-    h = fnv1a_bytes(h, &s_graph_eg_tgt, sizeof(s_graph_eg_tgt));
-    h = fnv1a_bytes(h, &s_graph_eg_index, sizeof(s_graph_eg_index));
-    h = fnv1a_bytes(h, &s_graph_eg_type_disp, sizeof(s_graph_eg_type_disp));
+    h = fnv1a_bytes(h, &s_adsr_popup.cursor, sizeof(s_adsr_popup.cursor));
+    h = fnv1a_bytes(h, &s_adsr_popup.editing_value, sizeof(s_adsr_popup.editing_value));
+    h = fnv1a_bytes(h, &s_adsr_popup.adjust_axis_y, sizeof(s_adsr_popup.adjust_axis_y));
+    h = fnv1a_bytes(h, &s_adsr_long_range, sizeof(s_adsr_long_range));
+    h = fnv1a_bytes(h, &s_ve_layer, sizeof(s_ve_layer));
+    h = fnv1a_bytes(h, &s_ve_track, sizeof(s_ve_track));
+    h = fnv1a_bytes(h, &s_adsr_amp_mode, sizeof(s_adsr_amp_mode));
+    h = fnv1a_bytes(h, &s_adsr_amp_edit, sizeof(s_adsr_amp_edit));
+    h = fnv1a_bytes(h, &s_adsr_swing_mode, sizeof(s_adsr_swing_mode));
+    h = fnv1a_bytes(h, &s_adsr_swing_edit, sizeof(s_adsr_swing_edit));
+    h = fnv1a_bytes(h, s_adsr_eg_edit, sizeof(s_adsr_eg_edit));
+    h = fnv1a_bytes(h, &s_adsr_eg_tgt, sizeof(s_adsr_eg_tgt));
+    h = fnv1a_bytes(h, &s_adsr_eg_index, sizeof(s_adsr_eg_index));
+    h = fnv1a_bytes(h, &s_adsr_eg_type_disp, sizeof(s_adsr_eg_type_disp));
     /* Tick-derived: flips when the type-flash window closes, so the top bar
      * reverts without any other state change. */
-    uint8_t type_flash = graph_type_flash_active() ? 1u : 0u;
+    uint8_t type_flash = adsr_type_flash_active() ? 1u : 0u;
     h = fnv1a_bytes(h, &type_flash, sizeof(type_flash));
-    h = fnv1a_bytes(h, s_graph_popup.points,
-                    s_graph_popup.num_points * sizeof(gpopup_point_t));
+    h = fnv1a_bytes(h, s_adsr_popup.points,
+                    s_adsr_popup.num_points * sizeof(gpopup_point_t));
     return h;
 }
 
@@ -3087,7 +3085,7 @@ uint32_t graph_view_signature(void)
  * "1.2s" from there, so it is never longer than five characters and the
  * longest readout, "D60.0s S100", keeps to the 11 that fit beside a sequencer
  * row's label (display_env.h). */
-static void graph_format_time(char *out, size_t n, uint32_t ms)
+static void adsr_format_time(char *out, size_t n, uint32_t ms)
 {
     if (ms < 1000u) {
         snprintf(out, n, "%lums", (unsigned long)ms);
@@ -3098,99 +3096,99 @@ static void graph_format_time(char *out, size_t n, uint32_t ms)
 }
 
 /* Fill the envelope editor view (display_env.h) from the editor state. */
-static void graph_build_view(env_view_t *v)
+static void adsr_build_view(env_view_t *v)
 {
     memset(v, 0, sizeof(*v));
 
     /* Left: target label plus which breakpoint generator (EG0/EG1) is shown. */
-    const char *eg_tag = (s_graph_eg_index == 1) ? "EG1" : "EG0";
-    if (s_graph_target == GRAPH_TGT_ARP) {
+    const char *eg_tag = (s_adsr_eg_index == 1) ? "EG1" : "EG0";
+    if (s_ve_target == VE_TGT_ARP) {
         snprintf(v->label, sizeof(v->label), "ARP %s", eg_tag);
-    } else if (s_graph_target == GRAPH_TGT_DROP) {
+    } else if (s_ve_target == VE_TGT_DROP) {
         snprintf(v->label, sizeof(v->label), "%s %s",
                  drop_get_focus() == DROP_VOICE_SUB ? "SUB" : "DROP", eg_tag);
-    } else if (s_graph_target == GRAPH_TGT_DRONE) {
+    } else if (s_ve_target == VE_TGT_DRONE) {
         snprintf(v->label, sizeof(v->label), "STUTR %s", eg_tag);
-    } else if (s_graph_target == GRAPH_TGT_DRONE_STD) {
+    } else if (s_ve_target == VE_TGT_DRONE_STD) {
         snprintf(v->label, sizeof(v->label), "DRONE %s", eg_tag);
 #if CONFIG_SYNTH_WIRELESS
-    } else if (s_graph_target == GRAPH_TGT_LIVE) {
+    } else if (s_ve_target == VE_TGT_LIVE) {
         snprintf(v->label, sizeof(v->label), "LIVE %s", eg_tag);
 #endif
     } else {
         char badge[4];
-        editor_src_badge(s_graph_layer, s_graph_track,
-                         (s_graph_eg_index == 1) ? SEQ_VP_GROUP_ENV1 : SEQ_VP_GROUP_ENV,
+        editor_src_badge(s_ve_layer, s_ve_track,
+                         (s_adsr_eg_index == 1) ? SEQ_VP_GROUP_ENV1 : SEQ_VP_GROUP_ENV,
                          badge);
         snprintf(v->label, sizeof(v->label), "L%u T%u %s%s",
-                 s_graph_layer + 1, s_graph_track + 1, eg_tag, badge);
+                 s_ve_layer + 1, s_ve_track + 1, eg_tag, badge);
     }
 
     /* The middle point readout and the right-side readout share one band, so
      * only one is filled per frame. Point selection is resolved first. */
     gpopup_point_t pts[GPOPUP_MAX_POINTS];
-    uint8_t n = graph_popup_get_points(&s_graph_popup, pts, GPOPUP_MAX_POINTS);
-    uint8_t c = s_graph_popup.cursor;
+    uint8_t n = graph_popup_get_points(&s_adsr_popup, pts, GPOPUP_MAX_POINTS);
+    uint8_t c = s_adsr_popup.cursor;
     /* During the flash window the full type name takes the shared band. */
-    bool type_flash = graph_type_flash_active();
-    bool mid_shown = (!type_flash && !s_graph_amp_mode && !s_graph_swing_mode &&
-                      s_graph_eg_tgt < 0 && n >= 4 && c >= 1 && c <= 3);
+    bool type_flash = adsr_type_flash_active();
+    bool mid_shown = (!type_flash && !s_adsr_amp_mode && !s_adsr_swing_mode &&
+                      s_adsr_eg_tgt < 0 && n >= 4 && c >= 1 && c <= 3);
 
     /* Right: the type name while it flashes, else the target stop's depth,
      * layer swing in swing mode, or the amp indicator in amp mode. */
     if (type_flash) {
-        snprintf(v->right, sizeof(v->right), "%s", graph_eg_type_name(s_graph_eg_type_disp));
+        snprintf(v->right, sizeof(v->right), "%s", adsr_eg_type_name(s_adsr_eg_type_disp));
         v->right_flash = true;
-    } else if (s_graph_eg_tgt >= 0) {
-        snprintf(v->right, sizeof(v->right), "%s%+.2f", s_eg_tgt_name[s_graph_eg_tgt],
-                 (double)s_graph_eg_edit[s_graph_eg_index][s_graph_eg_tgt]);
-    } else if (s_graph_swing_mode) {
+    } else if (s_adsr_eg_tgt >= 0) {
+        snprintf(v->right, sizeof(v->right), "%s%+.2f", s_eg_tgt_name[s_adsr_eg_tgt],
+                 (double)s_adsr_eg_edit[s_adsr_eg_index][s_adsr_eg_tgt]);
+    } else if (s_adsr_swing_mode) {
         char swg_val[6];
-        ui_swing_format(swg_val, sizeof(swg_val), s_graph_swing_edit);
+        ui_swing_format(swg_val, sizeof(swg_val), s_adsr_swing_edit);
         snprintf(v->right, sizeof(v->right), "SWG%s", swg_val);
-    } else if (s_graph_amp_mode) {
+    } else if (s_adsr_amp_mode) {
         snprintf(v->right, sizeof(v->right), "AMP%d%%",
-                 (int)(s_graph_amp_edit * 100.0f + 0.5f));
+                 (int)(s_adsr_amp_edit * 100.0f + 0.5f));
     }
 
     /* Mark which targets the SHOWN envelope drives: one letter per nonzero
      * depth, on every target that carries the depth matrix. */
-    if (graph_eg_targets_available()) {
+    if (adsr_eg_targets_available()) {
         static const char act_ch[SEQ_EGT_COUNT] = { 'P', 'C', 'D', 'M', 'S' };
         _Static_assert(SEQ_EGT_COUNT < sizeof(v->active), "env_view_t.active too small");
         uint8_t na = 0;
         for (uint8_t t = 0; t < SEQ_EGT_COUNT; t++)
-            if (s_graph_eg_edit[s_graph_eg_index][t] != 0.0f) v->active[na++] = act_ch[t];
+            if (s_adsr_eg_edit[s_adsr_eg_index][t] != 0.0f) v->active[na++] = act_ch[t];
         v->active[na] = '\0';
     }
 
     /* Middle: live readout of the selected point's real value (ms / %). */
     if (mid_shown) {
-        uint32_t cum_a = graph_x_to_ms(pts[1].x);
-        uint32_t cum_d = graph_x_to_ms(pts[2].x);
-        uint32_t cum_r = graph_x_to_ms(pts[3].x);
+        uint32_t cum_a = adsr_x_to_ms(pts[1].x);
+        uint32_t cum_d = adsr_x_to_ms(pts[2].x);
+        uint32_t cum_r = adsr_x_to_ms(pts[3].x);
         char t[16];
         if (c == 1) {
-            graph_format_time(t, sizeof(t), cum_a);
+            adsr_format_time(t, sizeof(t), cum_a);
             snprintf(v->mid, sizeof(v->mid), "A%s", t);
         } else if (c == 2) {
-            graph_format_time(t, sizeof(t), (cum_d > cum_a) ? (cum_d - cum_a) : 0);
+            adsr_format_time(t, sizeof(t), (cum_d > cum_a) ? (cum_d - cum_a) : 0);
             snprintf(v->mid, sizeof(v->mid), "D%s S%u", t, (unsigned)(pts[2].y * 100.0f + 0.5f));
         } else {
-            graph_format_time(t, sizeof(t), (cum_r > cum_d) ? (cum_r - cum_d) : 0);
+            adsr_format_time(t, sizeof(t), (cum_r > cum_d) ? (cum_r - cum_d) : 0);
             snprintf(v->mid, sizeof(v->mid), "R%s", t);
         }
     }
 
-    v->type_code = graph_eg_type_code(s_graph_eg_type_disp);
+    v->type_code = adsr_eg_type_code(s_adsr_eg_type_disp);
 }
 
-void synth_ui_graph_view_draw(u8g2_t *u8g2)
+void synth_ui_adsr_view_draw(u8g2_t *u8g2)
 {
     env_view_t v;
-    graph_build_view(&v);
+    adsr_build_view(&v);
     u8g2_ClearBuffer(u8g2);
-    env_view_draw(u8g2, &v, &s_graph_popup);
+    env_view_draw(u8g2, &v, &s_adsr_popup);
 }
 
 void synth_ui_filter_view_draw(u8g2_t *u8g2)

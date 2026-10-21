@@ -192,6 +192,10 @@ extern uint32_t amy_gamma9001_pcm_bytes(void);
 // upper bounds for static arrays.
 #define AMY_MAX_CORES 2          
 #define AMY_MAX_CHANNELS 2
+// Most copies one osc can render as a unison cluster (unison_count).
+#define AMY_UNISON_MAX 8
+// Range of unison_spacing and unison_offset; keeps every copy's step finite.
+#define AMY_UNISON_MAX_OCTAVES 4.0f
 
 // Always use 2 channels. Clients that want mono can deinterleave
 #define AMY_NCHANS 2
@@ -315,9 +319,6 @@ typedef int16_t output_sample_type;
 // Frequency of Midi note 0, used to make logfreq scales.
 // Have 0 be midi 69, A4, 440.0
 #define ZERO_LOGFREQ_IN_HZ 440.0f  // 261.63
-// LOCAL EDIT (S3-Amysynth, experimental): most copies one osc renders as a
-// unison cluster (unison_count).  Sizes synthinfo.unison_phase[].
-#define AMY_UNISON_MAX 8
 #define ZERO_MIDI_NOTE 69  // 60
 #define MIN_FILTER_LOGFREQ -2.75f  // -2.0  // LPF cutoff cannot go below w = 0.01 rad/samp in filters.c = 72 Hz, so clip it here at ~65 Hz.
 
@@ -444,6 +445,11 @@ enum coefs{
 #define RESET_SYNTHS 262144
 #define RESET_PATCH 524288  // Clear one patch if patch_number provided, otherwise clear all patches.
 #define RESET_QUEUE 1048576 // resets the amy queue
+// LOCAL EDIT (S3-Amysynth): hard stop of the addressed osc if it is audible,
+// with no release (a synth-addressed event reaches every osc of every voice).
+// Unlike RESET_ALL_NOTES it is scoped, and it stamps note_off_clock so a
+// later amp coef delta cannot revive the note.
+#define RESET_NOTE_CUT 2097152
 
 // Bits for synth_flags=
 #define SYNTH_FLAGS_NOTES_VIA_MIDI 1    // Note-on/off events are routed through the MIDI interface (to pick up MIDI note cmds)
@@ -522,12 +528,6 @@ enum params{
     RESET_OSC,                           // 207
     FREE_OSC,                            // 208: like RESET_OSC, but returns the osc's storage to the heap
     NOTE_SOURCE_CHANNEL,                 // 209
-    // LOCAL EDIT (S3-Amysynth, experimental): per-osc unison cluster, see
-    // unison_prepare() in oscillators.c.  Numbered here, above the bus-effect
-    // ids, because none of these cross the wire (no letter yet).
-    UNISON_COUNT, UNISON_SPACING,        // 210, 211
-    UNISON_OFFSET, UNISON_BLEND,         // 212, 213
-    UNISON_PHASE_STEP,                   // 214
     ECHO_LEVEL,
     ECHO_DELAY_MS,
     ECHO_MAX_DELAY_MS,
@@ -554,6 +554,10 @@ enum params{
     SAMPLE_OFFSET,              // PCM note-on start offset in samples within its block
     FIT,                        // PCM time-stretch/pitch-shift target in sequencer ticks
     FIT_SEARCH,                 // PCM fit engine: WSOLA correlation search half-width, in frames
+    UNISON_COUNT,               // Unison cluster (synthinfo.unison_*): copies rendered by the osc
+    UNISON_SPACING,             // octaves between adjacent copies
+    UNISON_OFFSET,              // octaves from the osc's pitch to copy 0
+    UNISON_BLEND,               // weight of the outer copies, 1 = equal
     // LOCAL EDIT (S3-Amysynth, 2026-10-12, experimental): see amy_event.
     MOD_SYNTH_START,
     MOD_SYNTH_END = MOD_SYNTH_START + NUM_MOD_SOURCES,
@@ -727,20 +731,16 @@ typedef struct amy_event {
     float feedback;
     float velocity;
     float trigger_phase;
+    // Unison cluster: copy i of unison_count renders at the osc's pitch
+    // + unison_offset + i * unison_spacing octaves.
+    uint8_t unison_count;  // 1..AMY_UNISON_MAX copies, default 1
+    float unison_spacing;  // octaves between adjacent copies, default 0
+    float unison_offset;  // octaves from the osc's pitch to copy 0, default 0
+    float unison_blend;  // weight of the outer copies, 0..1, default 1 (equal weights)
     // LOCAL EDIT (S3-Amysynth, 2026-10-12, experimental): moves the osc's
     // running phase without storing it, so later note-ons do not reset it
     // (trigger_phase both stores and moves). Struct-only: no wire letter.
     float phase_warp;
-    // LOCAL EDIT (S3-Amysynth, experimental): unison cluster.  Copy i of
-    // unison_count renders at logfreq + unison_offset + i * unison_spacing
-    // (both in octaves); unison_blend tapers the outer copies (1 = equal).
-    // unison_phase_step: note-on phase of copy i over copy 0, in cycles per
-    // copy (0 = 1/unison_count, the copies evenly over one cycle).
-    uint8_t unison_count;
-    float unison_spacing;
-    float unison_offset;
-    float unison_blend;
-    float unison_phase_step;
     uint16_t sample_offset;  // PCM: start this note-on at a sample offset within its block (0..AMY_BLOCK_SIZE-1)
     float fit_ticks;  // PCM: >0 = time-stretch to this many sequencer ticks; 0 = pitch-shift at original length; <0 = off
     uint16_t fit_search;  // PCM fit engine: grain alignment search half-width in frames (0 = off, unset = PCM_STRETCH_SEARCH)
@@ -883,6 +883,7 @@ typedef struct osc_dist {
 #define WAVE_KIND_ALGO 1
 #define WAVE_KIND_PCM 2
 #define WAVE_KIND_KS 3
+#define WAVE_KIND_LUT 4
 
 // This is the state of each oscillator, set by the sequencer from deltas
 struct synthinfo {
@@ -902,12 +903,12 @@ struct synthinfo {
     float pan_coefs[NUM_COMBO_COEFS];
     float feedback;
     float trigger_phase;
-    // LOCAL EDIT (S3-Amysynth, experimental): unison cluster config (see amy_event).
+    // Unison cluster: copy i of unison_count renders at the osc's pitch
+    // + unison_offset + i * unison_spacing octaves (unison_prepare()).
     uint8_t unison_count;
     float unison_spacing;
     float unison_offset;
     float unison_blend;
-    float unison_phase_step;
     uint16_t sample_offset;  // PCM note-on start offset in samples within its block
     float logratio;
     float portamento_alpha;
@@ -946,6 +947,9 @@ struct synthinfo {
             SAMPLE *ks_ring;  // Karplus-Strong delay line, alloc'd at the first KS note-on. not in event.
             SAMPLE ks_tune_state;  // KS tuning allpass state, cleared at note-on.
         };
+        struct {  // WAVE_KIND_LUT
+            PHASOR unison_phase[AMY_UNISON_MAX - 1];  // Unison copies 1..n-1; copy 0 is phase. not in event.
+        };
     };
     // Per-note state (set on initialization, does not change during note)
     uint8_t terminate_on_silence;  // Usually yes, not for PCM. not in event.
@@ -954,9 +958,6 @@ struct synthinfo {
     uint8_t status;  // not in event
     uint8_t role;  // not in event
     PHASOR phase;  // not in event
-    // LOCAL EDIT (S3-Amysynth, experimental): copies 1..unison_count-1 keep
-    // their phase here; copy 0 rides `phase`.  Respread at every note-on.
-    PHASOR unison_phase[AMY_UNISON_MAX - 1];  // not in event
     uint32_t render_clock;
     uint32_t note_on_clock;
     uint32_t note_off_clock;
@@ -969,6 +970,12 @@ struct synthinfo {
     // The block-floating-point shift of the filter delay values.
     int last_filt_norm_bits;
 };
+
+// Does the osc render a unison cluster: a LUT-kind osc whose config differs
+// from a single copy at its own pitch?
+static inline bool unison_active(const struct synthinfo *s) {
+    return s->wave_kind == WAVE_KIND_LUT && (s->unison_count > 1 || s->unison_offset != 0);
+}
 
 // synthinfo, but only the things that mods/env can change. one per osc
 struct mod_synthinfo {
@@ -1339,8 +1346,6 @@ void config_reverb(uint16_t bus, float level, float liveness, float damping, flo
 void config_chorus(uint16_t bus, float level, uint16_t max_delay, float lfo_freq, float depth);
 void config_echo(uint16_t bus, float level, float delay_ms, float max_delay_ms, float feedback, float filter_coef);
 void osc_note_on(uint16_t osc, float initial_freq);
-// LOCAL EDIT (S3-Amysynth, experimental): respread the unison copy phases
-// from the osc's own phase (oscillators.c).
 void unison_note_on(uint16_t osc);
 void chorus_note_on(float initial_freq);
 

@@ -83,7 +83,8 @@ void synth_ui_set_patch_select_mode(bool held);
 /* Queue a load of built-in template i (project_templates.h: count and names)
  * through the Projects menu's deferred request, so it runs on the UI task as
  * a load from the menu does, on the next UI frame. Returns false and queues
- * nothing when i is out of range or a load or save is already queued. Any
+ * nothing when i is out of range, a load or save is already queued, or the
+ * request queue does not exist. Any
  * task context after synth_ui_init(); not ISR-safe. No menu row shows a
  * status for it. Only with CONFIG_SYNTH_PROJECT_STORE. */
 bool synth_ui_projects_request_template(size_t i);
@@ -135,7 +136,7 @@ static inline bool synth_ui_projects_request_import(uint8_t *img, size_t len,
 #endif
 
 /* ── Menu overlay ────────────────────────────────────────────────────────
- * A modal overlay above the active screen (below the graph editor); while
+ * A modal overlay above the active screen (below the ADSR editor); while
  * open it captures the encoder and encoder click. Opening reopens the page and
  * row the menu was closed on; the Projects page comes back disarmed (no
  * pending load/save confirm, no rename). */
@@ -148,11 +149,12 @@ bool synth_ui_menu_handle_button(void);        /* true if consumed */
  * on the main list. UI input task only. */
 bool synth_ui_menu_go_main(void);
 /* Layer-page shortcut. Menu closed: open it on the Layer page's entry for the
- * current screen (the active layer, or ARP on the arp screen) - on the row it
- * was left on if the menu was closed on that same entry, else on Gate (layer)
- * or Level (arp), with the main list's cursor on the Layer row. Menu open on
+ * current screen (the active layer, or ARP / DROP / STUTTER / DRONE on the
+ * arp, drop and drone screens) - on the row it was left on if the menu was
+ * closed on that same entry, else on Gate (layer), Unison (a drone) or Level
+ * (arp, drop), with the main list's cursor on the Layer row. Menu open on
  * the Layer page: close it. Menu open on the Wireless page: switch to the
- * page's LIVE entry on Level. Menu open on any other page, or the graph editor
+ * page's LIVE entry on Level. Menu open on any other page, or the ADSR editor
  * showing: no-op. UI input task only. */
 void synth_ui_menu_toggle_layer_page(void);
 
@@ -186,17 +188,20 @@ void synth_ui_cycle_live_patch(int delta);
 
 /* ── Ball drop screen ────────────────────────────────────────────────────
  * Active when seq_state.ui_mode == UI_MODE_DROP and no overlay is up. The
- * encoder takes the SHIFT state so one turn can cycle a segment's type;
- * button_edge/button_long feed the screen the press edges of buttons 0..2
- * (its taps act on the release, holds are turn modifiers); button_long
- * returns true when the hold already turned something, so the dispatcher
- * keeps its own long-press meaning (play/stop) otherwise. shift0 is the
- * SHIFT + Button 0 chord: a press rerolls the seed, a hold freezes it. */
+ * encoder takes the SHIFT state so one turn can cycle a segment's type, and
+ * `rows` (SHOULDER held), which moves the cursor by rows while browsing the
+ * cells; `rows` has no effect in the other branches (Button 0/2 holds, SHIFT,
+ * editing), which keep their priority. button_edge/button_long feed the
+ * screen the press edges of buttons 0..2 (its taps act on the release, holds
+ * are turn modifiers); button_long returns true when the hold already turned
+ * something, so the dispatcher keeps its own long-press meaning (play/stop)
+ * otherwise. shift0 is the SHIFT + Button 0 chord: a press rerolls the seed,
+ * a hold freezes it. */
 bool synth_ui_drop_is_active(void);
 /* The field cell under the drop screen's cursor: true and both filled while
  * the cursor is on a cell, false (outputs untouched) on a header field. */
 bool synth_ui_drop_cursor_cell(uint8_t *col, uint8_t *row);
-void synth_ui_drop_handle_encoder(long delta, bool shift);
+void synth_ui_drop_handle_encoder(long delta, bool shift, bool rows);
 void synth_ui_drop_handle_button(void);
 void synth_ui_drop_cycle_patch(int delta);   /* the focused synth's patch */
 void synth_ui_drop_button_edge(uint8_t btn, bool down);
@@ -225,7 +230,7 @@ void synth_ui_drone_std_handle_button(void);
 void synth_ui_drone_std_cycle_patch(int delta);
 
 /* Chord-progression screen — active when seq_state.ui_mode == UI_MODE_PROG and no
- * overlay (menu/graph) is up.  Returns false if not active (caller should fall through). */
+ * overlay (menu/ADSR) is up.  Returns false if not active (caller should fall through). */
 bool synth_ui_prog_is_active(void);
 bool synth_ui_prog_handle_encoder(int delta);
 bool synth_ui_prog_handle_button(void);
@@ -300,16 +305,20 @@ uint8_t synth_ui_wt_keyframe(void);
  * turn scrolls the rows, and PARAM, where the turn stays inside the cursor
  * row's quick cells (synth_ui/ui_mixer_quick.h).
  * handle_encoder: with `shift` (SHIFT held) steps the cursor row's fader by
- * 5 per detent in either mode, MAST included, or on the overview's last
- * row, FADE, the fade length (1, 2, 4, 8, 16, 32 bars, one per detent).
+ * 5 per detent in either mode, MAST included, on the overview's FADE row
+ * the fade length (1, 2, 4, 8, 16, 32 bars, one per detent), on its LINK
+ * row the active link group (A..C, clamped; page state, not persisted).
  * Otherwise LIST moves the cursor; PARAM selects among the row's cells
  * (clamped) or, while editing, steps the selected one. handle_button
- * (encoder click): LIST opens a layer row's track rows (nothing on other
- * rows); PARAM toggles editing of the selected cell. button1 flips the
- * cursor row's mixer mute (nothing on MAST or FADE). button2 toggles LIST
- * <-> PARAM; nothing on a row without quick cells; entering selects the
- * first cell, not editing. fade starts or turns around the cursor row's
- * fade (mixer_fade_toggle(), MAST included, nothing on FADE). back leaves
+ * (encoder click): LIST opens a layer row's track rows, on LINK clears
+ * every link (mixer_clear_links()), nothing on other rows; PARAM toggles
+ * editing of the selected cell. button1 flips the cursor row's mixer mute
+ * (nothing on MAST or a settings row). button2 toggles LIST <-> PARAM;
+ * nothing on a row without quick cells; entering selects the first cell,
+ * not editing. fade starts or turns around the cursor row's fade
+ * (mixer_fade_toggle(), MAST included, nothing on a settings row). link
+ * puts the cursor source in the active link group, or takes it out when it
+ * is already there (nothing on a settings row). back leaves
  * the track rows for the overview on the row they were opened from, in
  * LIST mode, and returns true; false (nothing done) outside a dive, so
  * the caller falls through. shift records SHIFT for the view (the bar
@@ -322,6 +331,7 @@ bool    synth_ui_mixer_handle_button(void);
 bool    synth_ui_mixer_button1(void);
 bool    synth_ui_mixer_button2(void);
 bool    synth_ui_mixer_fade(void);
+bool    synth_ui_mixer_link(void);
 bool    synth_ui_mixer_back(void);
 bool    synth_ui_mixer_shift(bool held);
 bool    synth_ui_mixer_shoulder(void);
@@ -334,16 +344,16 @@ bool    synth_ui_mixer_shoulder(void);
 uint16_t seq_get_bpm(void);
 uint8_t  seq_get_active_layer_idx(void);
 
-/* ── Graph pop-up integration ────────────────────────────────────────────────
+/* ── ADSR editor ─────────────────────────────────────────────────────────────
  * Hooks for the reusable graph_popup widget, called from the gesture
  * dispatcher; the pop-up state and U8g2 plumbing stay inside the synth_ui
  * module. */
 
-/* True while the graph pop-up overlay is open. */
-bool synth_ui_graph_is_active(void);
+/* True while the ADSR editor overlay is open. */
+bool synth_ui_adsr_is_active(void);
 
 /* Open the curve editor seeded from the current melodic ADSR envelope. */
-void synth_ui_graph_open_envelope(void);
+void synth_ui_adsr_open_envelope(void);
 
 /* SHIFT+0 solo chord (the gesture dispatcher). A press toggles the solo of
  * the screen's voice - the selected track of the active layer on the SEQ
@@ -356,28 +366,28 @@ void synth_ui_arp_solo_chord(bool long_press);
 
 /* Route input to the pop-up while it is active. Each returns true if the
  * pop-up consumed the event (caller should then skip normal sequencer input).
- * synth_ui_graph_handle_button(is_long): is_long=true => long-press/cancel. */
-bool synth_ui_graph_handle_encoder(long delta);
-bool synth_ui_graph_handle_button(bool is_long);
+ * synth_ui_adsr_handle_button(is_long): is_long=true => long-press/cancel. */
+bool synth_ui_adsr_handle_encoder(long delta);
+bool synth_ui_adsr_handle_button(bool is_long);
 
 /* Commit the current edits and close the editor. Distinct from
- * synth_ui_graph_handle_button(true), which discards. */
-bool synth_ui_graph_close_commit(void);
+ * synth_ui_adsr_handle_button(true), which discards. */
+bool synth_ui_adsr_close_commit(void);
 
-/* Cycle the graph editor's MY_BUTTON_2 sub-modes: the encoder adjusts the
+/* Cycle the ADSR editor's MY_BUTTON_2 sub-modes: the encoder adjusts the
  * target's amplitude trim (0..1), the layer swing, or an envelope routing
  * depth (PIT/CUT/DRV/MIX) instead of moving ADSR points; which stops exist
  * for a target is decided in ui_editors.c. Committed on close (confirm),
  * reset on every open. */
-void synth_ui_graph_toggle_amp_mode(void);
+void synth_ui_adsr_toggle_amp_mode(void);
 
 /* Flip the sign of the depth the target stop is editing, on either envelope
  * page. No-op with no stop up and at 0.0 depth. */
-void synth_ui_graph_flip_depth_polarity(void);
+void synth_ui_adsr_flip_depth_polarity(void);
 
 /* Cycle the shown EG's curve type Normal->Linear->DX7->TrueExp (AMY eg_type
  * 0..3). Applies to AMY immediately, honoring the current apply scope. */
-void synth_ui_graph_cycle_eg_type(void);
+void synth_ui_adsr_cycle_eg_type(void);
 
 /* ── Filter editor (per-synth LPF/HPF/BPF/LPF24 curve editor) ─────────────── */
 bool synth_ui_filter_is_active(void);
@@ -390,7 +400,7 @@ bool synth_ui_filter_close_commit(void);
 void synth_ui_filter_toggle_enabled(void);
 
 /* ── LFO editor (per-track tempo-synced modulator) ─────────────────────────
- * The third tab in the ADSR -> Filter -> LFO -> DIST cycle (synth_ui_cycle_editor):
+ * The third tab in the ADSR -> Filter -> LFO -> DIST cycle (voice_editor_cycle):
  * an LFO1 page, plus an LFO2 page while LFO2 is open. Opens on LFO1. */
 bool synth_ui_lfo_is_active(void);
 void synth_ui_lfo_open(void);
@@ -436,7 +446,7 @@ bool synth_ui_editor_release_to_patch(void);
 
 /* Cycle ADSR (EG0, EG1) -> Filter -> LFO (LFO1, LFO2 while open) -> DIST ->
  * ADSR. Commits the departing editor or page and opens the next. */
-void synth_ui_cycle_editor(void);
+void voice_editor_cycle(void);
 
 /* ── Step Trig editor (per-step pitch / probability / ratchet / conditional) ─
  * Full-screen popup addressed by the sequencer grid's own cursor (active layer
@@ -483,7 +493,7 @@ bool synth_ui_dropseg_handle_button(void);
  * dispatcher entry points, ui_view_table[]) resolves once and dispatches on
  * the result, so input and draw can never disagree.
  *
- * Order (high to low): FILTER > LFO > DIST > STEPEDIT > DROP_SEG > GRAPH >
+ * Order (high to low): FILTER > LFO > DIST > STEPEDIT > DROP_SEG > ADSR >
  * MENU > mode-tail. The first seven are the input-capturing overlays
  * (UI_VIEW_IS_OVERLAY); the mode-tail comes from seq_state.ui_mode when no
  * overlay is up. */
@@ -493,7 +503,7 @@ typedef enum {
     UI_VIEW_DIST,
     UI_VIEW_STEPEDIT,
     UI_VIEW_DROP_SEG,
-    UI_VIEW_GRAPH,
+    UI_VIEW_ADSR,
     UI_VIEW_MENU,
     UI_VIEW_ARP,
     UI_VIEW_DROP,

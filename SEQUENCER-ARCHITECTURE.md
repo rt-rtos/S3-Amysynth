@@ -32,7 +32,11 @@ The engine side is split by concern rather than living in one file:
 | `seq_core_engine.c` | tag scheduling, transport, mute/solo gating |
 | `seq_core_trig.c` | per-step probability / ratchet / conditional-trig evaluation |
 | `seq_core_synth.c` | patch loading, drum Synth/PCM engine switch |
-| `seq_core_editors.c` | envelope / filter / LFO / distortion commits from the editors |
+| `seq_core_editors.c` | EG-depth routing pushers, head masks, voice-block source selector and peer fan-out |
+| `seq_core_env.c` | envelope (EG0 / EG1) and amplitude-trim commits and previews |
+| `seq_core_filter.c` | filter commits and previews, generic filter push |
+| `seq_core_dist.c` | distortion commits and previews |
+| `seq_core_lfo.c` | LFO / LFO2 commits and previews, software LFO service, editor preview slot |
 | `seq_core_tempo.c` | BPM |
 | `seq_core_progression.c` | chord progression |
 
@@ -60,7 +64,7 @@ typedef struct {
     voice_params_t vp[SEQ_TRACKS];                // per-row EG0+EG1 envelopes, filter,
                                                   // LFO, distortion (each with a
                                                   // deferred-authority flag) + output trim
-    uint8_t  repeat_rate[SEQ_TRACKS];             // fires every N bars (1/2/4/8)
+    uint8_t  repeat_rate[SEQ_TRACKS];             // first of every N loops (1/2/4/8)
     bool     mute[SEQ_TRACKS];                    // per-track mute
     bool     solo[SEQ_TRACKS];                    // per-track solo (overrides mute)
     bool     chord_mode;                          // progression re-voices this layer
@@ -216,15 +220,17 @@ With `MAX_LAYERS=4`, `SEQ_TRACKS=5`, `SEQ_MAX_STEPS=32` the full map
 |---|---|
 | 0-1279 | step ON/OFF events, all 4 layers |
 | 1280-1319 | one-shot preview events (one per layer per track) |
-| 1320-1383 | arpeggiator (`SEQ_ARP_TAG_BASE` .. `SEQ_ARP_TAG_MAX`) |
-| 1384-1543 | ratchet one-shots for decorated steps (`SEQ_RATCHET_TAG_BASE` ..) |
-| 1544-2183 | chord one-shots (`SEQ_CHORD_TAG_BASE` .. `SEQ_CHORD_TAG_MAX`) |
-| 2184-2343 | chord preview one-shots (`SEQ_CHORD_PREVIEW_TAG_BASE` ..) |
-| 2344-2347 | bounce clip start tags (`SEQ_CLIP_TAG_BASE` .. `SEQ_CLIP_TAG_MAX`) |
+| 1320-1415 | arpeggiator (`SEQ_ARP_TAG_BASE` .. `SEQ_ARP_TAG_MAX`) |
+| 1416-1419 | ball drop loops (`SEQ_DROP_TAG_BASE` .. `SEQ_DROP_TAG_MAX`) |
+| 1420-1579 | ratchet one-shots for decorated steps (`SEQ_RATCHET_TAG_BASE` ..) |
+| 1580-2219 | chord one-shots (`SEQ_CHORD_TAG_BASE` .. `SEQ_CHORD_TAG_MAX`) |
+| 2220-2379 | chord preview one-shots (`SEQ_CHORD_PREVIEW_TAG_BASE` ..) |
+| 2380-2383 | bounce clip start tags (`SEQ_CLIP_TAG_BASE` .. `SEQ_CLIP_TAG_MAX`) |
 
 The chord ranges scale with `SEQ_CHORD_MAX_NOTES` (5), so `main.c` does not
 hardcode the ceiling: it sets `amy_cfg.max_sequencer_tags =
-SEQ_CLIP_TAG_MAX + 2` (= 2349 as shipped), clearing the highest used
+SEQ_AMY_SEQUENCE_SLOTS` (= 2893 as shipped: `SEQ_CLIP_TAG_MAX + 2` plus the
+drop's events beyond its four tags), clearing the highest used
 tag with the margin the layout comment requires (AMY's `sequencer_add_wire()`
 rejects `tag >= max_sequences` - see ARP-ARCHITECTURE.md). Widening a chord
 moves the top tag; deriving it is what keeps the two in step.
@@ -245,8 +251,10 @@ shorter pattern **repeats exactly twice** per longer cycle - it never goes
 silent.
 
 A per-track **repeat rate** (`repeat_rate[track]`, values 1/2/4/8) stretches
-this further: the track's steps fire only every Nth bar, evaluated in the trig
-path.
+this further: a repeat N row plays its first loop and is silent for N-1 loops
+(a 32-step layer's loop is two bars). Plain steps carry the N-loop period in
+their periodic entries (`sequencer_emit_step`); decorated steps are gated in
+the trig path.
 
 ### Gate widths
 
@@ -352,7 +360,7 @@ void sequencer_core_set_track_repeat_rate(uint8_t layer_idx, uint8_t track,
 /* Per-step decorations */
 void sequencer_core_set_step_prob(uint8_t layer_idx, uint8_t track,
                                   uint8_t step, uint8_t prob);
-/* ...ratchet, cond_type, cond_param accessors follow the same shape */
+/* ...ratchet, step_every, step_prev accessors follow the same shape */
 ```
 
 Mute/solo gating happens in one place - `sequencer_track_audible()`

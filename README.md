@@ -54,8 +54,8 @@ melodic layer, running at 108 BPM. From there:
   on the grid. Every step carries its own pitch offset (+-24 semitones),
   probability, 1-4 ratchet sub-hits, a fire-every-N-loops count and an
   only-after-previous condition (the two conditions combine), set from a
-  per-step popup. Tracks have mute/solo and per-track repeat rates (fire
-  every 1/2/4/8 bars).
+  per-step popup. Tracks have mute/solo and per-track repeat rates (play the
+  first of every 1/2/4/8 loops).
 - **Per-row voices** - every melodic row owns its own AMY synth slot, so
   stacked same-pitch notes on different rows don't collapse into one voice.
 - **Arpeggiator** - a standalone instrument on its own screen: 8 note slots
@@ -71,7 +71,7 @@ melodic layer, running at 108 BPM. From there:
   slowly sweeping filter with per-step "blip" zaps, and a sine sub up to
   three octaves below. See
   [DRONE.md](components/synth_core/custompatches/DRONE.md).
-- **Ball drop (very early prototype)** - a 16 x 8 field where balls fall from
+- **Ball drop (very early prototype)** - a 15 x 8 field where balls fall from
   a spawner, bounce off segments you place and play a note on each hit, with
   jackpot cells that play a second synth. Work in progress; see
   [Ball drop](#ball-drop-early-prototype).
@@ -573,9 +573,9 @@ Fields, ranges and inputs:
 
 **Per-track options (menu -> Layer):**
 
-The Layer page carries the track selector, **Repeat** (the track fires every
-1/2/4/8 bars), **Mute**, **Solo** (solo overrides mute; a **ClrSolo** row
-appears while anything is soloed and clears all solos), and for melodic
+The Layer page carries the track selector, **Mute**, **Solo** (solo
+overrides mute; a **ClrSolo** row appears while anything is soloed and
+clears all solos), and for melodic
 layers **Chord / Root / Type** (read-only while the global progression is
 enabled) and, on a wavetable track, **Frame** (the frame its notes start on;
 see [VOICE-BUILDERS.md](VOICE-BUILDERS.md#frame-position-frame-and-frm)).
@@ -584,7 +584,9 @@ the arp screen (Level, Key, Mute, Solo, Unison, Gate, Glide; a soloed arp
 plays alongside soloed rows) and on a **LIVE** entry from the Wireless page
 (Level, Key, Unison, Glide for the BLE live-play voice). Their Unison page
 stacks detuned copies on the arp or live voice the way a melodic track's
-does.
+does. A track's repeat rate (play the first of every 1/2/4/8 loops; a
+32-step layer's loop is two bars) is on the mixer's track rows, as the
+RPT quick cell.
 
 **Patch selection:**
 
@@ -613,9 +615,11 @@ Add Custom currently plays the organ default; it has no editor screen yet.
 **Scale quantizer:**
 
 Enabled via menu item **Quant**. Changing **Scale** or **Root** re-snaps all
-active melodic steps immediately - there is no undo. **ArpQ** chooses
-whether the arp follows the global scale (GLOB) or plays its slots unsnapped
-(OWN, chromatic by default).
+active melodic steps immediately - there is no undo. The arp picks its own
+scale source with the **Q** field on the Arp screen (also the **Arp Q** row on
+Prog Gen): **OWN** uses the arp's private scale (chromatic by default),
+**GLOB** follows this quantizer, **CHRD** follows the playing progression
+chord.
 
 ---
 
@@ -646,23 +650,25 @@ row's fader in 5 % steps (on the FADE row, the fade length), Button 1
 toggles the mute and SHIFT + Button 2 fades the row. SHOULDER opens the
 menu's main list from anywhere on the page.
 
-Each overview row also carries up to two **quick cells**, a fixed pair of
-the source's own settings per row kind, edited in PARAM mode; the title
-shows the selected cell's name and the cell its value (outlined while
-selected, filled while editing). They edit the same settings as the source's own page,
+Each source row also carries up to three **quick cells**, fixed settings
+of the source per row kind, edited in PARAM mode; the title shows the
+selected cell's name and the cell its value (outlined while selected,
+filled while editing). Two cells show at a time: in PARAM mode they follow
+the selection, so the ARP row scrolls to its third cell. They edit the same settings as the source's own page,
 so a project saves them where that page's settings go (the live voice's are
 session-only).
 
-| Row | Q1 | Q2 |
-|---|---|---|
-| Melodic layer | CUT: every row's filter cutoff, one semitone per detent (rows at different cutoffs move by the same interval; 65-16000 Hz) | GAT: the layer gate, the Layer page's steps |
-| Drum layer | SWG: layer swing, 2 % per detent | - |
-| ARP | OCT: octaves, 1-4 | GLD: glide, 0-100 ms in 5 ms steps |
-| STUT | PAT: gate pattern | RT: root note |
-| DRON | RT: root note | CUT: filter cutoff, one semitone per detent |
-| LIVE | GLD: glide, 0-100 ms in 5 ms steps | CUT: filter cutoff, one semitone per detent |
+| Row | Q1 | Q2 | Q3 |
+|---|---|---|---|
+| Melodic layer | CUT: every row's filter cutoff, one semitone per detent (rows at different cutoffs move by the same interval; 65-16000 Hz) | GAT: the layer gate, the Layer page's steps | - |
+| Drum layer | SWG: layer swing, 2 % per detent | - | - |
+| Track (in a layer's track rows) | RPT: repeat rate 1, 2, 4 or 8 loops: the row plays its first loop and is silent for the rest | - | - |
+| ARP | OCT: octaves, 1-4 | GLD: glide, 0-100 ms in 5 ms steps | RPT: repeat rate 1, 2, 4 or 8; one loop is one bar, so at N the arp plays the first bar of every N |
+| STUT | PAT: gate pattern | RT: root note | - |
+| DRON | RT: root note | CUT: filter cutoff, one semitone per detent | - |
+| LIVE | GLD: glide, 0-100 ms in 5 ms steps | CUT: filter cutoff, one semitone per detent | - |
 
-Track rows, MAST, the clips and FADE have none. CUT changes the stored
+MAST, the clips and FADE have none. CUT changes the stored
 cutoff also while that filter is off.
 
 SHIFT + `MY_BUTTON_2` fades the cursor row to silence over the FADE row's bar count,
@@ -686,7 +692,7 @@ Hint strip: `1:Mute 2:Param 3:Menu LB:Main`; `2:List` in PARAM mode and
 | Item | Range |
 |---|---|
 | DEV | Developer screen (with `CONFIG_SYNTH_DEV_MENU`) |
-| Layer | opens the active layer's page: first **Track**, the grid's selected track (turning it moves the cursor's row too), and the per-track level/key/repeat/mute/solo it drives, then the layer-wide steps, swing, patch scope, gate/glide/groove and chord. **Level** is the row's volume, 0-100 % in 5 % steps (50 % = -6 dB); the arp, live voice and drones set theirs with the envelope editor's AMP stop instead. **Key** (filter key tracking, 0-100 %, pivot = main menu Root in octave 4) moves the row's cutoff with the played note, 100 % one octave per octave; the filter's cutoff is then the cutoff at the pivot note. Melodic layers only. **Gate** from 10 to 100 % is a share of one step (drum layers start at 50 %, melodic at 92 %). Above that it is whole steps, `2 st` to `8 st`. `Hold` keeps the note until the row's next trig. At any setting a note ends at least one tick before the next active step on its row fires, even when that step's conditions keep it silent this loop. **Glide** (ms, AMY-native portamento) and **Groove** (0-100 % accent / humanize) are melodic only |
+| Layer | opens the active layer's page: first **Track**, the grid's selected track (turning it moves the cursor's row too), and the per-track level/key/mute/solo it drives, then the layer-wide steps, swing, patch scope, gate/glide/groove and chord. **Level** is the row's volume, 0-100 % in 5 % steps (50 % = -6 dB); the arp, live voice and drones set theirs with the envelope editor's AMP stop instead. **Key** (filter key tracking, 0-100 %, pivot = main menu Root in octave 4) moves the row's cutoff with the played note, 100 % one octave per octave; the filter's cutoff is then the cutoff at the pivot note. Melodic layers only. **Gate** from 10 to 100 % is a share of one step (drum layers start at 50 %, melodic at 92 %). Above that it is whole steps, `2 st` to `8 st`. `Hold` keeps the note until the row's next trig. At any setting a note ends at least one tick before the next active step on its row fires, even when that step's conditions keep it silent this loop. **Glide** (ms, AMY-native portamento) and **Groove** (0-100 % accent / humanize) are melodic only |
 | Sequencer / Mixer / Arpeggiator / Drones / Progression / FM / Wavetable | Switch mode screen |
 | BPM | 40-300 |
 | Quant | ON / OFF |
@@ -789,15 +795,15 @@ in RAM only (it does not survive a power cycle).
 
 The arp runs on its own dedicated synth slot, independent of the sequencer's
 layers. It schedules repeating AMY events that are always in sync with the
-sequencer's BPM and quantizes to its own scale / root (or the global one,
-per the menu's **ArpQ** row).
+sequencer's BPM and quantizes to its own scale / root, the global one, or
+the playing progression chord, per the Arp screen's **Q** field.
 
 Controls: [CONTROLS.md](CONTROLS.md#arp-screen).
 
 **Fields (cursor order):** Enable → Mode (UP / DOWN / SLOT) → Oct (1-4) →
 Rate (4BAR · 2BAR · 1/1 · 1/2 · 1/4 · 1/8 · 1/16 · 1/32, triplets 1/2T to
 1/32T, dotted 1/2D to 1/32D, all tempo-locked) → Gate % (10-100 %) → Porta (0-100 ms
-glide) → Note slots 0-7.
+glide) → Q (OWN / GLOB / CHRD scale source) → Note slots 0-7.
 
 Note slots store raw chromatic MIDI pitches; turning below the range clears
 the slot. In **SLOT** direction the pattern plays the slots in their written
@@ -809,17 +815,22 @@ permanently absorbs a quantized pitch.
 The arp is a normal patch voice like a sequencer row (any catalog patch,
 `MY_BUTTON_1` hold to cycle); the filter and LFO editors apply on top of it.
 
-**Quantization source (menu → ArpQ).** **GLOB** snaps the arp to the menu's
-Quant / Scale / Root like the grid. **OWN** uses the arp's private scale,
+**Quantization source (Arp screen -> Q, also Prog Gen -> Arp Q).** The
+field sits between Porta and the note slots, shows `Q:OWN`, `Q:GLOB` or
+`Q:CHRD`, and cycles in that order. **OWN** uses the arp's private scale,
 which is Chromatic by default - so OWN is the "no snapping" setting: slots
-play exactly the pitches you wrote, whatever the global quantizer does. The
-private scale has no editor on the device (`CONFIG_SEQ_ARP_DEFAULT_SCALE`
-sets it; a loaded project restores its own), and the chord progression
-re-roots the arp while it is enabled in either mode, restoring the previous
-scale/root when turned off.
+play exactly the pitches you wrote, whatever the global quantizer or the
+chord progression does. The private scale has no editor on the device
+(`CONFIG_SEQ_ARP_DEFAULT_SCALE` sets it; a loaded project restores its own).
+**GLOB** snaps the arp to the menu's Quant / Scale / Root like the grid; with
+Quant off the slots play unsnapped. **CHRD** snaps to the progression chord
+the melodic rows are playing (its root, with the chord type mapped to a
+scale), and behaves as GLOB while no progression chord is applied. CHRD is
+the boot default.
 
 Kconfig defaults at boot: disabled, chromatic, root E2, gate 75 %, 1 octave,
-patch 138 (DX7 E.Piano 1). The arp produces no sound until enabled **and**
+patch 138 (DX7 E.Piano 1); the scale source starts on CHRD, which is fixed
+in code and has no Kconfig option. The arp produces no sound until enabled **and**
 at least one slot is filled.
 
 ---
@@ -885,8 +896,8 @@ by a 4-bar sine, and the LFO editor shows the swept range in Hz.
 > unfinished (list at the end of this section). A project saved with ball
 > drop may load without its field in a later build.
 
-Menu → Ball Drop opens a field of 16 x 8 cells. A spawner at the top of
-column 8 releases a ball once per rate step. Balls fall, bounce off the
+Menu → Ball Drop opens a field of 15 x 8 cells. A spawner at the top of
+column 7, the center, releases a ball once per rate step. Balls fall, bounce off the
 segments you place and play the DROP synth on each hit, at a pitch set by
 the segment's row. A ball that crosses a jackpot cell plays the SUB synth
 instead. The loop is simulated from a seed and repeats until an edit or a
@@ -922,7 +933,7 @@ Each entry has three fields, cycled by the encoder click while editing:
 | Field | Options |
 |---|---|
 | Root | C, C#, D, D#, E, F, F#, G, G#, A, A#, B |
-| Chord type | Maj, Min, Maj7, Min7, 7, Sus2, Sus4, Dim, Aug, Min9, Maj9, 6, Min6, 9 |
+| Chord type | Maj, Min, Maj7, Min7, 7, Sus2, Sus4, Dim, Aug, Min9, Maj9, 6, Min6, 9, m7b5 |
 | Duration | 1, 2, 3, 4, 8, or 16 bars |
 
 Controls: [CONTROLS.md](CONTROLS.md#prog-screen).
@@ -949,10 +960,11 @@ preset embeds - across all layers and instruments simultaneously.
 global scale or root in the menu re-snaps all active melodic step pitches on the
 next sequencer tick. The stored pitches are updated in place - there is no undo.
 
-**The arp and drones can ignore the global quantizer.** With ArpQ = OWN the
-arp plays its slots unsnapped (chromatic by default) whatever the menu's
-Quant / Scale / Root say; the chord progression, when enabled, still re-roots
-it. The drones' chords follow their own ROOT and CHORD rows, always.
+**The arp and drones can ignore the global quantizer.** With the Arp
+screen's Q field on OWN the arp snaps its slots to its private scale
+(chromatic by default) whatever the menu's Quant / Scale / Root or the chord
+progression say; on CHRD it follows the progression chord in place of the
+global scale. The drones' chords follow their own ROOT and CHORD rows, always.
 
 **Stutter drone PATCH mode disables the stutter.** In PATCH mode the PEAK /
 DUCK / STUTTER / GATE rows are hidden and the LFO gate is inactive. The

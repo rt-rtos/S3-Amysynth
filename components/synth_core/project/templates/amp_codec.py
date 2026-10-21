@@ -1,7 +1,7 @@
 """Reader/writer for S3-Amysynth project files (Pnn.amp).
 
 Mirrors components/synth_core/project/project_snapshot.c field for field:
-GLOB v7, LAYR v27, ARP v18, DROP v4, DRON v8, DSTD v5, PROG v2, CHRD v2, CLIP v3, MIXR v3,
+GLOB v7, LAYR v27, ARP v18, DROP v5, DRON v8, DSTD v5, PROG v2, CHRD v2, CLIP v3, MIXR v3,
 PGEN v2, WTCU v3, FMCU v2,
 inside project_store.c's 32-byte header (magic "AMYP", fmt 1, name, len, CRC32).
 Field order IS the format, and the record layout follows the firmware's: every
@@ -36,7 +36,7 @@ NAME_LEN = 16
 
 TAG = {k: struct.unpack('<I', k.encode())[0] for k in ('GLOB', 'LAYR', 'ARP ', 'DROP', 'DRON', 'DSTD', 'PROG', 'CHRD',
                                                        'CLIP', 'MIXR', 'PGEN', 'WTCU', 'FMCU')}
-VER = {'GLOB': 7, 'LAYR': 27, 'ARP ': 18, 'DROP': 4, 'DRON': 8, 'DSTD': 5, 'PROG': 2, 'CHRD': 2,
+VER = {'GLOB': 7, 'LAYR': 27, 'ARP ': 18, 'DROP': 5, 'DRON': 8, 'DSTD': 5, 'PROG': 2, 'CHRD': 2,
        'CLIP': 3, 'MIXR': 3, 'PGEN': 2, 'WTCU': 3, 'FMCU': 2}
 REQUIRED = ('GLOB', 'LAYR')   # another version of these refuses the file
 
@@ -46,7 +46,7 @@ SEQ_MAX_STEPS = 32
 FX_BUS_COUNT = 4
 ARP_MAX_SLOTS = 8
 DROP_SEG_MAX = 16
-DROP_JACKPOT_BYTES = 16   # one bit per cell of the 16 x 8 field
+DROP_JACKPOT_BYTES = 15   # one bit per cell of the 15 x 8 field
 DROP_BOUNCE_DEFAULT = 179  # restitution 0.70 in Q8
 SEQ_CHORD_SLOTS = 8
 SEQ_CHORD_MAX_NOTES = 5
@@ -203,7 +203,8 @@ def default_layer(kind):
     return dict(type=kind, num_steps=16, patch=0, synth_flags=0, num_voices=1, chord_mode=False,
                 chord_root=0, chord_type=0, swing_pct=0,
                 tracks=[dict(base_note=60, patch=0, pcm_preset=0, pcm_mode=0,
-                             uni_count=1, uni_detune=12, uni_spread=50, uni_blend=100,
+                             uni_count=1, uni_detune=12, uni_spread=50, uni_blend=100, uni_stereo=1,
+                             uni_bypass=0, uni_shift=100, uni_interval=0,
                              repeat_rate=1, mute=False, solo=False, follow=0, wt_frame=0, vp=default_vp())
                         for _ in range(SEQ_TRACKS)],
                 grid=grid(0), step_note=grid(60), step_pitch_ofs=grid(0), step_prob=grid(100),
@@ -318,7 +319,8 @@ def r_vp(r):
 
 
 # voice_unison_t (ser_unison): flat uni_* keys of the owning dict.
-UNISON_FIELDS = [('uni_count', 'u8'), ('uni_detune', 'u8'), ('uni_spread', 'u8'), ('uni_blend', 'u8')]
+UNISON_FIELDS = [('uni_count', 'u8'), ('uni_detune', 'u8'), ('uni_spread', 'u8'), ('uni_blend', 'u8'),
+                 ('uni_stereo', 'u8'), ('uni_bypass', 'u8'), ('uni_shift', 'u8'), ('uni_interval', 'u8')]
 
 
 def w_unison(w, d):
@@ -342,20 +344,31 @@ GLOB_FX_FIELDS = [('eq_low_db', 'i8'), ('eq_mid_db', 'i8'), ('eq_high_db', 'i8')
                   ('chorus_rate', 'i16'), ('chorus_depth', 'i16'), ('bus_dist_type', 'u8'),
                   ('bus_dist_drive', 'u8'), ('bus_dist_bits', 'u8'), ('bus_dist_rate', 'u8'),
                   ('bus_dist_mix', 'u8'), ('level', 'u8'), ('chorus_delay', 'i16')]
+# Appended after the bus records: transport stop mode (tstop_mode_t), fade
+# length index, silent start, clock phrase index (ui_clock).
+GLOB_TAIL_FIELDS = [('stop_mode', 'u8'), ('stop_fade_idx', 'u8'), ('silent_start', 'b1'),
+                    ('phrase_idx', 'u8')]
+
+
+def default_glob_tail():
+    """glob_defaults' tail: Ring out, 1 bar fade, tails on start, Phrase Off."""
+    return dict(stop_mode=0, stop_fade_idx=1, silent_start=False, phrase_idx=0)
 
 
 def w_glob(g):
-    """The section scalars, then one record per FX bus."""
+    """The section scalars, then one record per FX bus, then the tail."""
     w = W()
     w.put(g, GLOB_FIELDS)
     for bus in range(FX_BUS_COUNT):
         w.block(_record(W.put, g['fx'][bus], GLOB_FX_FIELDS))
+    w.put({**default_glob_tail(), **g}, GLOB_TAIL_FIELDS)
     return bytes(w.b)
 
 
 def r_glob(r):
     g = r.fill(_zero(GLOB_FIELDS), GLOB_FIELDS)
     g['fx'] = [r.block().fill(default_fx(), GLOB_FX_FIELDS) for _ in range(FX_BUS_COUNT)]
+    g.update(r.fill(default_glob_tail(), GLOB_TAIL_FIELDS))
     return g
 
 
@@ -435,7 +448,8 @@ ARP_TAIL = [('muted', 'b1'), ('solo', 'b1')]
 
 
 def w_arp(a):
-    """One record: scalars, the slots as a raw array, the env/filter/lfo/dist/unison records nested."""
+    """One record: scalars, the slots as a raw array, the env/filter/lfo/dist/unison records
+    nested, then the repeat rate."""
     def body(b):
         b.put(a, ARP_HEAD)
         for i in range(ARP_MAX_SLOTS):
@@ -446,6 +460,7 @@ def w_arp(a):
         w_dist(b, a['dist'])
         b.put(a, ARP_TAIL)
         w_unison(b, a)
+        b.u8(a['repeat_rate'])
     w = W()
     w.block(_record(body))
     return bytes(w.b)
@@ -453,7 +468,9 @@ def w_arp(a):
 
 def r_arp(r):
     b = r.block()
-    a = b.fill(_zero(ARP_HEAD + ARP_MID + ARP_TAIL + UNISON_FIELDS), ARP_HEAD)
+    a = b.fill(dict(_zero(ARP_HEAD + ARP_MID + ARP_TAIL + UNISON_FIELDS), repeat_rate=1, uni_stereo=1,
+                    uni_shift=100),
+               ARP_HEAD)
     a['slots'] = b.fill_list([0] * ARP_MAX_SLOTS, 'i16')
     a['env'] = r_env(b, default_env()); a['env2'] = r_env(b, default_env())
     a['filter'] = r_filter(b, default_filter()); a['lfo'] = r_lfo(b, default_lfo())
@@ -461,7 +478,9 @@ def r_arp(r):
     b.fill(a, ARP_MID)
     a['dist'] = r_dist(b, default_dist())
     b.fill(a, ARP_TAIL)
-    return r_unison(b, a)
+    a = r_unison(b, a)
+    a['repeat_rate'] = b.u8() or 1
+    return a
 
 
 DROP_HEAD = [('enabled', 'b1'), ('rate', 'u8'), ('loop_bars', 'u8'), ('octaves', 'u8'), ('seed', 'u32'),
@@ -513,7 +532,9 @@ def r_drop(r):
     d['voices'] = []
     for _ in range(2):
         vb = r.block()
-        v = vb.fill(_zero(DROP_VOICE_HEAD + UNISON_FIELDS + DROP_VOICE_TAIL), DROP_VOICE_HEAD)
+        v = vb.fill(dict(_zero(DROP_VOICE_HEAD + UNISON_FIELDS + DROP_VOICE_TAIL), uni_stereo=1,
+                         uni_shift=100),
+                    DROP_VOICE_HEAD)
         v['vp'] = r_vp(vb)
         r_unison(vb, v)
         d['voices'].append(vb.fill(v, DROP_VOICE_TAIL))
@@ -530,16 +551,27 @@ DSTD_FIELDS = [('enabled', 'b1'), ('chord', 'u8'), ('root', 'u8'), ('follow', 'u
                ('level', 'f32'), ('patch', 'u16'), ('sub_enabled', 'b1'), ('sub_interval', 'i8')]
 
 
+# drone_params_defaults / drone_std_params_defaults unison: the row defaults at count 1.
+DRONE_UNISON_SEED = dict(uni_count=1, uni_detune=12, uni_spread=50, uni_blend=100, uni_stereo=1,
+                         uni_bypass=0, uni_shift=100, uni_interval=0)
+
+
 def w_fields_vp(fields, d):
-    """The drone sections: the scalar record, then the voice_params_t record."""
+    """The drone sections: the scalar record (the unison record nested at its end), then
+    the voice_params_t record."""
+    def body(b):
+        b.put(d, fields)
+        w_unison(b, d)
     w = W()
-    w.block(_record(W.put, d, fields))
+    w.block(_record(body))
     w_vp(w, d['vp'])
     return bytes(w.b)
 
 
 def r_fields_vp(fields, r):
-    d = r.block().fill(_zero(fields), fields)
+    b = r.block()
+    d = b.fill(dict(_zero(fields), **DRONE_UNISON_SEED), fields)
+    r_unison(b, d)
     d['vp'] = r_vp(r)
     return d
 
@@ -620,7 +652,8 @@ def r_clip(r):
 
 def w_mixr(m):
     """Mixer positions (0..100), soft-mute bit masks (layer arrays MAX_LAYERS wide), FADE
-    length index. One record, each layer's track_pos row a record nested in it."""
+    length index, link groups (0 = none, 1..3). One record, each layer's track_pos row a
+    record nested in it; the link groups flat at its tail."""
     def body(b):
         for L in range(MAX_LAYERS):
             b.u8(m['layer_pos'][L])
@@ -633,6 +666,14 @@ def w_mixr(m):
             b.u8(m['misc_pos'][k])
         b.u8(m['misc_mute'])
         b.u8(m['fade_bars_idx'])
+        b.u8(m['master_link'])
+        for L in range(MAX_LAYERS):
+            b.u8(m['layer_link'][L])
+        for L in range(MAX_LAYERS):
+            for t in range(SEQ_TRACKS):
+                b.u8(m['track_link'][L][t])
+        for k in range(MIX_MISC_COUNT):
+            b.u8(m['misc_link'][k])
     w = W()
     w.block(_record(body))
     return bytes(w.b)
@@ -647,6 +688,10 @@ def r_mixr(r):
     m['misc_pos'] = b.fill_list([0] * MIX_MISC_COUNT, 'u8')
     m['misc_mute'] = b.u8() or 0
     m['fade_bars_idx'] = b.u8() or 0
+    m['master_link'] = b.u8() or 0
+    m['layer_link'] = b.fill_list([0] * MAX_LAYERS, 'u8')
+    m['track_link'] = [b.fill_list([0] * SEQ_TRACKS, 'u8') for _ in range(MAX_LAYERS)]
+    m['misc_link'] = b.fill_list([0] * MIX_MISC_COUNT, 'u8')
     return m
 
 

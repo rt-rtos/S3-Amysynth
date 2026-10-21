@@ -107,6 +107,12 @@ pulse and sub oscs at 0), so a gate write there would switch silent oscs on,
 and an LPF24 on every chained osc would stack a filter per osc. The gate's
 CONST replaces the head's own level with the drone's LEVEL.
 
+Unison (the Layer page's STUTTER entry, and DRONE on the normal drone) builds
+a raw-wave or wavetable main voice as unison cluster oscs, which the gate,
+filter, blip, distortion and LFO all address, each gate edge writing every
+osc its share of the level (`voice_unison_osc_level()`) so a stereo pair keeps
+its balance; the sub stays a single sine.
+
 After every rebuild the drone re-imposes what is authored - the envelopes
 (EG0 at the patch's voice osc, EG1 at osc 0), the filter on the target oscs
 with its envelope routing matrix, the distortion - binds its LFO (a shared LFO
@@ -209,6 +215,7 @@ chord types (`chord_types.h`; `CHORD_OFF`, the boot default, is root only):
 | 6    | 0, 4, 7, 9 |
 | Min6 | 0, 3, 7, 9 |
 | 9    | 0, 4, 7, 10, 14 |
+| m7b5 | 0, 3, 6, 10 |
 
 The main synth holds as many voices as the patch allows, so a chord change
 never rebuilds it: the drone keeps a record of the notes it has sounding and
@@ -277,7 +284,7 @@ Enabling sounds sustained note-ons and disabling releases them (at the next
 service frame); on disable the ADSR **release** fades the chord out in time
 with the tempo-set envelope.
 
-## ADSR envelope (shared graph editor)
+## ADSR envelope (shared ADSR editor)
 
 The drone reuses the shared ADSR **graph_popup** editor (the same widget the
 melodic layers and the arp use). On the drone screen, SHIFT + `MY_BUTTON_1`
@@ -335,7 +342,7 @@ Inputs: [CONTROLS.md](../../../CONTROLS.md#drone-screens).
 
 A drone-screen isolation guard in `main/input_dispatch.c` (mirroring the arp guard) suppresses
 the sequencer's editing gestures while the drone screen is up, but keeps the
-menu toggle and global play/pause live. The guard stands down while the graph
+menu toggle and global play/pause live. The guard stands down while the ADSR
 editor or menu overlays are on top, so those never conflict.
 
 ## Screen layout (parameter list)

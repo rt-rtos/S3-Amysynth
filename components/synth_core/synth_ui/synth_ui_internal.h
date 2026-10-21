@@ -28,8 +28,8 @@ extern synth_ui_state_t *seq_state_ptr;
 #define seq_state (*seq_state_ptr)
 void synth_ui_state_alloc(void);
 extern volatile bool     s_force_redraw;   /* owner: synth_ui_task.c */
-extern uint8_t           s_graph_layer;    /* owner: ui_editors.c; task clamps it */
-extern uint8_t           s_graph_track;    /* owner: ui_editors.c; task clamps it */
+extern uint8_t           s_ve_layer;       /* owner: ui_editors.c; task clamps it */
+extern uint8_t           s_ve_track;       /* owner: ui_editors.c; task clamps it */
 extern bool              s_filter_active;  /* owner: ui_editors.c; task reads for cascade */
 extern bool              s_lfo_active;     /* owner: ui_editors.c; task reads for cascade */
 extern bool              s_dist_active;    /* owner: ui_editors.c; task reads for cascade */
@@ -66,7 +66,7 @@ void     synth_ui_reexport_layer(uint8_t li);
  * context. */
 void     synth_ui_request_layer_tracks(uint8_t li, uint8_t num_tracks);
 
-/* Layer swing editing, shared by the Layer page and the graph editor's SWG
+/* Layer swing editing, shared by the Layer page and the ADSR editor's SWG
  * stop (defined in ui_screen_layermenu.c). ui_swing_step moves swing_pct by
  * `dir` engine ticks and returns the smallest pct for the new tick, clamped to
  * 0..SEQ_SWING_MAX. ui_swing_format writes the long/short ratio of a 16th pair
@@ -91,7 +91,7 @@ void     ui_gate_format(char *buf, size_t len, uint16_t gate_pct);
  * the hash, so the draw switch reuses it instead of repeating the snprintf
  * build in the same frame. */
 uint32_t seq_view_signature(void);
-uint32_t graph_view_signature(void);
+uint32_t adsr_view_signature(void);
 uint32_t filter_view_signature(void);
 uint32_t lfo_view_signature(void);
 uint32_t dist_view_signature(void);
@@ -183,9 +183,9 @@ typedef struct {
 
 extern const ui_view_desc_t ui_view_table[UI_VIEW_COUNT];
 
-/* GRAPH b2 hint (owner: ui_editors.c): the stop the next MY_BUTTON_2 press
+/* ADSR b2 hint (owner: ui_editors.c): the stop the next MY_BUTTON_2 press
  * enters. */
-const char *synth_ui_graph_hint_b2(void);
+const char *synth_ui_adsr_hint_b2(void);
 /* LFO b2 hint (owner: ui_editors.c): "+LFO2" / "-LFO2" for what the next
  * MY_BUTTON_2 press does, "-" where LFO2 is unavailable. */
 const char *synth_ui_lfo_hint_b2(void);
@@ -205,15 +205,37 @@ void     fm_build_view(fm_view_t *out);
 void     wt_build_view(wt_view_t *out);
 void     mixer_build_view(mixer_view_t *out);
 
-/* ─── FX hub: one dive row per AMY bus plus the settings that are not per-bus
- *     (item model in ui_screen_fxmenu.c; the page state and input routing
- *     live in ui_screen_menu.c) ─────────────────────────────────────────── */
+/* ─── FX hub: one dive row per AMY bus (item model in ui_screen_fxmenu.c;
+ *     the page state and input routing live in ui_screen_menu.c) ───────── */
 const menu_item_view_t *fxhub_build_items(void);
 uint8_t  fxhub_item_count(void);
 bool     fxhub_item_is_bus(uint8_t idx, uint8_t *bus_out);  /* dive into a bus */
-bool     fxhub_item_is_value(uint8_t idx);
 bool     fxhub_item_is_back(uint8_t idx);
-void     fxhub_edit_value(uint8_t idx, int delta);
+
+/* ─── Settings page: Preset FX, the transport Stop and Start modes, the
+ *     stop fade length and the clock Phrase (item model in
+ *     ui_screen_settings.c; page state and input routing live in
+ *     ui_screen_menu.c) ──────────────────────────────────────────────────── */
+const menu_item_view_t *settings_menu_build_items(void);
+uint8_t  settings_menu_item_count(void);
+bool     settings_menu_item_is_value(uint8_t idx);
+bool     settings_menu_item_is_back(uint8_t idx);
+void     settings_menu_edit_value(uint8_t idx, int delta);
+
+/* ─── Transport clock (ui_clock.c): the bar.16th text of the mixer header
+ *     and the Phrase setting that groups bars into phrases. Phrase is display
+ *     only (it changes no timing), persisted in the project GLOB;
+ *     ui_clock_defaults() is its project-format fallback (Off). UI task. ── */
+#define UI_CLOCK_PHRASE_COUNT 6        /* Off, 2, 4, 8, 16, 32 bars */
+uint8_t  ui_clock_defaults(void);
+uint8_t  ui_clock_phrase_bars(uint8_t idx);     /* 0 = Off; clamped index */
+uint8_t  ui_clock_get_phrase_idx(void);
+void     ui_clock_set_phrase_idx(uint8_t idx);  /* clamps to COUNT-1 */
+/* Pure. `e` = sequencer_core_play_ticks(). From e >= 0, bar b = e / bar
+ * ticks and s = the 16th within it (1..16): Phrase Off -> "b+1.s", phrase P
+ * bars -> "b/P+1:b%P+1.s". The count-in (e < 0, clamped at one bar) is bar 0:
+ * "0.s" in both modes. Writes at most `n` bytes into `out`. */
+void     ui_clock_text(char *out, size_t n, int32_t e, uint8_t phrase_idx);
 
 /* ─── Per-bus FX page, reached from a bus row on the hub. The page is bound
  *     to one bus by fx_menu_set_bus() on the way in. ───────────────────── */
@@ -230,7 +252,7 @@ const char *menu_page_title(void);   /* header-bar title for the active page */
 bool     menu_shoulder_goes_main(void);
 
 /* ─── Layer page: everything scoped to the active layer - the Track selector
- *     and the per-track block it drives (level/key/follow/repeat/mute/solo,
+ *     and the per-track block it drives (level/key/follow/mute/solo,
  *     frame, the Unison/PCM dives) first, then the layer-wide rows (steps,
  *     swing, melodic patch scope, gate/glide/groove, the manual chord) (item
  *     model in ui_screen_layermenu.c; page state and input routing live in
@@ -245,7 +267,6 @@ typedef enum {
     LM_LEVEL,       /* the Track row's amp trim, 0..100 % */
     LM_KEYTRACK,    /* the Track row's filter key tracking, melodic layers */
     LM_FOLLOW,
-    LM_REPEAT,
     LM_MUTE,
     LM_SOLO,
     LM_CLRSOLO,
@@ -275,23 +296,24 @@ void     layermenu_menu_clamp_cursor(void);
 /* Visible-list index of row `id` (layer_item_id_t), or 0xFF while that row is
  * not shown. */
 uint8_t  layermenu_menu_row_index(uint8_t id);
-/* The track the page targets (its Track row): Follow/Repeat/Mute/Solo and the
+/* The track the page targets (its Track row): Follow/Mute/Solo and the
  * Unison/PCM sub-pages. */
 uint8_t  layermenu_menu_track(void);
 const char *layermenu_menu_title(void);
 /* Which entry the page shows: a sequencer layer (VT_MELODIC, every row
- * above), the arp (VT_ARP: Level, Key, Mute, Solo, ClrSolo, Unison, Gate,
- * Glide) or the live-play voice (VT_LIVE: Level, Key, Unison, Glide). The
- * arp and live rows go through ui_voice_target.h. Set by the page router
- * before it lands the cursor, since the row list depends on it. */
+ * above), the arp or the drop (VT_ARP, VT_DROP: Level, Key, Mute, Solo,
+ * ClrSolo, Unison, Gate, Glide), the live-play voice (VT_LIVE: Level, Key,
+ * Unison, Glide) or a drone (VT_DRONE, VT_DRONE_STD: Unison). The voice rows
+ * go through ui_voice_target.h. Set by the page router before it lands the
+ * cursor, since the row list depends on it. */
 void     layermenu_menu_set_kind(voice_target_kind_t kind);
 voice_target_kind_t layermenu_menu_kind(void);
 
 /* ─── Layer sub-pages, dived into from the Layer page (item model in
  *     ui_screen_layer_sub.c; page state and input routing in
  *     ui_screen_menu.c). Both edit the active layer at the Layer page's track
- *     (layermenu_menu_track); Unison edits the arp or live voice instead on
- *     those entries. Unison: Count/Detune/Spread/Blend, following the layer's
+ *     (layermenu_menu_track); Unison edits the voice entry's synth instead
+ *     on the voice entries. Unison: Count/Detune/Spread/Blend, following the layer's
  *     patch scope. PCM: the drum track's PCM playback mode. ─── */
 const menu_item_view_t *layer_uni_menu_build_items(void);
 uint8_t  layer_uni_menu_item_count(void);
@@ -319,7 +341,7 @@ bool     projects_menu_handle_click(uint8_t idx);
 void     projects_menu_edit_value(uint8_t idx, int delta);
 void     projects_menu_reset(void);
 void     projects_menu_service(void);   /* drains the deferred load/save */
-void     projects_import_init(void);    /* creates the import queue; before the UI task */
+void     projects_import_init(void);    /* creates the request and import queues; before the UI task */
 void     projects_import_service(void); /* drains one queued file import */
 /* Rename-editor primitives, composed by the menu overlay's public
  * synth_ui_menu_rename_* hooks (which add the page-state gating). */
@@ -383,13 +405,13 @@ void     proggen_menu_edit_value(uint8_t idx, int delta);
 void     proggen_menu_reset(void);
 const char *proggen_menu_title(void);
 
-/* Editor live-preview service: flushes any pending throttled apply (the graph
+/* Editor live-preview service: flushes any pending throttled apply (the ADSR
  * editor's amp trim and layer swing, whose applies re-emit notes). Called
  * from synth_ui_task's 50 ms loop; no-op when nothing is pending. */
 void     synth_ui_editors_live_service(void);
 
-/* ─── Draw wrappers (encapsulate private s_fgraph/s_lfo_view/s_graph_popup) */
-void     synth_ui_graph_view_draw(u8g2_t *u8g2);
+/* ─── Draw wrappers (encapsulate private s_fgraph/s_lfo_view/s_adsr_popup) */
+void     synth_ui_adsr_view_draw(u8g2_t *u8g2);
 void     synth_ui_filter_view_draw(u8g2_t *u8g2);
 void     synth_ui_lfo_view_draw(u8g2_t *u8g2);
 void     synth_ui_dist_view_draw(u8g2_t *u8g2);

@@ -102,6 +102,7 @@ static const int8_t s_chord_intervals[CHORD_TYPE_COUNT][6] = {
     /* MIN6 */ {  0,  3,  7,  9, -1, -1 },
     /* DOM9 */ {  0,  4,  7, 10, 14, -1 },  // dom7 + 9th
     /* OFF  */ {  0, -1, -1, -1, -1, -1 },  // root only - "no chord"
+    /* M7B5 */ {  0,  3,  6, 10, -1, -1 },  // half-diminished: dim + b7
 };
 
 /* The -1-terminated semitone interval row for a chord type; NULL if out of

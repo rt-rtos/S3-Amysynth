@@ -15,13 +15,11 @@ extern "C" {
  *                   frame was loaded, so a zero-length packet went on the
  *                   wire. Under the async-source pull this is starvation:
  *                   render stalled or the stream had a gap (usb_audio.c).
- *   ring_underrun   No writer; reads 0.
  *   ring_overrun    A rendered block was dropped whole because the ring was
  *                   full while a host was consuming.
  *   render_overrun  Render-clock ticks that fired while the previous block
  *                   was still rendering; each is a block of realtime lost
  *                   (the render pacing is strictly 1:1).
- *   chunk_drop      No writer; reads 0.
  *
  * render_overrun climbing alongside wire_zlp points at render-side overload;
  * ring_overrun climbing means the host stalled draining while render kept
@@ -40,10 +38,8 @@ extern "C" {
  */
 typedef struct {
     uint32_t wire_zlp;
-    uint32_t ring_underrun;
     uint32_t ring_overrun;
     uint32_t render_overrun;
-    uint32_t chunk_drop;
 } dropout_stats_t;
 
 void dropout_count_wire_zlp(void);

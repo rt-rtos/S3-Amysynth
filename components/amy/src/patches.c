@@ -398,16 +398,11 @@ int sprint_event(amy_event *e, char *s, size_t len, bool wirecode) {
     _EPRINT_COEF(duty_coefs, "duty_coefs", "d");
     _EPRINT_COEF(pan_coefs, "pan_coefs", "Q");
     _EPRINT_F(feedback, "feedback", "b");
-    // LOCAL EDIT (S3-Amysynth, experimental): the unison cluster has no wire
-    // letter yet, so it prints in the readable form only.
-    if (!wirecode) {
-        _EPRINT_I(unison_count, "unison_count", "");
-        _EPRINT_F(unison_spacing, "unison_spacing", "");
-        _EPRINT_F(unison_offset, "unison_offset", "");
-        _EPRINT_F(unison_blend, "unison_blend", "");
-        _EPRINT_F(unison_phase_step, "unison_phase_step", "");
-    }
     _EPRINT_F(trigger_phase, "phase", "P");
+    // The count is a uint8, printed through the float list like the chorus fields.
+    _EPRINT_VALS_5(AMY_IS_SET(e->unison_count) ? (float)e->unison_count : AMY_UNSET_FLOAT,
+                   e->unison_spacing, e->unison_offset, e->unison_blend, AMY_UNSET_FLOAT,
+                   "unison_{count,spacing,offset,blend}", "C");
     _EPRINT_I(sample_offset, "sample_offset", "po");
     _EPRINT_F(fit_ticks, "fit", "pF");
     _EPRINT_I(fit_search, "fit_search", "pS");
@@ -563,12 +558,10 @@ bool event_addresses_oscs(amy_event *e) {
     _RET_TRUE_IF_SET_COEF(pan_coefs);
     _RET_TRUE_IF_SET(feedback);
     _RET_TRUE_IF_SET(trigger_phase);
-    // LOCAL EDIT (S3-Amysynth, experimental): unison cluster.
     _RET_TRUE_IF_SET(unison_count);
     _RET_TRUE_IF_SET(unison_spacing);
     _RET_TRUE_IF_SET(unison_offset);
     _RET_TRUE_IF_SET(unison_blend);
-    _RET_TRUE_IF_SET(unison_phase_step);
     _RET_TRUE_IF_SET(sample_offset);
     _RET_TRUE_IF_SET(fit_ticks);
     _RET_TRUE_IF_SET(fit_search);
@@ -666,12 +659,10 @@ struct delta *deltas_to_event(struct delta *queue, struct amy_event *event) {
       _CASE_F(midi_note, MIDI_NOTE)
       _CASE_F(feedback, FEEDBACK)
       _CASE_F(trigger_phase, PHASE)
-      // LOCAL EDIT (S3-Amysynth, experimental): unison cluster.
       _CASE_I(unison_count, UNISON_COUNT)
       _CASE_F(unison_spacing, UNISON_SPACING)
       _CASE_F(unison_offset, UNISON_OFFSET)
       _CASE_F(unison_blend, UNISON_BLEND)
-      _CASE_F(unison_phase_step, UNISON_PHASE_STEP)
       _CASE_I(sample_offset, SAMPLE_OFFSET)
       _CASE_F(fit_ticks, FIT)
       _CASE_I(fit_search, FIT_SEARCH)
@@ -871,14 +862,12 @@ void set_event_for_osc(int base_osc, int rel_osc, struct amy_event *event) {
     EVENT_FROM_OSC_ARRAY(pan_coefs, NUM_COMBO_COEFS);
     EVENT_FROM_OSC(feedback);
     EVENT_FROM_OSC(trigger_phase);
-    // LOCAL EDIT (S3-Amysynth, experimental): unison cluster; count 1 with no
-    // offset is the default and stays unset, like the distortion enables.
-    if (synth[osc]->unison_count > 1 || synth[osc]->unison_offset != 0) {
+    // Unison: a single copy at the osc's own pitch is the default.
+    if (unison_active(synth[osc])) {
         event->unison_count = synth[osc]->unison_count;
         event->unison_spacing = synth[osc]->unison_spacing;
         event->unison_offset = synth[osc]->unison_offset;
         event->unison_blend = synth[osc]->unison_blend;
-        event->unison_phase_step = synth[osc]->unison_phase_step;
     }
     EVENT_FROM_OSC(sample_offset);
     if (is_pcm_kind) {

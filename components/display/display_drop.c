@@ -7,7 +7,7 @@ static const int8_t s_half[8][2] = {
     { 4, 0 }, { 4, 2 }, { 3, 3 }, { 2, 4 }, { 0, 4 }, { -2, 4 }, { -3, 3 }, { -4, 2 },
 };
 
-static inline uint8_t cell_x(uint8_t col) { return (uint8_t)(col * DROP_VIEW_CELL_W); }
+static inline uint8_t cell_x(uint8_t col) { return (uint8_t)(DROP_VIEW_X0 + col * DROP_VIEW_CELL_W); }
 static inline uint8_t cell_y(uint8_t row) { return (uint8_t)(DROP_VIEW_Y0 + row * DROP_VIEW_CELL_H); }
 
 /* A line drawn every other pixel. */
@@ -142,7 +142,7 @@ void display_drop_draw_frame(u8g2_t *u8g2, const drop_view_t *view)
         draw_segment(u8g2, &view->segs[i]);
     }
     for (uint8_t i = 0; i < view->ball_count && i < DROP_VIEW_BALLS; i++) {
-        int bx = view->balls[i].x, by = DROP_VIEW_Y0 + view->balls[i].y;
+        int bx = DROP_VIEW_X0 + view->balls[i].x, by = DROP_VIEW_Y0 + view->balls[i].y;
         if (bx > 126) bx = 126;
         if (by > 62) by = 62;   /* the field's last pixel row is 63 */
         u8g2_DrawBox(u8g2, (u8g2_uint_t)bx, (u8g2_uint_t)by, 2, 2);

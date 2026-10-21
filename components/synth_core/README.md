@@ -28,7 +28,8 @@ blocks and deferred authority, editor preview/cancel) are written up once in
 model), `seq_core_state.c` (layer lifecycle), `seq_core_engine.c` (tag
 scheduling, transport, mute/solo), `seq_core_trig.c` (per-step
 probability/ratchet/conditional trigs), `seq_core_synth.c` (patch loading,
-drum Synth/PCM engines), `seq_core_editors.c` (envelope/filter/LFO/distortion commits),
+drum Synth/PCM engines), `seq_core_env.c` / `seq_core_filter.c` / `seq_core_lfo.c` /
+`seq_core_dist.c` (envelope/filter/LFO/distortion commits),
 `seq_core_tempo.c` (BPM), `seq_core_progression.c` (chord progression).
 
 **`synth_ui/`** - the 20 Hz UI task (`synth_ui_task.c`), the per-screen
@@ -37,7 +38,7 @@ handlers (`ui_screen_menu.c`, `ui_screen_arp.c`, `ui_screen_drone.c`,
 `ui_screen_chords.c`, `ui_screen_layermenu.c`, `ui_screen_stepedit.c`,
 `ui_screen_dropseg.c`, `ui_screen_fxmenu.c`, `ui_screen_bounce.c`, `ui_screen_projects.c`,
 `ui_screen_wireless.c`, `ui_screen_fm.c`, `ui_screen_dev.c`), the modal
-editors (`ui_editors.c`: ADSR graph, filter, LFO, DIST), the screen/overlay
+editors (`ui_editors.c`: ADSR, filter, LFO, DIST), the screen/overlay
 precedence resolver (`ui_view_resolve.c`), patch cycling
 (`ui_patch_cycle.c`), and the bottom hint strip (`synth_ui_hint.c`). Controls:
 [CONTROLS.md](../../CONTROLS.md).
@@ -94,7 +95,7 @@ implementations.
 Kconfig defaults ──seed──> layer->vp[track].env ──push──> AMY synth (EG0)
                               ▲                            ▲
                               │                            │
-                graph editor commit ────────────────────────
+                ADSR editor commit ────────────────────────
 ```
 
 1. **Seed (compile-time).** On layer creation (`sequencer_core_add_layer`),
@@ -107,7 +108,7 @@ Kconfig defaults ──seed──> layer->vp[track].env ──push──> AMY sy
    it, gated by `CONFIG_SEQ_MELODIC_ENVELOPE_ENABLED`. Only **authored** rows
    are pushed (see *Deferred authority*) - unauthored rows let the patch's own
    envelope play.
-3. **Runtime edit.** The graph editor commits through
+3. **Runtime edit.** The ADSR editor commits through
    `sequencer_core_set_melodic_envelope()`, which overwrites the same
    `vp[track].env` struct, marks the row **authored**, and immediately
    re-pushes to AMY. The EG1 breakpoint set follows the same path via its own
@@ -128,14 +129,14 @@ flowchart TD
     D --> E{"row authored?"}
     E -->|no| F["patch envelope wins (no env push)"]
     E -->|yes| G["re-push row env over patch"]
-    H["user opens graph + commits"] --> I["set_melodic_envelope: authored=true; push env"]
+    H["user opens ADSR editor + commits"] --> I["set_melodic_envelope: authored=true; push env"]
 ```
 
 ### Kconfig options
 
 | Config | Default | Meaning |
 | --- | --- | --- |
-| `SEQ_MELODIC_ENVELOPE_ENABLED` | `y` | Master gate for pushing any EG0 envelope to AMY. **If `n`, graph edits update the stored struct but never reach AMY** (the push is compiled out), so the editor appears broken. Keep `y` whenever the editor is used. |
+| `SEQ_MELODIC_ENVELOPE_ENABLED` | `y` | Master gate for pushing any EG0 envelope to AMY. **If `n`, ADSR editor edits update the stored struct but never reach AMY** (the push is compiled out), so the editor appears broken. Keep `y` whenever the editor is used. |
 | `SEQ_MELODIC_ENV_EG0_TYPE` | `0` | `0`=Normal (musical), `1`=Linear, `2`=DX7, `3`=True exp. Type `2` is for DX7 level tables and sounds wrong on a plain A/D/S/R breakpoint set. |
 | `SEQ_MELODIC_ENV_ATTACK_MS` | `4` | Seed attack. Overwritten by editor commits. |
 | `SEQ_MELODIC_ENV_DECAY_MS` | `100` | Seed decay, about one default gate at the default tempo so the decay finishes before note-off. With `SEQ_ADSR_EXPLICIT_DECAY=n` the editor **auto-derives** decay from attack + sustain (see *Locked sustain X*) and a commit overwrites the seed. |
@@ -146,22 +147,22 @@ flowchart TD
 The seed values are *not* stale once the editor exists - the editor writes the
 exact same struct. Change them only if you want a different starting shape.
 
-### Graph editor (`synth_ui/ui_editors.c`)
+### ADSR editor (`synth_ui/ui_editors.c`)
 
-- `synth_ui_graph_open_envelope()` seeds the 3-point editor (A/D/R, plus
-  origin) from the bound target's stored envelope via `graph_seed_from_env()`.
-- `graph_commit_to_env()` reads the points back, converts X→ms under the active
+- `synth_ui_adsr_open_envelope()` seeds the 3-point editor (A/D/R, plus
+  origin) from the bound target's stored envelope via `adsr_seed_from_env()`.
+- `adsr_commit_to_env()` reads the points back, converts X→ms under the active
   range mapping, and commits to whichever instrument opened the editor. Edits
   reach AMY immediately on commit.
 - **SHORT/LONG time range:** the X axis is linear in SHORT (2 s) and log-squashed
-  in LONG (15 s). `graph_ms_to_x()`/`graph_x_to_ms()` are inverse mappings used
+  in LONG (15 s). `adsr_ms_to_x()`/`adsr_x_to_ms()` are inverse mappings used
   on both seed and commit, so round-trips don't drift. The range auto-switches
   with hysteresis based on total envelope length.
 - **Locked sustain X (auto-decay).** The sustain point is **Y-only**: the user
   sets its *level*, but its *X* (the decay time) is derived, not draggable. The
   widget enforces this via `graph_popup_set_adsr_lock_sx()`; the host
-  recomputes S.x in `graph_recompute_decay()` after seeding and after every
-  encoder edit. The rule (`graph_decay_ms()`, constants in `ui_editors.c`):
+  recomputes S.x in `adsr_recompute_decay()` after seeding and after every
+  encoder edit. The rule (`adsr_decay_ms()`, constants in `ui_editors.c`):
 
   ```
   decay_ms = clamp(DECAY_BASE_MS + attack_ms*DECAY_ATTACK_K
@@ -169,7 +170,7 @@ exact same struct. Change them only if you want a different starting shape.
   ```
 
   i.e. **lower sustain → longer, more audible decay**, scaling gently with
-  attack. `graph_commit_to_env()` reconstructs `decay = cum_d - cum_a`, which
+  attack. `adsr_commit_to_env()` reconstructs `decay = cum_d - cum_a`, which
   equals the derived value, so the committed `seq_env_t.decay_ms` carries the
   auto-decay.
 

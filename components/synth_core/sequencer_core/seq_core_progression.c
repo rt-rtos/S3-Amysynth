@@ -82,7 +82,7 @@ static uint32_t prog_apply_lead_ticks(void)
  * task ahead of the apply (sequencer_core_progression_chord_at). WRITTEN once
  * per service tick on synth_ui_task, READ on the pump task, so consistency is
  * a generation counter (seqlock), as for the editor preview slot in
- * seq_core_editors.c: the writer bumps to odd, writes, bumps to even; a reader
+ * seq_core_lfo.c: the writer bumps to odd, writes, bumps to even; a reader
  * that catches a writer reports no pending change. */
 typedef struct {
     bool         valid;
@@ -150,6 +150,7 @@ static uint8_t chord_type_to_scale_index(chord_type_t ct)
         case CHORD_MAJ6: return 1;  /* Major - its natural 6 is the chord tone */
         case CHORD_MIN6: return 3;  /* Dorian - the only minor mode with a natural 6 */
         case CHORD_DOM9: return 6;  /* Mixolydian - same b7 as dom7 */
+        case CHORD_M7B5: return 10; /* Locrian - the scale of the vii half-dim */
         default:         return 1;
     }
 }

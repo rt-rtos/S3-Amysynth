@@ -108,7 +108,7 @@ config SEQ_MELODIC_DISABLE_DEFAULT_LPF
 config SEQ_MELODIC_PATCH
 	int
 	default 14 if SEQ_MELODIC_PATCH_JUNO_EPIANO1
-	default 32 if SEQ_MELODIC_PATCH_JUNO_SYNTH_BASS2
+	default 36 if SEQ_MELODIC_PATCH_JUNO_SYNTH_BASS2
 	default 66 if SEQ_MELODIC_PATCH_JUNO_CHORUS_VIBES
 	default 47 if SEQ_MELODIC_PATCH_JUNO_SYNTH_PAD
 	default 7 if SEQ_MELODIC_PATCH_JUNO_PIANO1
@@ -127,8 +127,9 @@ config SEQ_MEL_VOICES
 		One AMY synth is allocated PER ROW (per track). A row only ever
 		sounds one pitch at a time, so a single voice suffices. Bump to 2
 		to give note-off/note-on overlap headroom at the step boundary, at
-		2x oscillator cost per row. Melodic rows span slots 14..65, so
-		higher values multiply oscillator use against AMY's 250-osc budget.
+		2x oscillator cost per row. Melodic rows take the melodic arena
+		(SEQ_MEL_SLOT_COUNT slots, synth_slots.h), so higher values multiply
+		oscillator use against AMY's 250-osc budget.
 
 config SEQ_KS_VOICES_MAX
 	int "KS voices per row, ceiling"
@@ -222,7 +223,7 @@ config SEQ_ADSR_EXPLICIT_DECAY
 	bool "Explicit decay control in the ADSR editor (industry-norm)"
 	default y
 	help
-		Controls how the DECAY time is handled in the graph ADSR editors
+		Controls how the DECAY time is handled in the ADSR editors
 		(EG0 and EG1, across melodic/drone/arp targets).
 
 		Enabled (default, industry norm): decay is a first-class control.
@@ -245,7 +246,7 @@ config SEQ_ENV_DEBUG_DUMP
 	default n
 	help
 		Temporary verification aid. When enabled, committing an envelope in the
-		graph editor logs the exact breakpoint event sent to the row's AMY synth
+		ADSR editor logs the exact breakpoint event sent to the row's AMY synth
 		(target synth, eg_type, attack/decay/release ms and sustain level), so
 		you can confirm on hardware that edits reach the oscillators. Leave off
 		for normal builds.

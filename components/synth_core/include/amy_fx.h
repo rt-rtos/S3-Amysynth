@@ -98,6 +98,23 @@ void fx_push_chorus(uint8_t bus);
 void fx_push_reverb(uint8_t bus);
 void fx_push_dist(uint8_t bus);
 
+/* ── FX drain: empty a bus's echo and reverb lines without freezing them ──
+ * UI task only (the pushes above share the drain state).
+ * amy_fx_drain_begin(bus) marks the bus draining until amy_sysclock() +
+ * max(amy_fx_echo_time_ms(bus), 300) + 6 ms, then pushes its echo and
+ * reverb. A second call while draining restarts the deadline; nothing
+ * cancels a drain. While a bus drains, every fx_push_echo / fx_push_reverb
+ * of it (whatever the caller: FX edits, synth_ui_fx_reassert*, project
+ * load, bus sync) sends, for an effect whose engine level is above 0, wet
+ * level 1e-4 with echo feedback 0 / reverb liveness 0 (other sub-params as
+ * normal); an effect at level 0 is pushed normally. s_fx is never changed
+ * by a drain. amy_fx_service() (the UI 50 ms frame) ends each drain whose
+ * deadline passed and pushes the bus's echo and reverb from the cache;
+ * a sub-param the drain changed that the cache holds FX_PARAM_UNSET is sent
+ * as AMY's default. */
+void amy_fx_drain_begin(uint8_t bus);
+void amy_fx_service(void);
+
 /* All five pushes for one bus. */
 void fx_bus_sync(uint8_t bus);
 
