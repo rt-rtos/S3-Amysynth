@@ -280,12 +280,12 @@ Oscillators will not become audible until a `velocity` over 0 is set for the osc
 
 ### Unison
 
-An oscillator can render several detuned copies of its wave into its own output. `unison` (wire code `C`) takes up to seven values: count, spacing, offset, blend, groups, interval1, interval2.
+An oscillator can render several detuned copies of its wave into its own output. `unison` (wire code `C`) takes up to eight values: count, spacing, offset, blend, groups, interval1, interval2, interval3.
 
  - `count` (1-8, default 1) is the number of copies.
  - Copy i (from 0) plays at the osc's pitch + `offset` + i * `spacing` octaves (both default 0, clamped to +/-4 octaves).
  - `blend` (0-1, default 1) is the weight of the copy farthest from the osc's pitch; weights fall linearly with a copy's distance from the osc's pitch, so a cluster centred on the note (`offset = -(count - 1) * spacing / 2`) tapers symmetrically. 1 gives every copy the same weight. The weights are power-normalized, so the cluster plays at about the level of one copy.
- - The copies share the osc's envelope, filter, distortion, pan and modulation; note, pitch bend, portamento and pitch modulation move the whole cluster. At each note-on the copies are spread evenly over one cycle from the osc's phase.
+ - The copies share the osc's envelope, filter, distortion, pan and modulation; note, pitch bend, portamento and pitch modulation move the whole cluster. At each note-on the copies of group 0 are spread evenly over one cycle from the osc's phase; a group a whole number of octaves away starts each copy a quarter cycle of the shared partial away from the root copy with the same index (its fundamental is a harmonic of that copy at exactly the same frequency, so the two would otherwise add or cancel for the whole note); other groups spread inside themselves, staggered by group. A copy whose weight is 0 is not rendered.
  - SINE, PULSE, SAW_DOWN, SAW_UP, TRIANGLE and WAVETABLE render the cluster; other waves ignore it. Switching the osc to PCM, KS or ALGO drops the cluster's phases with that kind's state; switching back to one of these waves picks the cluster up again, since the unison parameters persist on the osc.
 
 ```python
@@ -294,7 +294,7 @@ D = 20 / 1200
 amy.send(osc=0, wave=amy.SAW_DOWN, unison=[4, 2 * D / 3, -D, 0.8], note=48, vel=1)
 ```
 
-`groups` (1-3, default 1) deals the copies in order into that many groups of consecutive copies; when `count` does not divide evenly, the first `count % groups` groups take one copy more. Copy j of each group plays at `offset` + j * `spacing`, so every group carries the same spread, and the group as a whole is transposed: group 0 stays at the osc's pitch, group 1 moves by `interval1` and group 2 by `interval2` octaves (both default 0, clamped to +/-4 octaves). `blend` tapers each copy by its distance from its own group's pitch, reaching `blend` at the edge of the largest group. A saw, pulse or triangle group renders from the table chosen for its own highest copy, so an upper group does not alias and the root group keeps its full bandwidth; sine and wavetable groups share the osc's table. More groups than copies deals one copy to each of the first `count` groups.
+`groups` (1-4, default 1) deals the copies in order into that many groups of consecutive copies; when `count` does not divide evenly, the first `count % groups` groups take one copy more. Copy j of each group plays at `offset` + j * `spacing`, so every group carries the same spread, and the group as a whole is transposed: group 0 stays at the osc's pitch, group 1 moves by `interval1`, group 2 by `interval2` and group 3 by `interval3` octaves (all default 0, clamped to +/-4 octaves). `blend` tapers each copy by its distance from its own group's pitch, reaching `blend` at the edge of the largest group. A saw, pulse or triangle group renders from the table chosen for its own highest copy, so an upper group does not alias and the root group keeps its full bandwidth; sine and wavetable groups share the osc's table. More groups than copies deals one copy to each of the first `count` groups.
 
 ```python
 # Four saws as an octave stack: a pair at +/-10 cents around the note and a pair around the octave above.

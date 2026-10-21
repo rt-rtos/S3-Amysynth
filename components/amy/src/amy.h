@@ -198,7 +198,7 @@ extern uint32_t amy_gamma9001_pcm_bytes(void);
 // copy's step finite.
 #define AMY_UNISON_MAX_OCTAVES 4.0f
 // Most groups a unison cluster deals its copies into (unison_groups).
-#define AMY_UNISON_GROUPS_MAX 3
+#define AMY_UNISON_GROUPS_MAX 4
 
 // Always use 2 channels. Clients that want mono can deinterleave
 #define AMY_NCHANS 2
@@ -564,6 +564,7 @@ enum params{
     UNISON_GROUPS,              // groups the copies are dealt into
     UNISON_INTERVAL1,           // octaves from the osc's pitch to group 1
     UNISON_INTERVAL2,           // octaves from the osc's pitch to group 2
+    UNISON_INTERVAL3,           // octaves from the osc's pitch to group 3
     // LOCAL EDIT (S3-Amysynth, 2026-10-12, experimental): see amy_event.
     MOD_SYNTH_START,
     MOD_SYNTH_END = MOD_SYNTH_START + NUM_MOD_SOURCES,
@@ -747,6 +748,7 @@ typedef struct amy_event {
     uint8_t unison_groups;  // 1..AMY_UNISON_GROUPS_MAX groups, default 1
     float unison_interval1;  // octaves from the osc's pitch to group 1, default 0
     float unison_interval2;  // octaves from the osc's pitch to group 2, default 0
+    float unison_interval3;  // octaves from the osc's pitch to group 3, default 0
     // LOCAL EDIT (S3-Amysynth, 2026-10-12, experimental): moves the osc's
     // running phase without storing it, so later note-ons do not reset it
     // (trigger_phase both stores and moves). Struct-only: no wire letter.
@@ -923,6 +925,7 @@ struct synthinfo {
     uint8_t unison_groups;
     float unison_interval1;
     float unison_interval2;
+    float unison_interval3;
     uint16_t sample_offset;  // PCM note-on start offset in samples within its block
     float logratio;
     float portamento_alpha;
