@@ -343,8 +343,8 @@ typedef enum {
 
 /* ── Unison spec (per melodic track: seq_layer_t.track_unison) ──
  * N copies of the wave build's audible osc, dealt over the notes of a stack
- * (voice_unison_stack_t: the note alone, or with its octave, its sub octave,
- * both, its fifth, or fifth and octave). Every note takes count / groups
+ * (voice_unison_stack_t: the note alone, or with up to three more notes:
+ * octaves, fifth, fourth, chord tones, harmonics). Every note takes count / groups
  * copies, spread in pitch over +/-detune_cents around that note; shift
  * slides each group from all copies flat (0) through the note (100) to all
  * copies sharp (200); blend_pct tapers the copies farthest from their note.
@@ -353,7 +353,8 @@ typedef enum {
  * alternate between an L and an R cluster osc, panned spread_pct of full
  * width. bypass = 1 or count = 1 plays the single-osc build exactly; bypass
  * keeps every other field for when unison is switched back on.
- * Raw-wave/wavetable patches only (KS excluded). Storage and scope:
+ * Raw-wave/wavetable patches only (KS excluded). Defaults: voice_unison_defaults()
+ * (voice_config.h), Off with an Oct+Sub stack of three. Storage and scope:
  * sequencer_core.h, "Melodic per-track unison".
  *
  * The copies render inside AMY oscs (the unison cluster and its groups,
@@ -368,6 +369,12 @@ typedef enum {
     VOICE_UNISON_STACK_OCT_SUB,  /* note, octave down, octave up           */
     VOICE_UNISON_STACK_FIFTH,    /* note, fifth up                         */
     VOICE_UNISON_STACK_POWER,    /* note, fifth up, octave up              */
+    VOICE_UNISON_STACK_OCT2,     /* note, octave up, two octaves up        */
+    VOICE_UNISON_STACK_FOURTH,   /* note, fourth up                        */
+    VOICE_UNISON_STACK_MAJOR,    /* note, major third, fifth, octave       */
+    VOICE_UNISON_STACK_MINOR,    /* note, minor third, fifth, octave       */
+    VOICE_UNISON_STACK_HARM3,    /* harmonics 1:2:3 (octave, just twelfth) */
+    VOICE_UNISON_STACK_HARM4,    /* harmonics 1:2:3:4                      */
     VOICE_UNISON_STACK_COUNT
 } voice_unison_stack_t;
 

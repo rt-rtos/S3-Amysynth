@@ -220,6 +220,10 @@ typedef struct {
  * VOICE_LFO_PAIR_OSCS. */
 uint8_t voice_unison_oscs_per_voice(uint8_t n, bool stereo);
 uint8_t voice_unison_groups(uint8_t stack);                  /* notes in a voice_unison_stack_t */
+/* The row defaults every unison owner seeds with and the store falls back to:
+ * Off, Oct+Sub stack at count 3, detune 0, spread 50, blend 100, stereo on,
+ * shift centred. Plain constants (project store rule); pure, any task. */
+voice_unison_t voice_unison_defaults(void);
 uint8_t voice_unison_copy_osc(const voice_unison_t *u, uint8_t i, uint8_t n);
 uint8_t voice_unison_head_osc(uint8_t group, uint8_t n, bool stereo); /* 0: L, 1: R */
 uint8_t voice_unison_copies_mask(uint8_t n, bool stereo);    /* bit = osc */

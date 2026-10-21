@@ -392,7 +392,7 @@ void drone_std_params_defaults(drone_std_params_t *out)
     out->vp.lfo.depth   = 50;
     out->vp.lfo.targets = LFO_TGT_BIT(LFO_TARGET_FILTER);
     /* The row defaults (drone_std_get_unison); count 1 keeps them inert. */
-    out->unison = (voice_unison_t){ 1u, 12u, 50u, 100u, 1u, 0u, 100u, 0u, 0u };
+    out->unison = voice_unison_defaults();
 }
 
 void drone_std_core_init(void)
@@ -753,7 +753,7 @@ void drone_std_set_voice_params(const voice_params_t *vp)
 void drone_std_get_unison(voice_unison_t *out)
 {
     if (!out) return;
-    voice_unison_t u = { 1u, 12u, 50u, 100u, 1u, 0u, 100u, 0u, 0u };
+    voice_unison_t u = voice_unison_defaults();
     if (s_ds.unison.count != 0u) u = s_ds.unison;
     *out = u;
 }

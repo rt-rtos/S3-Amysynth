@@ -203,8 +203,8 @@ def default_layer(kind):
     return dict(type=kind, num_steps=16, patch=0, synth_flags=0, num_voices=1, chord_mode=False,
                 chord_root=0, chord_type=0, swing_pct=0,
                 tracks=[dict(base_note=60, patch=0, pcm_preset=0, pcm_mode=0,
-                             uni_count=1, uni_detune=12, uni_spread=50, uni_blend=100, uni_stereo=1,
-                             uni_bypass=0, uni_shift=100, uni_interval=0, uni_stack=0,
+                             uni_count=3, uni_detune=0, uni_spread=50, uni_blend=100, uni_stereo=1,
+                             uni_bypass=1, uni_shift=100, uni_interval=0, uni_stack=3,
                              repeat_rate=1, mute=False, solo=False, follow=0, wt_frame=0, vp=default_vp())
                         for _ in range(SEQ_TRACKS)],
                 grid=grid(0), step_note=grid(60), step_pitch_ofs=grid(0), step_prob=grid(100),
@@ -552,9 +552,9 @@ DSTD_FIELDS = [('enabled', 'b1'), ('chord', 'u8'), ('root', 'u8'), ('follow', 'u
                ('level', 'f32'), ('patch', 'u16'), ('sub_enabled', 'b1'), ('sub_interval', 'i8')]
 
 
-# drone_params_defaults / drone_std_params_defaults unison: the row defaults at count 1.
-DRONE_UNISON_SEED = dict(uni_count=1, uni_detune=12, uni_spread=50, uni_blend=100, uni_stereo=1,
-                         uni_bypass=0, uni_shift=100, uni_interval=0, uni_stack=0)
+# voice_unison_defaults(): Off, Oct+Sub (stack 3) at count 3, detune 0.
+DRONE_UNISON_SEED = dict(uni_count=3, uni_detune=0, uni_spread=50, uni_blend=100, uni_stereo=1,
+                         uni_bypass=1, uni_shift=100, uni_interval=0, uni_stack=3)
 
 
 def w_fields_vp(fields, d):

@@ -244,7 +244,7 @@ uint16_t arp_get_portamento_ms(void);
  * "Melodic per-track unison"): raw-wave/wavetable patches only (KS excluded),
  * effective count (bypass ? 1 : count) clamped by
  * sequencer_core_unison_copies_for() at the arp's patch and voice count. get
- * serves {1, 12, 50, 100, 1, 0, 100, 0} until first set. set clamps count
+ * serves voice_unison_defaults() until first set. set clamps count
  * 1..VOICE_UNISON_MAX_COPIES, detune 0..VOICE_UNISON_MAX_DETUNE, spread/blend
  * 0..100, stereo/bypass 0..1, shift 0..VOICE_UNISON_MAX_SHIFT, stack
  * 0..VOICE_UNISON_MAX_STACK, and stores; a moved effective count (bypass

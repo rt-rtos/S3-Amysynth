@@ -389,7 +389,7 @@ void live_play_get_unison(voice_unison_t *out)
 {
     if (!out) return;
     /* First-turn defaults, as on a row; count 1 keeps them inert. */
-    voice_unison_t u = { 1u, 12u, 50u, 100u, 1u, 0u, 100u, 0u, 0u };
+    voice_unison_t u = voice_unison_defaults();
     if (s_unison.count != 0u) u = s_unison;
     *out = u;
 }

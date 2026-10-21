@@ -1329,7 +1329,7 @@ void drop_get_vp(drop_which_t w, voice_params_t *out)
 void drop_get_unison(drop_which_t w, voice_unison_t *out)
 {
     if (!out) return;
-    voice_unison_t u = { 1u, 12u, 50u, 100u, 1u, 0u, 100u, 0u, 0u };
+    voice_unison_t u = voice_unison_defaults();
     if (which_ok(w) && s_drop.voice[w].unison.count != 0u) u = s_drop.voice[w].unison;
     *out = u;
 }

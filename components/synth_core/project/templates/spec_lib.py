@@ -255,8 +255,8 @@ def arp(enabled, patch, direction, rate, slots, octaves=1, gate=50, quant=ARP_QU
                 slots=slots, env=amp_env or env(2, 160, 0, 120), env2=env(5, 300, 20, 300),
                 filter=flt or C.default_filter(), lfo=mod or C.default_lfo(),
                 lfo2=C.default_lfo2(), lfo2_authored=False, quant_mode=quant, dist=C.default_dist(), muted=False, solo=False,
-                uni_count=1, uni_detune=12, uni_spread=50, uni_blend=100, uni_stereo=1,
-                uni_bypass=0, uni_shift=100, uni_interval=0, uni_stack=0, repeat_rate=1)
+                uni_count=3, uni_detune=0, uni_spread=50, uni_blend=100, uni_stereo=1,
+                uni_bypass=1, uni_shift=100, uni_interval=0, uni_stack=3, repeat_rate=1)
 
 
 def drone_off():

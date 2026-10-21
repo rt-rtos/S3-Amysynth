@@ -83,18 +83,35 @@ uint8_t voice_wob_db_to_depth(uint8_t db)
  * osc serves every group. Index map: contract in voice_config.h. */
 typedef struct {
     uint8_t groups;
-    float   interval1;   /* octaves of group 1 */
-    float   interval2;   /* octaves of group 2 */
+    float   interval[3];   /* octaves of groups 1..3 from the note */
 } unison_stack_def_t;
 
+#define ST(semis) ((float)(semis) / 12.0f)
 static const unison_stack_def_t UNISON_STACKS[VOICE_UNISON_STACK_COUNT] = {
-    [VOICE_UNISON_STACK_OFF]     = { 1u,  0.0f,          0.0f },
-    [VOICE_UNISON_STACK_OCT]     = { 2u,  1.0f,          0.0f },
-    [VOICE_UNISON_STACK_SUB]     = { 2u, -1.0f,          0.0f },
-    [VOICE_UNISON_STACK_OCT_SUB] = { 3u, -1.0f,          1.0f },
-    [VOICE_UNISON_STACK_FIFTH]   = { 2u,  7.0f / 12.0f,  0.0f },
-    [VOICE_UNISON_STACK_POWER]   = { 3u,  7.0f / 12.0f,  1.0f },
+    [VOICE_UNISON_STACK_OFF]     = { 1u, { 0.0f,   0.0f,   0.0f } },
+    [VOICE_UNISON_STACK_OCT]     = { 2u, { 1.0f,   0.0f,   0.0f } },
+    [VOICE_UNISON_STACK_SUB]     = { 2u, { -1.0f,  0.0f,   0.0f } },
+    [VOICE_UNISON_STACK_OCT_SUB] = { 3u, { -1.0f,  1.0f,   0.0f } },
+    [VOICE_UNISON_STACK_FIFTH]   = { 2u, { ST(7),  0.0f,   0.0f } },
+    [VOICE_UNISON_STACK_POWER]   = { 3u, { ST(7),  1.0f,   0.0f } },
+    [VOICE_UNISON_STACK_OCT2]    = { 3u, { 1.0f,   2.0f,   0.0f } },
+    [VOICE_UNISON_STACK_FOURTH]  = { 2u, { ST(5),  0.0f,   0.0f } },
+    [VOICE_UNISON_STACK_MAJOR]   = { 4u, { ST(4),  ST(7),  1.0f } },
+    [VOICE_UNISON_STACK_MINOR]   = { 4u, { ST(3),  ST(7),  1.0f } },
+    /* Just harmonics: log2 of 2, 3 and 4. */
+    [VOICE_UNISON_STACK_HARM3]   = { 3u, { 1.0f,   1.5849625f, 0.0f } },
+    [VOICE_UNISON_STACK_HARM4]   = { 4u, { 1.0f,   1.5849625f, 2.0f } },
 };
+#undef ST
+
+voice_unison_t voice_unison_defaults(void)
+{
+    return (voice_unison_t){
+        .count = 3u, .detune_cents = 0u, .spread_pct = 50u, .blend_pct = 100u,
+        .stereo = 1u, .bypass = 1u, .shift = 100u, .interval_unused = 0u,
+        .stack = VOICE_UNISON_STACK_OCT_SUB,
+    };
+}
 
 static const unison_stack_def_t *unison_stack(const voice_unison_t *u)
 {
@@ -255,8 +272,9 @@ static void unison_engine_coefs(amy_event *e, uint8_t group, uint8_t n,
     float reach = 1.0f + fabsf(s);
     float grid  = (m > 1u) ? 1.0f / (float)(m - 1u) : 0.0f;
     e->unison_groups    = G;
-    e->unison_interval1 = (G >= 2u) ? st->interval1 : 0.0f;
-    e->unison_interval2 = (G >= 3u) ? st->interval2 : 0.0f;
+    e->unison_interval1 = (G >= 2u) ? st->interval[0] : 0.0f;
+    e->unison_interval2 = (G >= 3u) ? st->interval[1] : 0.0f;
+    e->unison_interval3 = (G >= 4u) ? st->interval[2] : 0.0f;
     if (!unison_pair_split(u, n)) {
         if (group) {
             /* Stereo on with one copy per group: nothing for the R osc. */
@@ -264,6 +282,7 @@ static void unison_engine_coefs(amy_event *e, uint8_t group, uint8_t n,
             e->unison_groups  = 1u;
             e->unison_interval1 = 0.0f;
             e->unison_interval2 = 0.0f;
+            e->unison_interval3 = 0.0f;
             e->unison_spacing = 0.0f;
             e->unison_offset  = 0.0f;
             e->unison_blend   = 1.0f;

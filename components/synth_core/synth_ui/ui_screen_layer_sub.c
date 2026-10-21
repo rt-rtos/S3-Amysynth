@@ -26,7 +26,7 @@
  * Off, Oct, Sub, Oct+Sub, 5th, Power); Count then steps in multiples of the
  * stack's group count and snaps down to one when the stack changes, so every
  * note gets the same copies. Shift slides each group from -100 % (all copies
- * flat) to +100 % (all sharp), 5 % per detent. Stereo toggles On/Off with one detent; while Off,
+ * flat) to +100 % (all sharp), 1 % per detent. Stereo toggles On/Off with one detent; while Off,
  * Spread reads "n/a" and does not edit (its value is kept). On a layer, LAYER
  * patch scope writes every track (the title names the layer), TRACK scope the
  * one track (the title names it too).
@@ -53,7 +53,7 @@ static menu_item_view_t s_lu_items[LU_ROWS];
 
 /* Indexed by voice_unison_stack_t. */
 static const char *const UNISON_STACK_NAMES[VOICE_UNISON_STACK_COUNT] = {
-    "Off", "Oct", "Sub", "Oct+Sub", "5th", "Power"
+    "Off", "Oct", "Sub", "Oct+Sub", "5th", "Power", "2xOct", "4th", "Major", "Minor", "Harm3", "Harm4"
 };
 
 const char *layer_uni_menu_title(void)
@@ -191,7 +191,7 @@ void layer_uni_menu_edit_value(uint8_t idx, int delta)
         break;
     }
     case LU_SHIFT:
-        u.shift = (uint8_t)SEQ_CLAMP_INT((int)u.shift + 5 * delta,
+        u.shift = (uint8_t)SEQ_CLAMP_INT((int)u.shift + delta,
                                          0, (int)VOICE_UNISON_MAX_SHIFT);
         break;
     case LU_SPREAD:
