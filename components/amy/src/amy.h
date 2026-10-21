@@ -994,8 +994,7 @@ struct synthinfo {
 // Does the osc render a unison cluster: a LUT-kind osc whose config differs
 // from a single copy at its own pitch?
 static inline bool unison_active(const struct synthinfo *s) {
-    return s->wave_kind == WAVE_KIND_LUT
-        && (s->unison_count > 1 || s->unison_offset != 0 || s->unison_groups > 1);
+    return s->wave_kind == WAVE_KIND_LUT && (s->unison_count > 1 || s->unison_offset != 0);
 }
 
 // synthinfo, but only the things that mods/env can change. one per osc

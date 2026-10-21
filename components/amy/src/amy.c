@@ -1163,8 +1163,7 @@ static bool wave_is_lut(uint16_t wave) {
 // phases, at whichever delta makes both true.
 static void unison_claim_kind(uint16_t osc) {
     struct synthinfo *psynth = synth[osc];
-    if (wave_is_lut(psynth->wave)
-        && (psynth->unison_count > 1 || psynth->unison_offset != 0 || psynth->unison_groups > 1))
+    if (wave_is_lut(psynth->wave) && (psynth->unison_count > 1 || psynth->unison_offset != 0))
         osc_set_wave_kind(osc, WAVE_KIND_LUT);
 }
 
@@ -1907,8 +1906,10 @@ void play_delta(struct delta *d) {
     DELTA_TO_SYNTH_F_CLAMPED(UNISON_INTERVAL3, unison_interval3, -AMY_UNISON_MAX_OCTAVES, AMY_UNISON_MAX_OCTAVES)
     DELTA_TO_SYNTH_I_CLAMPED(UNISON_RANDOM, unison_random, 0, 1)
     if (d->param >= UNISON_COUNT && d->param <= UNISON_RANDOM) unison_claim_kind(d->osc);
-    // Copies added mid-note start spread from copy 0, not where they were left.
-    if (d->param == UNISON_COUNT && unison_active(synth[d->osc]))
+    // A mid-note change of count, groups or an interval respreads the copies
+    // from copy 0, as at note-on, not from where they were left.
+    if ((d->param == UNISON_COUNT || (d->param >= UNISON_GROUPS && d->param <= UNISON_INTERVAL3))
+        && unison_active(synth[d->osc]))
         unison_note_on(d->osc);
     // LOCAL EDIT (S3-Amysynth, 2026-10-12, experimental): move the running
     // phase and store nothing, so a later note-on keeps it (see amy_event).

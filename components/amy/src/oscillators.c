@@ -361,8 +361,12 @@ static inline SAMPLE amy_get_random(void);
 void unison_note_on(uint16_t osc) {
     uint8_t n = synth[osc]->unison_count;
     if (synth[osc]->unison_random) {
-        for (uint8_t i = 1; i < n; ++i)
-            synth[osc]->unison_phase[i - 1] = F2P(S2F(amy_get_random()) + 0.5f);
+        for (uint8_t i = 1; i < n; ++i) {
+            // amy_get_random() returns [-0.5, 0.5) in both builds; wrap anyway.
+            float p = S2F(amy_get_random()) + 0.5f;
+            p -= floorf(p);
+            synth[osc]->unison_phase[i - 1] = F2P(p);
+        }
         return;
     }
     uint8_t groups = MIN(synth[osc]->unison_groups, n);
@@ -452,11 +456,12 @@ static uint8_t unison_prepare(uint16_t osc, unison_copy *c, float freq, SAMPLE l
     if (sum > 1e-6f) norm = 1.0f / sqrtf(sum);
     else for (uint8_t i = 0; i < n; ++i) w[i] = 1.0f;
     // A copy at weight 0 adds nothing; it is not emitted, and its phase
-    // stops until it is.
+    // stops until it is.  Copy 0 is always emitted, so the osc's own phase
+    // keeps running.
     uint8_t emitted = 0;
     for (uint8_t i = 0; i < n; ++i) {
         SAMPLE gain = F2S(w[i] * norm);
-        if (gain == 0) continue;
+        if (gain == 0 && c[i].idx != 0) continue;
         c[emitted] = c[i];
         c[emitted].last_amp = SMULR7(last_amp, gain);
         c[emitted].amp = SMULR7(amp, gain);
@@ -832,7 +837,7 @@ SAMPLE render_sine(SAMPLE* buf, uint16_t osc) {
     SAMPLE amp = F2S(msynth[osc]->amp);
     SAMPLE last_amp = F2S(msynth[osc]->last_amp);
     unison_copy copies[AMY_UNISON_MAX];
-    uint8_t n = unison_prepare(osc, copies, freq, last_amp, amp, sine_fxpt_lutset);
+    uint8_t n = unison_prepare(osc, copies, freq, last_amp, amp, NULL);
     SAMPLE max_value = 0;
     for (uint8_t i = 0; i < n; ++i) {
         PHASOR *phase = unison_phase(osc, copies[i].idx);
